@@ -29,7 +29,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <Link href="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6 text-sm font-medium">
             <ArrowLeft className="w-4 h-4" /> Back to Website
           </Link>
-          <h2 className="font-display font-bold text-2xl">Admin Portal</h2>
+          <div className="flex flex-col">
+            <h2 className="font-display font-bold text-2xl">Admin Portal</h2>
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground mt-1">dash by Hollywood East Cafe</span>
+          </div>
         </div>
         <nav className="flex-1 p-4 space-y-2">
           <AdminNavLink href="/admin" icon={LayoutDashboard}>Dashboard</AdminNavLink>

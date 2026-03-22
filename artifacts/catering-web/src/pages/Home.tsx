@@ -20,13 +20,13 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="max-w-2xl">
             <span className="inline-block py-1 px-3 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest mb-6">
-              Exceptional Catering
+              Modern Asian-Inspired Catering
             </span>
             <h1 className="font-display text-5xl md:text-7xl font-bold text-foreground leading-[1.1] mb-6 text-balance">
-              Extraordinary food for unforgettable events.
+              Bold flavors. Unforgettable events.
             </h1>
             <p className="text-lg md:text-xl text-foreground/70 mb-10 leading-relaxed max-w-xl">
-              From intimate gatherings to grand celebrations, our artisanal menus and impeccable service elevate every occasion.
+              dash by Hollywood East Cafe brings bold, fresh, Asian-inspired flavors to your event — from intimate gatherings to large celebrations.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link 
@@ -54,18 +54,18 @@ export default function Home() {
               <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center text-primary mb-6">
                 <Star className="w-7 h-7" />
               </div>
-              <h3 className="font-display font-bold text-2xl mb-3">Artisanal Quality</h3>
+              <h3 className="font-display font-bold text-2xl mb-3">Bold Flavors</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Sourcing only the finest local ingredients to craft menus that are visually stunning and remarkably delicious.
+                Authentic, Asian-inspired recipes crafted to bring exciting, bold tastes to every bite of your event's menu.
               </p>
             </div>
             <div className="flex flex-col items-start">
               <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center text-primary mb-6">
                 <Clock className="w-7 h-7" />
               </div>
-              <h3 className="font-display font-bold text-2xl mb-3">Flawless Execution</h3>
+              <h3 className="font-display font-bold text-2xl mb-3">Fresh Ingredients</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Our experienced staff ensures every detail is perfect, allowing you to relax and enjoy your own event.
+                We source only the highest quality, freshest ingredients to ensure visually stunning and remarkably delicious dishes.
               </p>
             </div>
             <div className="flex flex-col items-start">

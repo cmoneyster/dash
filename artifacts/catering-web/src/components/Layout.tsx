@@ -31,12 +31,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex flex-col relative">
-      <header className="sticky top-0 z-40 glass-panel border-b border-border/50">
+      <header className="sticky top-0 z-40 bg-white border-b border-border/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <UtensilsCrossed className="w-8 h-8 text-primary group-hover:-rotate-12 transition-transform duration-300" />
-            <span className="font-display font-bold text-2xl tracking-tight text-foreground">
-              Epicurean<span className="text-primary">.</span>
+          <Link href="/" className="flex flex-col group">
+            <span className="font-display font-bold text-2xl tracking-tight text-foreground leading-none">
+              dash
+            </span>
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground mt-1">
+              by Hollywood East Cafe
             </span>
           </Link>
 
@@ -78,12 +80,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <footer className="bg-foreground text-background py-16 mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-12">
           <div className="col-span-1 md:col-span-2">
-            <div className="flex items-center gap-2 mb-6">
-              <UtensilsCrossed className="w-8 h-8 text-primary" />
-              <span className="font-display font-bold text-2xl tracking-tight">Epicurean.</span>
+            <div className="flex flex-col mb-6">
+              <span className="font-display font-bold text-2xl tracking-tight leading-none">dash</span>
+              <span className="text-[10px] uppercase tracking-widest text-background/60 mt-1">
+                by Hollywood East Cafe
+              </span>
             </div>
             <p className="text-background/60 max-w-md text-balance leading-relaxed">
-              Elevating your events with artisanal catering, sustainable ingredients, and impeccable service. Let us handle the details while you enjoy the moment.
+              Asian-inspired catering for every occasion. Fresh ingredients, bold flavors, memorable events.
             </p>
           </div>
           <div>
@@ -97,7 +101,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div>
             <h4 className="font-display font-semibold text-lg mb-6">Contact</h4>
             <ul className="space-y-4 text-background/60">
-              <li>hello@epicurean.com</li>
+              <li>hello@dashcatering.com</li>
               <li>(555) 123-4567</li>
               <li>123 Culinary Lane, NY</li>
             </ul>
