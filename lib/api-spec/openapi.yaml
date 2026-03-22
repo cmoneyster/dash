@@ -1,22 +1,32 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Catering Business API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: menu
+    description: Menu item operations
+  - name: orders
+    description: Order and cart operations
+  - name: events
+    description: Event calendar and availability
+  - name: chat
+    description: AI chat agent operations
+  - name: admin
+    description: Admin dashboard operations
+  - name: openai
+    description: OpenAI AI chat, image, and audio operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +34,569 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # Menu endpoints
+  /menu:
+    get:
+      operationId: listMenuItems
+      tags: [menu]
+      summary: List all menu items
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: available
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: List of menu items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuItem"
+  /menu/{id}:
+    get:
+      operationId: getMenuItem
+      tags: [menu]
+      summary: Get a single menu item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Menu item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Admin menu endpoints
+  /admin/menu:
+    get:
+      operationId: adminListMenuItems
+      tags: [admin]
+      summary: List all menu items (admin)
+      responses:
+        "200":
+          description: List of menu items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuItem"
+    post:
+      operationId: createMenuItem
+      tags: [admin]
+      summary: Create a new menu item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMenuItemBody"
+      responses:
+        "201":
+          description: Created menu item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+  /admin/menu/{id}:
+    put:
+      operationId: updateMenuItem
+      tags: [admin]
+      summary: Update a menu item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMenuItemBody"
+      responses:
+        "200":
+          description: Updated menu item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteMenuItem
+      tags: [admin]
+      summary: Delete a menu item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Event / Calendar endpoints
+  /events/availability:
+    get:
+      operationId: checkAvailability
+      tags: [events]
+      summary: Check availability for a date range
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Availability info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityResponse"
+
+  /admin/blackout-dates:
+    get:
+      operationId: listBlackoutDates
+      tags: [admin]
+      summary: List all blackout dates
+      responses:
+        "200":
+          description: Blackout dates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlackoutDate"
+    post:
+      operationId: createBlackoutDate
+      tags: [admin]
+      summary: Add a blackout date
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBlackoutDateBody"
+      responses:
+        "201":
+          description: Created blackout date
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlackoutDate"
+  /admin/blackout-dates/{id}:
+    delete:
+      operationId: deleteBlackoutDate
+      tags: [admin]
+      summary: Remove a blackout date
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # Cart & Orders
+  /cart:
+    get:
+      operationId: getCart
+      tags: [orders]
+      summary: Get current cart (by session)
+      parameters:
+        - name: sessionId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cart with items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+    post:
+      operationId: addToCart
+      tags: [orders]
+      summary: Add item to cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddToCartBody"
+      responses:
+        "200":
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+  /cart/{itemId}:
+    put:
+      operationId: updateCartItem
+      tags: [orders]
+      summary: Update cart item quantity
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCartItemBody"
+      responses:
+        "200":
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+    delete:
+      operationId: removeFromCart
+      tags: [orders]
+      summary: Remove item from cart
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+
+  /plan:
+    get:
+      operationId: getPlan
+      tags: [orders]
+      summary: Get saved plan (wishlist)
+      parameters:
+        - name: sessionId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Plan with items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+    post:
+      operationId: addToPlan
+      tags: [orders]
+      summary: Add item to plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddToPlanBody"
+      responses:
+        "200":
+          description: Updated plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+  /plan/{itemId}:
+    delete:
+      operationId: removeFromPlan
+      tags: [orders]
+      summary: Remove item from plan
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+
+  /orders:
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Place an order (checkout)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderBody"
+      responses:
+        "201":
+          description: Created order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /admin/orders:
+    get:
+      operationId: adminListOrders
+      tags: [admin]
+      summary: List all orders
+      responses:
+        "200":
+          description: Orders list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+  /admin/orders/{id}:
+    put:
+      operationId: updateOrderStatus
+      tags: [admin]
+      summary: Update order status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderStatusBody"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  # AI Chat
+  /chat/message:
+    post:
+      operationId: sendChatMessage
+      tags: [chat]
+      summary: Send a message to the catering AI agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatMessageBody"
+      responses:
+        "200":
+          description: SSE stream of AI response
+          content:
+            text/event-stream: {}
+
+  /chat/suggest-items:
+    post:
+      operationId: suggestMenuItems
+      tags: [chat]
+      summary: Get AI menu item suggestions based on event details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuggestItemsBody"
+      responses:
+        "200":
+          description: Suggested menu items with quantities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestItemsResponse"
+
+  # Admin stats
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Get dashboard stats
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  # OpenAI conversations (generic, kept for compatibility)
+  /openai/conversations:
+    get:
+      operationId: listOpenaiConversations
+      tags: [openai]
+      summary: List all conversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OpenaiConversation"
+    post:
+      operationId: createOpenaiConversation
+      tags: [openai]
+      summary: Create a new conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOpenaiConversationBody"
+      responses:
+        "201":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiConversation"
+  /openai/conversations/{id}:
+    get:
+      operationId: getOpenaiConversation
+      tags: [openai]
+      summary: Get conversation with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiConversationWithMessages"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+    delete:
+      operationId: deleteOpenaiConversation
+      tags: [openai]
+      summary: Delete a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+  /openai/conversations/{id}/messages:
+    get:
+      operationId: listOpenaiMessages
+      tags: [openai]
+      summary: List messages in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OpenaiMessage"
+    post:
+      operationId: sendOpenaiMessage
+      tags: [openai]
+      summary: Send a text message and receive a streaming text response
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOpenaiMessageBody"
+      responses:
+        "200":
+          description: SSE stream of assistant text chunks
+          content:
+            text/event-stream: {}
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +607,543 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        price:
+          type: number
+        servingSize:
+          type: integer
+          description: Number of people one unit serves
+        unit:
+          type: string
+          description: e.g. "tray", "dozen", "per person"
+        imageUrl:
+          type: string
+          nullable: true
+        allergens:
+          type: array
+          items:
+            type: string
+        available:
+          type: boolean
+        prepTime:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - description
+        - category
+        - price
+        - servingSize
+        - unit
+        - allergens
+        - available
+        - createdAt
+
+    CreateMenuItemBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        price:
+          type: number
+        servingSize:
+          type: integer
+        unit:
+          type: string
+        imageUrl:
+          type: string
+          nullable: true
+        allergens:
+          type: array
+          items:
+            type: string
+        available:
+          type: boolean
+        prepTime:
+          type: string
+          nullable: true
+      required:
+        - name
+        - description
+        - category
+        - price
+        - servingSize
+        - unit
+        - allergens
+        - available
+
+    UpdateMenuItemBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        price:
+          type: number
+        servingSize:
+          type: integer
+        unit:
+          type: string
+        imageUrl:
+          type: string
+          nullable: true
+        allergens:
+          type: array
+          items:
+            type: string
+        available:
+          type: boolean
+        prepTime:
+          type: string
+          nullable: true
+
+    BlackoutDate:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+          format: date
+        reason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - date
+        - createdAt
+
+    CreateBlackoutDateBody:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        reason:
+          type: string
+          nullable: true
+      required:
+        - date
+
+    AvailabilityResponse:
+      type: object
+      properties:
+        available:
+          type: boolean
+        blackoutDates:
+          type: array
+          items:
+            type: string
+            format: date
+        suggestedDates:
+          type: array
+          items:
+            type: string
+            format: date
+      required:
+        - available
+        - blackoutDates
+        - suggestedDates
+
+    CartItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        menuItemId:
+          type: integer
+        menuItem:
+          $ref: "#/components/schemas/MenuItem"
+        quantity:
+          type: integer
+      required:
+        - id
+        - menuItemId
+        - menuItem
+        - quantity
+
+    Cart:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CartItem"
+        total:
+          type: number
+      required:
+        - sessionId
+        - items
+        - total
+
+    AddToCartBody:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        menuItemId:
+          type: integer
+        quantity:
+          type: integer
+      required:
+        - sessionId
+        - menuItemId
+        - quantity
+
+    UpdateCartItemBody:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        quantity:
+          type: integer
+      required:
+        - sessionId
+        - quantity
+
+    PlanItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        menuItemId:
+          type: integer
+        menuItem:
+          $ref: "#/components/schemas/MenuItem"
+      required:
+        - id
+        - menuItemId
+        - menuItem
+
+    Plan:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanItem"
+      required:
+        - sessionId
+        - items
+
+    AddToPlanBody:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        menuItemId:
+          type: integer
+      required:
+        - sessionId
+        - menuItemId
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        menuItemId:
+          type: integer
+        menuItemName:
+          type: string
+        price:
+          type: number
+        quantity:
+          type: integer
+      required:
+        - id
+        - menuItemId
+        - menuItemName
+        - price
+        - quantity
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: string
+        customerName:
+          type: string
+        customerEmail:
+          type: string
+        customerPhone:
+          type: string
+          nullable: true
+        eventDate:
+          type: string
+          format: date
+          nullable: true
+        eventType:
+          type: string
+          nullable: true
+        guestCount:
+          type: integer
+          nullable: true
+        serviceStyle:
+          type: string
+          nullable: true
+        deliveryNotes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, confirmed, preparing, delivered, cancelled]
+        total:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - sessionId
+        - customerName
+        - customerEmail
+        - status
+        - total
+        - items
+        - createdAt
+
+    CreateOrderBody:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        customerName:
+          type: string
+        customerEmail:
+          type: string
+        customerPhone:
+          type: string
+          nullable: true
+        eventDate:
+          type: string
+          format: date
+          nullable: true
+        eventType:
+          type: string
+          nullable: true
+        guestCount:
+          type: integer
+          nullable: true
+        serviceStyle:
+          type: string
+          nullable: true
+        deliveryNotes:
+          type: string
+          nullable: true
+      required:
+        - sessionId
+        - customerName
+        - customerEmail
+
+    UpdateOrderStatusBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, confirmed, preparing, delivered, cancelled]
+      required:
+        - status
+
+    ChatMessageBody:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        message:
+          type: string
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatHistoryMessage"
+      required:
+        - sessionId
+        - message
+
+    ChatHistoryMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+      required:
+        - role
+        - content
+
+    SuggestItemsBody:
+      type: object
+      properties:
+        guestCount:
+          type: integer
+        serviceStyle:
+          type: string
+        preferences:
+          type: array
+          items:
+            type: string
+      required:
+        - guestCount
+        - serviceStyle
+
+    SuggestItemsResponse:
+      type: object
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemSuggestion"
+      required:
+        - suggestions
+
+    ItemSuggestion:
+      type: object
+      properties:
+        menuItemId:
+          type: integer
+        menuItem:
+          $ref: "#/components/schemas/MenuItem"
+        recommendedQuantity:
+          type: integer
+        reason:
+          type: string
+      required:
+        - menuItemId
+        - menuItem
+        - recommendedQuantity
+        - reason
+
+    AdminStats:
+      type: object
+      properties:
+        totalOrders:
+          type: integer
+        pendingOrders:
+          type: integer
+        totalRevenue:
+          type: number
+        totalMenuItems:
+          type: integer
+      required:
+        - totalOrders
+        - pendingOrders
+        - totalRevenue
+        - totalMenuItems
+
+    OpenaiConversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - createdAt
+    OpenaiMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - conversationId
+        - role
+        - content
+        - createdAt
+    CreateOpenaiConversationBody:
+      type: object
+      properties:
+        title:
+          type: string
+      required:
+        - title
+    SendOpenaiMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+    OpenaiConversationWithMessages:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpenaiMessage"
+      required:
+        - id
+        - title
+        - createdAt
+        - messages
+    OpenaiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

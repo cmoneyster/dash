@@ -1,0 +1,26 @@
+packages:
+  "framer-motion": "Animations, page transitions, and interactive chat widget animations"
+  "recharts": "Beautiful data visualization for admin dashboard stats"
+  "react-day-picker": "Interactive calendar component for blackout dates management"
+  "date-fns": "Date formatting and manipulation for calendar and event dates"
+  "lucide-react": "High-quality vector icons for UI elements"
+  "clsx": "Utility for constructing CSS class names conditionally"
+  "tailwind-merge": "Utility to merge Tailwind CSS classes without style conflicts"
+  "react-hook-form": "Form state management and validation"
+  "@hookform/resolvers": "Zod resolver for form validation"
+
+images:
+  - path: "artifacts/catering-web/public/images/hero.png"
+    description: "An elegant, cinematic, upscale catering food spread on a long wooden rustic table. Warm, moody lighting featuring artisanal appetizers, fresh bread, charcuterie, and subtle floral garnishes. Photorealistic, shallow depth of field, high-end culinary photography."
+    aspect_ratio: "16:9"
+  - path: "artifacts/catering-web/public/images/logo.png"
+    description: "A minimal, elegant, high-end catering company logo featuring a subtle abstract leaf and fork motif in deep terracotta and gold on a completely transparent background. Professional and upscale."
+    aspect_ratio: "1:1"
+  - path: "artifacts/catering-web/public/images/avatar.png"
+    description: "A warm, welcoming, professional maitre d' or executive chef smiling gently. Illustrated in a modern, elegant, flat vector style with earthy tones (terracotta, sage, warm beige). No background."
+    aspect_ratio: "1:1"
+
+notes:
+  - Assumes @workspace/api-client-react is available for TanStack queries
+  - Session ID is generated on client and stored in localStorage as 'catering_session_id'
+  - Chat uses SSE streaming from POST /api/chat/message
