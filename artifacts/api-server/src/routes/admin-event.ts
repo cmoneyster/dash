@@ -30,7 +30,8 @@ router.get("/admin/event-settings", async (req, res) => {
     const twilioConfigured = await isTwilioConfigured();
     res.json({
       eventName: settings?.eventName ?? "",
-      hasPassword: !!(settings?.eventPassword),
+      hasOrderPassword: !!(settings?.eventPassword),
+      hasKitchenPassword: !!(settings?.kitchenPassword),
       twilioConfigured,
     });
   } catch (err) {
@@ -41,23 +42,42 @@ router.get("/admin/event-settings", async (req, res) => {
 
 router.put("/admin/event-settings", async (req, res) => {
   try {
-    const { eventName, eventPassword } = req.body as { eventName?: string; eventPassword?: string };
+    const { eventName, orderPassword, kitchenPassword } = req.body as {
+      eventName?: string;
+      orderPassword?: string;
+      kitchenPassword?: string;
+    };
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     const twilioConfigured = await isTwilioConfigured();
 
     if (existing) {
       const updates: Record<string, any> = { updatedAt: new Date() };
       if (eventName !== undefined) updates.eventName = eventName.trim();
-      if (eventPassword !== undefined && eventPassword !== "") updates.eventPassword = eventPassword;
+      if (orderPassword !== undefined && orderPassword !== "") updates.eventPassword = orderPassword;
+      if (kitchenPassword !== undefined) {
+        // Allow clearing kitchen password (empty string → null)
+        updates.kitchenPassword = kitchenPassword.trim() || null;
+      }
       const [updated] = await db.update(eventSettingsTable).set(updates).where(eq(eventSettingsTable.id, 1)).returning();
-      res.json({ eventName: updated.eventName, hasPassword: !!updated.eventPassword, twilioConfigured });
+      res.json({
+        eventName: updated.eventName,
+        hasOrderPassword: !!updated.eventPassword,
+        hasKitchenPassword: !!updated.kitchenPassword,
+        twilioConfigured,
+      });
     } else {
       const [created] = await db.insert(eventSettingsTable).values({
         id: 1,
         eventName: eventName?.trim() ?? "",
-        eventPassword: eventPassword ?? process.env.EVENT_PASSWORD ?? "",
+        eventPassword: orderPassword ?? process.env.EVENT_PASSWORD ?? "",
+        kitchenPassword: kitchenPassword?.trim() || null,
       }).returning();
-      res.json({ eventName: created.eventName, hasPassword: !!created.eventPassword, twilioConfigured });
+      res.json({
+        eventName: created.eventName,
+        hasOrderPassword: !!created.eventPassword,
+        hasKitchenPassword: !!created.kitchenPassword,
+        twilioConfigured,
+      });
     }
   } catch (err) {
     req.log.error({ err }, "Error updating event settings");

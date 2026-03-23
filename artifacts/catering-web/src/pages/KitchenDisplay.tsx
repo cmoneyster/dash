@@ -222,7 +222,7 @@ export default function KitchenDisplay() {
       const res = await fetch(`${BASE}/api/event-ordering/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, role: "kitchen" }),
       });
       if (res.ok) {
         sessionStorage.setItem(SESSION_KEY, password);

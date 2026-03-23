@@ -11,26 +11,40 @@ async function getEventSettings() {
   return settings ?? null;
 }
 
-async function resolveEventPassword(): Promise<string | null> {
+// Guest ordering password — stored as eventPassword in DB
+async function resolveOrderPassword(): Promise<string | null> {
   const settings = await getEventSettings();
   if (settings?.eventPassword) return settings.eventPassword;
   return process.env.EVENT_PASSWORD ?? null;
 }
 
-async function verifyEventPassword(req: Request, res: Response, next: NextFunction) {
-  const eventPassword = await resolveEventPassword();
-  if (!eventPassword) {
-    res.status(503).json({ error: "Event ordering is not configured" });
-    return;
-  }
-  const authHeader = req.headers["authorization"];
-  const supplied = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!supplied || supplied !== eventPassword) {
-    res.status(401).json({ error: "Invalid event password" });
-    return;
-  }
-  next();
+// Kitchen display password — uses kitchenPassword if set, falls back to order password
+async function resolveKitchenPassword(): Promise<string | null> {
+  const settings = await getEventSettings();
+  if (settings?.kitchenPassword) return settings.kitchenPassword;
+  if (settings?.eventPassword) return settings.eventPassword;
+  return process.env.EVENT_PASSWORD ?? null;
 }
+
+function makeAuthMiddleware(resolvePwd: () => Promise<string | null>) {
+  return async function (req: Request, res: Response, next: NextFunction) {
+    const password = await resolvePwd();
+    if (!password) {
+      res.status(503).json({ error: "Event ordering is not configured" });
+      return;
+    }
+    const authHeader = req.headers["authorization"];
+    const supplied = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (!supplied || supplied !== password) {
+      res.status(401).json({ error: "Invalid password" });
+      return;
+    }
+    next();
+  };
+}
+
+const verifyOrderPassword = makeAuthMiddleware(resolveOrderPassword);
+const verifyKitchenPassword = makeAuthMiddleware(resolveKitchenPassword);
 
 router.get("/event-ordering/settings", async (req, res) => {
   try {
@@ -43,14 +57,15 @@ router.get("/event-ordering/settings", async (req, res) => {
 });
 
 router.post("/event-ordering/verify", async (req, res) => {
-  const { password } = req.body as { password?: string };
-  const eventPassword = await resolveEventPassword();
-  if (!eventPassword) {
+  const { password, role } = req.body as { password?: string; role?: string };
+  const resolve = role === "kitchen" ? resolveKitchenPassword : resolveOrderPassword;
+  const expected = await resolve();
+  if (!expected) {
     res.status(503).json({ error: "Event ordering is not configured" });
     return;
   }
-  if (!password || password !== eventPassword) {
-    res.status(401).json({ error: "Invalid event password" });
+  if (!password || password !== expected) {
+    res.status(401).json({ error: "Invalid password" });
     return;
   }
   res.json({ ok: true });
@@ -69,7 +84,7 @@ router.get("/event-ordering/menu", async (req, res) => {
   }
 });
 
-router.post("/event-ordering/orders", verifyEventPassword, async (req, res) => {
+router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
   try {
     const { guestName, phoneNumber, items, statusUrlBase } = req.body;
     if (!guestName || !items?.length) {
@@ -80,7 +95,6 @@ router.post("/event-ordering/orders", verifyEventPassword, async (req, res) => {
     type OrderItem = { itemId: number; name: string; quantity: number; price: number };
 
     const order = await db.transaction(async (tx) => {
-      // Check and atomically decrement stock for each item
       for (const item of items as OrderItem[]) {
         const [row] = await tx
           .select({ id: menuItemsTable.id, name: menuItemsTable.name, eventStock: menuItemsTable.eventStock })
@@ -114,7 +128,6 @@ router.post("/event-ordering/orders", verifyEventPassword, async (req, res) => {
       return created;
     });
 
-    // Fire-and-forget SMS confirmation
     if (order.phoneNumber) {
       const settings = await getEventSettings();
       const eventName = settings?.eventName ?? "";
@@ -143,7 +156,7 @@ router.post("/event-ordering/orders", verifyEventPassword, async (req, res) => {
   }
 });
 
-router.get("/event-ordering/orders", verifyEventPassword, async (req, res) => {
+router.get("/event-ordering/orders", verifyKitchenPassword, async (req, res) => {
   try {
     const orders = await db
       .select()
@@ -179,7 +192,7 @@ router.get("/event-ordering/orders/:id/public", async (req, res) => {
   }
 });
 
-router.patch("/event-ordering/orders/:id/status", verifyEventPassword, async (req, res) => {
+router.patch("/event-ordering/orders/:id/status", verifyKitchenPassword, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { status } = req.body as { status: string };
@@ -194,7 +207,6 @@ router.patch("/event-ordering/orders/:id/status", verifyEventPassword, async (re
       .where(eq(eventOrdersTable.id, id))
       .returning();
 
-    // Fire-and-forget SMS when order becomes "ready"
     if (status === "ready" && updated.phoneNumber) {
       const settings = await getEventSettings();
       sendOrderReady({
@@ -213,8 +225,8 @@ router.patch("/event-ordering/orders/:id/status", verifyEventPassword, async (re
   }
 });
 
-// Stock management — authenticated with event password
-router.get("/event-ordering/stock", verifyEventPassword, async (req, res) => {
+// Stock management — kitchen password required
+router.get("/event-ordering/stock", verifyKitchenPassword, async (req, res) => {
   try {
     const items = await db
       .select({
@@ -234,7 +246,7 @@ router.get("/event-ordering/stock", verifyEventPassword, async (req, res) => {
   }
 });
 
-router.patch("/event-ordering/stock/:itemId", verifyEventPassword, async (req, res) => {
+router.patch("/event-ordering/stock/:itemId", verifyKitchenPassword, async (req, res) => {
   try {
     const itemId = parseInt(req.params.itemId);
     const { eventStock } = req.body as { eventStock: number | null };
