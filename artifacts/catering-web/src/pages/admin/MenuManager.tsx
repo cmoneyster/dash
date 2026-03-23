@@ -125,7 +125,7 @@ export default function MenuManager() {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [isNewCategory, setIsNewCategory] = useState(false);
 
-  type InlineEdit = { name: string; description: string; price: string; available: boolean; eventActive: boolean };
+  type InlineEdit = { name: string; description: string; price: string; available: boolean; eventActive: boolean; eventStock: string };
   const [localEdits, setLocalEdits] = useState<Record<number, InlineEdit>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
 
@@ -140,6 +140,7 @@ export default function MenuManager() {
         price: String(item.price),
         available: item.available,
         eventActive: item.eventActive ?? false,
+        eventStock: item.eventStock == null ? "" : String(item.eventStock),
       };
       return { ...prev, [id]: { ...base, ...patch } };
     });
@@ -185,6 +186,7 @@ export default function MenuManager() {
                   price: parseFloat(edit.price),
                   available: edit.available,
                   eventActive: edit.eventActive,
+                  eventStock: edit.eventStock.trim() === "" ? null : parseInt(edit.eventStock),
                   allergens: original.allergens ?? [],
                   servingSize: original.servingSize,
                   unit: original.unit,
@@ -284,12 +286,16 @@ export default function MenuManager() {
                   <span>Event Menu</span>
                   <p className="text-[10px] normal-case font-normal tracking-normal text-muted-foreground/70 mt-0.5">Show at events</p>
                 </th>
+                <th className="px-3 py-4 font-semibold w-32">
+                  <span>Event Stock</span>
+                  <p className="text-[10px] normal-case font-normal tracking-normal text-muted-foreground/70 mt-0.5">Blank = unlimited</p>
+                </th>
                 <th className="px-6 py-4 font-semibold text-right w-28">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                 </td></tr>
               )}
@@ -297,7 +303,7 @@ export default function MenuManager() {
                 const edit = localEdits[item.id];
                 const isDirty = !!edit;
                 const isSaving = savingIds.has(item.id);
-                const cur = edit ?? { name: item.name, description: item.description, price: String(item.price), available: item.available, eventActive: item.eventActive ?? false };
+                const cur = edit ?? { name: item.name, description: item.description, price: String(item.price), available: item.available, eventActive: item.eventActive ?? false, eventStock: item.eventStock == null ? "" : String(item.eventStock) };
 
                 return (
                   <tr key={item.id} className={`transition-colors ${isDirty ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}>
@@ -357,6 +363,20 @@ export default function MenuManager() {
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cur.eventActive ? "translate-x-6" : "translate-x-1"}`} />
                       </button>
                       <p className="text-[10px] text-muted-foreground mt-1">{cur.eventActive ? "On event" : "Off"}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <input
+                        type="number"
+                        min="0"
+                        value={cur.eventStock}
+                        onChange={e => patchEdit(item.id, item, { eventStock: e.target.value })}
+                        disabled={isSaving}
+                        placeholder="∞"
+                        className="w-full px-2 py-1.5 text-sm font-semibold rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all text-center placeholder:text-muted-foreground/50"
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-1 text-center">
+                        {cur.eventStock === "" ? "Unlimited" : `${cur.eventStock} units`}
+                      </p>
                     </td>
                     <td className="px-6 py-3 text-right">
                       {isSaving ? (
