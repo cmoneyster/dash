@@ -50,9 +50,13 @@ artifacts-monorepo/
 
 ### Admin (at /admin)
 - `/admin` — Dashboard with stats and recent orders
-- `/admin/menu` — Menu management (add/edit/delete items)
-- `/admin/orders` — Order management (update status)
+- `/admin/menu` — Menu management (add/edit/delete items, event stock, pricing tiers)
+- `/admin/orders` — Catering order management (update status)
 - `/admin/calendar` — Blackout date calendar
+- `/admin/images` — Image library
+- `/admin/event-settings` — Event passwords, Twilio SMS, shareable links
+- `/admin/event-history` — Event session log: create sessions, set active, view per-event order breakdowns, archive/delete
+- `/admin/catering` — Advance catering inquiry management (client info, status pipeline, admin notes)
 
 ## API Routes (all at /api)
 
@@ -93,14 +97,19 @@ artifacts-monorepo/
 
 ## Database Tables
 
-- `menu_items` — Menu items with price, serving size, allergens, images
+- `menu_items` — Menu items with price tiers, serving size, allergens, images, event stock
 - `blackout_dates` — Unavailable dates for events
 - `cart_items` — Session-based shopping cart
 - `plan_items` — Session-based event planning wishlist
-- `orders` — Customer orders with event details
+- `orders` — Customer catering orders with event details
 - `order_items` — Individual items within an order
 - `conversations` — OpenAI chat conversations
 - `messages` — Chat message history
+- `event_settings` — Singleton: event name, guest/kitchen passwords, Twilio from number, active event session ID
+- `event_sessions` — Named event sessions for order tracking (name, date, status: active/archived)
+- `event_orders` — On-site event orders linked to an event session
+- `catering_inquiries` — Advance catering bookings (client info, event date, status pipeline, notes)
+- `images` — Uploaded image library
 
 ## Key Commands
 

@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { menuItemsTable, eventOrdersTable, eventSettingsTable } from "@workspace/db/schema";
-import { eq, desc, and, gte, sql } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { sendOrderConfirmation, sendOrderReady } from "../lib/sms";
 
 const router: IRouter = Router();
@@ -116,6 +116,9 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
         }
       }
 
+      const activeSettings = await tx.select({ activeEventSessionId: eventSettingsTable.activeEventSessionId }).from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+      const activeEventSessionId = activeSettings[0]?.activeEventSessionId ?? null;
+
       const [created] = await tx
         .insert(eventOrdersTable)
         .values({
@@ -123,6 +126,7 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
           phoneNumber: phoneNumber?.trim() || null,
           items,
           status: "pending",
+          eventSessionId: activeEventSessionId,
         })
         .returning();
       return created;

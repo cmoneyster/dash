@@ -21,6 +21,8 @@ import OrderManager from "@/pages/admin/OrderManager";
 import CalendarManager from "@/pages/admin/CalendarManager";
 import ImageLibrary from "@/pages/admin/ImageLibrary";
 import EventSettings from "@/pages/admin/EventSettings";
+import EventHistory from "@/pages/admin/EventHistory";
+import CateringOrders from "@/pages/admin/CateringOrders";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -62,6 +64,12 @@ function Router() {
       </Route>
       <Route path="/admin/event-settings">
         {() => <AdminGuard><EventSettings /></AdminGuard>}
+      </Route>
+      <Route path="/admin/event-history">
+        {() => <AdminGuard><EventHistory /></AdminGuard>}
+      </Route>
+      <Route path="/admin/catering">
+        {() => <AdminGuard><CateringOrders /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />

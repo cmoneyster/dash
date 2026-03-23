@@ -1,4 +1,4 @@
-import { pgTable, serial, text, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, jsonb, timestamp, integer } from "drizzle-orm/pg-core";
 
 export type EventOrderItem = {
   itemId: number;
@@ -14,6 +14,7 @@ export const eventOrdersTable = pgTable("event_orders", {
   phoneNumber: text("phone_number"),
   items: jsonb("items").notNull().$type<EventOrderItem[]>(),
   status: text("status").notNull().default("pending"),
+  eventSessionId: integer("event_session_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

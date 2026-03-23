@@ -8,3 +8,5 @@ export * from "./messages";
 export * from "./images";
 export * from "./event-orders";
 export * from "./event-settings";
+export * from "./event-sessions";
+export * from "./catering-inquiries";
