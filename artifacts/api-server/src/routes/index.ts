@@ -12,6 +12,7 @@ import ordersRouter from "./orders";
 import chatRouter from "./chat";
 import adminStatsRouter from "./admin-stats";
 import storageRouter from "./storage";
+import eventOrderingRouter from "./event-ordering";
 
 const router: IRouter = Router();
 
@@ -23,6 +24,7 @@ router.use(ordersRouter);
 router.use(chatRouter);
 router.use(eventsRouter);
 router.use(storageRouter);
+router.use(eventOrderingRouter);
 
 router.use(adminAuthRouter);
 

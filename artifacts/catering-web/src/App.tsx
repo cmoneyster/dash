@@ -10,6 +10,8 @@ import Cart from "@/pages/Cart";
 import Plan from "@/pages/Plan";
 import Confirmation from "@/pages/Confirmation";
 import NotFound from "@/pages/not-found";
+import EventOrder from "@/pages/EventOrder";
+import KitchenDisplay from "@/pages/KitchenDisplay";
 
 import AdminLogin from "@/pages/admin/Login";
 import AdminDashboard from "@/pages/admin/Dashboard";
@@ -35,6 +37,8 @@ function Router() {
       <Route path="/cart" component={Cart} />
       <Route path="/plan" component={Plan} />
       <Route path="/confirmation" component={Confirmation} />
+      <Route path="/event" component={EventOrder} />
+      <Route path="/kitchen" component={KitchenDisplay} />
 
       <Route path="/admin/login" component={AdminLogin} />
 

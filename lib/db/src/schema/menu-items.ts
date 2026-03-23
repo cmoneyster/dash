@@ -19,6 +19,7 @@ export const menuItemsTable = pgTable("menu_items", {
   tier2Price: numeric("tier2_price", { precision: 10, scale: 2 }),
   tier3Qty: integer("tier3_qty"),
   tier3Price: numeric("tier3_price", { precision: 10, scale: 2 }),
+  eventActive: boolean("event_active").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

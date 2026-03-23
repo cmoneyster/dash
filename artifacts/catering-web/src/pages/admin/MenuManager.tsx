@@ -125,7 +125,7 @@ export default function MenuManager() {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [isNewCategory, setIsNewCategory] = useState(false);
 
-  type InlineEdit = { name: string; description: string; price: string; available: boolean };
+  type InlineEdit = { name: string; description: string; price: string; available: boolean; eventActive: boolean };
   const [localEdits, setLocalEdits] = useState<Record<number, InlineEdit>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
 
@@ -139,6 +139,7 @@ export default function MenuManager() {
         description: item.description,
         price: String(item.price),
         available: item.available,
+        eventActive: (item as any).eventActive ?? false,
       };
       return { ...prev, [id]: { ...base, ...patch } };
     });
@@ -186,6 +187,7 @@ export default function MenuManager() {
                 description: edit.description,
                 price: parseFloat(edit.price),
                 available: edit.available,
+                eventActive: edit.eventActive,
                 allergens: original.allergens ?? [],
                 servingSize: original.servingSize,
                 unit: original.unit,
@@ -276,12 +278,16 @@ export default function MenuManager() {
                 <th className="px-3 py-4 font-semibold">Name &amp; Description</th>
                 <th className="px-3 py-4 font-semibold w-28">Price</th>
                 <th className="px-3 py-4 font-semibold w-28">Active</th>
+                <th className="px-3 py-4 font-semibold w-32">
+                  <span>Event Menu</span>
+                  <p className="text-[10px] normal-case font-normal tracking-normal text-muted-foreground/70 mt-0.5">Show at events</p>
+                </th>
                 <th className="px-6 py-4 font-semibold text-right w-28">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                 </td></tr>
               )}
@@ -338,6 +344,17 @@ export default function MenuManager() {
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cur.available ? "translate-x-6" : "translate-x-1"}`} />
                       </button>
                       <p className="text-[10px] text-muted-foreground mt-1">{cur.available ? "Active" : "Hidden"}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => patchEdit(item.id, item, { eventActive: !cur.eventActive })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${cur.eventActive ? "bg-primary" : "bg-muted"}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cur.eventActive ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
+                      <p className="text-[10px] text-muted-foreground mt-1">{cur.eventActive ? "On event" : "Off"}</p>
                     </td>
                     <td className="px-6 py-3 text-right">
                       {isSaving ? (

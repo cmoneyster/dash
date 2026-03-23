@@ -6,3 +6,4 @@ export * from "./orders";
 export * from "./conversations";
 export * from "./messages";
 export * from "./images";
+export * from "./event-orders";
