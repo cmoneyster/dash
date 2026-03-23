@@ -105,7 +105,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div>
             <h4 className="font-semibold text-lg mb-6">Contact</h4>
             <ul className="space-y-4 text-background/60 text-sm">
-              <li>hello@dashbyhollywoodeastcafe.com</li>
+              <li>dash@HollywoodEastCafe.com</li>
               <li>(555) 123-4567</li>
               <li>Hollywood, FL</li>
             </ul>
