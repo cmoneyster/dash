@@ -4,6 +4,7 @@ export const eventSettingsTable = pgTable("event_settings", {
   id: integer("id").primaryKey(),
   eventName: text("event_name").notNull().default(""),
   eventPassword: text("event_password").notNull().default(""),
+  twilioFromNumber: text("twilio_from_number"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

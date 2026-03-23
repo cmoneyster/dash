@@ -11,6 +11,7 @@ export const eventOrdersTable = pgTable("event_orders", {
   id: serial("id").primaryKey(),
   guestName: text("guest_name").notNull(),
   tableNumber: text("table_number"),
+  phoneNumber: text("phone_number"),
   items: jsonb("items").notNull().$type<EventOrderItem[]>(),
   status: text("status").notNull().default("pending"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

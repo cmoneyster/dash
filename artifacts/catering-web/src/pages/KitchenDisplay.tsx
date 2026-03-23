@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -10,6 +10,7 @@ type EventOrder = {
   id: number;
   guestName: string;
   tableNumber: string | null;
+  phoneNumber: string | null;
   items: OrderItem[];
   status: "pending" | "preparing" | "ready" | "done";
   createdAt: string;
@@ -278,7 +279,15 @@ function OrderCard({ order, isNew, isUpdating, onAdvance }: {
       <div className="px-4 py-3 border-b border-white/10 flex justify-between items-start">
         <div>
           <p className="font-bold">{order.guestName}</p>
-          {order.tableNumber && <p className="text-xs text-white/50">{order.tableNumber}</p>}
+          <div className="flex items-center gap-2 mt-0.5">
+            {order.tableNumber && <p className="text-xs text-white/50">{order.tableNumber}</p>}
+            {order.phoneNumber && (
+              <span className="flex items-center gap-1 text-xs text-emerald-400/80">
+                <Phone className="w-3 h-3" />
+                SMS
+              </span>
+            )}
+          </div>
         </div>
         <div className="text-right">
           <p className="text-xs text-white/40">{timeAgo(order.createdAt)}</p>

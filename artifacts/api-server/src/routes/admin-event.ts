@@ -11,6 +11,8 @@ router.get("/admin/event-settings", async (req, res) => {
     res.json({
       eventName: settings?.eventName ?? "",
       hasPassword: !!(settings?.eventPassword),
+      twilioFromNumber: settings?.twilioFromNumber ?? "",
+      twilioConfigured: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching event settings");
@@ -20,22 +22,38 @@ router.get("/admin/event-settings", async (req, res) => {
 
 router.put("/admin/event-settings", async (req, res) => {
   try {
-    const { eventName, eventPassword } = req.body as { eventName?: string; eventPassword?: string };
+    const { eventName, eventPassword, twilioFromNumber } = req.body as {
+      eventName?: string;
+      eventPassword?: string;
+      twilioFromNumber?: string;
+    };
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
 
     if (existing) {
       const updates: Record<string, any> = { updatedAt: new Date() };
       if (eventName !== undefined) updates.eventName = eventName.trim();
       if (eventPassword !== undefined && eventPassword !== "") updates.eventPassword = eventPassword;
+      if (twilioFromNumber !== undefined) updates.twilioFromNumber = twilioFromNumber.trim() || null;
       const [updated] = await db.update(eventSettingsTable).set(updates).where(eq(eventSettingsTable.id, 1)).returning();
-      res.json({ eventName: updated.eventName, hasPassword: !!updated.eventPassword });
+      res.json({
+        eventName: updated.eventName,
+        hasPassword: !!updated.eventPassword,
+        twilioFromNumber: updated.twilioFromNumber ?? "",
+        twilioConfigured: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
+      });
     } else {
       const [created] = await db.insert(eventSettingsTable).values({
         id: 1,
         eventName: eventName?.trim() ?? "",
         eventPassword: eventPassword ?? process.env.EVENT_PASSWORD ?? "",
+        twilioFromNumber: twilioFromNumber?.trim() || null,
       }).returning();
-      res.json({ eventName: created.eventName, hasPassword: !!created.eventPassword });
+      res.json({
+        eventName: created.eventName,
+        hasPassword: !!created.eventPassword,
+        twilioFromNumber: created.twilioFromNumber ?? "",
+        twilioConfigured: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
+      });
     }
   } catch (err) {
     req.log.error({ err }, "Error updating event settings");

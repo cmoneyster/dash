@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ShoppingBag, CheckCircle2, Minus, Plus, Lock, Utensils } from "lucide-react";
+import { ShoppingBag, CheckCircle2, Minus, Plus, Lock, Utensils, Phone, ExternalLink } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -19,15 +19,6 @@ function formatCurrency(n: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 }
 
-function useEventApi(password: string) {
-  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${password}` };
-  return {
-    verify: () => fetch(`${BASE}/api/event-ordering/verify`, { method: "POST", headers, body: JSON.stringify({ password }) }),
-    menu: () => fetch(`${BASE}/api/event-ordering/menu`),
-    placeOrder: (body: object) => fetch(`${BASE}/api/event-ordering/orders`, { method: "POST", headers, body: JSON.stringify(body) }),
-  };
-}
-
 export default function EventOrder() {
   const [eventName, setEventName] = useState("");
 
@@ -40,8 +31,9 @@ export default function EventOrder() {
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [guestName, setGuestName] = useState("");
   const [tableNumber, setTableNumber] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [submittedOrderId, setSubmittedOrderId] = useState<number | null>(null);
 
   useEffect(() => {
     fetch(`${BASE}/api/event-ordering/settings`)
@@ -104,12 +96,24 @@ export default function EventOrder() {
     if (!guestName.trim() || !orderItems.length || !authedPassword) return;
     setSubmitting(true);
     try {
+      const statusUrlBase = `${window.location.origin}${BASE}`;
       const res = await fetch(`${BASE}/api/event-ordering/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
-        body: JSON.stringify({ guestName: guestName.trim(), tableNumber: tableNumber.trim() || null, items: orderItems }),
+        body: JSON.stringify({
+          guestName: guestName.trim(),
+          tableNumber: tableNumber.trim() || null,
+          phoneNumber: phoneNumber.trim() || null,
+          items: orderItems,
+          statusUrlBase,
+        }),
       });
-      if (res.ok) setSubmitted(true);
+      if (res.ok) {
+        const order = await res.json();
+        setSubmittedOrderId(order.id);
+      } else {
+        alert("Error placing order. Please try again.");
+      }
     } catch {
       alert("Error placing order. Please try again.");
     } finally {
@@ -118,9 +122,10 @@ export default function EventOrder() {
   }
 
   function placeAnother() {
-    setSubmitted(false);
+    setSubmittedOrderId(null);
     setGuestName("");
     setTableNumber("");
+    setPhoneNumber("");
     if (menu) {
       const init: Record<number, number> = {};
       menu.forEach(item => { init[item.id] = 0; });
@@ -137,7 +142,7 @@ export default function EventOrder() {
               <Utensils className="w-8 h-8 text-background" />
             </div>
             <h1 className="font-display font-bold text-3xl">{eventName || "Event Ordering"}</h1>
-            <p className="text-muted-foreground mt-2 text-sm">{eventName ? "dash by Hollywood East Cafe" : "dash by Hollywood East Cafe"}</p>
+            <p className="text-muted-foreground mt-2 text-sm">dash by Hollywood East Cafe</p>
           </div>
           <form onSubmit={handleLogin} className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
             <div>
@@ -168,16 +173,39 @@ export default function EventOrder() {
     );
   }
 
-  if (submitted) {
+  if (submittedOrderId !== null) {
+    const statusPath = `${BASE}/event/order/${submittedOrderId}`;
+    const statusUrl = `${window.location.origin}${statusPath}`;
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="text-center max-w-sm">
+        <div className="text-center max-w-sm w-full">
           <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="w-10 h-10 text-emerald-600" />
           </div>
           <h2 className="font-display font-bold text-3xl mb-2">Order Received!</h2>
-          <p className="text-muted-foreground mb-6">Your order has been sent to the kitchen. We'll have it ready soon.</p>
-          <button onClick={placeAnother} className="px-6 py-3 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors">
+          <p className="text-muted-foreground mb-1">
+            Your order has been sent to the kitchen.
+          </p>
+          {phoneNumber.trim() && (
+            <p className="text-muted-foreground text-sm mb-4">
+              We'll text you at {phoneNumber.trim()} when it's ready.
+            </p>
+          )}
+
+          <a
+            href={statusUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-secondary text-foreground font-semibold rounded-xl hover:bg-border transition-colors text-sm mb-4 w-full justify-center"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Track Order #{submittedOrderId}
+          </a>
+
+          <button
+            onClick={placeAnother}
+            className="w-full px-6 py-3 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors"
+          >
             Place Another Order
           </button>
         </div>
@@ -268,6 +296,22 @@ export default function EventOrder() {
                   placeholder="e.g. Table 4"
                   className="w-full px-4 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5" />
+                    Phone Number <span className="text-muted-foreground text-xs font-normal">(optional)</span>
+                  </span>
+                </label>
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={e => setPhoneNumber(e.target.value)}
+                  placeholder="e.g. (301) 555-0123"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                />
+                <p className="text-xs text-muted-foreground mt-1.5">We'll text you a confirmation and when your order is ready.</p>
               </div>
 
               {orderItems.length > 0 && (

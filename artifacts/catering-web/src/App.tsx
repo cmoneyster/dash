@@ -12,6 +12,7 @@ import Confirmation from "@/pages/Confirmation";
 import NotFound from "@/pages/not-found";
 import EventOrder from "@/pages/EventOrder";
 import KitchenDisplay from "@/pages/KitchenDisplay";
+import OrderStatus from "@/pages/OrderStatus";
 
 import AdminLogin from "@/pages/admin/Login";
 import AdminDashboard from "@/pages/admin/Dashboard";
@@ -39,6 +40,7 @@ function Router() {
       <Route path="/plan" component={Plan} />
       <Route path="/confirmation" component={Confirmation} />
       <Route path="/event" component={EventOrder} />
+      <Route path="/event/order/:id" component={OrderStatus} />
       <Route path="/kitchen" component={KitchenDisplay} />
 
       <Route path="/admin/login" component={AdminLogin} />
