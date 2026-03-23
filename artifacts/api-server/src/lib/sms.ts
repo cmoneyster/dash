@@ -1,17 +1,49 @@
+// Twilio integration via Replit connector
 import twilio from "twilio";
 
-interface SmsConfig {
-  accountSid: string;
-  authToken: string;
-  fromNumber: string;
+async function getCredentials() {
+  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+  const xReplitToken = process.env.REPL_IDENTITY
+    ? "repl " + process.env.REPL_IDENTITY
+    : process.env.WEB_REPL_RENEWAL
+    ? "depl " + process.env.WEB_REPL_RENEWAL
+    : null;
+
+  if (!hostname || !xReplitToken) return null;
+
+  try {
+    const data = await fetch(
+      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=twilio",
+      {
+        headers: {
+          Accept: "application/json",
+          "X-Replit-Token": xReplitToken,
+        },
+      }
+    ).then(r => r.json()).then((d: any) => d.items?.[0]);
+
+    if (!data?.settings?.account_sid || !data?.settings?.api_key || !data?.settings?.api_key_secret) {
+      return null;
+    }
+
+    return {
+      accountSid: data.settings.account_sid as string,
+      apiKey: data.settings.api_key as string,
+      apiKeySecret: data.settings.api_key_secret as string,
+      defaultFromNumber: (data.settings.phone_number as string) ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
-function getConfig(): SmsConfig | null {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_FROM_NUMBER;
-  if (!accountSid || !authToken || !fromNumber) return null;
-  return { accountSid, authToken, fromNumber };
+async function getClient() {
+  const creds = await getCredentials();
+  if (!creds) return null;
+  return {
+    client: twilio(creds.apiKey, creds.apiKeySecret, { accountSid: creds.accountSid }),
+    defaultFromNumber: creds.defaultFromNumber,
+  };
 }
 
 function normalizePhone(phone: string): string {
@@ -22,12 +54,18 @@ function normalizePhone(phone: string): string {
 }
 
 export async function sendSms(to: string, body: string, fromOverride?: string | null): Promise<void> {
-  const config = getConfig();
-  if (!config) return;
-  const from = fromOverride || config.fromNumber;
+  const conn = await getClient();
+  if (!conn) {
+    console.warn("[SMS] Twilio not configured, skipping message to", to);
+    return;
+  }
+  const from = fromOverride || conn.defaultFromNumber;
+  if (!from) {
+    console.warn("[SMS] No Twilio from number configured, skipping message");
+    return;
+  }
   try {
-    const client = twilio(config.accountSid, config.authToken);
-    await client.messages.create({ to: normalizePhone(to), from, body });
+    await conn.client.messages.create({ to: normalizePhone(to), from, body });
   } catch (err) {
     console.error("[SMS] Failed to send message:", err);
   }
@@ -44,7 +82,7 @@ export async function sendOrderConfirmation(opts: {
   const { guestName, orderId, phoneNumber, eventName, orderStatusUrl, fromNumber } = opts;
   const name = guestName.split(" ")[0];
   const event = eventName || "dash by Hollywood East Cafe";
-  const body = `Hi ${name}! Your order #${orderId} has been received at ${event}. Track your order: ${orderStatusUrl} — dash by Hollywood East Cafe`;
+  const body = `Hi ${name}! Your order #${orderId} has been received at ${event}. Track your order: ${orderStatusUrl}`;
   await sendSms(phoneNumber, body, fromNumber);
 }
 

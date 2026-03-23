@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -28,7 +28,6 @@ export default function EventSettings() {
   const [eventPassword, setEventPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [hasExistingPassword, setHasExistingPassword] = useState(false);
-  const [twilioFromNumber, setTwilioFromNumber] = useState("");
   const [twilioConfigured, setTwilioConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -49,7 +48,6 @@ export default function EventSettings() {
       .then(data => {
         setEventName(data.eventName ?? "");
         setHasExistingPassword(data.hasPassword);
-        setTwilioFromNumber(data.twilioFromNumber ?? "");
         setTwilioConfigured(data.twilioConfigured ?? false);
       })
       .catch(() => setError("Failed to load event settings"))
@@ -61,7 +59,7 @@ export default function EventSettings() {
     setSaving(true);
     setError("");
     try {
-      const body: Record<string, string> = { eventName, twilioFromNumber };
+      const body: Record<string, string> = { eventName };
       if (eventPassword) body.eventPassword = eventPassword;
 
       const res = await fetch(`${BASE}/api/admin/event-settings`, {
@@ -73,7 +71,6 @@ export default function EventSettings() {
       const data = await res.json();
       setEventName(data.eventName);
       setHasExistingPassword(data.hasPassword);
-      setTwilioFromNumber(data.twilioFromNumber ?? "");
       setTwilioConfigured(data.twilioConfigured ?? false);
       setEventPassword("");
       setSaved(true);
@@ -140,42 +137,6 @@ export default function EventSettings() {
               </p>
             </div>
 
-            <div className="border-t border-border pt-5">
-              <div className="flex items-center gap-2 mb-4">
-                <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                <h3 className="font-semibold text-sm">SMS Text Notifications</h3>
-                {twilioConfigured ? (
-                  <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Twilio connected</span>
-                ) : (
-                  <span className="text-xs font-normal text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Twilio not configured</span>
-                )}
-              </div>
-
-              {!twilioConfigured && (
-                <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl mb-4 text-sm text-amber-800">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold">Twilio credentials required</p>
-                    <p className="mt-0.5 text-xs">Add <code className="bg-amber-100 px-1 rounded">TWILIO_ACCOUNT_SID</code> and <code className="bg-amber-100 px-1 rounded">TWILIO_AUTH_TOKEN</code> as environment secrets to enable SMS notifications.</p>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-semibold mb-1.5">Twilio From Number</label>
-                <input
-                  value={twilioFromNumber}
-                  onChange={e => setTwilioFromNumber(e.target.value)}
-                  placeholder="+13015550123"
-                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                  disabled={!twilioConfigured}
-                />
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  Your Twilio phone number in E.164 format (e.g. +13015550123). Guests receive order confirmations and pickup notifications from this number.
-                </p>
-              </div>
-            </div>
-
             {error && <p className="text-destructive text-sm">{error}</p>}
 
             <button
@@ -187,6 +148,27 @@ export default function EventSettings() {
               {saving ? "Saving…" : saved ? "Saved!" : "Save Settings"}
             </button>
           </form>
+
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-muted-foreground" />
+              <h2 className="font-display font-bold text-lg">SMS Notifications</h2>
+              {twilioConfigured ? (
+                <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Active</span>
+              ) : (
+                <span className="text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">Not connected</span>
+              )}
+            </div>
+            {twilioConfigured ? (
+              <p className="text-sm text-muted-foreground">
+                Twilio is connected. Guests who provide a phone number will automatically receive a text confirmation when they place an order, and another when their order is ready for pickup.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Connect a Twilio account via the integrations panel to enable SMS order confirmations and pickup alerts for guests.
+              </p>
+            )}
+          </div>
 
           <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
             <h2 className="font-display font-bold text-xl">Share These Links</h2>
