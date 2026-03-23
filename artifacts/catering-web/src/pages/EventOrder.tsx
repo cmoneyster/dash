@@ -30,7 +30,6 @@ export default function EventOrder() {
   const [menu, setMenu] = useState<MenuItem[] | null>(null);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [guestName, setGuestName] = useState("");
-  const [tableNumber, setTableNumber] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submittedOrderId, setSubmittedOrderId] = useState<number | null>(null);
@@ -102,7 +101,6 @@ export default function EventOrder() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
         body: JSON.stringify({
           guestName: guestName.trim(),
-          tableNumber: tableNumber.trim() || null,
           phoneNumber: phoneNumber.trim() || null,
           items: orderItems,
           statusUrlBase,
@@ -124,7 +122,6 @@ export default function EventOrder() {
   function placeAnother() {
     setSubmittedOrderId(null);
     setGuestName("");
-    setTableNumber("");
     setPhoneNumber("");
     if (menu) {
       const init: Record<number, number> = {};
@@ -285,15 +282,6 @@ export default function EventOrder() {
                   onChange={e => setGuestName(e.target.value)}
                   placeholder="e.g. Jane Smith"
                   required
-                  className="w-full px-4 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-1">Table / Seat Number <span className="text-muted-foreground text-xs font-normal">(optional)</span></label>
-                <input
-                  value={tableNumber}
-                  onChange={e => setTableNumber(e.target.value)}
-                  placeholder="e.g. Table 4"
                   className="w-full px-4 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 />
               </div>
