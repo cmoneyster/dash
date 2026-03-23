@@ -13,6 +13,7 @@ import chatRouter from "./chat";
 import adminStatsRouter from "./admin-stats";
 import storageRouter from "./storage";
 import eventOrderingRouter from "./event-ordering";
+import adminEventRouter from "./admin-event";
 
 const router: IRouter = Router();
 
@@ -32,9 +33,11 @@ router.use("/admin/menu", requireAdminAuth);
 router.use("/admin/stats", requireAdminAuth);
 router.use("/admin/orders", requireAdminAuth);
 router.use("/admin/blackout-dates", requireAdminAuth);
+router.use("/admin/event-settings", requireAdminAuth);
 
 router.use(adminMenuRouter);
 router.use(adminStatsRouter);
 router.use(adminImagesRouter);
+router.use(adminEventRouter);
 
 export default router;

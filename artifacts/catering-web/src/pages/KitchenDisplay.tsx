@@ -46,10 +46,19 @@ function formatCurrency(n: number) {
 }
 
 export default function KitchenDisplay() {
+  const [eventName, setEventName] = useState("");
+
   const [password, setPassword] = useState("");
   const [authedPassword, setAuthedPassword] = useState<string | null>(() => sessionStorage.getItem(SESSION_KEY));
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/event-ordering/settings`)
+      .then(r => r.json())
+      .then(data => setEventName(data.eventName ?? ""))
+      .catch(() => {});
+  }, []);
 
   const [orders, setOrders] = useState<EventOrder[]>([]);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
@@ -136,7 +145,7 @@ export default function KitchenDisplay() {
               <ChefHat className="w-8 h-8 text-background" />
             </div>
             <h1 className="font-display font-bold text-3xl">Kitchen Display</h1>
-            <p className="text-muted-foreground mt-2 text-sm">dash by Hollywood East Cafe</p>
+            <p className="text-muted-foreground mt-2 text-sm">{eventName ? `${eventName} · dash by Hollywood East Cafe` : "dash by Hollywood East Cafe"}</p>
           </div>
           <form onSubmit={handleLogin} className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
             <div>
@@ -177,7 +186,7 @@ export default function KitchenDisplay() {
           <div className="flex items-center gap-3">
             <ChefHat className="w-6 h-6 text-amber-400" />
             <div>
-              <h1 className="font-display font-bold text-xl">Kitchen Display</h1>
+              <h1 className="font-display font-bold text-xl">{eventName || "Kitchen Display"}</h1>
               <p className="text-xs text-white/50">{lastFetch ? `Updated ${timeAgo(lastFetch.toISOString())}` : "Loading…"}</p>
             </div>
           </div>

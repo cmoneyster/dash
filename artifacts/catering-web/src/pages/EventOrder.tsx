@@ -29,6 +29,8 @@ function useEventApi(password: string) {
 }
 
 export default function EventOrder() {
+  const [eventName, setEventName] = useState("");
+
   const [password, setPassword] = useState("");
   const [authedPassword, setAuthedPassword] = useState<string | null>(() => sessionStorage.getItem(SESSION_KEY));
   const [loginError, setLoginError] = useState("");
@@ -40,6 +42,13 @@ export default function EventOrder() {
   const [tableNumber, setTableNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/event-ordering/settings`)
+      .then(r => r.json())
+      .then(data => setEventName(data.eventName ?? ""))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!authedPassword) return;
@@ -127,8 +136,8 @@ export default function EventOrder() {
             <div className="w-16 h-16 bg-foreground rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Utensils className="w-8 h-8 text-background" />
             </div>
-            <h1 className="font-display font-bold text-3xl">Event Ordering</h1>
-            <p className="text-muted-foreground mt-2 text-sm">dash by Hollywood East Cafe</p>
+            <h1 className="font-display font-bold text-3xl">{eventName || "Event Ordering"}</h1>
+            <p className="text-muted-foreground mt-2 text-sm">{eventName ? "dash by Hollywood East Cafe" : "dash by Hollywood East Cafe"}</p>
           </div>
           <form onSubmit={handleLogin} className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
             <div>
@@ -183,7 +192,7 @@ export default function EventOrder() {
       <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-md border-b border-border">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
-            <h1 className="font-display font-bold text-xl">Event Ordering</h1>
+            <h1 className="font-display font-bold text-xl">{eventName || "Event Ordering"}</h1>
             <p className="text-xs text-muted-foreground">dash by Hollywood East Cafe</p>
           </div>
           {orderItems.length > 0 && (

@@ -7,3 +7,4 @@ export * from "./conversations";
 export * from "./messages";
 export * from "./images";
 export * from "./event-orders";
+export * from "./event-settings";

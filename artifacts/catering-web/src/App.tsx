@@ -19,6 +19,7 @@ import MenuManager from "@/pages/admin/MenuManager";
 import OrderManager from "@/pages/admin/OrderManager";
 import CalendarManager from "@/pages/admin/CalendarManager";
 import ImageLibrary from "@/pages/admin/ImageLibrary";
+import EventSettings from "@/pages/admin/EventSettings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,6 +57,9 @@ function Router() {
       </Route>
       <Route path="/admin/images">
         {() => <AdminGuard><ImageLibrary /></AdminGuard>}
+      </Route>
+      <Route path="/admin/event-settings">
+        {() => <AdminGuard><EventSettings /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />

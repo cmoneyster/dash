@@ -1,14 +1,25 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { menuItemsTable, eventOrdersTable } from "@workspace/db/schema";
+import { menuItemsTable, eventOrdersTable, eventSettingsTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-function verifyEventPassword(req: Request, res: Response, next: NextFunction) {
-  const eventPassword = process.env.EVENT_PASSWORD;
+async function getEventSettings() {
+  const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+  return settings ?? null;
+}
+
+async function resolveEventPassword(): Promise<string | null> {
+  const settings = await getEventSettings();
+  if (settings?.eventPassword) return settings.eventPassword;
+  return process.env.EVENT_PASSWORD ?? null;
+}
+
+async function verifyEventPassword(req: Request, res: Response, next: NextFunction) {
+  const eventPassword = await resolveEventPassword();
   if (!eventPassword) {
-    res.status(503).json({ error: "Event ordering is not configured (EVENT_PASSWORD not set)" });
+    res.status(503).json({ error: "Event ordering is not configured" });
     return;
   }
   const authHeader = req.headers["authorization"];
@@ -20,9 +31,19 @@ function verifyEventPassword(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-router.post("/event-ordering/verify", (req, res) => {
+router.get("/event-ordering/settings", async (req, res) => {
+  try {
+    const settings = await getEventSettings();
+    res.json({ eventName: settings?.eventName ?? "" });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching event settings");
+    res.status(500).json({ error: "Failed to fetch event settings" });
+  }
+});
+
+router.post("/event-ordering/verify", async (req, res) => {
   const { password } = req.body as { password?: string };
-  const eventPassword = process.env.EVENT_PASSWORD;
+  const eventPassword = await resolveEventPassword();
   if (!eventPassword) {
     res.status(503).json({ error: "Event ordering is not configured" });
     return;

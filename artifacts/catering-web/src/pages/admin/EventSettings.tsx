@@ -1,0 +1,181 @@
+import { useState, useEffect } from "react";
+import { AdminLayout } from "@/components/AdminLayout";
+import { getAdminToken } from "@/components/AdminGuard";
+import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2 } from "lucide-react";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary"
+      title="Copy link"
+    >
+      {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+    </button>
+  );
+}
+
+export default function EventSettings() {
+  const [eventName, setEventName] = useState("");
+  const [eventPassword, setEventPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [hasExistingPassword, setHasExistingPassword] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  const token = getAdminToken();
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+
+  const origin = window.location.origin;
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const eventUrl = `${origin}${base}/event`;
+  const kitchenUrl = `${origin}${base}/kitchen`;
+
+  useEffect(() => {
+    fetch(`${BASE}/api/admin/event-settings`, { headers })
+      .then(r => r.json())
+      .then(data => {
+        setEventName(data.eventName ?? "");
+        setHasExistingPassword(data.hasPassword);
+      })
+      .catch(() => setError("Failed to load event settings"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const body: Record<string, string> = { eventName };
+      if (eventPassword) body.eventPassword = eventPassword;
+
+      const res = await fetch(`${BASE}/api/admin/event-settings`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      const data = await res.json();
+      setEventName(data.eventName);
+      setHasExistingPassword(data.hasPassword);
+      setEventPassword("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      setError("Failed to save settings. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <AdminLayout>
+      <div className="mb-8">
+        <h1 className="font-display font-bold text-4xl mb-2">Event Settings</h1>
+        <p className="text-muted-foreground">Configure the on-site event ordering experience for guests and kitchen staff.</p>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="max-w-2xl space-y-6">
+          <form onSubmit={handleSave} className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-5">
+            <h2 className="font-display font-bold text-xl">Event Configuration</h2>
+
+            <div>
+              <label className="block text-sm font-semibold mb-1.5">Event Name</label>
+              <input
+                value={eventName}
+                onChange={e => setEventName(e.target.value)}
+                placeholder="e.g. Summer Gala 2026, Office Holiday Party"
+                className="w-full px-4 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+              />
+              <p className="text-xs text-muted-foreground mt-1.5">Displayed to guests on the ordering page and kitchen display.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-1.5">
+                Event Password
+                {hasExistingPassword && (
+                  <span className="ml-2 text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Password set</span>
+                )}
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={eventPassword}
+                  onChange={e => setEventPassword(e.target.value)}
+                  placeholder={hasExistingPassword ? "Enter a new password to change it" : "Set a password for guests and kitchen staff"}
+                  className="w-full pl-4 pr-10 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(s => !s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {hasExistingPassword ? "Leave blank to keep the existing password." : "Guests enter this to place orders. Kitchen staff use it to view orders."}
+              </p>
+            </div>
+
+            {error && <p className="text-destructive text-sm">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
+              {saving ? "Saving…" : saved ? "Saved!" : "Save Settings"}
+            </button>
+          </form>
+
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+            <h2 className="font-display font-bold text-xl">Share These Links</h2>
+            <p className="text-sm text-muted-foreground">Send the ordering link to guests and the kitchen link to your staff before the event.</p>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Guest Ordering Page</p>
+                <div className="flex items-center gap-2 bg-secondary rounded-xl px-4 py-2.5">
+                  <span className="flex-1 text-sm font-mono truncate">{eventUrl}</span>
+                  <CopyButton text={eventUrl} />
+                  <a href="/event" target="_blank" rel="noopener noreferrer" className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-background">
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Kitchen Display</p>
+                <div className="flex items-center gap-2 bg-secondary rounded-xl px-4 py-2.5">
+                  <span className="flex-1 text-sm font-mono truncate">{kitchenUrl}</span>
+                  <CopyButton text={kitchenUrl} />
+                  <a href="/kitchen" target="_blank" rel="noopener noreferrer" className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-background">
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </AdminLayout>
+  );
+}

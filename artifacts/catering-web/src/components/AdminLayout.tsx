@@ -1,5 +1,5 @@
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, ShoppingCart, CalendarDays, ArrowLeft, LogOut, Images } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, ShoppingCart, CalendarDays, ArrowLeft, LogOut, Images, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken } from "@/components/AdminGuard";
 
@@ -62,6 +62,11 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <AdminNavLink href="/admin/orders" icon={ShoppingCart}>Orders</AdminNavLink>
           <AdminNavLink href="/admin/calendar" icon={CalendarDays}>Availability</AdminNavLink>
           <AdminNavLink href="/admin/images" icon={Images}>Image Library</AdminNavLink>
+
+          <div className="pt-2 pb-1">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">On-Site Events</p>
+          </div>
+          <AdminNavLink href="/admin/event-settings" icon={Zap}>Event Settings</AdminNavLink>
         </nav>
         <div className="p-4 border-t border-border">
           <button
