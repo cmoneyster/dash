@@ -2,8 +2,8 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AdminGuard } from "@/components/AdminGuard";
 
-// Pages
 import Home from "@/pages/Home";
 import Menu from "@/pages/Menu";
 import Cart from "@/pages/Cart";
@@ -11,7 +11,7 @@ import Plan from "@/pages/Plan";
 import Confirmation from "@/pages/Confirmation";
 import NotFound from "@/pages/not-found";
 
-// Admin Pages
+import AdminLogin from "@/pages/admin/Login";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import MenuManager from "@/pages/admin/MenuManager";
 import OrderManager from "@/pages/admin/OrderManager";
@@ -34,13 +34,22 @@ function Router() {
       <Route path="/cart" component={Cart} />
       <Route path="/plan" component={Plan} />
       <Route path="/confirmation" component={Confirmation} />
-      
-      {/* Admin Routes */}
-      <Route path="/admin" component={AdminDashboard} />
-      <Route path="/admin/menu" component={MenuManager} />
-      <Route path="/admin/orders" component={OrderManager} />
-      <Route path="/admin/calendar" component={CalendarManager} />
-      
+
+      <Route path="/admin/login" component={AdminLogin} />
+
+      <Route path="/admin">
+        {() => <AdminGuard><AdminDashboard /></AdminGuard>}
+      </Route>
+      <Route path="/admin/menu">
+        {() => <AdminGuard><MenuManager /></AdminGuard>}
+      </Route>
+      <Route path="/admin/orders">
+        {() => <AdminGuard><OrderManager /></AdminGuard>}
+      </Route>
+      <Route path="/admin/calendar">
+        {() => <AdminGuard><CalendarManager /></AdminGuard>}
+      </Route>
+
       <Route component={NotFound} />
     </Switch>
   );

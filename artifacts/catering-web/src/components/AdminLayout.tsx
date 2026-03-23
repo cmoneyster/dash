@@ -1,6 +1,7 @@
-import { Link, useRoute } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, ShoppingCart, CalendarDays, ArrowLeft } from "lucide-react";
+import { Link, useRoute, useLocation } from "wouter";
+import { LayoutDashboard, Menu as MenuIcon, ShoppingCart, CalendarDays, ArrowLeft, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { clearAdminToken } from "@/components/AdminGuard";
 
 const LOGO_URL = `${import.meta.env.BASE_URL}images/dash-logo.png`;
 
@@ -23,6 +24,13 @@ function AdminNavLink({ href, icon: Icon, children }: { href: string; icon: any;
 }
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
+  const [, navigate] = useLocation();
+
+  const handleLogout = () => {
+    clearAdminToken();
+    navigate("/admin/login");
+  };
+
   return (
     <div className="min-h-screen bg-secondary/30 flex">
       {/* Sidebar */}
@@ -54,6 +62,15 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <AdminNavLink href="/admin/orders" icon={ShoppingCart}>Orders</AdminNavLink>
           <AdminNavLink href="/admin/calendar" icon={CalendarDays}>Availability</AdminNavLink>
         </nav>
+        <div className="p-4 border-t border-border">
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl font-medium text-foreground/70 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+          >
+            <LogOut className="w-5 h-5" />
+            Sign Out
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}
