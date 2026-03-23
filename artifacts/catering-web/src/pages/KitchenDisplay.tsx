@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2 } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -149,6 +149,26 @@ export default function KitchenDisplay() {
       setLoginError("Connection error.");
     } finally {
       setLoginLoading(false);
+    }
+  }
+
+  async function revertStatus(order: EventOrder) {
+    if (order.status !== "preparing" || !authedPassword) return;
+    setUpdating(s => new Set([...s, order.id]));
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/orders/${order.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
+        body: JSON.stringify({ status: "pending" }),
+      });
+      if (res.ok) {
+        const updated: EventOrder = await res.json();
+        setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
+        // Reset item checks so staff can re-mark from scratch
+        setCheckedItems(prev => ({ ...prev, [order.id]: new Set() }));
+      }
+    } finally {
+      setUpdating(s => { const n = new Set(s); n.delete(order.id); return n; });
     }
   }
 
@@ -306,6 +326,7 @@ export default function KitchenDisplay() {
                       checkedItemIds={checkedItems[order.id] ?? new Set()}
                       onToggleItem={(itemId) => toggleItemCheck(order.id, itemId, order.items.map(i => i.itemId))}
                       onAdvance={() => advanceStatus(order)}
+                      onRevert={() => revertStatus(order)}
                     />
                   ))}
                   {!grouped[status]?.length && (
@@ -322,7 +343,7 @@ export default function KitchenDisplay() {
             <h3 className="text-white/40 text-sm font-semibold uppercase tracking-wider mb-3">Completed</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {doneOrders.map(order => (
-                <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} />
+                <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} />
               ))}
             </div>
           </div>
@@ -332,13 +353,14 @@ export default function KitchenDisplay() {
   );
 }
 
-function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance }: {
+function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance, onRevert }: {
   order: EventOrder;
   isNew: boolean;
   isUpdating: boolean;
   checkedItemIds: Set<number>;
   onToggleItem: (itemId: number) => void;
   onAdvance: () => void;
+  onRevert: () => void;
 }) {
   const total = order.items.reduce((s, i) => s + i.price * i.quantity, 0);
   const isPending = order.status === "pending";
@@ -434,7 +456,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
 
       {/* Action button for preparing / ready */}
       {nextLabel && !isPending && (
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 space-y-2">
           <button
             onClick={onAdvance}
             disabled={isUpdating}
@@ -445,6 +467,16 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
           >
             {isUpdating ? "Updating…" : nextLabel}
           </button>
+          {order.status === "preparing" && (
+            <button
+              onClick={onRevert}
+              disabled={isUpdating}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-medium text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors disabled:opacity-30"
+            >
+              <Undo2 size={12} />
+              Undo — move back to New
+            </button>
+          )}
         </div>
       )}
 
