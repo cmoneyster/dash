@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -44,6 +44,28 @@ const NEXT_LABEL: Record<string, string> = {
   ready: "Complete",
 };
 
+function playChime() {
+  try {
+    const ctx = new AudioContext();
+    // Three-note ascending chime: C5 → E5 → G5
+    const notes = [523.25, 659.25, 783.99];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.18;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.28, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+      osc.start(t);
+      osc.stop(t + 0.7);
+    });
+  } catch { /* AudioContext blocked — silently skip */ }
+}
+
 function timeAgo(dateStr: string) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (diff < 60) return `${diff}s ago`;
@@ -76,6 +98,17 @@ export default function KitchenDisplay() {
   const [updating, setUpdating] = useState<Set<number>>(new Set());
   const prevOrderIds = useRef<Set<number>>(new Set());
   const [showDone, setShowDone] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("kitchen_sound") !== "off");
+  const soundEnabledRef = useRef(soundEnabled);
+  useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
+  function toggleSound() {
+    setSoundEnabled(prev => {
+      const next = !prev;
+      localStorage.setItem("kitchen_sound", next ? "on" : "off");
+      return next;
+    });
+  }
+
   const [view, setView] = useState<"orders" | "stock">("orders");
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [stockEdits, setStockEdits] = useState<Record<number, string>>({});
@@ -165,6 +198,7 @@ export default function KitchenDisplay() {
       const fresh = new Set([...incoming].filter(id => !prevOrderIds.current.has(id)));
       if (fresh.size > 0 && prevOrderIds.current.size > 0) {
         setNewOrderIds(s => new Set([...s, ...fresh]));
+        if (soundEnabledRef.current) playChime();
         if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
       }
       prevOrderIds.current = incoming;
@@ -339,6 +373,13 @@ export default function KitchenDisplay() {
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               Live · {activeOrders.length} active
             </div>
+            <button
+              onClick={toggleSound}
+              title={soundEnabled ? "Mute chime" : "Unmute chime"}
+              className={`p-2 rounded-lg transition-colors ${soundEnabled ? "hover:bg-white/10 text-white/60 hover:text-white" : "bg-red-500/20 text-red-400 hover:bg-red-500/30"}`}
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
             <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1">
               <button
                 onClick={() => setView("orders")}
