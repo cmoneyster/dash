@@ -10,6 +10,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.19.0",
+    "@types/multer": "^2.1.0",
+    "@types/sharp": "^0.32.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "@workspace/integrations-openai-ai-server": "workspace:*",
@@ -17,8 +20,11 @@
     "cors": "^2",
     "drizzle-orm": "catalog:",
     "express": "^5",
+    "google-auth-library": "^10.6.2",
+    "multer": "^2.1.1",
     "pino": "^9",
-    "pino-http": "^10"
+    "pino-http": "^10",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
