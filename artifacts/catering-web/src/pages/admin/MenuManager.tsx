@@ -163,44 +163,46 @@ export default function MenuManager() {
     },
   });
 
-  const inlineUpdateMut = useUpdateMenuItem({
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: getAdminListMenuItemsQueryKey() });
-    },
-  });
+  const inlineUpdateMut = useUpdateMenuItem();
 
   async function saveAllEdits() {
     const ids = [...dirtyIds];
     setSavingIds(new Set(ids));
-    await Promise.all(
-      ids.map(id => {
-        const edit = localEdits[id];
-        const original = items?.find((it: any) => it.id === id);
-        if (!original || !edit) return Promise.resolve();
-        return new Promise<void>((resolve) => {
-          inlineUpdateMut.mutate(
-            {
-              id,
-              data: {
-                ...original,
-                name: edit.name,
-                description: edit.description,
-                price: parseFloat(edit.price),
-                available: edit.available,
-                eventActive: edit.eventActive,
-                allergens: original.allergens ?? [],
-                servingSize: original.servingSize,
-                unit: original.unit,
-                category: original.category,
+    try {
+      await Promise.all(
+        ids.map(id => {
+          const edit = localEdits[id];
+          const original = items?.find((it: any) => it.id === id);
+          if (!original || !edit) return Promise.resolve();
+          return new Promise<void>((resolve, reject) => {
+            inlineUpdateMut.mutate(
+              {
+                id,
+                data: {
+                  ...original,
+                  name: edit.name,
+                  description: edit.description,
+                  price: parseFloat(edit.price),
+                  available: edit.available,
+                  eventActive: edit.eventActive,
+                  allergens: original.allergens ?? [],
+                  servingSize: original.servingSize,
+                  unit: original.unit,
+                  category: original.category,
+                },
               },
-            },
-            { onSettled: () => resolve() }
-          );
-        });
-      })
-    );
-    setLocalEdits({});
-    setSavingIds(new Set());
+              { onSuccess: () => resolve(), onError: (err) => reject(err) }
+            );
+          });
+        })
+      );
+      // Await the refetch to complete BEFORE clearing local edits so the
+      // UI never briefly shows stale (pre-save) values after save.
+      await queryClient.refetchQueries({ queryKey: getAdminListMenuItemsQueryKey() });
+    } finally {
+      setLocalEdits({});
+      setSavingIds(new Set());
+    }
   }
 
   const deleteMut = useDeleteMenuItem({
