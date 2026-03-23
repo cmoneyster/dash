@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const POLL_INTERVAL = 6000;
+const LS_KEY = "kitchen_item_checks";
 
 type OrderItem = { itemId: number; name: string; quantity: number; price: number };
 type EventOrder = {
@@ -15,6 +16,14 @@ type EventOrder = {
   status: "pending" | "preparing" | "ready" | "done";
   createdAt: string;
 };
+
+// localStorage helpers — persist checked item sets across polls
+function loadChecked(): Record<number, number[]> {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) ?? "{}"); } catch { return {}; }
+}
+function saveChecked(data: Record<number, number[]>) {
+  localStorage.setItem(LS_KEY, JSON.stringify(data));
+}
 
 const STATUS_CONFIG = {
   pending:   { label: "New",       color: "bg-red-100 text-red-700 border-red-200",     ring: "ring-2 ring-red-300"  },
@@ -30,7 +39,6 @@ const NEXT_STATUS: Record<string, string> = {
 };
 
 const NEXT_LABEL: Record<string, string> = {
-  pending: "Start Preparing",
   preparing: "Mark Ready",
   ready: "Complete",
 };
@@ -67,6 +75,33 @@ export default function KitchenDisplay() {
   const [updating, setUpdating] = useState<Set<number>>(new Set());
   const prevOrderIds = useRef<Set<number>>(new Set());
   const [showDone, setShowDone] = useState(false);
+
+  // checkedItems: orderId → Set of itemIds that have been individually marked
+  const [checkedItems, setCheckedItems] = useState<Record<number, Set<number>>>(() => {
+    const raw = loadChecked();
+    const result: Record<number, Set<number>> = {};
+    for (const [k, v] of Object.entries(raw)) result[Number(k)] = new Set(v);
+    return result;
+  });
+
+  // Sync checkedItems to localStorage whenever it changes
+  useEffect(() => {
+    const serializable: Record<number, number[]> = {};
+    for (const [k, v] of Object.entries(checkedItems)) serializable[Number(k)] = [...v];
+    saveChecked(serializable);
+  }, [checkedItems]);
+
+  // Clean up checked state for orders that have moved out of pending
+  useEffect(() => {
+    const pendingIds = new Set(orders.filter(o => o.status === "pending").map(o => o.id));
+    setCheckedItems(prev => {
+      const cleaned: Record<number, Set<number>> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (pendingIds.has(Number(k))) cleaned[Number(k)] = v;
+      }
+      return cleaned;
+    });
+  }, [orders]);
 
   const fetchOrders = useCallback(async (pwd: string) => {
     try {
@@ -131,10 +166,41 @@ export default function KitchenDisplay() {
       if (res.ok) {
         const updated: EventOrder = await res.json();
         setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
+        // Clear checked state once order has advanced past pending
+        if (order.status === "pending") {
+          setCheckedItems(prev => {
+            const next = { ...prev };
+            delete next[order.id];
+            return next;
+          });
+        }
       }
     } finally {
       setUpdating(s => { const n = new Set(s); n.delete(order.id); return n; });
     }
+  }
+
+  function toggleItemCheck(orderId: number, itemId: number, allItemIds: number[]) {
+    setCheckedItems(prev => {
+      const current = new Set(prev[orderId] ?? []);
+      if (current.has(itemId)) {
+        current.delete(itemId);
+      } else {
+        current.add(itemId);
+      }
+      const updated = { ...prev, [orderId]: current };
+
+      // Auto-advance when all items are checked
+      if (current.size === allItemIds.length) {
+        const order = orders.find(o => o.id === orderId);
+        if (order && order.status === "pending") {
+          // Small delay so the last checkmark is visible before advancing
+          setTimeout(() => advanceStatus(order), 500);
+        }
+      }
+
+      return updated;
+    });
   }
 
   if (!authedPassword) {
@@ -237,6 +303,8 @@ export default function KitchenDisplay() {
                       order={order}
                       isNew={newOrderIds.has(order.id)}
                       isUpdating={updating.has(order.id)}
+                      checkedItemIds={checkedItems[order.id] ?? new Set()}
+                      onToggleItem={(itemId) => toggleItemCheck(order.id, itemId, order.items.map(i => i.itemId))}
                       onAdvance={() => advanceStatus(order)}
                     />
                   ))}
@@ -254,7 +322,7 @@ export default function KitchenDisplay() {
             <h3 className="text-white/40 text-sm font-semibold uppercase tracking-wider mb-3">Completed</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {doneOrders.map(order => (
-                <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} onAdvance={() => {}} />
+                <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} />
               ))}
             </div>
           </div>
@@ -264,18 +332,23 @@ export default function KitchenDisplay() {
   );
 }
 
-function OrderCard({ order, isNew, isUpdating, onAdvance }: {
+function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance }: {
   order: EventOrder;
   isNew: boolean;
   isUpdating: boolean;
+  checkedItemIds: Set<number>;
+  onToggleItem: (itemId: number) => void;
   onAdvance: () => void;
 }) {
-  const cfg = STATUS_CONFIG[order.status];
-  const nextLabel = NEXT_LABEL[order.status];
   const total = order.items.reduce((s, i) => s + i.price * i.quantity, 0);
+  const isPending = order.status === "pending";
+  const checkedCount = order.items.filter(i => checkedItemIds.has(i.itemId)).length;
+  const allChecked = checkedCount === order.items.length;
+  const nextLabel = NEXT_LABEL[order.status];
 
   return (
     <div className={`bg-[#1a1a1a] border rounded-2xl overflow-hidden transition-all ${isNew ? "ring-2 ring-red-400 border-red-400/50" : "border-white/10"}`}>
+      {/* Header */}
       <div className="px-4 py-3 border-b border-white/10 flex justify-between items-start">
         <div>
           <p className="font-bold">{order.guestName}</p>
@@ -295,26 +368,77 @@ function OrderCard({ order, isNew, isUpdating, onAdvance }: {
         </div>
       </div>
 
-      <div className="px-4 py-3 space-y-1.5">
-        {order.items.map(item => (
-          <div key={item.itemId} className="flex justify-between text-sm">
-            <span className="text-white/80">{item.quantity}× {item.name}</span>
-            <span className="text-white/40 text-xs">{formatCurrency(item.price * item.quantity)}</span>
+      {/* Items — tappable when pending */}
+      <div className="px-4 py-3 space-y-1">
+        {isPending && (
+          <p className="text-xs text-white/30 font-semibold uppercase tracking-wider pb-1.5">
+            Tap each item to mark · {checkedCount}/{order.items.length}
+          </p>
+        )}
+        {order.items.map(item => {
+          const isChecked = checkedItemIds.has(item.itemId);
+          if (isPending) {
+            return (
+              <button
+                key={item.itemId}
+                type="button"
+                onClick={() => onToggleItem(item.itemId)}
+                className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 transition-all text-left ${
+                  isChecked
+                    ? "bg-emerald-500/15 border border-emerald-500/30"
+                    : "bg-white/5 border border-white/10 hover:bg-white/10 active:scale-[0.98]"
+                }`}
+              >
+                <span className={`text-sm font-medium transition-all ${isChecked ? "text-emerald-400 line-through decoration-emerald-500/60" : "text-white/80"}`}>
+                  {item.quantity}× {item.name}
+                </span>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ml-3 transition-all ${
+                  isChecked ? "bg-emerald-500 text-black" : "bg-white/10"
+                }`}>
+                  {isChecked && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                </div>
+              </button>
+            );
+          }
+          return (
+            <div key={item.itemId} className="flex justify-between text-sm px-1">
+              <span className="text-white/80">{item.quantity}× {item.name}</span>
+              <span className="text-white/40 text-xs">{formatCurrency(item.price * item.quantity)}</span>
+            </div>
+          );
+        })}
+
+        {/* Total — only shown when not pending (pending items take up more space) */}
+        {!isPending && (
+          <div className="flex justify-between pt-2 border-t border-white/10 text-xs font-bold text-white/50 px-1">
+            <span>Total</span>
+            <span>{formatCurrency(total)}</span>
           </div>
-        ))}
-        <div className="flex justify-between pt-2 border-t border-white/10 text-xs font-bold text-white/50">
-          <span>Total</span>
-          <span>{formatCurrency(total)}</span>
-        </div>
+        )}
       </div>
 
-      {nextLabel && (
+      {/* Progress bar for pending orders */}
+      {isPending && (
+        <div className="px-4 pb-3">
+          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+              style={{ width: order.items.length > 0 ? `${(checkedCount / order.items.length) * 100}%` : "0%" }}
+            />
+          </div>
+          {isUpdating && (
+            <p className="text-xs text-amber-400 text-center mt-2 font-semibold">Moving to Preparing…</p>
+          )}
+        </div>
+      )}
+
+      {/* Action button for preparing / ready */}
+      {nextLabel && !isPending && (
         <div className="px-4 pb-4">
           <button
             onClick={onAdvance}
             disabled={isUpdating}
             className={`w-full py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-50 ${
-              order.status === "pending" ? "bg-amber-500 hover:bg-amber-400 text-black" :
               order.status === "preparing" ? "bg-emerald-500 hover:bg-emerald-400 text-black" :
               "bg-white/10 hover:bg-white/20 text-white"
             }`}
@@ -323,6 +447,7 @@ function OrderCard({ order, isNew, isUpdating, onAdvance }: {
           </button>
         </div>
       )}
+
       {order.status === "done" && (
         <div className="px-4 pb-3 text-center text-xs text-white/20 font-semibold">Completed</div>
       )}
