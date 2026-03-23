@@ -123,6 +123,11 @@ export default function MenuManager() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [isNewCategory, setIsNewCategory] = useState(false);
+
+  const existingCategories = Array.from(
+    new Set((items ?? []).map((item: any) => item.category as string))
+  ).sort();
 
   const createMut = useCreateMenuItem({
     onSuccess: () => {
@@ -151,6 +156,7 @@ export default function MenuManager() {
     setEditingItem(null);
     reset({ available: true, servingSize: 1, unit: "tray", price: 0, imageUrl: "" });
     setPreviewUrl("");
+    setIsNewCategory(false);
     setIsDialogOpen(true);
   };
 
@@ -158,6 +164,7 @@ export default function MenuManager() {
     setEditingItem(item);
     reset({ ...item, allergens: item.allergens.join(", ") });
     setPreviewUrl(item.imageUrl ?? "");
+    setIsNewCategory(false);
     setIsDialogOpen(true);
   };
 
@@ -276,7 +283,45 @@ export default function MenuManager() {
                   </div>
                   <div className="col-span-2 sm:col-span-1">
                     <label className="block text-sm font-semibold mb-1">Category</label>
-                    <input {...register("category")} required placeholder="Appetizers" className="w-full px-4 py-2 border rounded-xl" />
+                    {isNewCategory ? (
+                      <div className="flex gap-2">
+                        <input
+                          {...register("category")}
+                          required
+                          autoFocus
+                          placeholder="New category name"
+                          className="w-full px-4 py-2 border rounded-xl"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsNewCategory(false);
+                            setValue("category", editingItem?.category ?? existingCategories[0] ?? "");
+                          }}
+                          className="px-3 py-2 text-muted-foreground hover:text-foreground border rounded-xl text-sm shrink-0"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        {...register("category", {
+                          onChange: (e) => {
+                            if (e.target.value === "__new__") {
+                              setIsNewCategory(true);
+                              setValue("category", "");
+                            }
+                          },
+                        })}
+                        required
+                        className="w-full px-4 py-2 border rounded-xl bg-background"
+                      >
+                        {existingCategories.map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                        <option value="__new__">+ Add new category…</option>
+                      </select>
+                    )}
                   </div>
                 </div>
 
