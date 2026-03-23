@@ -295,7 +295,7 @@ export default function MenuManager() {
                 const edit = localEdits[item.id];
                 const isDirty = !!edit;
                 const isSaving = savingIds.has(item.id);
-                const cur = edit ?? { name: item.name, description: item.description, price: String(item.price), available: item.available };
+                const cur = edit ?? { name: item.name, description: item.description, price: String(item.price), available: item.available, eventActive: (item as any).eventActive ?? false };
 
                 return (
                   <tr key={item.id} className={`transition-colors ${isDirty ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}>
