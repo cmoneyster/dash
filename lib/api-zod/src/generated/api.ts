@@ -22,6 +22,8 @@ export const ListMenuItemsQueryParams = zod.object({
   available: zod.coerce.boolean().optional(),
 });
 
+export const listMenuItemsResponseMinimumOrderQtyDefault = 1;
+
 export const ListMenuItemsResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
@@ -34,6 +36,20 @@ export const ListMenuItemsResponseItem = zod.object({
   allergens: zod.array(zod.string()),
   available: zod.boolean(),
   prepTime: zod.string().nullish(),
+  minimumOrderQty: zod
+    .number()
+    .default(listMenuItemsResponseMinimumOrderQtyDefault)
+    .describe("Minimum quantity required to add this item to an order"),
+  tier2Qty: zod
+    .number()
+    .nullish()
+    .describe("Minimum quantity to unlock tier 2 pricing"),
+  tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+  tier3Qty: zod
+    .number()
+    .nullish()
+    .describe("Minimum quantity to unlock tier 3 pricing"),
+  tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
   createdAt: zod.date(),
 });
 export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
@@ -44,6 +60,8 @@ export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
 export const GetMenuItemParams = zod.object({
   id: zod.coerce.number(),
 });
+
+export const getMenuItemResponseMinimumOrderQtyDefault = 1;
 
 export const GetMenuItemResponse = zod.object({
   id: zod.number(),
@@ -57,12 +75,28 @@ export const GetMenuItemResponse = zod.object({
   allergens: zod.array(zod.string()),
   available: zod.boolean(),
   prepTime: zod.string().nullish(),
+  minimumOrderQty: zod
+    .number()
+    .default(getMenuItemResponseMinimumOrderQtyDefault)
+    .describe("Minimum quantity required to add this item to an order"),
+  tier2Qty: zod
+    .number()
+    .nullish()
+    .describe("Minimum quantity to unlock tier 2 pricing"),
+  tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+  tier3Qty: zod
+    .number()
+    .nullish()
+    .describe("Minimum quantity to unlock tier 3 pricing"),
+  tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
   createdAt: zod.date(),
 });
 
 /**
  * @summary List all menu items (admin)
  */
+export const adminListMenuItemsResponseMinimumOrderQtyDefault = 1;
+
 export const AdminListMenuItemsResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
@@ -75,6 +109,20 @@ export const AdminListMenuItemsResponseItem = zod.object({
   allergens: zod.array(zod.string()),
   available: zod.boolean(),
   prepTime: zod.string().nullish(),
+  minimumOrderQty: zod
+    .number()
+    .default(adminListMenuItemsResponseMinimumOrderQtyDefault)
+    .describe("Minimum quantity required to add this item to an order"),
+  tier2Qty: zod
+    .number()
+    .nullish()
+    .describe("Minimum quantity to unlock tier 2 pricing"),
+  tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+  tier3Qty: zod
+    .number()
+    .nullish()
+    .describe("Minimum quantity to unlock tier 3 pricing"),
+  tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
   createdAt: zod.date(),
 });
 export const AdminListMenuItemsResponse = zod.array(
@@ -95,6 +143,11 @@ export const CreateMenuItemBody = zod.object({
   allergens: zod.array(zod.string()),
   available: zod.boolean(),
   prepTime: zod.string().nullish(),
+  minimumOrderQty: zod.number().optional(),
+  tier2Qty: zod.number().nullish(),
+  tier2Price: zod.number().nullish(),
+  tier3Qty: zod.number().nullish(),
+  tier3Price: zod.number().nullish(),
 });
 
 /**
@@ -115,7 +168,14 @@ export const UpdateMenuItemBody = zod.object({
   allergens: zod.array(zod.string()).optional(),
   available: zod.boolean().optional(),
   prepTime: zod.string().nullish(),
+  minimumOrderQty: zod.number().optional(),
+  tier2Qty: zod.number().nullish(),
+  tier2Price: zod.number().nullish(),
+  tier3Qty: zod.number().nullish(),
+  tier3Price: zod.number().nullish(),
 });
+
+export const updateMenuItemResponseMinimumOrderQtyDefault = 1;
 
 export const UpdateMenuItemResponse = zod.object({
   id: zod.number(),
@@ -129,6 +189,20 @@ export const UpdateMenuItemResponse = zod.object({
   allergens: zod.array(zod.string()),
   available: zod.boolean(),
   prepTime: zod.string().nullish(),
+  minimumOrderQty: zod
+    .number()
+    .default(updateMenuItemResponseMinimumOrderQtyDefault)
+    .describe("Minimum quantity required to add this item to an order"),
+  tier2Qty: zod
+    .number()
+    .nullish()
+    .describe("Minimum quantity to unlock tier 2 pricing"),
+  tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+  tier3Qty: zod
+    .number()
+    .nullish()
+    .describe("Minimum quantity to unlock tier 3 pricing"),
+  tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
   createdAt: zod.date(),
 });
 
@@ -188,6 +262,8 @@ export const GetCartQueryParams = zod.object({
   sessionId: zod.coerce.string(),
 });
 
+export const getCartResponseItemsItemMenuItemMinimumOrderQtyDefault = 1;
+
 export const GetCartResponse = zod.object({
   sessionId: zod.string(),
   items: zod.array(
@@ -206,6 +282,20 @@ export const GetCartResponse = zod.object({
         allergens: zod.array(zod.string()),
         available: zod.boolean(),
         prepTime: zod.string().nullish(),
+        minimumOrderQty: zod
+          .number()
+          .default(getCartResponseItemsItemMenuItemMinimumOrderQtyDefault)
+          .describe("Minimum quantity required to add this item to an order"),
+        tier2Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 2 pricing"),
+        tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+        tier3Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 3 pricing"),
+        tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -222,6 +312,8 @@ export const AddToCartBody = zod.object({
   menuItemId: zod.number(),
   quantity: zod.number(),
 });
+
+export const addToCartResponseItemsItemMenuItemMinimumOrderQtyDefault = 1;
 
 export const AddToCartResponse = zod.object({
   sessionId: zod.string(),
@@ -241,6 +333,20 @@ export const AddToCartResponse = zod.object({
         allergens: zod.array(zod.string()),
         available: zod.boolean(),
         prepTime: zod.string().nullish(),
+        minimumOrderQty: zod
+          .number()
+          .default(addToCartResponseItemsItemMenuItemMinimumOrderQtyDefault)
+          .describe("Minimum quantity required to add this item to an order"),
+        tier2Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 2 pricing"),
+        tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+        tier3Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 3 pricing"),
+        tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -261,6 +367,8 @@ export const UpdateCartItemBody = zod.object({
   quantity: zod.number(),
 });
 
+export const updateCartItemResponseItemsItemMenuItemMinimumOrderQtyDefault = 1;
+
 export const UpdateCartItemResponse = zod.object({
   sessionId: zod.string(),
   items: zod.array(
@@ -279,6 +387,22 @@ export const UpdateCartItemResponse = zod.object({
         allergens: zod.array(zod.string()),
         available: zod.boolean(),
         prepTime: zod.string().nullish(),
+        minimumOrderQty: zod
+          .number()
+          .default(
+            updateCartItemResponseItemsItemMenuItemMinimumOrderQtyDefault,
+          )
+          .describe("Minimum quantity required to add this item to an order"),
+        tier2Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 2 pricing"),
+        tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+        tier3Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 3 pricing"),
+        tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -293,6 +417,8 @@ export const UpdateCartItemResponse = zod.object({
 export const RemoveFromCartParams = zod.object({
   itemId: zod.coerce.number(),
 });
+
+export const removeFromCartResponseItemsItemMenuItemMinimumOrderQtyDefault = 1;
 
 export const RemoveFromCartResponse = zod.object({
   sessionId: zod.string(),
@@ -312,6 +438,22 @@ export const RemoveFromCartResponse = zod.object({
         allergens: zod.array(zod.string()),
         available: zod.boolean(),
         prepTime: zod.string().nullish(),
+        minimumOrderQty: zod
+          .number()
+          .default(
+            removeFromCartResponseItemsItemMenuItemMinimumOrderQtyDefault,
+          )
+          .describe("Minimum quantity required to add this item to an order"),
+        tier2Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 2 pricing"),
+        tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+        tier3Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 3 pricing"),
+        tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -326,6 +468,8 @@ export const RemoveFromCartResponse = zod.object({
 export const GetPlanQueryParams = zod.object({
   sessionId: zod.coerce.string(),
 });
+
+export const getPlanResponseItemsItemMenuItemMinimumOrderQtyDefault = 1;
 
 export const GetPlanResponse = zod.object({
   sessionId: zod.string(),
@@ -345,6 +489,20 @@ export const GetPlanResponse = zod.object({
         allergens: zod.array(zod.string()),
         available: zod.boolean(),
         prepTime: zod.string().nullish(),
+        minimumOrderQty: zod
+          .number()
+          .default(getPlanResponseItemsItemMenuItemMinimumOrderQtyDefault)
+          .describe("Minimum quantity required to add this item to an order"),
+        tier2Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 2 pricing"),
+        tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+        tier3Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 3 pricing"),
+        tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
         createdAt: zod.date(),
       }),
     }),
@@ -358,6 +516,8 @@ export const AddToPlanBody = zod.object({
   sessionId: zod.string(),
   menuItemId: zod.number(),
 });
+
+export const addToPlanResponseItemsItemMenuItemMinimumOrderQtyDefault = 1;
 
 export const AddToPlanResponse = zod.object({
   sessionId: zod.string(),
@@ -377,6 +537,20 @@ export const AddToPlanResponse = zod.object({
         allergens: zod.array(zod.string()),
         available: zod.boolean(),
         prepTime: zod.string().nullish(),
+        minimumOrderQty: zod
+          .number()
+          .default(addToPlanResponseItemsItemMenuItemMinimumOrderQtyDefault)
+          .describe("Minimum quantity required to add this item to an order"),
+        tier2Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 2 pricing"),
+        tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+        tier3Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 3 pricing"),
+        tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
         createdAt: zod.date(),
       }),
     }),
@@ -389,6 +563,8 @@ export const AddToPlanResponse = zod.object({
 export const RemoveFromPlanParams = zod.object({
   itemId: zod.coerce.number(),
 });
+
+export const removeFromPlanResponseItemsItemMenuItemMinimumOrderQtyDefault = 1;
 
 export const RemoveFromPlanResponse = zod.object({
   sessionId: zod.string(),
@@ -408,6 +584,22 @@ export const RemoveFromPlanResponse = zod.object({
         allergens: zod.array(zod.string()),
         available: zod.boolean(),
         prepTime: zod.string().nullish(),
+        minimumOrderQty: zod
+          .number()
+          .default(
+            removeFromPlanResponseItemsItemMenuItemMinimumOrderQtyDefault,
+          )
+          .describe("Minimum quantity required to add this item to an order"),
+        tier2Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 2 pricing"),
+        tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+        tier3Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 3 pricing"),
+        tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
         createdAt: zod.date(),
       }),
     }),
@@ -537,6 +729,8 @@ export const SuggestMenuItemsBody = zod.object({
   preferences: zod.array(zod.string()).optional(),
 });
 
+export const suggestMenuItemsResponseSuggestionsItemMenuItemMinimumOrderQtyDefault = 1;
+
 export const SuggestMenuItemsResponse = zod.object({
   suggestions: zod.array(
     zod.object({
@@ -553,6 +747,22 @@ export const SuggestMenuItemsResponse = zod.object({
         allergens: zod.array(zod.string()),
         available: zod.boolean(),
         prepTime: zod.string().nullish(),
+        minimumOrderQty: zod
+          .number()
+          .default(
+            suggestMenuItemsResponseSuggestionsItemMenuItemMinimumOrderQtyDefault,
+          )
+          .describe("Minimum quantity required to add this item to an order"),
+        tier2Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 2 pricing"),
+        tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+        tier3Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 3 pricing"),
+        tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
         createdAt: zod.date(),
       }),
       recommendedQuantity: zod.number(),

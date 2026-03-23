@@ -646,6 +646,26 @@ components:
         prepTime:
           type: string
           nullable: true
+        minimumOrderQty:
+          type: integer
+          description: Minimum quantity required to add this item to an order
+          default: 1
+        tier2Qty:
+          type: integer
+          nullable: true
+          description: Minimum quantity to unlock tier 2 pricing
+        tier2Price:
+          type: number
+          nullable: true
+          description: Price per unit at tier 2
+        tier3Qty:
+          type: integer
+          nullable: true
+          description: Minimum quantity to unlock tier 3 pricing
+        tier3Price:
+          type: number
+          nullable: true
+          description: Price per unit at tier 3
         createdAt:
           type: string
           format: date-time
@@ -659,6 +679,7 @@ components:
         - unit
         - allergens
         - available
+        - minimumOrderQty
         - createdAt
 
     CreateMenuItemBody:
@@ -687,6 +708,20 @@ components:
           type: boolean
         prepTime:
           type: string
+          nullable: true
+        minimumOrderQty:
+          type: integer
+        tier2Qty:
+          type: integer
+          nullable: true
+        tier2Price:
+          type: number
+          nullable: true
+        tier3Qty:
+          type: integer
+          nullable: true
+        tier3Price:
+          type: number
           nullable: true
       required:
         - name
@@ -724,6 +759,20 @@ components:
           type: boolean
         prepTime:
           type: string
+          nullable: true
+        minimumOrderQty:
+          type: integer
+        tier2Qty:
+          type: integer
+          nullable: true
+        tier2Price:
+          type: number
+          nullable: true
+        tier3Qty:
+          type: integer
+          nullable: true
+        tier3Price:
+          type: number
           nullable: true
 
     BlackoutDate:

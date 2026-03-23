@@ -14,6 +14,11 @@ export const menuItemsTable = pgTable("menu_items", {
   allergens: text("allergens").array().notNull().default([]),
   available: boolean("available").notNull().default(true),
   prepTime: text("prep_time"),
+  minimumOrderQty: integer("minimum_order_qty").notNull().default(1),
+  tier2Qty: integer("tier2_qty"),
+  tier2Price: numeric("tier2_price", { precision: 10, scale: 2 }),
+  tier3Qty: integer("tier3_qty"),
+  tier3Price: numeric("tier3_price", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

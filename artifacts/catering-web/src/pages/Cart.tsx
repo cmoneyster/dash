@@ -95,48 +95,80 @@ export default function Cart() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
             {/* Cart Items */}
             <div className="lg:col-span-7 space-y-6">
-              {cart.items.map(item => (
-                <div key={item.id} className="flex gap-6 bg-card p-4 rounded-2xl border border-border shadow-sm">
-                  {item.menuItem.imageUrl && (
-                    <img src={item.menuItem.imageUrl} alt="" className="w-24 h-24 rounded-xl object-cover shrink-0 bg-secondary" />
-                  )}
-                  <div className="flex-1 flex flex-col justify-between py-1">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold text-lg">{item.menuItem.name}</h4>
-                        <p className="text-sm text-muted-foreground">{formatCurrency(item.menuItem.price)} / {item.menuItem.unit}</p>
-                      </div>
-                      <button 
-                        onClick={() => removeItem.mutate({ itemId: item.id })}
-                        className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-full hover:bg-destructive/10"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                    
-                    <div className="flex items-center gap-4 mt-4">
-                      <div className="flex items-center bg-secondary rounded-full p-1">
-                        <button 
-                          onClick={() => updateItem.mutate({ itemId: item.id, data: { sessionId, quantity: Math.max(1, item.quantity - 1) }})}
-                          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
+              {cart.items.map(item => {
+                const anyItem = item as any;
+                const effectivePrice: number = anyItem.effectivePrice ?? item.menuItem.price;
+                const basePrice: number = item.menuItem.price;
+                const minQty: number = (item.menuItem as any).minimumOrderQty ?? 1;
+                const hasSavings = effectivePrice < basePrice;
+                const tierLabel = (() => {
+                  const mi = item.menuItem as any;
+                  if (mi.tier3Qty && mi.tier3Price && item.quantity >= mi.tier3Qty) return "Tier 3 price";
+                  if (mi.tier2Qty && mi.tier2Price && item.quantity >= mi.tier2Qty) return "Tier 2 price";
+                  return null;
+                })();
+
+                return (
+                  <div key={item.id} className="flex gap-6 bg-card p-4 rounded-2xl border border-border shadow-sm">
+                    {item.menuItem.imageUrl && (
+                      <img src={item.menuItem.imageUrl} alt="" className="w-24 h-24 rounded-xl object-cover shrink-0 bg-secondary" />
+                    )}
+                    <div className="flex-1 flex flex-col justify-between py-1">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-bold text-lg">{item.menuItem.name}</h4>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-sm text-muted-foreground">
+                              {formatCurrency(effectivePrice)} / {item.menuItem.unit}
+                            </p>
+                            {hasSavings && tierLabel && (
+                              <span className="text-xs font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">
+                                {tierLabel}
+                              </span>
+                            )}
+                          </div>
+                          {minQty > 1 && (
+                            <p className="text-xs text-amber-600 font-medium mt-0.5">Min. {minQty} {item.menuItem.unit}</p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => removeItem.mutate({ itemId: item.id })}
+                          className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-full hover:bg-destructive/10"
                         >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <span className="w-8 text-center font-semibold text-sm">{item.quantity}</span>
-                        <button 
-                          onClick={() => updateItem.mutate({ itemId: item.id, data: { sessionId, quantity: item.quantity + 1 }})}
-                          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
-                        >
-                          <Plus className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                      <div className="font-bold ml-auto text-lg">
-                        {formatCurrency(item.menuItem.price * item.quantity)}
+
+                      <div className="flex items-center gap-4 mt-4">
+                        <div className="flex items-center bg-secondary rounded-full p-1">
+                          <button
+                            onClick={() => updateItem.mutate({ itemId: item.id, data: { sessionId, quantity: Math.max(minQty, item.quantity - 1) } })}
+                            disabled={item.quantity <= minQty}
+                            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
+                          <span className="w-8 text-center font-semibold text-sm">{item.quantity}</span>
+                          <button
+                            onClick={() => updateItem.mutate({ itemId: item.id, data: { sessionId, quantity: item.quantity + 1 } })}
+                            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="ml-auto text-right">
+                          <div className="font-bold text-lg">{formatCurrency(effectivePrice * item.quantity)}</div>
+                          {hasSavings && (
+                            <div className="text-xs text-emerald-600 font-semibold">
+                              Save {formatCurrency((basePrice - effectivePrice) * item.quantity)}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Checkout Form */}

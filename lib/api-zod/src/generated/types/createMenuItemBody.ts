@@ -17,4 +17,9 @@ export interface CreateMenuItemBody {
   allergens: string[];
   available: boolean;
   prepTime?: string | null;
+  minimumOrderQty?: number;
+  tier2Qty?: number | null;
+  tier2Price?: number | null;
+  tier3Qty?: number | null;
+  tier3Price?: number | null;
 }

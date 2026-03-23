@@ -20,5 +20,15 @@ export interface MenuItem {
   allergens: string[];
   available: boolean;
   prepTime?: string | null;
+  /** Minimum quantity required to add this item to an order */
+  minimumOrderQty: number;
+  /** Minimum quantity to unlock tier 2 pricing */
+  tier2Qty?: number | null;
+  /** Price per unit at tier 2 */
+  tier2Price?: number | null;
+  /** Minimum quantity to unlock tier 3 pricing */
+  tier3Qty?: number | null;
+  /** Price per unit at tier 3 */
+  tier3Price?: number | null;
   createdAt: Date;
 }

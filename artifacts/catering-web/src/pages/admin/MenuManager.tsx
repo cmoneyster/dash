@@ -176,6 +176,11 @@ export default function MenuManager() {
       allergens: data.allergens
         ? data.allergens.split(",").map((s: string) => s.trim()).filter(Boolean)
         : [],
+      minimumOrderQty: data.minimumOrderQty ? parseInt(data.minimumOrderQty, 10) : 1,
+      tier2Qty: data.tier2Qty ? parseInt(data.tier2Qty, 10) : null,
+      tier2Price: data.tier2Price ? parseFloat(data.tier2Price) : null,
+      tier3Qty: data.tier3Qty ? parseInt(data.tier3Qty, 10) : null,
+      tier3Price: data.tier3Price ? parseFloat(data.tier3Price) : null,
     };
     if (editingItem) {
       updateMut.mutate({ id: editingItem.id, data: payload });
@@ -375,6 +380,33 @@ export default function MenuManager() {
                 <div>
                   <label className="block text-sm font-semibold mb-1">Allergens (comma separated)</label>
                   <input {...register("allergens")} placeholder="Nuts, Dairy" className="w-full px-4 py-2 border rounded-xl" />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Minimum Order Quantity</label>
+                  <input {...register("minimumOrderQty")} type="number" min="1" defaultValue={1} className="w-full px-4 py-2 border rounded-xl" />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold">Volume Pricing Tiers <span className="font-normal text-muted-foreground text-xs">(optional)</span></label>
+                  <div className="grid grid-cols-2 gap-3 p-4 bg-secondary/50 rounded-xl">
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Tier 2 — Min. Qty</label>
+                      <input {...register("tier2Qty")} type="number" min="1" placeholder="e.g. 5" className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Tier 2 — Price / ea</label>
+                      <input {...register("tier2Price")} type="number" step="0.01" min="0" placeholder="e.g. 9.50" className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Tier 3 — Min. Qty</label>
+                      <input {...register("tier3Qty")} type="number" min="1" placeholder="e.g. 10" className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Tier 3 — Price / ea</label>
+                      <input {...register("tier3Price")} type="number" step="0.01" min="0" placeholder="e.g. 8.50" className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">
