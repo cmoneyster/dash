@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Loader2 } from "lucide-react";
-import { getApiBaseUrl } from "@/lib/api";
+import { setAuthTokenGetter } from "@workspace/api-client-react";
 
 export function getAdminToken(): string | null {
   return localStorage.getItem("admin_token");
@@ -9,6 +9,7 @@ export function getAdminToken(): string | null {
 
 export function clearAdminToken(): void {
   localStorage.removeItem("admin_token");
+  setAuthTokenGetter(null);
 }
 
 export function AdminGuard({ children }: { children: React.ReactNode }) {
@@ -22,11 +23,12 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    fetch(`${getApiBaseUrl()}/api/admin/verify`, {
+    fetch("/api/admin/verify", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
         if (res.ok) {
+          setAuthTokenGetter(() => token);
           setVerified(true);
         } else {
           clearAdminToken();
