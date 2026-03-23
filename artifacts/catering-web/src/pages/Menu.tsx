@@ -66,7 +66,14 @@ export default function Menu() {
     }
   };
 
-  const categories = ["", "Appetizers", "Mains", "Sides", "Desserts", "Beverages"];
+  const categories = [
+    { value: "", label: "All Items" },
+    { value: "Small Bites - Savory", label: "Small Bites - Savory" },
+    { value: "Small Bites - Sweet", label: "Small Bites - Sweet" },
+    { value: "Entrées - Meat", label: "Entrées - Meat" },
+    { value: "Entrées - Seafood", label: "Entrées - Seafood" },
+    { value: "Entrées - Noodles & Rice", label: "Noodles & Rice" },
+  ];
 
   return (
     <Layout>
@@ -85,15 +92,15 @@ export default function Menu() {
           <div className="flex flex-wrap gap-2 justify-center">
             {categories.map(c => (
               <button
-                key={c}
-                onClick={() => setCategory(c)}
+                key={c.value}
+                onClick={() => setCategory(c.value)}
                 className={`px-5 py-2 rounded-full font-medium text-sm transition-all ${
-                  category === c 
-                    ? "bg-primary text-primary-foreground shadow-md" 
+                  category === c.value
+                    ? "bg-primary text-primary-foreground shadow-md"
                     : "bg-white border border-border text-foreground hover:border-primary/50"
                 }`}
               >
-                {c || "All Items"}
+                {c.label}
               </button>
             ))}
           </div>
