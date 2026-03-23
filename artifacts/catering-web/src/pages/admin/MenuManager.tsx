@@ -125,6 +125,25 @@ export default function MenuManager() {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [isNewCategory, setIsNewCategory] = useState(false);
 
+  type InlineEdit = { name: string; description: string; price: string; available: boolean };
+  const [localEdits, setLocalEdits] = useState<Record<number, InlineEdit>>({});
+  const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+
+  const dirtyIds = Object.keys(localEdits).map(Number);
+  const hasDirty = dirtyIds.length > 0;
+
+  function patchEdit(id: number, item: any, patch: Partial<InlineEdit>) {
+    setLocalEdits(prev => {
+      const base: InlineEdit = prev[id] ?? {
+        name: item.name,
+        description: item.description,
+        price: String(item.price),
+        available: item.available,
+      };
+      return { ...prev, [id]: { ...base, ...patch } };
+    });
+  }
+
   const existingCategories = Array.from(
     new Set((items ?? []).map((item: any) => item.category as string))
   ).sort();
@@ -142,6 +161,45 @@ export default function MenuManager() {
       setIsDialogOpen(false);
     },
   });
+
+  const inlineUpdateMut = useUpdateMenuItem({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getAdminListMenuItemsQueryKey() });
+    },
+  });
+
+  async function saveAllEdits() {
+    const ids = [...dirtyIds];
+    setSavingIds(new Set(ids));
+    await Promise.all(
+      ids.map(id => {
+        const edit = localEdits[id];
+        const original = items?.find((it: any) => it.id === id);
+        if (!original || !edit) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          inlineUpdateMut.mutate(
+            {
+              id,
+              data: {
+                ...original,
+                name: edit.name,
+                description: edit.description,
+                price: parseFloat(edit.price),
+                available: edit.available,
+                allergens: original.allergens ?? [],
+                servingSize: original.servingSize,
+                unit: original.unit,
+                category: original.category,
+              },
+            },
+            { onSettled: () => resolve() }
+          );
+        });
+      })
+    );
+    setLocalEdits({});
+    setSavingIds(new Set());
+  }
 
   const deleteMut = useDeleteMenuItem({
     onSuccess: () => {
@@ -214,11 +272,11 @@ export default function MenuManager() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-secondary/50 text-sm uppercase tracking-wider text-muted-foreground">
-                <th className="px-6 py-4 font-semibold">Item</th>
-                <th className="px-6 py-4 font-semibold">Category</th>
-                <th className="px-6 py-4 font-semibold">Price</th>
-                <th className="px-6 py-4 font-semibold">Status</th>
-                <th className="px-6 py-4 font-semibold text-right">Actions</th>
+                <th className="px-6 py-4 font-semibold w-16"></th>
+                <th className="px-3 py-4 font-semibold">Name &amp; Description</th>
+                <th className="px-3 py-4 font-semibold w-28">Price</th>
+                <th className="px-3 py-4 font-semibold w-28">Active</th>
+                <th className="px-6 py-4 font-semibold text-right w-28">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -227,45 +285,105 @@ export default function MenuManager() {
                   <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                 </td></tr>
               )}
-              {items?.map((item) => (
-                <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
+              {items?.map((item) => {
+                const edit = localEdits[item.id];
+                const isDirty = !!edit;
+                const isSaving = savingIds.has(item.id);
+                const cur = edit ?? { name: item.name, description: item.description, price: String(item.price), available: item.available };
+
+                return (
+                  <tr key={item.id} className={`transition-colors ${isDirty ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}>
+                    <td className="px-6 py-3">
                       <div className="w-10 h-10 rounded-lg bg-secondary overflow-hidden shrink-0">
                         {item.imageUrl
                           ? <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
                           : <ImageIcon className="w-5 h-5 m-auto text-muted-foreground mt-2.5" />}
                       </div>
-                      <div>
-                        <p className="font-bold">{item.name}</p>
-                        <p className="text-xs text-muted-foreground truncate w-48">{item.description}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <input
+                        value={cur.name}
+                        onChange={e => patchEdit(item.id, item, { name: e.target.value })}
+                        disabled={isSaving}
+                        className="w-full font-bold text-sm px-2 py-1 rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all mb-1"
+                      />
+                      <input
+                        value={cur.description}
+                        onChange={e => patchEdit(item.id, item, { description: e.target.value })}
+                        disabled={isSaving}
+                        className="w-full text-xs text-muted-foreground px-2 py-1 rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
+                      />
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={cur.price}
+                          onChange={e => patchEdit(item.id, item, { price: e.target.value })}
+                          disabled={isSaving}
+                          className="w-full pl-6 pr-2 py-1.5 text-sm font-semibold rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
+                        />
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm">{item.category}</td>
-                  <td className="px-6 py-4 font-semibold">{formatCurrency(item.price)}</td>
-                  <td className="px-6 py-4">
-                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full ${item.available ? "bg-emerald-100 text-emerald-700" : "bg-destructive/10 text-destructive"}`}>
-                      {item.available ? "Active" : "Hidden"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => openEdit(item)} className="p-2 text-muted-foreground hover:text-primary transition-colors inline-block">
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => { if (confirm("Delete item?")) deleteMut.mutate({ id: item.id }); }}
-                      className="p-2 text-muted-foreground hover:text-destructive transition-colors inline-block"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-3 py-3">
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => patchEdit(item.id, item, { available: !cur.available })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${cur.available ? "bg-emerald-500" : "bg-muted"}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cur.available ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
+                      <p className="text-[10px] text-muted-foreground mt-1">{cur.available ? "Active" : "Hidden"}</p>
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      {isSaving ? (
+                        <Loader2 className="w-4 h-4 animate-spin ml-auto text-muted-foreground" />
+                      ) : (
+                        <>
+                          <button onClick={() => openEdit(item)} title="Full edit" className="p-2 text-muted-foreground hover:text-primary transition-colors inline-block">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => { if (confirm("Delete item?")) deleteMut.mutate({ id: item.id }); }}
+                            className="p-2 text-muted-foreground hover:text-destructive transition-colors inline-block"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
+
+      {hasDirty && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-foreground text-background px-6 py-3.5 rounded-2xl shadow-2xl shadow-black/30 animate-in slide-in-from-bottom-4 duration-200">
+          <span className="font-semibold text-sm">
+            {dirtyIds.length} unsaved {dirtyIds.length === 1 ? "change" : "changes"}
+          </span>
+          <button
+            onClick={() => setLocalEdits({})}
+            className="text-sm text-background/60 hover:text-background transition-colors"
+          >
+            Discard
+          </button>
+          <button
+            onClick={saveAllEdits}
+            className="px-4 py-2 bg-primary text-primary-foreground font-bold text-sm rounded-xl hover:bg-primary/90 transition-colors flex items-center gap-2"
+          >
+            {savingIds.size > 0 ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Save {dirtyIds.length === 1 ? "change" : "all"}
+          </button>
+        </div>
+      )}
 
       {isDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/20 backdrop-blur-sm">
