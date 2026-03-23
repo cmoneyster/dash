@@ -37,6 +37,8 @@ export interface MenuItem {
   tier3Qty?: number | null;
   /** Price per unit at tier 3 */
   tier3Price?: number | null;
+  /** Whether this item is shown on the on-site event ordering page */
+  eventActive?: boolean;
   createdAt: string;
 }
 
@@ -56,6 +58,7 @@ export interface CreateMenuItemBody {
   tier2Price?: number | null;
   tier3Qty?: number | null;
   tier3Price?: number | null;
+  eventActive?: boolean;
 }
 
 export interface UpdateMenuItemBody {
@@ -74,6 +77,7 @@ export interface UpdateMenuItemBody {
   tier2Price?: number | null;
   tier3Qty?: number | null;
   tier3Price?: number | null;
+  eventActive?: boolean;
 }
 
 export interface BlackoutDate {

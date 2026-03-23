@@ -50,6 +50,10 @@ export const ListMenuItemsResponseItem = zod.object({
     .nullish()
     .describe("Minimum quantity to unlock tier 3 pricing"),
   tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+  eventActive: zod
+    .boolean()
+    .optional()
+    .describe("Whether this item is shown on the on-site event ordering page"),
   createdAt: zod.date(),
 });
 export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
@@ -89,6 +93,10 @@ export const GetMenuItemResponse = zod.object({
     .nullish()
     .describe("Minimum quantity to unlock tier 3 pricing"),
   tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+  eventActive: zod
+    .boolean()
+    .optional()
+    .describe("Whether this item is shown on the on-site event ordering page"),
   createdAt: zod.date(),
 });
 
@@ -123,6 +131,10 @@ export const AdminListMenuItemsResponseItem = zod.object({
     .nullish()
     .describe("Minimum quantity to unlock tier 3 pricing"),
   tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+  eventActive: zod
+    .boolean()
+    .optional()
+    .describe("Whether this item is shown on the on-site event ordering page"),
   createdAt: zod.date(),
 });
 export const AdminListMenuItemsResponse = zod.array(
@@ -148,6 +160,7 @@ export const CreateMenuItemBody = zod.object({
   tier2Price: zod.number().nullish(),
   tier3Qty: zod.number().nullish(),
   tier3Price: zod.number().nullish(),
+  eventActive: zod.boolean().optional(),
 });
 
 /**
@@ -173,6 +186,7 @@ export const UpdateMenuItemBody = zod.object({
   tier2Price: zod.number().nullish(),
   tier3Qty: zod.number().nullish(),
   tier3Price: zod.number().nullish(),
+  eventActive: zod.boolean().optional(),
 });
 
 export const updateMenuItemResponseMinimumOrderQtyDefault = 1;
@@ -203,6 +217,10 @@ export const UpdateMenuItemResponse = zod.object({
     .nullish()
     .describe("Minimum quantity to unlock tier 3 pricing"),
   tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+  eventActive: zod
+    .boolean()
+    .optional()
+    .describe("Whether this item is shown on the on-site event ordering page"),
   createdAt: zod.date(),
 });
 
@@ -296,6 +314,12 @@ export const GetCartResponse = zod.object({
           .nullish()
           .describe("Minimum quantity to unlock tier 3 pricing"),
         tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+        eventActive: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the on-site event ordering page",
+          ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -347,6 +371,12 @@ export const AddToCartResponse = zod.object({
           .nullish()
           .describe("Minimum quantity to unlock tier 3 pricing"),
         tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+        eventActive: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the on-site event ordering page",
+          ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -403,6 +433,12 @@ export const UpdateCartItemResponse = zod.object({
           .nullish()
           .describe("Minimum quantity to unlock tier 3 pricing"),
         tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+        eventActive: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the on-site event ordering page",
+          ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -454,6 +490,12 @@ export const RemoveFromCartResponse = zod.object({
           .nullish()
           .describe("Minimum quantity to unlock tier 3 pricing"),
         tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+        eventActive: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the on-site event ordering page",
+          ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -503,6 +545,12 @@ export const GetPlanResponse = zod.object({
           .nullish()
           .describe("Minimum quantity to unlock tier 3 pricing"),
         tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+        eventActive: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the on-site event ordering page",
+          ),
         createdAt: zod.date(),
       }),
     }),
@@ -551,6 +599,12 @@ export const AddToPlanResponse = zod.object({
           .nullish()
           .describe("Minimum quantity to unlock tier 3 pricing"),
         tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+        eventActive: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the on-site event ordering page",
+          ),
         createdAt: zod.date(),
       }),
     }),
@@ -600,6 +654,12 @@ export const RemoveFromPlanResponse = zod.object({
           .nullish()
           .describe("Minimum quantity to unlock tier 3 pricing"),
         tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+        eventActive: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the on-site event ordering page",
+          ),
         createdAt: zod.date(),
       }),
     }),
@@ -763,6 +823,12 @@ export const SuggestMenuItemsResponse = zod.object({
           .nullish()
           .describe("Minimum quantity to unlock tier 3 pricing"),
         tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+        eventActive: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the on-site event ordering page",
+          ),
         createdAt: zod.date(),
       }),
       recommendedQuantity: zod.number(),

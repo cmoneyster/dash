@@ -22,4 +22,5 @@ export interface UpdateMenuItemBody {
   tier2Price?: number | null;
   tier3Qty?: number | null;
   tier3Price?: number | null;
+  eventActive?: boolean;
 }

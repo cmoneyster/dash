@@ -666,6 +666,9 @@ components:
           type: number
           nullable: true
           description: Price per unit at tier 3
+        eventActive:
+          type: boolean
+          description: Whether this item is shown on the on-site event ordering page
         createdAt:
           type: string
           format: date-time
@@ -723,6 +726,8 @@ components:
         tier3Price:
           type: number
           nullable: true
+        eventActive:
+          type: boolean
       required:
         - name
         - description
@@ -774,6 +779,8 @@ components:
         tier3Price:
           type: number
           nullable: true
+        eventActive:
+          type: boolean
 
     BlackoutDate:
       type: object
