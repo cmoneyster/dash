@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2 } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -7,6 +7,7 @@ const POLL_INTERVAL = 6000;
 const LS_KEY = "kitchen_item_checks";
 
 type OrderItem = { itemId: number; name: string; quantity: number; price: number };
+type StockItem = { id: number; name: string; category: string; eventStock: number | null; imageUrl: string | null };
 type EventOrder = {
   id: number;
   guestName: string;
@@ -75,6 +76,56 @@ export default function KitchenDisplay() {
   const [updating, setUpdating] = useState<Set<number>>(new Set());
   const prevOrderIds = useRef<Set<number>>(new Set());
   const [showDone, setShowDone] = useState(false);
+  const [view, setView] = useState<"orders" | "stock">("orders");
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [stockEdits, setStockEdits] = useState<Record<number, string>>({});
+  const [stockSaving, setStockSaving] = useState<Set<number>>(new Set());
+
+  const fetchStock = useCallback(async (pwd: string) => {
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/stock`, {
+        headers: { Authorization: `Bearer ${pwd}` },
+      });
+      if (res.ok) {
+        const data: StockItem[] = await res.json();
+        setStockItems(data);
+        setStockEdits(prev => {
+          const next = { ...prev };
+          data.forEach(item => {
+            if (!(item.id in next)) {
+              next[item.id] = item.eventStock === null ? "" : String(item.eventStock);
+            }
+          });
+          return next;
+        });
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (authedPassword && view === "stock") fetchStock(authedPassword);
+  }, [authedPassword, view, fetchStock]);
+
+  async function saveStockItem(itemId: number, value: string | null) {
+    if (!authedPassword) return;
+    const stock = value === null || value.trim() === "" ? null : parseInt(value);
+    if (value !== null && value.trim() !== "" && (isNaN(stock!) || stock! < 0)) return;
+    setStockSaving(s => new Set([...s, itemId]));
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/stock/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
+        body: JSON.stringify({ eventStock: stock ?? null }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setStockItems(prev => prev.map(i => i.id === itemId ? { ...i, eventStock: updated.eventStock } : i));
+        setStockEdits(prev => ({ ...prev, [itemId]: updated.eventStock === null ? "" : String(updated.eventStock) }));
+      }
+    } finally {
+      setStockSaving(s => { const n = new Set(s); n.delete(itemId); return n; });
+    }
+  }
 
   // checkedItems: orderId → Set of itemIds that have been individually marked
   const [checkedItems, setCheckedItems] = useState<Record<number, Set<number>>>(() => {
@@ -288,65 +339,161 @@ export default function KitchenDisplay() {
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               Live · {activeOrders.length} active
             </div>
-            <button onClick={() => fetchOrders(authedPassword!)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-              <RefreshCw className="w-4 h-4 text-white/50" />
-            </button>
-            <button
-              onClick={() => setShowDone(s => !s)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${showDone ? "bg-white/20 text-white" : "bg-white/10 text-white/60 hover:bg-white/15"}`}
-            >
-              {showDone ? "Hide done" : `Show done (${doneOrders.length})`}
-            </button>
+            <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1">
+              <button
+                onClick={() => setView("orders")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${view === "orders" ? "bg-white text-black" : "text-white/60 hover:text-white"}`}
+              >
+                <ChefHat className="w-3.5 h-3.5" /> Orders
+              </button>
+              <button
+                onClick={() => setView("stock")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${view === "stock" ? "bg-white text-black" : "text-white/60 hover:text-white"}`}
+              >
+                <Package className="w-3.5 h-3.5" /> Stock
+              </button>
+            </div>
+            {view === "orders" && (
+              <>
+                <button onClick={() => fetchOrders(authedPassword!)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                  <RefreshCw className="w-4 h-4 text-white/50" />
+                </button>
+                <button
+                  onClick={() => setShowDone(s => !s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${showDone ? "bg-white/20 text-white" : "bg-white/10 text-white/60 hover:bg-white/15"}`}
+                >
+                  {showDone ? "Hide done" : `Show done (${doneOrders.length})`}
+                </button>
+              </>
+            )}
+            {view === "stock" && (
+              <button onClick={() => authedPassword && fetchStock(authedPassword)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                <RefreshCw className="w-4 h-4 text-white/50" />
+              </button>
+            )}
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {orders.length === 0 ? (
-          <div className="text-center py-24 text-white/30">
-            <ChefHat className="w-12 h-12 mx-auto mb-4 opacity-30" />
-            <p className="text-xl font-semibold">No orders yet</p>
-            <p className="text-sm mt-1">Orders placed at the event will appear here in real-time</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {(["pending", "preparing", "ready"] as const).map(status => (
-              <div key={status}>
-                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider mb-4 border ${STATUS_CONFIG[status].color}`}>
-                  <span className={`w-2 h-2 rounded-full ${status === "pending" ? "bg-red-500 animate-pulse" : status === "preparing" ? "bg-amber-500" : "bg-emerald-500"}`} />
-                  {STATUS_CONFIG[status].label} ({grouped[status]?.length ?? 0})
-                </div>
-                <div className="space-y-4">
-                  {grouped[status]?.map(order => (
-                    <OrderCard
-                      key={order.id}
-                      order={order}
-                      isNew={newOrderIds.has(order.id)}
-                      isUpdating={updating.has(order.id)}
-                      checkedItemIds={checkedItems[order.id] ?? new Set()}
-                      onToggleItem={(itemId) => toggleItemCheck(order.id, itemId, order.items.map(i => i.itemId))}
-                      onAdvance={() => advanceStatus(order)}
-                      onRevert={() => revertStatus(order)}
-                    />
-                  ))}
-                  {!grouped[status]?.length && (
-                    <div className="text-center py-8 text-white/20 text-sm border border-white/5 rounded-2xl">Empty</div>
-                  )}
-                </div>
+        {view === "stock" && (
+          <div className="max-w-2xl mx-auto">
+            <p className="text-white/40 text-sm mb-6">Set stock to a number to limit how many can be ordered. Leave blank (∞) for unlimited.</p>
+            {stockItems.length === 0 ? (
+              <div className="text-center py-16 text-white/30">
+                <Package className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p className="font-semibold">No event-active items</p>
+                <p className="text-xs mt-1">Enable items for event ordering in the admin menu</p>
               </div>
-            ))}
+            ) : (
+              <div className="space-y-2">
+                {Array.from(new Set(stockItems.map(i => i.category))).map(cat => (
+                  <div key={cat}>
+                    <p className="text-white/30 text-xs font-bold uppercase tracking-wider mt-4 mb-2">{cat}</p>
+                    {stockItems.filter(i => i.category === cat).map(item => {
+                      const edit = stockEdits[item.id] ?? (item.eventStock === null ? "" : String(item.eventStock));
+                      const saving = stockSaving.has(item.id);
+                      const isUnlimited = item.eventStock === null;
+                      const isSoldOut = item.eventStock === 0;
+                      return (
+                        <div key={item.id} className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
+                          {item.imageUrl && (
+                            <img src={item.imageUrl} alt={item.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-white truncate">{item.name}</p>
+                            <p className={`text-xs font-medium mt-0.5 ${isSoldOut ? "text-red-400" : isUnlimited ? "text-emerald-400" : item.eventStock! <= 5 ? "text-amber-400" : "text-white/40"}`}>
+                              {isSoldOut ? "Sold out" : isUnlimited ? "Unlimited" : `${item.eventStock} remaining`}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => saveStockItem(item.id, String(Math.max(0, (item.eventStock ?? 0) - 1)))}
+                              disabled={saving || isUnlimited}
+                              className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-bold disabled:opacity-30 transition-colors"
+                            >−</button>
+                            <input
+                              type="number"
+                              min="0"
+                              value={edit}
+                              placeholder="∞"
+                              onChange={e => setStockEdits(prev => ({ ...prev, [item.id]: e.target.value }))}
+                              onBlur={() => saveStockItem(item.id, edit || null)}
+                              onKeyDown={e => { if (e.key === "Enter") saveStockItem(item.id, edit || null); }}
+                              className="w-16 text-center bg-white/10 border border-white/20 rounded-lg px-2 py-1.5 text-sm font-bold text-white placeholder:text-white/30 outline-none focus:border-white/40"
+                            />
+                            <button
+                              onClick={() => saveStockItem(item.id, String((item.eventStock ?? 0) + 1))}
+                              disabled={saving}
+                              className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-bold disabled:opacity-30 transition-colors"
+                            >+</button>
+                            <button
+                              onClick={() => saveStockItem(item.id, null)}
+                              disabled={saving}
+                              title="Set unlimited"
+                              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${isUnlimited ? "bg-emerald-500/30 text-emerald-400" : "bg-white/10 hover:bg-white/20 text-white/50"}`}
+                            >
+                              <Infinity className="w-4 h-4" />
+                            </button>
+                            {saving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
-
-        {showDone && doneOrders.length > 0 && (
-          <div className="mt-8">
-            <h3 className="text-white/40 text-sm font-semibold uppercase tracking-wider mb-3">Completed</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {doneOrders.map(order => (
-                <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} />
-              ))}
-            </div>
-          </div>
+        {view === "orders" && (
+          <>
+            {orders.length === 0 ? (
+              <div className="text-center py-24 text-white/30">
+                <ChefHat className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                <p className="text-xl font-semibold">No orders yet</p>
+                <p className="text-sm mt-1">Orders placed at the event will appear here in real-time</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {(["pending", "preparing", "ready"] as const).map(status => (
+                  <div key={status}>
+                    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider mb-4 border ${STATUS_CONFIG[status].color}`}>
+                      <span className={`w-2 h-2 rounded-full ${status === "pending" ? "bg-red-500 animate-pulse" : status === "preparing" ? "bg-amber-500" : "bg-emerald-500"}`} />
+                      {STATUS_CONFIG[status].label} ({grouped[status]?.length ?? 0})
+                    </div>
+                    <div className="space-y-4">
+                      {grouped[status]?.map(order => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isNew={newOrderIds.has(order.id)}
+                          isUpdating={updating.has(order.id)}
+                          checkedItemIds={checkedItems[order.id] ?? new Set()}
+                          onToggleItem={(itemId) => toggleItemCheck(order.id, itemId, order.items.map(i => i.itemId))}
+                          onAdvance={() => advanceStatus(order)}
+                          onRevert={() => revertStatus(order)}
+                        />
+                      ))}
+                      {!grouped[status]?.length && (
+                        <div className="text-center py-8 text-white/20 text-sm border border-white/5 rounded-2xl">Empty</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {showDone && doneOrders.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-white/40 text-sm font-semibold uppercase tracking-wider mb-3">Completed</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {doneOrders.map(order => (
+                    <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

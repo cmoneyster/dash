@@ -13,6 +13,7 @@ type MenuItem = {
   servingSize: number;
   unit: string;
   imageUrl: string | null;
+  eventStock: number | null;
 };
 
 function formatCurrency(n: number) {
@@ -77,8 +78,9 @@ export default function EventOrder() {
     }
   }
 
-  function setQty(id: number, qty: number) {
-    setQuantities(prev => ({ ...prev, [id]: Math.max(0, qty) }));
+  function setQty(id: number, qty: number, stock?: number | null) {
+    const max = (stock != null) ? stock : Infinity;
+    setQuantities(prev => ({ ...prev, [id]: Math.max(0, Math.min(qty, max)) }));
   }
 
   const orderItems = menu?.filter(m => quantities[m.id] > 0).map(m => ({
@@ -109,6 +111,19 @@ export default function EventOrder() {
       if (res.ok) {
         const order = await res.json();
         setSubmittedOrderId(order.id);
+        // Refresh menu to get updated stock counts
+        fetch(`${BASE}/api/event-ordering/menu`)
+          .then(r => r.json())
+          .then(data => setMenu(data))
+          .catch(() => {});
+      } else if (res.status === 409) {
+        const data = await res.json();
+        alert(data.error ?? "An item ran out of stock. Please adjust your order.");
+        // Refresh menu to get updated stock counts
+        fetch(`${BASE}/api/event-ordering/menu`)
+          .then(r => r.json())
+          .then(data => setMenu(data))
+          .catch(() => {});
       } else {
         alert("Error placing order. Please try again.");
       }
@@ -240,35 +255,51 @@ export default function EventOrder() {
               <div key={cat}>
                 <h2 className="font-display font-bold text-lg mb-3 pb-2 border-b border-border">{cat}</h2>
                 <div className="space-y-3">
-                  {menu.filter(i => i.category === cat).map(item => (
-                    <div key={item.id} className="flex gap-4 items-center bg-card border border-border rounded-2xl p-4">
-                      {item.imageUrl && (
-                        <img src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-xl object-cover shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">Serves {item.servingSize} · {formatCurrency(item.price)}/{item.unit}</p>
+                  {menu.filter(i => i.category === cat).map(item => {
+                    const stock = item.eventStock;
+                    const soldOut = stock !== null && stock === 0;
+                    const qty = quantities[item.id] ?? 0;
+                    const atMax = stock !== null && qty >= stock;
+                    const low = stock !== null && stock > 0 && stock <= 5;
+                    return (
+                      <div key={item.id} className={`flex gap-4 items-center bg-card border rounded-2xl p-4 transition-opacity ${soldOut ? "opacity-50 border-border" : "border-border"}`}>
+                        {item.imageUrl && (
+                          <img src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-xl object-cover shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-bold text-sm">{item.name}</p>
+                            {soldOut && (
+                              <span className="text-[10px] font-bold bg-destructive/10 text-destructive px-1.5 py-0.5 rounded-full">Sold Out</span>
+                            )}
+                            {low && !soldOut && (
+                              <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{stock} left</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">Serves {item.servingSize} · {formatCurrency(item.price)}/{item.unit}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setQty(item.id, qty - 1, stock)}
+                            disabled={!qty || soldOut}
+                            className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary hover:bg-border transition-colors disabled:opacity-30"
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
+                          <span className="w-6 text-center font-bold text-sm">{qty}</span>
+                          <button
+                            type="button"
+                            onClick={() => setQty(item.id, qty + 1, stock)}
+                            disabled={soldOut || atMax}
+                            className="w-8 h-8 flex items-center justify-center rounded-full bg-foreground text-background hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-30"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setQty(item.id, (quantities[item.id] ?? 0) - 1)}
-                          disabled={!quantities[item.id]}
-                          className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary hover:bg-border transition-colors disabled:opacity-30"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <span className="w-6 text-center font-bold text-sm">{quantities[item.id] ?? 0}</span>
-                        <button
-                          type="button"
-                          onClick={() => setQty(item.id, (quantities[item.id] ?? 0) + 1)}
-                          className="w-8 h-8 flex items-center justify-center rounded-full bg-foreground text-background hover:bg-primary hover:text-primary-foreground transition-colors"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

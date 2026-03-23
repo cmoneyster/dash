@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { menuItemsTable, eventOrdersTable, eventSettingsTable } from "@workspace/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gte, sql } from "drizzle-orm";
 import { sendOrderConfirmation, sendOrderReady } from "../lib/sms";
 
 const router: IRouter = Router();
@@ -71,21 +71,48 @@ router.get("/event-ordering/menu", async (req, res) => {
 
 router.post("/event-ordering/orders", verifyEventPassword, async (req, res) => {
   try {
-    const { guestName, tableNumber, phoneNumber, items, statusUrlBase } = req.body;
+    const { guestName, phoneNumber, items, statusUrlBase } = req.body;
     if (!guestName || !items?.length) {
       res.status(400).json({ error: "guestName and items are required" });
       return;
     }
-    const [order] = await db
-      .insert(eventOrdersTable)
-      .values({
-        guestName,
-        tableNumber: tableNumber || null,
-        phoneNumber: phoneNumber?.trim() || null,
-        items,
-        status: "pending",
-      })
-      .returning();
+
+    type OrderItem = { itemId: number; name: string; quantity: number; price: number };
+
+    const order = await db.transaction(async (tx) => {
+      // Check and atomically decrement stock for each item
+      for (const item of items as OrderItem[]) {
+        const [row] = await tx
+          .select({ id: menuItemsTable.id, name: menuItemsTable.name, eventStock: menuItemsTable.eventStock })
+          .from(menuItemsTable)
+          .where(eq(menuItemsTable.id, item.itemId))
+          .for("update");
+        if (!row) throw Object.assign(new Error(`Item ${item.itemId} not found`), { status: 404 });
+        if (row.eventStock !== null) {
+          if (row.eventStock < item.quantity) {
+            throw Object.assign(
+              new Error(`Only ${row.eventStock} of "${row.name}" remaining`),
+              { status: 409, remaining: row.eventStock, itemId: item.itemId }
+            );
+          }
+          await tx
+            .update(menuItemsTable)
+            .set({ eventStock: sql`event_stock - ${item.quantity}` })
+            .where(eq(menuItemsTable.id, item.itemId));
+        }
+      }
+
+      const [created] = await tx
+        .insert(eventOrdersTable)
+        .values({
+          guestName,
+          phoneNumber: phoneNumber?.trim() || null,
+          items,
+          status: "pending",
+        })
+        .returning();
+      return created;
+    });
 
     // Fire-and-forget SMS confirmation
     if (order.phoneNumber) {
@@ -106,7 +133,11 @@ router.post("/event-ordering/orders", verifyEventPassword, async (req, res) => {
     }
 
     res.status(201).json(order);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.status === 409) {
+      res.status(409).json({ error: err.message, remaining: err.remaining, itemId: err.itemId });
+      return;
+    }
     req.log.error({ err }, "Error creating event order");
     res.status(500).json({ error: "Failed to create event order" });
   }
@@ -179,6 +210,45 @@ router.patch("/event-ordering/orders/:id/status", verifyEventPassword, async (re
   } catch (err) {
     req.log.error({ err }, "Error updating event order status");
     res.status(500).json({ error: "Failed to update order status" });
+  }
+});
+
+// Stock management — authenticated with event password
+router.get("/event-ordering/stock", verifyEventPassword, async (req, res) => {
+  try {
+    const items = await db
+      .select({
+        id: menuItemsTable.id,
+        name: menuItemsTable.name,
+        category: menuItemsTable.category,
+        eventStock: menuItemsTable.eventStock,
+        imageUrl: menuItemsTable.imageUrl,
+      })
+      .from(menuItemsTable)
+      .where(eq(menuItemsTable.eventActive, true))
+      .orderBy(menuItemsTable.category, menuItemsTable.name);
+    res.json(items);
+  } catch (err) {
+    req.log.error({ err }, "Error fetching event stock");
+    res.status(500).json({ error: "Failed to fetch stock" });
+  }
+});
+
+router.patch("/event-ordering/stock/:itemId", verifyEventPassword, async (req, res) => {
+  try {
+    const itemId = parseInt(req.params.itemId);
+    const { eventStock } = req.body as { eventStock: number | null };
+    const stock = eventStock === null ? null : Math.max(0, parseInt(String(eventStock)));
+    const [item] = await db
+      .update(menuItemsTable)
+      .set({ eventStock: stock })
+      .where(and(eq(menuItemsTable.id, itemId), eq(menuItemsTable.eventActive, true)))
+      .returning({ id: menuItemsTable.id, name: menuItemsTable.name, eventStock: menuItemsTable.eventStock });
+    if (!item) return res.status(404).json({ error: "Item not found or not event-active" });
+    res.json(item);
+  } catch (err) {
+    req.log.error({ err }, "Error updating event stock");
+    res.status(500).json({ error: "Failed to update stock" });
   }
 });
 

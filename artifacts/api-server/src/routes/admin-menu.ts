@@ -17,7 +17,7 @@ router.get("/admin/menu", async (req, res) => {
 
 router.post("/admin/menu", async (req, res) => {
   try {
-    const { name, description, category, price, servingSize, unit, imageUrl, allergens, available, prepTime, eventActive } = req.body;
+    const { name, description, category, price, servingSize, unit, imageUrl, allergens, available, prepTime, eventActive, eventStock } = req.body;
     const [item] = await db.insert(menuItemsTable).values({
       name,
       description,
@@ -30,6 +30,7 @@ router.post("/admin/menu", async (req, res) => {
       available: available ?? true,
       prepTime: prepTime ?? null,
       eventActive: eventActive ?? false,
+      eventStock: eventStock != null ? parseInt(String(eventStock)) : null,
     }).returning();
     res.status(201).json({ ...item, price: parseFloat(item.price), allergens: item.allergens ?? [] });
   } catch (err) {
@@ -41,7 +42,7 @@ router.post("/admin/menu", async (req, res) => {
 router.put("/admin/menu/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, description, category, price, servingSize, unit, imageUrl, allergens, available, prepTime, eventActive } = req.body;
+    const { name, description, category, price, servingSize, unit, imageUrl, allergens, available, prepTime, eventActive, eventStock } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
@@ -54,6 +55,7 @@ router.put("/admin/menu/:id", async (req, res) => {
     if (available !== undefined) updates.available = available;
     if (prepTime !== undefined) updates.prepTime = prepTime;
     if (eventActive !== undefined) updates.eventActive = eventActive;
+    if (eventStock !== undefined) updates.eventStock = eventStock === null ? null : parseInt(String(eventStock));
 
     const [item] = await db.update(menuItemsTable).set(updates).where(eq(menuItemsTable.id, id)).returning();
     if (!item) return res.status(404).json({ error: "Menu item not found" });
