@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2 } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -104,6 +104,13 @@ export default function KitchenDisplay() {
       localStorage.setItem("kitchen_sound", next ? "on" : "off");
       return next;
     });
+  }
+
+  function signOut() {
+    sessionStorage.removeItem(SESSION_KEY);
+    setAuthedPassword(null);
+    setOrders([]);
+    setLastFetch(null);
   }
 
   // Session prompt — shown when event name has changed since last visit
@@ -230,6 +237,12 @@ export default function KitchenDisplay() {
       });
       // 304 means no change — update timestamp but don't parse body
       if (res.status === 304) { setLastFetch(new Date()); return; }
+      // 401 means the stored password is invalid — clear session and return to login
+      if (res.status === 401) {
+        sessionStorage.removeItem(SESSION_KEY);
+        setAuthedPassword(null);
+        return;
+      }
       if (!res.ok) return;
       const data: EventOrder[] = await res.json();
       const incoming = new Set(data.map(o => o.id));
@@ -466,6 +479,13 @@ export default function KitchenDisplay() {
               className={`p-2 rounded-lg transition-colors ${soundEnabled ? "hover:bg-white/10 text-white/60 hover:text-white" : "bg-red-500/20 text-red-400 hover:bg-red-500/30"}`}
             >
               {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={signOut}
+              title="Sign out of kitchen display"
+              className="p-2 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/70 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1">
               <button
