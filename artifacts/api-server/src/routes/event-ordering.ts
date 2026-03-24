@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { menuItemsTable, eventOrdersTable, eventSettingsTable } from "@workspace/db/schema";
+import { menuItemsTable, eventOrdersTable, eventSettingsTable, eventSessionsTable } from "@workspace/db/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { sendOrderConfirmation, sendOrderReady } from "../lib/sms";
 
@@ -49,10 +49,50 @@ const verifyKitchenPassword = makeAuthMiddleware(resolveKitchenPassword);
 router.get("/event-ordering/settings", async (req, res) => {
   try {
     const settings = await getEventSettings();
-    res.json({ eventName: settings?.eventName ?? "" });
+    let activeSessionName: string | null = null;
+    if (settings?.activeEventSessionId) {
+      const [session] = await db
+        .select({ name: eventSessionsTable.name })
+        .from(eventSessionsTable)
+        .where(eq(eventSessionsTable.id, settings.activeEventSessionId));
+      activeSessionName = session?.name ?? null;
+    }
+    res.json({
+      eventName: settings?.eventName ?? "",
+      activeSessionId: settings?.activeEventSessionId ?? null,
+      activeSessionName,
+    });
   } catch (err) {
     req.log.error({ err }, "Error fetching event settings");
     res.status(500).json({ error: "Failed to fetch event settings" });
+  }
+});
+
+// Kitchen can create a new session (uses kitchen password, not admin token)
+router.post("/event-ordering/create-session", verifyKitchenPassword, async (req, res) => {
+  try {
+    const settings = await getEventSettings();
+    const name = settings?.eventName?.trim() || "Unnamed Event";
+    const today = new Date().toISOString().split("T")[0];
+
+    const [session] = await db
+      .insert(eventSessionsTable)
+      .values({ name, date: today })
+      .returning();
+
+    if (settings) {
+      await db
+        .update(eventSettingsTable)
+        .set({ activeEventSessionId: session.id, updatedAt: new Date() })
+        .where(eq(eventSettingsTable.id, 1));
+    } else {
+      await db.insert(eventSettingsTable).values({ id: 1, eventName: name, activeEventSessionId: session.id });
+    }
+
+    res.status(201).json(session);
+  } catch (err) {
+    req.log.error({ err }, "Error creating session from kitchen");
+    res.status(500).json({ error: "Failed to create session" });
   }
 });
 

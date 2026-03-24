@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2 } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -104,6 +104,44 @@ export default function KitchenDisplay() {
       localStorage.setItem("kitchen_sound", next ? "on" : "off");
       return next;
     });
+  }
+
+  // Session prompt — shown when event name has changed since last visit
+  const [sessionPrompt, setSessionPrompt] = useState<{ prevName: string } | null>(null);
+  const [creatingSession, setCreatingSession] = useState(false);
+  const hasCheckedPrompt = useRef(false);
+
+  useEffect(() => {
+    if (!authedPassword || !eventName || hasCheckedPrompt.current) return;
+    hasCheckedPrompt.current = true;
+    const stored = localStorage.getItem("kitchen_known_event_name");
+    if (stored !== null && stored !== eventName) {
+      setSessionPrompt({ prevName: stored });
+    } else {
+      localStorage.setItem("kitchen_known_event_name", eventName);
+    }
+  }, [authedPassword, eventName]);
+
+  async function handleCreateSession() {
+    if (!authedPassword) return;
+    setCreatingSession(true);
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/create-session`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authedPassword}` },
+      });
+      if (res.ok) {
+        localStorage.setItem("kitchen_known_event_name", eventName);
+        setSessionPrompt(null);
+      }
+    } catch { /* silent */ } finally {
+      setCreatingSession(false);
+    }
+  }
+
+  function dismissSessionPrompt() {
+    localStorage.setItem("kitchen_known_event_name", eventName);
+    setSessionPrompt(null);
   }
 
   const [view, setView] = useState<"orders" | "stock">("orders");
@@ -350,6 +388,55 @@ export default function KitchenDisplay() {
 
   return (
     <div className="min-h-screen bg-[#111] text-white">
+
+      {/* New session prompt */}
+      {sessionPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+                  <CalendarDays className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-base">New event detected</h2>
+                  <p className="text-xs text-white/50">The event name has changed</p>
+                </div>
+              </div>
+              <div className="bg-white/5 rounded-xl p-4 mb-5 space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-white/40 w-16 shrink-0">Before</span>
+                  <span className="text-white/60 line-through">{sessionPrompt.prevName}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/40 w-16 shrink-0">Now</span>
+                  <span className="text-amber-300 font-semibold">{eventName}</span>
+                </div>
+              </div>
+              <p className="text-sm text-white/60 mb-5">
+                Start a new event session so orders are tracked separately for <span className="text-white font-medium">"{eventName}"</span>?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={dismissSessionPrompt}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-white/60 hover:bg-white/5 hover:text-white transition-colors text-sm font-medium"
+                >
+                  Continue without
+                </button>
+                <button
+                  onClick={handleCreateSession}
+                  disabled={creatingSession}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold transition-colors text-sm disabled:opacity-50"
+                >
+                  {creatingSession ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarDays className="w-4 h-4" />}
+                  {creatingSession ? "Creating…" : "Start session"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="sticky top-0 z-30 bg-[#1a1a1a] border-b border-white/10 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
