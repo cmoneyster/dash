@@ -151,16 +151,20 @@ export default function MenuManager() {
   ).sort();
 
   const createMut = useCreateMenuItem({
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: getAdminListMenuItemsQueryKey() });
-      setIsDialogOpen(false);
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getAdminListMenuItemsQueryKey() });
+        setIsDialogOpen(false);
+      },
     },
   });
 
   const updateMut = useUpdateMenuItem({
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: getAdminListMenuItemsQueryKey() });
-      setIsDialogOpen(false);
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getAdminListMenuItemsQueryKey() });
+        setIsDialogOpen(false);
+      },
     },
   });
 
@@ -170,36 +174,27 @@ export default function MenuManager() {
     const ids = [...dirtyIds];
     setSavingIds(new Set(ids));
     try {
-      await Promise.all(
-        ids.map(id => {
-          const edit = localEdits[id];
-          const original = items?.find((it: any) => it.id === id);
-          if (!original || !edit) return Promise.resolve();
-          return new Promise<void>((resolve, reject) => {
-            inlineUpdateMut.mutate(
-              {
-                id,
-                data: {
-                  ...original,
-                  name: edit.name,
-                  description: edit.description,
-                  price: parseFloat(edit.price),
-                  available: edit.available,
-                  eventActive: edit.eventActive,
-                  eventStock: edit.eventStock.trim() === "" ? null : parseInt(edit.eventStock),
-                  allergens: original.allergens ?? [],
-                  servingSize: original.servingSize,
-                  unit: original.unit,
-                  category: original.category,
-                },
-              },
-              { onSuccess: () => resolve(), onError: (err) => reject(err) }
-            );
-          });
-        })
-      );
-      // Await the refetch to complete BEFORE clearing local edits so the
-      // UI never briefly shows stale (pre-save) values after save.
+      for (const id of ids) {
+        const edit = localEdits[id];
+        const original = items?.find((it: any) => it.id === id);
+        if (!original || !edit) continue;
+        await inlineUpdateMut.mutateAsync({
+          id,
+          data: {
+            ...original,
+            name: edit.name,
+            description: edit.description,
+            price: parseFloat(edit.price),
+            available: edit.available,
+            eventActive: edit.eventActive,
+            eventStock: edit.eventStock.trim() === "" ? null : parseInt(edit.eventStock),
+            allergens: original.allergens ?? [],
+            servingSize: original.servingSize,
+            unit: original.unit,
+            category: original.category,
+          },
+        });
+      }
       await queryClient.refetchQueries({ queryKey: getAdminListMenuItemsQueryKey() });
     } finally {
       setLocalEdits({});
@@ -208,8 +203,10 @@ export default function MenuManager() {
   }
 
   const deleteMut = useDeleteMenuItem({
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: getAdminListMenuItemsQueryKey() });
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getAdminListMenuItemsQueryKey() });
+      },
     },
   });
 
