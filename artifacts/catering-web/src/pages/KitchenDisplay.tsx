@@ -226,7 +226,10 @@ export default function KitchenDisplay() {
     try {
       const res = await fetch(`${BASE}/api/event-ordering/orders`, {
         headers: { Authorization: `Bearer ${pwd}` },
+        cache: "no-store",
       });
+      // 304 means no change — update timestamp but don't parse body
+      if (res.status === 304) { setLastFetch(new Date()); return; }
       if (!res.ok) return;
       const data: EventOrder[] = await res.json();
       const incoming = new Set(data.map(o => o.id));
