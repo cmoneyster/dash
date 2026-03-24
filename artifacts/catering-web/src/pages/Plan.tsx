@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { 
   useGetPlan, 
@@ -12,8 +13,10 @@ import { formatCurrency } from "@/lib/utils";
 import { Trash2, ShoppingBag, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { ImageLightbox } from "@/components/ImageLightbox";
 
 export default function Plan() {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const sessionId = getSessionId();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -44,6 +47,7 @@ export default function Plan() {
 
   return (
     <Layout>
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
         <div className="flex items-center gap-4 mb-10">
           <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
@@ -68,7 +72,12 @@ export default function Plan() {
             {plan.items.map(item => (
               <div key={item.id} className="flex flex-col sm:flex-row gap-6 bg-card p-6 rounded-2xl border border-border shadow-sm group hover:border-primary/30 transition-colors">
                 {item.menuItem.imageUrl && (
-                  <img src={item.menuItem.imageUrl} alt="" className="w-full sm:w-32 h-32 rounded-xl object-cover shrink-0 bg-secondary" />
+                  <img
+                    src={item.menuItem.imageUrl}
+                    alt=""
+                    onClick={() => setLightboxSrc(item.menuItem.imageUrl!)}
+                    className="w-full sm:w-32 h-32 rounded-xl object-cover shrink-0 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity"
+                  />
                 )}
                 <div className="flex-1 flex flex-col justify-between">
                   <div className="flex justify-between items-start mb-2">

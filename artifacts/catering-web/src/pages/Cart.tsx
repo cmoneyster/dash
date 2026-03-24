@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { ImageLightbox } from "@/components/ImageLightbox";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,6 +32,7 @@ const checkoutSchema = z.object({
 type CheckoutForm = z.infer<typeof checkoutSchema>;
 
 export default function Cart() {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const sessionId = getSessionId();
@@ -76,6 +78,7 @@ export default function Cart() {
 
   return (
     <Layout>
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
         <h1 className="font-display font-bold text-4xl mb-10">Review Your Order</h1>
 
@@ -111,7 +114,12 @@ export default function Cart() {
                 return (
                   <div key={item.id} className="flex gap-6 bg-card p-4 rounded-2xl border border-border shadow-sm">
                     {item.menuItem.imageUrl && (
-                      <img src={item.menuItem.imageUrl} alt="" className="w-24 h-24 rounded-xl object-cover shrink-0 bg-secondary" />
+                      <img
+                        src={item.menuItem.imageUrl}
+                        alt=""
+                        onClick={() => setLightboxSrc(item.menuItem.imageUrl!)}
+                        className="w-24 h-24 rounded-xl object-cover shrink-0 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity"
+                      />
                     )}
                     <div className="flex-1 flex flex-col justify-between py-1">
                       <div className="flex justify-between items-start">

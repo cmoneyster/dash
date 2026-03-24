@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { ShoppingBag, CheckCircle2, Minus, Plus, Lock, Utensils, Phone, ExternalLink } from "lucide-react";
+import { ImageLightbox } from "@/components/ImageLightbox";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -17,6 +18,7 @@ type MenuItem = {
 };
 
 export default function EventOrder() {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [eventName, setEventName] = useState("");
 
   const [password, setPassword] = useState("");
@@ -223,6 +225,7 @@ export default function EventOrder() {
 
   return (
     <div className="min-h-screen bg-background">
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-md border-b border-border">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
@@ -258,7 +261,12 @@ export default function EventOrder() {
                     return (
                       <div key={item.id} className={`flex gap-4 items-center bg-card border rounded-2xl p-4 transition-opacity ${soldOut ? "opacity-50 border-border" : "border-border"}`}>
                         {item.imageUrl && (
-                          <img src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-xl object-cover shrink-0" />
+                          <img
+                            src={item.imageUrl}
+                            alt={item.name}
+                            onClick={() => setLightboxSrc(item.imageUrl!)}
+                            className="w-16 h-16 rounded-xl object-cover shrink-0 cursor-zoom-in hover:opacity-90 transition-opacity"
+                          />
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">

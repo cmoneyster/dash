@@ -1,7 +1,8 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { Upload, Trash2, Copy, Check, ImageIcon, Loader2, X } from "lucide-react";
+import { Upload, Trash2, Copy, Check, ImageIcon, Loader2, X, ZoomIn, Clipboard } from "lucide-react";
+import { ImageLightbox } from "@/components/ImageLightbox";
 
 interface ImageRecord {
   id: number;
@@ -59,6 +60,7 @@ function useImageLibrary() {
 
 function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
   const [dragging, setDragging] = useState(false);
+  const [pasted, setPasted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleDrop = (e: React.DragEvent) => {
@@ -74,6 +76,19 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
     if (inputRef.current) inputRef.current.value = "";
   };
 
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const files = Array.from(e.clipboardData?.files ?? []).filter(f => f.type.startsWith("image/"));
+      if (files.length) {
+        onFiles(files);
+        setPasted(true);
+        setTimeout(() => setPasted(false), 2000);
+      }
+    };
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [onFiles]);
+
   return (
     <div
       onDragOver={e => { e.preventDefault(); setDragging(true); }}
@@ -83,15 +98,27 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
       className={`cursor-pointer border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-200 select-none ${
         dragging
           ? "border-primary bg-primary/5 scale-[1.01]"
+          : pasted
+          ? "border-emerald-500 bg-emerald-50"
           : "border-border hover:border-primary/50 hover:bg-secondary/50"
       }`}
     >
-      <Upload className={`w-10 h-10 mx-auto mb-3 transition-colors ${dragging ? "text-primary" : "text-muted-foreground"}`} />
-      <p className="font-semibold text-lg">Drag & drop images here</p>
+      {pasted ? (
+        <Check className="w-10 h-10 mx-auto mb-3 text-emerald-600" />
+      ) : (
+        <Upload className={`w-10 h-10 mx-auto mb-3 transition-colors ${dragging ? "text-primary" : "text-muted-foreground"}`} />
+      )}
+      <p className="font-semibold text-lg">{pasted ? "Image pasted!" : "Drag & drop images here"}</p>
       <p className="text-sm text-muted-foreground mt-1">or click to browse — JPG, PNG, WebP up to 20MB</p>
-      <p className="text-xs text-muted-foreground mt-2 bg-secondary/80 inline-block px-3 py-1 rounded-full">
-        Auto-cropped to 4:3 ratio (800×600)
-      </p>
+      <div className="flex items-center justify-center gap-3 mt-3 flex-wrap">
+        <span className="text-xs text-muted-foreground bg-secondary/80 inline-flex items-center gap-1.5 px-3 py-1 rounded-full">
+          <Clipboard className="w-3 h-3" />
+          Ctrl+V to paste from clipboard
+        </span>
+        <span className="text-xs text-muted-foreground bg-secondary/80 inline-block px-3 py-1 rounded-full">
+          Auto-cropped to 4:3 (800×600)
+        </span>
+      </div>
       <input
         ref={inputRef}
         type="file"
@@ -124,23 +151,30 @@ function UploadProgress({ filename, progress }: { filename: string; progress: "u
   );
 }
 
-function ImageCard({ image, onDelete, onCopy, copied }: {
+function ImageCard({ image, onDelete, onCopy, onPreview, copied }: {
   image: ImageRecord;
   onDelete: () => void;
   onCopy: () => void;
+  onPreview: () => void;
   copied: boolean;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
     <div className="group relative bg-card border border-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200">
-      <div className="aspect-[4/3] bg-secondary overflow-hidden">
+      <div
+        className="aspect-[4/3] bg-secondary overflow-hidden relative cursor-zoom-in"
+        onClick={onPreview}
+      >
         <img
           src={image.servingUrl}
           alt={image.filename}
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
         />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+          <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+        </div>
       </div>
       <div className="p-3">
         <p className="text-xs font-medium truncate text-foreground" title={image.filename}>
@@ -185,6 +219,7 @@ export default function ImageLibrary() {
   const { images, loading, initialized, fetchImages, uploadImage, deleteImage } = useImageLibrary();
   const [uploads, setUploads] = useState<Record<string, "uploading" | "done" | "error">>({});
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const handleLoad = () => {
     if (!initialized) fetchImages();
@@ -217,6 +252,7 @@ export default function ImageLibrary() {
 
   return (
     <AdminLayout>
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       <div ref={el => { if (el && !initialized) handleLoad(); }} className="mb-8">
         <h1 className="font-display font-bold text-4xl mb-2">Image Library</h1>
         <p className="text-muted-foreground">Upload photos for your menu items. All images are auto-cropped to 4:3 (800×600).</p>
@@ -251,6 +287,7 @@ export default function ImageLibrary() {
                 image={image}
                 onDelete={() => deleteImage(image.id)}
                 onCopy={() => handleCopy(image)}
+                onPreview={() => setLightboxSrc(image.servingUrl)}
                 copied={copiedId === image.id}
               />
             ))}
