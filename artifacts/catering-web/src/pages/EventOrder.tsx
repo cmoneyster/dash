@@ -270,7 +270,7 @@ export default function EventOrder() {
                               <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{stock} left</span>
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground">Serves {item.servingSize}</p>
+                          {item.description && <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <button
