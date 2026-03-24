@@ -210,13 +210,13 @@ export default function KitchenDisplay() {
     saveChecked(serializable);
   }, [checkedItems]);
 
-  // Clean up checked state for orders that have moved out of pending
+  // Clean up checked state for orders that have moved past preparing (ready/done)
   useEffect(() => {
-    const pendingIds = new Set(orders.filter(o => o.status === "pending").map(o => o.id));
+    const activeIds = new Set(orders.filter(o => o.status === "pending" || o.status === "preparing").map(o => o.id));
     setCheckedItems(prev => {
       const cleaned: Record<number, Set<number>> = {};
       for (const [k, v] of Object.entries(prev)) {
-        if (pendingIds.has(Number(k))) cleaned[Number(k)] = v;
+        if (activeIds.has(Number(k))) cleaned[Number(k)] = v;
       }
       return cleaned;
     });
@@ -639,6 +639,8 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   onRevert: () => void;
 }) {
   const isPending = order.status === "pending";
+  const isPreparing = order.status === "preparing";
+  const isTrackable = isPending || isPreparing;
   const checkedCount = order.items.filter(i => checkedItemIds.has(i.itemId)).length;
   const allChecked = checkedCount === order.items.length;
   const nextLabel = NEXT_LABEL[order.status];
@@ -665,16 +667,16 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
         </div>
       </div>
 
-      {/* Items — tappable when pending */}
+      {/* Items — tappable when pending or preparing */}
       <div className="px-4 py-3 space-y-1">
-        {isPending && (
+        {isTrackable && (
           <p className="text-xs text-white/30 font-semibold uppercase tracking-wider pb-1.5">
             Tap each item to mark · {checkedCount}/{order.items.length}
           </p>
         )}
         {order.items.map(item => {
           const isChecked = checkedItemIds.has(item.itemId);
-          if (isPending) {
+          if (isTrackable) {
             return (
               <button
                 key={item.itemId}
@@ -703,11 +705,10 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
             </div>
           );
         })}
-
       </div>
 
-      {/* Progress bar for pending orders */}
-      {isPending && (
+      {/* Progress bar for pending and preparing orders */}
+      {isTrackable && (
         <div className="px-4 pb-3">
           <div className="h-1 bg-white/10 rounded-full overflow-hidden">
             <div
@@ -716,7 +717,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
             />
           </div>
           {isUpdating && (
-            <p className="text-xs text-amber-400 text-center mt-2 font-semibold">Moving to Preparing…</p>
+            <p className="text-xs text-amber-400 text-center mt-2 font-semibold">{isPending ? "Moving to Preparing…" : "Marking Ready…"}</p>
           )}
         </div>
       )}
