@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import {
   useAdminListMenuItems,
@@ -293,109 +293,123 @@ export default function MenuManager() {
                 <th className="px-6 py-4 font-semibold text-right w-28">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody>
               {isLoading && (
                 <tr><td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                 </td></tr>
               )}
-              {items?.map((item) => {
-                const edit = localEdits[item.id];
-                const isDirty = !!edit;
-                const isSaving = savingIds.has(item.id);
-                const cur = edit ?? { name: item.name, description: item.description, price: String(item.price), available: item.available, eventActive: item.eventActive ?? false, eventStock: item.eventStock == null ? "" : String(item.eventStock) };
-
+              {items && existingCategories.map(cat => {
+                const catItems = items.filter((item: any) => item.category === cat);
+                if (!catItems.length) return null;
                 return (
-                  <tr key={item.id} className={`transition-colors ${isDirty ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}>
-                    <td className="px-6 py-3">
-                      <div className="w-10 h-10 rounded-lg bg-secondary overflow-hidden shrink-0">
-                        {item.imageUrl
-                          ? <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
-                          : <ImageIcon className="w-5 h-5 m-auto text-muted-foreground mt-2.5" />}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <input
-                        value={cur.name}
-                        onChange={e => patchEdit(item.id, item, { name: e.target.value })}
-                        disabled={isSaving}
-                        className="w-full font-bold text-sm px-2 py-1 rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all mb-1"
-                      />
-                      <input
-                        value={cur.description}
-                        onChange={e => patchEdit(item.id, item, { description: e.target.value })}
-                        disabled={isSaving}
-                        className="w-full text-xs text-muted-foreground px-2 py-1 rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
-                      />
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="relative">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={cur.price}
-                          onChange={e => patchEdit(item.id, item, { price: e.target.value })}
-                          disabled={isSaving}
-                          className="w-full pl-6 pr-2 py-1.5 text-sm font-semibold rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
-                        />
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <button
-                        type="button"
-                        disabled={isSaving}
-                        onClick={() => patchEdit(item.id, item, { available: !cur.available })}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${cur.available ? "bg-emerald-500" : "bg-muted"}`}
-                      >
-                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cur.available ? "translate-x-6" : "translate-x-1"}`} />
-                      </button>
-                      <p className="text-[10px] text-muted-foreground mt-1">{cur.available ? "Active" : "Hidden"}</p>
-                    </td>
-                    <td className="px-3 py-3">
-                      <button
-                        type="button"
-                        disabled={isSaving}
-                        onClick={() => patchEdit(item.id, item, { eventActive: !cur.eventActive })}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${cur.eventActive ? "bg-primary" : "bg-muted"}`}
-                      >
-                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cur.eventActive ? "translate-x-6" : "translate-x-1"}`} />
-                      </button>
-                      <p className="text-[10px] text-muted-foreground mt-1">{cur.eventActive ? "On event" : "Off"}</p>
-                    </td>
-                    <td className="px-3 py-3">
-                      <input
-                        type="number"
-                        min="0"
-                        value={cur.eventStock}
-                        onChange={e => patchEdit(item.id, item, { eventStock: e.target.value })}
-                        disabled={isSaving}
-                        placeholder="∞"
-                        className="w-full px-2 py-1.5 text-sm font-semibold rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all text-center placeholder:text-muted-foreground/50"
-                      />
-                      <p className="text-[10px] text-muted-foreground mt-1 text-center">
-                        {cur.eventStock === "" ? "Unlimited" : `${cur.eventStock} units`}
-                      </p>
-                    </td>
-                    <td className="px-6 py-3 text-right">
-                      {isSaving ? (
-                        <Loader2 className="w-4 h-4 animate-spin ml-auto text-muted-foreground" />
-                      ) : (
-                        <>
-                          <button onClick={() => openEdit(item)} title="Full edit" className="p-2 text-muted-foreground hover:text-primary transition-colors inline-block">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => { if (confirm("Delete item?")) deleteMut.mutate({ id: item.id }); }}
-                            className="p-2 text-muted-foreground hover:text-destructive transition-colors inline-block"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
+                  <React.Fragment key={cat}>
+                    <tr className="bg-secondary/40 border-y border-border">
+                      <td colSpan={7} className="px-6 py-2">
+                        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{cat}</span>
+                        <span className="ml-2 text-xs text-muted-foreground/50">{catItems.length} item{catItems.length !== 1 ? "s" : ""}</span>
+                      </td>
+                    </tr>
+                    {catItems.map((item: any) => {
+                      const edit = localEdits[item.id];
+                      const isDirty = !!edit;
+                      const isSaving = savingIds.has(item.id);
+                      const cur = edit ?? { name: item.name, description: item.description, price: String(item.price), available: item.available, eventActive: item.eventActive ?? false, eventStock: item.eventStock == null ? "" : String(item.eventStock) };
+
+                      return (
+                        <tr key={item.id} className={`border-b border-border/50 transition-colors ${isDirty ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}>
+                          <td className="px-6 py-3">
+                            <div className="w-10 h-10 rounded-lg bg-secondary overflow-hidden shrink-0">
+                              {item.imageUrl
+                                ? <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
+                                : <ImageIcon className="w-5 h-5 m-auto text-muted-foreground mt-2.5" />}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <input
+                              value={cur.name}
+                              onChange={e => patchEdit(item.id, item, { name: e.target.value })}
+                              disabled={isSaving}
+                              className="w-full font-bold text-sm px-2 py-1 rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all mb-1"
+                            />
+                            <input
+                              value={cur.description}
+                              onChange={e => patchEdit(item.id, item, { description: e.target.value })}
+                              disabled={isSaving}
+                              className="w-full text-xs text-muted-foreground px-2 py-1 rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
+                            />
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={cur.price}
+                                onChange={e => patchEdit(item.id, item, { price: e.target.value })}
+                                disabled={isSaving}
+                                className="w-full pl-6 pr-2 py-1.5 text-sm font-semibold rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
+                              />
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <button
+                              type="button"
+                              disabled={isSaving}
+                              onClick={() => patchEdit(item.id, item, { available: !cur.available })}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${cur.available ? "bg-emerald-500" : "bg-muted"}`}
+                            >
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cur.available ? "translate-x-6" : "translate-x-1"}`} />
+                            </button>
+                            <p className="text-[10px] text-muted-foreground mt-1">{cur.available ? "Active" : "Hidden"}</p>
+                          </td>
+                          <td className="px-3 py-3">
+                            <button
+                              type="button"
+                              disabled={isSaving}
+                              onClick={() => patchEdit(item.id, item, { eventActive: !cur.eventActive })}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${cur.eventActive ? "bg-primary" : "bg-muted"}`}
+                            >
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cur.eventActive ? "translate-x-6" : "translate-x-1"}`} />
+                            </button>
+                            <p className="text-[10px] text-muted-foreground mt-1">{cur.eventActive ? "On event" : "Off"}</p>
+                          </td>
+                          <td className="px-3 py-3">
+                            <input
+                              type="number"
+                              min="0"
+                              value={cur.eventStock}
+                              onChange={e => patchEdit(item.id, item, { eventStock: e.target.value })}
+                              disabled={isSaving}
+                              placeholder="∞"
+                              className="w-full px-2 py-1.5 text-sm font-semibold rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all text-center placeholder:text-muted-foreground/50"
+                            />
+                            <p className="text-[10px] text-muted-foreground mt-1 text-center">
+                              {cur.eventStock === "" ? "Unlimited" : `${cur.eventStock} units`}
+                            </p>
+                          </td>
+                          <td className="px-6 py-3 text-right">
+                            {isSaving ? (
+                              <Loader2 className="w-4 h-4 animate-spin ml-auto text-muted-foreground" />
+                            ) : (
+                              <>
+                                <button onClick={() => openEdit(item)} title="Full edit" className="p-2 text-muted-foreground hover:text-primary transition-colors inline-block">
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => { if (confirm("Delete item?")) deleteMut.mutate({ id: item.id }); }}
+                                  className="p-2 text-muted-foreground hover:text-destructive transition-colors inline-block"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
                 );
               })}
             </tbody>
