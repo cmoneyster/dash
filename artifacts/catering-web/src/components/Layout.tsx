@@ -52,8 +52,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-4">
             <Link
               href="/plan"
-              className="p-2 text-foreground/70 hover:text-primary transition-colors hidden sm:block"
-              title="Saved Plans"
+              className="p-2 text-foreground/70 hover:text-primary transition-colors"
+              title="Event Plan"
             >
               <Heart className="w-5 h-5" />
             </Link>
