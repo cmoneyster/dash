@@ -274,20 +274,14 @@ export default function MenuManager() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-secondary/50 text-sm uppercase tracking-wider text-muted-foreground">
-                <th className="px-6 py-4 font-semibold w-16"></th>
-                <th className="px-3 py-4 font-semibold">Name &amp; Description</th>
-                <th className="px-3 py-4 font-semibold w-28">Price</th>
-                <th className="px-3 py-4 font-semibold w-28">Active</th>
-                <th className="px-3 py-4 font-semibold w-32">
-                  <span>Event Menu</span>
-                  <p className="text-[10px] normal-case font-normal tracking-normal text-muted-foreground/70 mt-0.5">Show at events</p>
-                </th>
-                <th className="px-3 py-4 font-semibold w-32">
-                  <span>Event Stock</span>
-                  <p className="text-[10px] normal-case font-normal tracking-normal text-muted-foreground/70 mt-0.5">Blank = unlimited</p>
-                </th>
-                <th className="px-6 py-4 font-semibold text-right w-28">Actions</th>
+              <tr className="bg-secondary/50 text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="px-3 py-3 font-semibold w-12"></th>
+                <th className="px-3 py-3 font-semibold">Name &amp; Description</th>
+                <th className="px-3 py-3 font-semibold w-20">Price</th>
+                <th className="px-3 py-3 font-semibold w-16 text-center" title="Visible on catering menu">Active</th>
+                <th className="px-3 py-3 font-semibold w-16 text-center" title="Show at in-person events">Event</th>
+                <th className="px-3 py-3 font-semibold w-20 text-center" title="Stock limit — leave blank for unlimited">Stock</th>
+                <th className="px-3 py-3 font-semibold text-right w-16"></th>
               </tr>
             </thead>
             <tbody>
@@ -315,30 +309,31 @@ export default function MenuManager() {
 
                       return (
                         <tr key={item.id} className={`border-b border-border/50 transition-colors ${isDirty ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}>
-                          <td className="px-6 py-3">
-                            <div className="w-10 h-10 rounded-lg bg-secondary overflow-hidden shrink-0">
+                          <td className="px-3 py-2">
+                            <div className="w-8 h-8 rounded-lg bg-secondary overflow-hidden shrink-0">
                               {item.imageUrl
                                 ? <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
-                                : <ImageIcon className="w-5 h-5 m-auto text-muted-foreground mt-2.5" />}
+                                : <ImageIcon className="w-4 h-4 m-auto text-muted-foreground mt-2" />}
                             </div>
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-2">
                             <input
                               value={cur.name}
                               onChange={e => patchEdit(item.id, item, { name: e.target.value })}
                               disabled={isSaving}
-                              className="w-full font-bold text-sm px-2 py-1 rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all mb-1"
+                              className="w-full font-bold text-sm px-2 py-0.5 rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all mb-1"
                             />
-                            <input
+                            <textarea
                               value={cur.description}
                               onChange={e => patchEdit(item.id, item, { description: e.target.value })}
                               disabled={isSaving}
-                              className="w-full text-xs text-muted-foreground px-2 py-1 rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
+                              rows={2}
+                              className="w-full text-xs text-muted-foreground px-2 py-0.5 rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all resize-none leading-snug"
                             />
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-2">
                             <div className="relative">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
                               <input
                                 type="number"
                                 step="0.01"
@@ -346,33 +341,33 @@ export default function MenuManager() {
                                 value={cur.price}
                                 onChange={e => patchEdit(item.id, item, { price: e.target.value })}
                                 disabled={isSaving}
-                                className="w-full pl-6 pr-2 py-1.5 text-sm font-semibold rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
+                                className="w-full pl-4 pr-1 py-1 text-sm font-semibold rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
                               />
                             </div>
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-2 text-center">
                             <button
                               type="button"
                               disabled={isSaving}
+                              title={cur.available ? "Active — click to hide" : "Hidden — click to activate"}
                               onClick={() => patchEdit(item.id, item, { available: !cur.available })}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${cur.available ? "bg-emerald-500" : "bg-muted"}`}
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${cur.available ? "bg-emerald-500" : "bg-muted"}`}
                             >
-                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cur.available ? "translate-x-6" : "translate-x-1"}`} />
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${cur.available ? "translate-x-[18px]" : "translate-x-0.5"}`} />
                             </button>
-                            <p className="text-[10px] text-muted-foreground mt-1">{cur.available ? "Active" : "Hidden"}</p>
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-2 text-center">
                             <button
                               type="button"
                               disabled={isSaving}
+                              title={cur.eventActive ? "On event menu — click to remove" : "Off event menu — click to add"}
                               onClick={() => patchEdit(item.id, item, { eventActive: !cur.eventActive })}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${cur.eventActive ? "bg-primary" : "bg-muted"}`}
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${cur.eventActive ? "bg-primary" : "bg-muted"}`}
                             >
-                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cur.eventActive ? "translate-x-6" : "translate-x-1"}`} />
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${cur.eventActive ? "translate-x-[18px]" : "translate-x-0.5"}`} />
                             </button>
-                            <p className="text-[10px] text-muted-foreground mt-1">{cur.eventActive ? "On event" : "Off"}</p>
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-2 text-center">
                             <input
                               type="number"
                               min="0"
@@ -380,25 +375,24 @@ export default function MenuManager() {
                               onChange={e => patchEdit(item.id, item, { eventStock: e.target.value })}
                               disabled={isSaving}
                               placeholder="∞"
-                              className="w-full px-2 py-1.5 text-sm font-semibold rounded-lg border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all text-center placeholder:text-muted-foreground/50"
+                              title="Event stock limit — blank = unlimited"
+                              className="w-full px-1 py-1 text-sm font-semibold rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all text-center placeholder:text-muted-foreground/40"
                             />
-                            <p className="text-[10px] text-muted-foreground mt-1 text-center">
-                              {cur.eventStock === "" ? "Unlimited" : `${cur.eventStock} units`}
-                            </p>
                           </td>
-                          <td className="px-6 py-3 text-right">
+                          <td className="px-2 py-2 text-right">
                             {isSaving ? (
                               <Loader2 className="w-4 h-4 animate-spin ml-auto text-muted-foreground" />
                             ) : (
                               <>
-                                <button onClick={() => openEdit(item)} title="Full edit" className="p-2 text-muted-foreground hover:text-primary transition-colors inline-block">
-                                  <Edit2 className="w-4 h-4" />
+                                <button onClick={() => openEdit(item)} title="Full edit" className="p-1.5 text-muted-foreground hover:text-primary transition-colors inline-block">
+                                  <Edit2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   onClick={() => { if (confirm("Delete item?")) deleteMut.mutate({ id: item.id }); }}
-                                  className="p-2 text-muted-foreground hover:text-destructive transition-colors inline-block"
+                                  title="Delete item"
+                                  className="p-1.5 text-muted-foreground hover:text-destructive transition-colors inline-block"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </>
                             )}
