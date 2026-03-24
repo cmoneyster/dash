@@ -10,3 +10,4 @@ export * from "./event-orders";
 export * from "./event-settings";
 export * from "./event-sessions";
 export * from "./catering-inquiries";
+export * from "./shared-plans";

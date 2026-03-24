@@ -14,6 +14,7 @@ import EventOrder from "@/pages/EventOrder";
 import KitchenDisplay from "@/pages/KitchenDisplay";
 import OrderStatus from "@/pages/OrderStatus";
 
+import SharedPlan from "@/pages/SharedPlan";
 import AdminLogin from "@/pages/admin/Login";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import MenuManager from "@/pages/admin/MenuManager";
@@ -40,6 +41,7 @@ function Router() {
       <Route path="/menu" component={Menu} />
       <Route path="/cart" component={Cart} />
       <Route path="/plan" component={Plan} />
+      <Route path="/plan/share/:token" component={SharedPlan} />
       <Route path="/confirmation" component={Confirmation} />
       <Route path="/event" component={EventOrder} />
       <Route path="/event/order/:id" component={OrderStatus} />

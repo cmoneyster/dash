@@ -83,6 +83,13 @@ artifacts-monorepo/
 - `POST /api/plan` — Add to plan
 - `DELETE /api/plan/:itemId` — Remove from plan
 
+### Shared Plans
+- `POST /api/plan/share` — Create or update a shareable plan token (body: `{ sessionId, planName? }`)
+- `GET /api/plan/share/:token` — Fetch a shared plan (touches expiry)
+- `POST /api/plan/share/:token/items` — Add item to shared plan
+- `DELETE /api/plan/share/:token/items/:itemId` — Remove item from shared plan
+- `POST /api/plan/share/send-sms` — Send the share link via Twilio SMS
+
 ### Orders
 - `POST /api/orders` — Place order (checkout)
 - `GET /api/admin/orders` — List all orders
@@ -101,6 +108,7 @@ artifacts-monorepo/
 - `blackout_dates` — Unavailable dates for events
 - `cart_items` — Session-based shopping cart
 - `plan_items` — Session-based event planning wishlist
+- `shared_plans` — Shareable plan tokens (UUID, maps to session_id, expires 60 days from last use)
 - `orders` — Customer catering orders with event details
 - `order_items` — Individual items within an order
 - `conversations` — OpenAI chat conversations

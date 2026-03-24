@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { 
   useGetPlan, 
@@ -10,7 +10,7 @@ import {
 import { getSessionId } from "@/lib/session";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import { Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp, Share2, Copy, CheckCheck, X, MessageSquare, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
@@ -78,11 +78,104 @@ function NumInput({
   );
 }
 
+// ── Share modal helpers ──────────────────────────────────────────────────────
+
+function daysUntil(dateStr: string) {
+  const diff = new Date(dateStr).getTime() - Date.now();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
+function buildShareUrl(shareToken: string) {
+  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+  return `${window.location.origin}${base}/plan/share/${shareToken}`;
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
 export default function Plan() {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const sessionId = getSessionId();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Share modal
+  const [shareOpen, setShareOpen]       = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareToken, setShareToken]     = useState<string | null>(null);
+  const [shareExpiry, setShareExpiry]   = useState<string | null>(null);
+  const [planName, setPlanName]         = useState("");
+  const [linkCopied, setLinkCopied]     = useState(false);
+  const [smsPhone, setSmsPhone]         = useState("");
+  const [smsSending, setSmsSending]     = useState(false);
+  const planNameRef = useRef<HTMLInputElement>(null);
+
+  const shareUrl = shareToken ? buildShareUrl(shareToken) : null;
+
+  const openShare = async () => {
+    setShareOpen(true);
+    setShareLoading(true);
+    try {
+      const res = await fetch("/api/plan/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, planName: planName || undefined }),
+      });
+      const data = await res.json();
+      setShareToken(data.shareToken);
+      setShareExpiry(data.expiresAt);
+    } catch {
+      toast({ title: "Error", description: "Could not create share link.", variant: "destructive" });
+      setShareOpen(false);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const updatePlanName = async (name: string) => {
+    if (!shareToken) return;
+    await fetch("/api/plan/share", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, planName: name || undefined }),
+    }).catch(() => {});
+  };
+
+  const handleCopyLink = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
+    } catch {
+      toast({ title: "Could not copy", description: "Select and copy the link manually.", variant: "destructive" });
+    }
+  };
+
+  const handleSendSms = async () => {
+    if (!shareUrl || !smsPhone.trim()) return;
+    setSmsSending(true);
+    try {
+      const res = await fetch("/api/plan/share/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: smsPhone.trim(), shareUrl, planName: planName || undefined }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Text sent!", description: "Check your phone for the link." });
+      setSmsPhone("");
+    } catch {
+      toast({ title: "Could not send text", description: "Check the number and try again.", variant: "destructive" });
+    } finally {
+      setSmsSending(false);
+    }
+  };
+
+  // Focus plan name input when modal opens
+  useEffect(() => {
+    if (shareOpen && !shareLoading) {
+      setTimeout(() => planNameRef.current?.focus(), 50);
+    }
+  }, [shareOpen, shareLoading]);
 
   const { data: plan, isLoading } = useGetPlan({ sessionId });
 
@@ -148,12 +241,144 @@ export default function Plan() {
   return (
     <Layout>
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+
+      {/* ── Share Modal ── */}
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={e => { if (e.target === e.currentTarget) setShareOpen(false); }}
+        >
+          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <Share2 className="w-4 h-4 text-primary" />
+                </div>
+                <h2 className="font-display font-bold text-xl">Save & Share Plan</h2>
+              </div>
+              <button
+                onClick={() => setShareOpen(false)}
+                className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+              {shareLoading ? (
+                <div className="h-32 flex items-center justify-center gap-3 text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin" /> Creating your link…
+                </div>
+              ) : (
+                <>
+                  {/* Plan name */}
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
+                      Plan name <span className="font-normal normal-case tracking-normal text-muted-foreground/60">(optional)</span>
+                    </label>
+                    <input
+                      ref={planNameRef}
+                      type="text"
+                      value={planName}
+                      onChange={e => setPlanName(e.target.value)}
+                      onBlur={e => updatePlanName(e.target.value)}
+                      placeholder="e.g. Smith Wedding Reception"
+                      className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                    />
+                  </div>
+
+                  {/* Share link */}
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
+                      Your share link
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        readOnly
+                        value={shareUrl ?? ""}
+                        className="flex-1 px-3 py-2 rounded-xl border border-border bg-secondary text-sm font-mono text-muted-foreground select-all focus:outline-none"
+                        onClick={e => (e.target as HTMLInputElement).select()}
+                      />
+                      <button
+                        onClick={handleCopyLink}
+                        className={`px-4 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 transition-colors ${
+                          linkCopied
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-foreground text-background hover:bg-primary"
+                        }`}
+                      >
+                        {linkCopied ? <CheckCheck className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                        {linkCopied ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                    {shareExpiry && (
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        Link stays active for {daysUntil(shareExpiry)} days after last use. Anyone with the link can view and edit.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* SMS */}
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
+                      <MessageSquare className="w-3 h-3 inline mr-1" />
+                      Text the link to a phone
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="tel"
+                        value={smsPhone}
+                        onChange={e => setSmsPhone(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") handleSendSms(); }}
+                        placeholder="(555) 123-4567"
+                        className="flex-1 px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                      />
+                      <button
+                        onClick={handleSendSms}
+                        disabled={smsSending || !smsPhone.trim()}
+                        className="px-4 py-2 rounded-xl font-semibold text-sm bg-foreground text-background hover:bg-primary transition-colors disabled:opacity-40 flex items-center gap-2"
+                      >
+                        {smsSending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
+                      Email the link
+                    </label>
+                    <a
+                      href={`mailto:?subject=${encodeURIComponent((planName || "Catering Event Plan") + " — dash by Hollywood East Cafe")}&body=${encodeURIComponent(`Here's our shared catering plan:\n\n${shareUrl}\n\nAnyone with the link can view and add items. The link stays active for 60 days after last use.\n\n— dash by Hollywood East Cafe`)}`}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-semibold hover:bg-secondary transition-colors"
+                    >
+                      Open in email app →
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
         <div className="flex items-center gap-4 mb-10">
           <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
             <Heart className="w-6 h-6 fill-current" />
           </div>
-          <h1 className="font-display font-bold text-4xl">Your Event Plan</h1>
+          <h1 className="font-display font-bold text-4xl flex-1">Your Event Plan</h1>
+          {!isLoading && (plan?.items.length ?? 0) > 0 && (
+            <button
+              onClick={openShare}
+              className="flex items-center gap-2 px-4 py-2.5 bg-foreground text-background font-semibold rounded-xl text-sm hover:bg-primary transition-colors"
+            >
+              <Share2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Save & Share</span>
+              <span className="sm:hidden">Share</span>
+            </button>
+          )}
         </div>
 
         {isLoading ? (

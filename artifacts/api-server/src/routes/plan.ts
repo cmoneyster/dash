@@ -1,9 +1,16 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { planItemsTable, menuItemsTable } from "@workspace/db/schema";
+import { planItemsTable, menuItemsTable, sharedPlansTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
+import { sendSms } from "../lib/sms";
 
 const router: IRouter = Router();
+
+const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+
+function expiresAt60Days() {
+  return new Date(Date.now() + SIXTY_DAYS_MS);
+}
 
 async function getPlanData(sessionId: string) {
   const items = await db
@@ -25,6 +32,25 @@ async function getPlanData(sessionId: string) {
     })),
   };
 }
+
+async function resolveSharedPlan(token: string) {
+  const [record] = await db
+    .select()
+    .from(sharedPlansTable)
+    .where(eq(sharedPlansTable.shareToken, token));
+  return record ?? null;
+}
+
+async function touchSharedPlan(token: string) {
+  const now = new Date();
+  const expires = expiresAt60Days();
+  await db
+    .update(sharedPlansTable)
+    .set({ lastModifiedAt: now, expiresAt: expires })
+    .where(eq(sharedPlansTable.shareToken, token));
+}
+
+// ── Regular plan CRUD ──────────────────────────────────────────────────────
 
 router.get("/plan", async (req, res) => {
   try {
@@ -70,6 +96,128 @@ router.delete("/plan/:itemId", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Error removing from plan");
     res.status(500).json({ error: "Failed to remove from plan" });
+  }
+});
+
+// ── Shared plan ────────────────────────────────────────────────────────────
+
+// Create or update a share token for a session
+router.post("/plan/share", async (req, res) => {
+  try {
+    const { sessionId, planName } = req.body as { sessionId: string; planName?: string };
+    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+
+    // Re-use an existing token for this session if one exists
+    const [existing] = await db
+      .select()
+      .from(sharedPlansTable)
+      .where(eq(sharedPlansTable.sessionId, sessionId));
+
+    if (existing) {
+      const expires = expiresAt60Days();
+      await db
+        .update(sharedPlansTable)
+        .set({
+          planName: planName ?? existing.planName,
+          lastModifiedAt: new Date(),
+          expiresAt: expires,
+        })
+        .where(eq(sharedPlansTable.shareToken, existing.shareToken));
+
+      return res.json({ shareToken: existing.shareToken, expiresAt: expires });
+    }
+
+    const expires = expiresAt60Days();
+    const [created] = await db
+      .insert(sharedPlansTable)
+      .values({ sessionId, planName: planName ?? null, expiresAt: expires })
+      .returning();
+
+    res.json({ shareToken: created.shareToken, expiresAt: created.expiresAt });
+  } catch (err) {
+    req.log.error({ err }, "Error creating shared plan");
+    res.status(500).json({ error: "Failed to create shared plan" });
+  }
+});
+
+// Send SMS with share link — must be before /:token routes
+router.post("/plan/share/send-sms", async (req, res) => {
+  try {
+    const { phone, shareUrl, planName } = req.body as { phone: string; shareUrl: string; planName?: string };
+    if (!phone || !shareUrl) return res.status(400).json({ error: "phone and shareUrl required" });
+
+    const planLabel = planName ? `"${planName}" ` : "";
+    const body = `Your dash catering event plan ${planLabel}is ready! View & collaborate here:\n${shareUrl}\n\nLink stays active for 60 days after last use. — dash by Hollywood East Cafe`;
+    await sendSms(phone, body);
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Error sending plan SMS");
+    res.status(500).json({ error: "Failed to send SMS" });
+  }
+});
+
+// Get shared plan
+router.get("/plan/share/:token", async (req, res) => {
+  try {
+    const record = await resolveSharedPlan(req.params.token);
+    if (!record) return res.status(404).json({ error: "Plan not found" });
+    if (new Date() > record.expiresAt) return res.status(410).json({ error: "This plan link has expired" });
+
+    await touchSharedPlan(req.params.token);
+    const plan = await getPlanData(record.sessionId);
+    res.json({ ...plan, shareToken: record.shareToken, planName: record.planName, expiresAt: record.expiresAt });
+  } catch (err) {
+    req.log.error({ err }, "Error getting shared plan");
+    res.status(500).json({ error: "Failed to get shared plan" });
+  }
+});
+
+// Add item to shared plan
+router.post("/plan/share/:token/items", async (req, res) => {
+  try {
+    const record = await resolveSharedPlan(req.params.token);
+    if (!record) return res.status(404).json({ error: "Plan not found" });
+    if (new Date() > record.expiresAt) return res.status(410).json({ error: "This plan link has expired" });
+
+    const { menuItemId } = req.body as { menuItemId: number };
+    if (!menuItemId) return res.status(400).json({ error: "menuItemId required" });
+
+    const [existing] = await db
+      .select()
+      .from(planItemsTable)
+      .where(and(eq(planItemsTable.sessionId, record.sessionId), eq(planItemsTable.menuItemId, menuItemId)));
+
+    if (!existing) {
+      await db.insert(planItemsTable).values({ sessionId: record.sessionId, menuItemId });
+    }
+
+    await touchSharedPlan(req.params.token);
+    const plan = await getPlanData(record.sessionId);
+    res.json({ ...plan, shareToken: record.shareToken, planName: record.planName, expiresAt: record.expiresAt });
+  } catch (err) {
+    req.log.error({ err }, "Error adding item to shared plan");
+    res.status(500).json({ error: "Failed to add item" });
+  }
+});
+
+// Remove item from shared plan
+router.delete("/plan/share/:token/items/:itemId", async (req, res) => {
+  try {
+    const record = await resolveSharedPlan(req.params.token);
+    if (!record) return res.status(404).json({ error: "Plan not found" });
+    if (new Date() > record.expiresAt) return res.status(410).json({ error: "This plan link has expired" });
+
+    const itemId = parseInt(req.params.itemId);
+    await db
+      .delete(planItemsTable)
+      .where(and(eq(planItemsTable.id, itemId), eq(planItemsTable.sessionId, record.sessionId)));
+
+    await touchSharedPlan(req.params.token);
+    const plan = await getPlanData(record.sessionId);
+    res.json({ ...plan, shareToken: record.shareToken, planName: record.planName, expiresAt: record.expiresAt });
+  } catch (err) {
+    req.log.error({ err }, "Error removing item from shared plan");
+    res.status(500).json({ error: "Failed to remove item" });
   }
 });
 
