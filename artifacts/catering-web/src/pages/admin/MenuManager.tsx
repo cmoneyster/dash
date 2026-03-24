@@ -9,7 +9,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library } from "lucide-react";
+import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { getAdminToken } from "@/components/AdminGuard";
 
@@ -367,17 +367,32 @@ export default function MenuManager() {
                               <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${cur.eventActive ? "translate-x-[18px]" : "translate-x-0.5"}`} />
                             </button>
                           </td>
-                          <td className="px-2 py-2 text-center">
-                            <input
-                              type="number"
-                              min="0"
-                              value={cur.eventStock}
-                              onChange={e => patchEdit(item.id, item, { eventStock: e.target.value })}
-                              disabled={isSaving}
-                              placeholder="∞"
-                              title="Event stock limit — blank = unlimited"
-                              className="w-full px-1 py-1 text-sm font-semibold rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all text-center placeholder:text-muted-foreground/40"
-                            />
+                          <td className="px-2 py-2">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={cur.eventStock}
+                                onChange={e => {
+                                  const v = e.target.value.replace(/[^0-9]/g, "");
+                                  patchEdit(item.id, item, { eventStock: v });
+                                }}
+                                disabled={isSaving}
+                                placeholder="∞"
+                                title="Stock limit — clear or click ∞ for unlimited"
+                                className="w-12 px-1 py-1 text-sm font-semibold rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all text-center placeholder:text-muted-foreground/40"
+                              />
+                              <button
+                                type="button"
+                                disabled={isSaving}
+                                title={cur.eventStock === "" ? "Already unlimited" : "Set to unlimited"}
+                                onClick={() => patchEdit(item.id, item, { eventStock: "" })}
+                                className={`p-1 rounded-md transition-colors ${cur.eventStock === "" ? "text-emerald-600" : "text-muted-foreground hover:text-primary hover:bg-secondary"}`}
+                              >
+                                <InfinityIcon className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                           <td className="px-2 py-2 text-right">
                             {isSaving ? (

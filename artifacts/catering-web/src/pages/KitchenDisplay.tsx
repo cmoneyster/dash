@@ -538,11 +538,15 @@ export default function KitchenDisplay() {
                               className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-bold disabled:opacity-30 transition-colors"
                             >−</button>
                             <input
-                              type="number"
-                              min="0"
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
                               value={edit}
                               placeholder="∞"
-                              onChange={e => setStockEdits(prev => ({ ...prev, [item.id]: e.target.value }))}
+                              onChange={e => {
+                                const v = e.target.value.replace(/[^0-9]/g, "");
+                                setStockEdits(prev => ({ ...prev, [item.id]: v }));
+                              }}
                               onBlur={() => saveStockItem(item.id, edit || null)}
                               onKeyDown={e => { if (e.key === "Enter") saveStockItem(item.id, edit || null); }}
                               className="w-16 text-center bg-white/10 border border-white/20 rounded-lg px-2 py-1.5 text-sm font-bold text-white placeholder:text-white/30 outline-none focus:border-white/40"
