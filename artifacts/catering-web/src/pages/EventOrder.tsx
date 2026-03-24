@@ -16,10 +16,6 @@ type MenuItem = {
   eventStock: number | null;
 };
 
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-}
-
 export default function EventOrder() {
   const [eventName, setEventName] = useState("");
 
@@ -90,7 +86,7 @@ export default function EventOrder() {
     price: m.price,
   })) ?? [];
 
-  const total = orderItems.reduce((s, i) => s + i.price * i.quantity, 0);
+  const totalQty = orderItems.reduce((s, i) => s + i.quantity, 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -111,7 +107,6 @@ export default function EventOrder() {
       if (res.ok) {
         const order = await res.json();
         setSubmittedOrderId(order.id);
-        // Refresh menu to get updated stock counts
         fetch(`${BASE}/api/event-ordering/menu`)
           .then(r => r.json())
           .then(data => setMenu(data))
@@ -119,7 +114,6 @@ export default function EventOrder() {
       } else if (res.status === 409) {
         const data = await res.json();
         alert(data.error ?? "An item ran out of stock. Please adjust your order.");
-        // Refresh menu to get updated stock counts
         fetch(`${BASE}/api/event-ordering/menu`)
           .then(r => r.json())
           .then(data => setMenu(data))
@@ -238,7 +232,7 @@ export default function EventOrder() {
           {orderItems.length > 0 && (
             <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-sm font-bold">
               <ShoppingBag className="w-4 h-4" />
-              {orderItems.reduce((s, i) => s + i.quantity, 0)} items · {formatCurrency(total)}
+              {totalQty} item{totalQty !== 1 ? "s" : ""} selected
             </div>
           )}
         </div>
@@ -276,7 +270,7 @@ export default function EventOrder() {
                               <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{stock} left</span>
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground">Serves {item.servingSize} · {formatCurrency(item.price)}/{item.unit}</p>
+                          <p className="text-xs text-muted-foreground">Serves {item.servingSize}</p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <button
@@ -337,15 +331,10 @@ export default function EventOrder() {
                 <div className="border-t border-border pt-4 space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">Order Summary</p>
                   {orderItems.map(i => (
-                    <div key={i.itemId} className="flex justify-between text-sm">
-                      <span>{i.quantity}× {i.name}</span>
-                      <span className="font-semibold">{formatCurrency(i.price * i.quantity)}</span>
+                    <div key={i.itemId} className="text-sm">
+                      {i.quantity}× {i.name}
                     </div>
                   ))}
-                  <div className="flex justify-between font-bold pt-2 border-t border-border">
-                    <span>Total</span>
-                    <span>{formatCurrency(total)}</span>
-                  </div>
                 </div>
               )}
 
@@ -354,7 +343,7 @@ export default function EventOrder() {
                 disabled={submitting || !orderItems.length || !guestName.trim()}
                 className="w-full py-3.5 bg-foreground text-background font-bold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {submitting ? "Placing Order…" : orderItems.length ? `Place Order · ${formatCurrency(total)}` : "Select items to order"}
+                {submitting ? "Placing Order…" : orderItems.length ? "Place Order" : "Select items to order"}
               </button>
             </div>
           </form>

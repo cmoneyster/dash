@@ -73,9 +73,6 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(diff / 3600)}h ago`;
 }
 
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-}
 
 export default function KitchenDisplay() {
   const [eventName, setEventName] = useState("");
@@ -550,7 +547,6 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   onAdvance: () => void;
   onRevert: () => void;
 }) {
-  const total = order.items.reduce((s, i) => s + i.price * i.quantity, 0);
   const isPending = order.status === "pending";
   const checkedCount = order.items.filter(i => checkedItemIds.has(i.itemId)).length;
   const allChecked = checkedCount === order.items.length;
@@ -611,20 +607,12 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
             );
           }
           return (
-            <div key={item.itemId} className="flex justify-between text-sm px-1">
-              <span className="text-white/80">{item.quantity}× {item.name}</span>
-              <span className="text-white/40 text-xs">{formatCurrency(item.price * item.quantity)}</span>
+            <div key={item.itemId} className="text-sm px-1 text-white/80">
+              {item.quantity}× {item.name}
             </div>
           );
         })}
 
-        {/* Total — only shown when not pending (pending items take up more space) */}
-        {!isPending && (
-          <div className="flex justify-between pt-2 border-t border-white/10 text-xs font-bold text-white/50 px-1">
-            <span>Total</span>
-            <span>{formatCurrency(total)}</span>
-          </div>
-        )}
       </div>
 
       {/* Progress bar for pending orders */}

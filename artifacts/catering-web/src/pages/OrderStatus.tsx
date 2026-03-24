@@ -25,10 +25,6 @@ const STATUS_INFO: Record<string, { label: string; description: string; icon: Re
   done:      { label: "Order Complete",    description: "Thank you! Enjoy your food.",             icon: <CheckCircle2 className="w-8 h-8" />, color: "text-emerald-600" },
 };
 
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-}
-
 export default function OrderStatus() {
   const params = useParams<{ id: string }>();
   const orderId = params.id;
@@ -79,7 +75,6 @@ export default function OrderStatus() {
   const currentStep = STATUS_STEPS.indexOf(order.status as typeof STATUS_STEPS[number]);
   const isDone = order.status === "done";
   const isReady = order.status === "ready";
-  const total = order.items.reduce((s, i) => s + i.price * i.quantity, 0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -135,17 +130,12 @@ export default function OrderStatus() {
         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-3">
           <h2 className="font-display font-bold text-base">Order Summary</h2>
           <p className="text-sm text-muted-foreground">For {order.guestName}</p>
-          <div className="space-y-2 pt-1">
+          <div className="space-y-1.5 pt-1">
             {order.items.map((item, i) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span>{item.quantity}× {item.name}</span>
-                <span className="font-semibold">{formatCurrency(item.price * item.quantity)}</span>
+              <div key={i} className="text-sm">
+                {item.quantity}× {item.name}
               </div>
             ))}
-            <div className="flex justify-between font-bold pt-2 border-t border-border">
-              <span>Total</span>
-              <span>{formatCurrency(total)}</span>
-            </div>
           </div>
         </div>
 
