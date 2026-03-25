@@ -213,17 +213,19 @@ export default function SharedPlan() {
     return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); };
   }, [token, fetchPlan]);
 
-  // Auto-seed maps at 1 tray for each new item
+  // Auto-seed maps at 1 tray for each new item — returns same ref if nothing changed
   useEffect(() => {
     if (!plan?.items) return;
     setPlannerState(prev => {
-      const next = { ...prev, piecesMap: { ...prev.piecesMap }, servingsMap: { ...prev.servingsMap } };
+      let seeded = false;
+      const piecesMap   = { ...prev.piecesMap };
+      const servingsMap = { ...prev.servingsMap };
       plan.items.forEach(item => {
         const key = String(item.id);
-        if (isSmallBite(item.menuItem.category) && !(key in next.piecesMap))  next.piecesMap[key]   = 1;
-        if (isEntree(item.menuItem.category)    && !(key in next.servingsMap)) next.servingsMap[key] = 1;
+        if (isSmallBite(item.menuItem.category) && !(key in piecesMap))   { piecesMap[key]   = 1; seeded = true; }
+        if (isEntree(item.menuItem.category)    && !(key in servingsMap))  { servingsMap[key] = 1; seeded = true; }
       });
-      return next;
+      return seeded ? { ...prev, piecesMap, servingsMap } : prev;
     });
   }, [plan?.items]);
 

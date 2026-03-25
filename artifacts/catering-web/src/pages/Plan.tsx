@@ -331,22 +331,24 @@ export default function Plan() {
       return next;
     });
 
-  // Auto-seed maps at 1 tray for each new item
+  // Auto-seed maps at 1 tray for each new item — returns same ref if nothing changed
   useEffect(() => {
     if (!plan?.items) return;
     setPiecesMap(prev => {
+      let seeded = false;
       const next = { ...prev };
       plan.items.forEach(item => {
-        if (isSmallBite(item.menuItem.category) && !(item.id in next)) next[item.id] = 1;
+        if (isSmallBite(item.menuItem.category) && !(item.id in next)) { next[item.id] = 1; seeded = true; }
       });
-      return next;
+      return seeded ? next : prev;
     });
     setServingsMap(prev => {
+      let seeded = false;
       const next = { ...prev };
       plan.items.forEach(item => {
-        if (isEntree(item.menuItem.category) && !(item.id in next)) next[item.id] = 1;
+        if (isEntree(item.menuItem.category) && !(item.id in next)) { next[item.id] = 1; seeded = true; }
       });
-      return next;
+      return seeded ? next : prev;
     });
   }, [plan?.items]);
 
