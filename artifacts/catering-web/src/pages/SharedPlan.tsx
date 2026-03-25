@@ -177,9 +177,11 @@ export default function SharedPlan() {
   const [plannerSaving, setPlannerSaving] = useState(false);
   const [plannerSaved, setPlannerSaved] = useState(false);
   const [plannerOpen, setPlannerOpen] = useState(true);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isEditingRef  = useRef(false); // true while the debounce save is pending
 
-  const fetchPlan = useCallback(async () => {
+  const fetchPlan = useCallback(async (isInitial = false) => {
     try {
       const res = await fetch(`/api/plan/share/${token}`);
       if (res.status === 404) { setError("This plan link is invalid or does not exist."); return; }
@@ -187,22 +189,26 @@ export default function SharedPlan() {
       if (!res.ok) { setError("Failed to load plan."); return; }
       const data: SharedPlanData = await res.json();
       setPlan(data);
+      // On initial load always apply plannerState; on subsequent polls skip if user is editing
+      if (data.plannerState && (isInitial || !isEditingRef.current)) {
+        setPlannerState({ ...DEFAULT_PLANNER, ...data.plannerState });
+      }
     } catch {
-      setError("Could not connect to server.");
+      if (isInitial) setError("Could not connect to server.");
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   }, [token]);
 
-  useEffect(() => { fetchPlan(); }, [fetchPlan]);
+  // Initial load
+  useEffect(() => { fetchPlan(true); }, [fetchPlan]);
 
-  // Initialize plannerState from fetched plan
+  // Poll every 3 s for remote changes
   useEffect(() => {
-    if (plan?.plannerState) {
-      setPlannerState(prev => ({ ...DEFAULT_PLANNER, ...prev, ...plan.plannerState }));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan?.plannerState]);
+    if (!token) return;
+    pollTimerRef.current = setInterval(() => fetchPlan(false), 3000);
+    return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); };
+  }, [token, fetchPlan]);
 
   // Auto-seed servings from servingSize for entrée items not yet tracked
   useEffect(() => {
@@ -239,10 +245,14 @@ export default function SharedPlan() {
       setPlannerSaved(true);
       setTimeout(() => setPlannerSaved(false), 2500);
     } catch {}
-    finally { setPlannerSaving(false); }
+    finally {
+      setPlannerSaving(false);
+      isEditingRef.current = false; // Release edit lock so polls can resume
+    }
   }, [token]);
 
   const updatePlanner = useCallback((updater: (prev: PlannerState) => PlannerState) => {
+    isEditingRef.current = true; // Block polls while user is typing
     setPlannerState(prev => {
       const next = updater(prev);
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);

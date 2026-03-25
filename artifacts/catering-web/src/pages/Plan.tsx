@@ -159,12 +159,33 @@ export default function Plan() {
   const [shareExpiry,  setShareExpiry]  = useState<string | null>(null);
   const [planName,     setPlanName]     = useState("");
   const [linkCopied,   setLinkCopied]   = useState(false);
-  const planNameRef = useRef<HTMLInputElement>(null);
+  const planNameRef       = useRef<HTMLInputElement>(null);
+  const shareTokenRef     = useRef<string | null>(null);
+  const plannerSyncTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shareUrl = shareToken ? buildShareUrl(shareToken) : null;
+
+  // Keep ref in sync so the auto-save effect can access the latest token
+  useEffect(() => { shareTokenRef.current = shareToken; }, [shareToken]);
 
   const getPlannerState = () => ({
     guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap,
   });
+
+  // Auto-push plannerState to the shared record whenever it changes (after share is opened)
+  useEffect(() => {
+    if (!shareToken) return;
+    if (plannerSyncTimer.current) clearTimeout(plannerSyncTimer.current);
+    plannerSyncTimer.current = setTimeout(async () => {
+      const tok = shareTokenRef.current;
+      if (!tok) return;
+      await fetch(`/api/plan/share/${tok}/planner`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plannerState: { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap } }),
+      }).catch(() => {});
+    }, 800);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareToken, guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap]);
 
   const openShare = async () => {
     setShareOpen(true);
