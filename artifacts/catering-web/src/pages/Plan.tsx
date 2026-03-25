@@ -11,7 +11,7 @@ import { getSessionId } from "@/lib/session";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
-  Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp,
+  Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
   Share2, Copy, CheckCheck, X, Loader2, Utensils,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -439,17 +439,48 @@ export default function Plan() {
         ) : (
           <div className="space-y-6">
 
+            {/* ── Guests strip ── */}
+            {(hasSmallBites || hasEntrees) && (
+              <div className="flex items-center gap-4 px-5 py-3 bg-card border border-border rounded-2xl shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground shrink-0">
+                  <Users className="w-4 h-4" />
+                  <span>Guests</span>
+                </div>
+                <div className="flex items-center gap-2 flex-1 justify-center">
+                  <button
+                    onClick={() => setGuests(g => Math.max(1, g - 1))}
+                    className="w-8 h-8 rounded-full border border-border bg-background flex items-center justify-center text-base font-bold hover:bg-secondary transition-colors"
+                  >−</button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={guests}
+                    onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) setGuests(clamp(v, 1, 500)); }}
+                    className="w-20 text-center font-bold text-xl rounded-xl border border-border bg-background py-1 px-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                  />
+                  <button
+                    onClick={() => setGuests(g => Math.min(500, g + 1))}
+                    className="w-8 h-8 rounded-full border border-border bg-background flex items-center justify-center text-base font-bold hover:bg-secondary transition-colors"
+                  >+</button>
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">shared between planners</span>
+              </div>
+            )}
+
             {/* ── Planners row ── */}
             {(hasSmallBites || hasEntrees) && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col sm:flex-row gap-4">
 
                 {/* Small Bites Planner */}
                 {hasSmallBites && (
-                  <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col">
-                    {/* Planner header */}
+                  <div className={`bg-card border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col ${
+                    sbOpen ? "sm:flex-1 sm:min-w-0" : "sm:flex-none sm:w-14"
+                  }`}>
+                    {/* Normal header — always on mobile, only when open on desktop */}
                     <button
                       onClick={() => setSbOpen(o => !o)}
-                      className="w-full flex items-center justify-between px-5 py-4 hover:bg-secondary/40 transition-colors text-left"
+                      className={`flex w-full items-center justify-between px-5 py-4 hover:bg-secondary/40 transition-colors text-left ${!sbOpen ? "sm:hidden" : ""}`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -467,19 +498,34 @@ export default function Plan() {
                         : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0 ml-2" />}
                     </button>
 
+                    {/* Desktop-only vertical strip when collapsed */}
+                    {!sbOpen && (
+                      <button
+                        onClick={() => setSbOpen(true)}
+                        className="hidden sm:flex flex-col items-center justify-center gap-3 w-full flex-1 py-6 px-3 hover:bg-secondary/40 transition-colors"
+                      >
+                        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span
+                          className="text-xs font-bold uppercase tracking-widest text-muted-foreground"
+                          style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+                        >
+                          Small Bites
+                        </span>
+                        <Calculator className="w-4 h-4 text-primary shrink-0" />
+                      </button>
+                    )}
+
                     {sbOpen && (
                       <div className="px-5 pb-5 border-t border-border space-y-4">
-                        {/* Shared guests input + small bites specific */}
-                        <div className="grid grid-cols-3 gap-3 mt-4">
-                          <NumInput label="Guests" value={guests} onChange={setGuests} min={1} max={500} hint="# of people" />
+                        <div className="grid grid-cols-2 gap-3 mt-4">
                           <NumInput label="Savory pcs/person" value={savoryPPG} onChange={setSavoryPPG} min={1} max={20} hint="rec. 3–4" />
                           <NumInput label="Sweet pcs/person"  value={sweetPPG}  onChange={setSweetPPG}  min={1} max={20} hint="rec. 2–3" />
                         </div>
 
-                        <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-                          <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {guests} guests</span>
-                          <span>Target: <span className="font-bold text-foreground">{needSbTotal} pcs</span> ({needSavory} savory + {needSweet} sweet)</span>
-                        </div>
+                        <p className="text-xs text-muted-foreground px-1">
+                          Target: <span className="font-bold text-foreground">{needSbTotal} pcs</span>
+                          <span className="text-muted-foreground"> ({needSavory} savory + {needSweet} sweet)</span>
+                        </p>
 
                         <div className="space-y-3">
                           <StatusBar need={needSavory} have={haveSavory} label="Savory" unit="pcs" />
@@ -496,10 +542,13 @@ export default function Plan() {
 
                 {/* Entrée Planner */}
                 {hasEntrees && (
-                  <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col">
+                  <div className={`bg-card border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col ${
+                    entOpen ? "sm:flex-1 sm:min-w-0" : "sm:flex-none sm:w-14"
+                  }`}>
+                    {/* Normal header */}
                     <button
                       onClick={() => setEntOpen(o => !o)}
-                      className="w-full flex items-center justify-between px-5 py-4 hover:bg-secondary/40 transition-colors text-left"
+                      className={`flex w-full items-center justify-between px-5 py-4 hover:bg-secondary/40 transition-colors text-left ${!entOpen ? "sm:hidden" : ""}`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -517,21 +566,35 @@ export default function Plan() {
                         : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0 ml-2" />}
                     </button>
 
+                    {/* Desktop-only vertical strip when collapsed */}
+                    {!entOpen && (
+                      <button
+                        onClick={() => setEntOpen(true)}
+                        className="hidden sm:flex flex-col items-center justify-center gap-3 w-full flex-1 py-6 px-3 hover:bg-secondary/40 transition-colors"
+                      >
+                        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span
+                          className="text-xs font-bold uppercase tracking-widest text-muted-foreground"
+                          style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+                        >
+                          Entrées
+                        </span>
+                        <Utensils className="w-4 h-4 text-primary shrink-0" />
+                      </button>
+                    )}
+
                     {entOpen && (
                       <div className="px-5 pb-5 border-t border-border space-y-4">
-                        <div className="grid grid-cols-2 gap-3 mt-4">
-                          <NumInput label="Guests" value={guests} onChange={setGuests} min={1} max={500} hint="# of people" />
-                          <NumInput label="Servings / person" value={servingsPPG} onChange={setServingsPPG} min={1} max={20} hint="rec. 4–5" />
+                        <div className="mt-4">
+                          <NumInput label="Servings / person" value={servingsPPG} onChange={setServingsPPG} min={1} max={20} hint="rec. 4–5 per guest" />
                         </div>
 
-                        <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-                          <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {guests} guests</span>
-                          <span>Target: <span className="font-bold text-foreground">{needEntrees} srv</span> total</span>
-                        </div>
+                        <p className="text-xs text-muted-foreground px-1">
+                          Target: <span className="font-bold text-foreground">{needEntrees} total servings</span>
+                        </p>
 
                         <StatusBar need={needEntrees} have={haveEntreesTotal} label="Total Entrée Servings" unit="srv" />
 
-                        {/* Per-category breakdown chips */}
                         {Object.keys(entreeServingsBycat).length > 0 && (
                           <div className="flex flex-wrap gap-2">
                             {Object.entries(entreeServingsBycat).map(([cat, srv]) => (
