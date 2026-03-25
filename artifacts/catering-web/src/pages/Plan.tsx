@@ -174,64 +174,6 @@ export default function Plan() {
     guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap,
   });
 
-  // Auto-push plannerState to the shared record — skip when change came from a poll
-  useEffect(() => {
-    if (!shareToken) return;
-    if (receivedFromPoll.current) { receivedFromPoll.current = false; return; }
-    if (plannerSyncTimer.current) clearTimeout(plannerSyncTimer.current);
-    plannerSyncTimer.current = setTimeout(async () => {
-      const tok = shareTokenRef.current;
-      if (!tok) return;
-      await fetch(`/api/plan/share/${tok}/planner`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plannerState: { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap } }),
-      }).catch(() => {});
-    }, 800);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shareToken, guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap]);
-
-  // Poll for changes made by the sharee (only active once a share token exists)
-  useEffect(() => {
-    if (!shareToken) return;
-    const poll = async () => {
-      if (document.visibilityState === "hidden") return;
-      try {
-        const res = await fetch(`/api/plan/share/${shareToken}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const ps = data.plannerState;
-        if (!ps) return;
-        const cur = currentPlannerRef.current;
-        const changed =
-          ps.guests !== cur.guests ||
-          ps.savoryPPG !== cur.savoryPPG ||
-          ps.sweetPPG !== cur.sweetPPG ||
-          ps.servingsPPG !== cur.servingsPPG ||
-          JSON.stringify(ps.piecesMap) !== JSON.stringify(cur.piecesMap) ||
-          JSON.stringify(ps.servingsMap) !== JSON.stringify(cur.servingsMap);
-        if (!changed) return;
-        receivedFromPoll.current = true;
-        if (ps.guests !== cur.guests) setGuests(ps.guests);
-        if (ps.savoryPPG !== cur.savoryPPG) setSavoryPPG(ps.savoryPPG);
-        if (ps.sweetPPG !== cur.sweetPPG) setSweetPPG(ps.sweetPPG);
-        if (ps.servingsPPG !== cur.servingsPPG) setServingsPPG(ps.servingsPPG);
-        if (JSON.stringify(ps.piecesMap) !== JSON.stringify(cur.piecesMap))
-          setPiecesMap(Object.fromEntries(Object.entries(ps.piecesMap).map(([k,v]) => [Number(k), Number(v)])));
-        if (JSON.stringify(ps.servingsMap) !== JSON.stringify(cur.servingsMap))
-          setServingsMap(Object.fromEntries(Object.entries(ps.servingsMap).map(([k,v]) => [Number(k), Number(v)])));
-      } catch {}
-    };
-    planPollTimer.current = setInterval(poll, 3000);
-    return () => { if (planPollTimer.current) clearInterval(planPollTimer.current); };
-  }, [shareToken]); // only restarts when share token changes
-
-  // Keep currentPlannerRef up to date for poll comparisons
-  useEffect(() => {
-    currentPlannerRef.current = { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap]);
-
   const openShare = async () => {
     setShareOpen(true);
     setShareLoading(true);
@@ -305,6 +247,64 @@ export default function Plan() {
 
   const [piecesMap,   setPiecesMap]   = useState<Record<number, number>>({});
   const [servingsMap, setServingsMap] = useState<Record<number, number>>({});
+
+  // Auto-push plannerState to the shared record — skip when change came from a poll
+  useEffect(() => {
+    if (!shareToken) return;
+    if (receivedFromPoll.current) { receivedFromPoll.current = false; return; }
+    if (plannerSyncTimer.current) clearTimeout(plannerSyncTimer.current);
+    plannerSyncTimer.current = setTimeout(async () => {
+      const tok = shareTokenRef.current;
+      if (!tok) return;
+      await fetch(`/api/plan/share/${tok}/planner`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plannerState: { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap } }),
+      }).catch(() => {});
+    }, 800);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareToken, guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap]);
+
+  // Poll for changes made by the sharee (only active once a share token exists)
+  useEffect(() => {
+    if (!shareToken) return;
+    const poll = async () => {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const res = await fetch(`/api/plan/share/${shareToken}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const ps = data.plannerState;
+        if (!ps) return;
+        const cur = currentPlannerRef.current;
+        const changed =
+          ps.guests !== cur.guests ||
+          ps.savoryPPG !== cur.savoryPPG ||
+          ps.sweetPPG !== cur.sweetPPG ||
+          ps.servingsPPG !== cur.servingsPPG ||
+          JSON.stringify(ps.piecesMap) !== JSON.stringify(cur.piecesMap) ||
+          JSON.stringify(ps.servingsMap) !== JSON.stringify(cur.servingsMap);
+        if (!changed) return;
+        receivedFromPoll.current = true;
+        if (ps.guests !== cur.guests) setGuests(ps.guests);
+        if (ps.savoryPPG !== cur.savoryPPG) setSavoryPPG(ps.savoryPPG);
+        if (ps.sweetPPG !== cur.sweetPPG) setSweetPPG(ps.sweetPPG);
+        if (ps.servingsPPG !== cur.servingsPPG) setServingsPPG(ps.servingsPPG);
+        if (JSON.stringify(ps.piecesMap) !== JSON.stringify(cur.piecesMap))
+          setPiecesMap(Object.fromEntries(Object.entries(ps.piecesMap).map(([k,v]) => [Number(k), Number(v)])));
+        if (JSON.stringify(ps.servingsMap) !== JSON.stringify(cur.servingsMap))
+          setServingsMap(Object.fromEntries(Object.entries(ps.servingsMap).map(([k,v]) => [Number(k), Number(v)])));
+      } catch {}
+    };
+    planPollTimer.current = setInterval(poll, 3000);
+    return () => { if (planPollTimer.current) clearInterval(planPollTimer.current); };
+  }, [shareToken]);
+
+  // Keep currentPlannerRef up to date for poll comparisons
+  useEffect(() => {
+    currentPlannerRef.current = { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap]);
 
   // ── Per-category collapse ──
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
