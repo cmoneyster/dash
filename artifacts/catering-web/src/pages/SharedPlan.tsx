@@ -12,13 +12,20 @@ import { useToast } from "@/hooks/use-toast";
 
 // ── Category helpers ──────────────────────────────────────────────────────────
 
-const SAVORY_CAT = "Small Bites - Savory";
-const SWEET_CAT  = "Small Bites - Sweet";
+const SAVORY_CAT  = "Small Bites - Savory";
+const SWEET_CAT   = "Small Bites - Sweet";
+const ENTREE_CATS = new Set(["Entrées - Meat", "Entrées - Seafood", "Entrées - Noodles & Rice"]);
+
+const CAT_ORDER = [
+  SAVORY_CAT,
+  SWEET_CAT,
+  "Entrées - Meat",
+  "Entrées - Seafood",
+  "Entrées - Noodles & Rice",
+];
 
 function isSmallBite(cat: string) { return cat === SAVORY_CAT || cat === SWEET_CAT; }
-function isEntree(cat: string) {
-  return cat === "Entrées - Meat" || cat === "Entrées - Seafood" || cat === "Entrées - Noodles & Rice";
-}
+function isEntree(cat: string)    { return ENTREE_CATS.has(cat); }
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -270,6 +277,23 @@ export default function SharedPlan() {
 
   const smallBiteItems = useMemo(() => plan?.items.filter(i => isSmallBite(i.menuItem.category)) ?? [], [plan]);
   const entreeItems    = useMemo(() => plan?.items.filter(i => isEntree(i.menuItem.category)) ?? [], [plan]);
+
+  // ── Category grouping ──
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
+  const toggleCat = (cat: string) =>
+    setCollapsedCats(prev => { const n = new Set(prev); n.has(cat) ? n.delete(cat) : n.add(cat); return n; });
+
+  const groupedItems = useMemo(() => {
+    if (!plan?.items) return [];
+    const map = new Map<string, typeof plan.items>();
+    CAT_ORDER.forEach(cat => map.set(cat, []));
+    plan.items.forEach(item => {
+      const cat = item.menuItem.category;
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(item);
+    });
+    return Array.from(map.entries()).filter(([, items]) => items.length > 0);
+  }, [plan?.items]);
   const hasSmallBites  = smallBiteItems.length > 0;
   const hasEntrees     = entreeItems.length > 0;
   const showPlanner    = hasSmallBites || hasEntrees;
@@ -532,75 +556,125 @@ export default function SharedPlan() {
               </div>
             )}
 
-            {/* ── Item cards ── */}
-            {plan.items.map(item => {
-              const sb  = isSmallBite(item.menuItem.category);
-              const ent = isEntree(item.menuItem.category);
-              const traysSmall = Number(piecesMap[String(item.id)])   || 0;
-              const traysEnt   = Number(servingsMap[String(item.id)]) || 0;
-              const sz         = item.menuItem.servingSize ?? 1;
+            {/* ── Category sections ── */}
+            <div className="space-y-4">
+              {groupedItems.map(([cat, items]) => {
+                const sb        = isSmallBite(cat);
+                const ent       = isEntree(cat);
+                const collapsed = collapsedCats.has(cat);
+                const catPrice  = items.reduce((s, i) => s + i.menuItem.price, 0);
 
-              return (
-                <div
-                  key={item.id}
-                  className="flex flex-col sm:flex-row gap-5 bg-card p-5 rounded-2xl border border-border shadow-sm"
-                >
-                  {item.menuItem.imageUrl && (
-                    <img
-                      src={item.menuItem.imageUrl}
-                      alt=""
-                      onClick={() => setLightboxSrc(item.menuItem.imageUrl!)}
-                      className="w-full sm:w-28 h-28 rounded-xl object-cover shrink-0 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity"
-                    />
-                  )}
-                  <div className="flex-1 flex flex-col justify-between gap-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block">
-                          {item.menuItem.category}
-                        </span>
-                        <h4 className="font-display font-bold text-lg">{item.menuItem.name}</h4>
-                      </div>
-                      <span className="font-bold text-primary shrink-0">{formatCurrency(item.menuItem.price)}</span>
-                    </div>
+                const catPieces   = sb
+                  ? items.reduce((s, i) => s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1), 0)
+                  : null;
+                const catServings = ent
+                  ? items.reduce((s, i) => s + (Number(servingsMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1), 0)
+                  : null;
 
-                    <p className="text-muted-foreground text-sm line-clamp-2">{item.menuItem.description}</p>
-
-                    {/* Tray stepper */}
-                    {(sb || ent) && (
-                      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            {sb ? "Trays / packs ordered" : "Trays ordered"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {sz} {sb ? "pcs" : "srv"} per tray · {(sb ? traysSmall : traysEnt) * sz} {sb ? "pcs" : "srv"} total
-                          </p>
+                return (
+                  <div key={cat} className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+                    {/* Category header */}
+                    <button
+                      onClick={() => toggleCat(cat)}
+                      className="w-full flex items-center gap-3 px-5 py-4 hover:bg-secondary/40 transition-colors text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="font-display font-bold text-base">{cat}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {items.length} item{items.length !== 1 ? "s" : ""}
+                          </span>
+                          {catPieces !== null && (
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              catPieces > 0 ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+                            }`}>
+                              {catPieces} pcs tracked
+                            </span>
+                          )}
+                          {catServings !== null && (
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              catServings > 0 ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+                            }`}>
+                              {catServings} srv
+                            </span>
+                          )}
                         </div>
-                        <CountStepper
-                          value={sb ? traysSmall : traysEnt}
-                          onChange={v => {
-                            if (sb) updatePlanner(p => ({ ...p, piecesMap:   { ...p.piecesMap,   [String(item.id)]: Math.max(0, v) } }));
-                            else    updatePlanner(p => ({ ...p, servingsMap: { ...p.servingsMap, [String(item.id)]: Math.max(0, v) } }));
-                          }}
-                          hint="trays"
-                          defaultVal={1}
-                        />
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Subtotal: <span className="font-semibold text-foreground">{formatCurrency(catPrice)}</span>
+                        </p>
+                      </div>
+                      {collapsed
+                        ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                        : <ChevronUp   className="w-4 h-4 text-muted-foreground shrink-0" />}
+                    </button>
+
+                    {/* Items */}
+                    {!collapsed && (
+                      <div className="divide-y divide-border border-t border-border">
+                        {items.map(item => {
+                          const traysSmall = Number(piecesMap[String(item.id)])   || 0;
+                          const traysEnt   = Number(servingsMap[String(item.id)]) || 0;
+                          const sz         = item.menuItem.servingSize ?? 1;
+
+                          return (
+                            <div key={item.id} className="flex flex-col sm:flex-row gap-4 p-5">
+                              {item.menuItem.imageUrl && (
+                                <img
+                                  src={item.menuItem.imageUrl}
+                                  alt=""
+                                  onClick={() => setLightboxSrc(item.menuItem.imageUrl!)}
+                                  className="w-full sm:w-24 h-24 rounded-xl object-cover shrink-0 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity"
+                                />
+                              )}
+                              <div className="flex-1 flex flex-col justify-between gap-3">
+                                <div className="flex justify-between items-start gap-2">
+                                  <h4 className="font-display font-bold text-lg leading-tight">{item.menuItem.name}</h4>
+                                  <span className="font-bold text-primary shrink-0">{formatCurrency(item.menuItem.price)}</span>
+                                </div>
+
+                                <p className="text-muted-foreground text-sm line-clamp-2">{item.menuItem.description}</p>
+
+                                {/* Tray stepper */}
+                                {(sb || ent) && (
+                                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
+                                    <div>
+                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                        {sb ? "Trays / packs ordered" : "Trays ordered"}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {sz} {sb ? "pcs" : "srv"} per tray · {(sb ? traysSmall : traysEnt) * sz} {sb ? "pcs" : "srv"} total
+                                      </p>
+                                    </div>
+                                    <CountStepper
+                                      value={sb ? traysSmall : traysEnt}
+                                      onChange={v => {
+                                        if (sb) updatePlanner(p => ({ ...p, piecesMap:   { ...p.piecesMap,   [String(item.id)]: Math.max(0, v) } }));
+                                        else    updatePlanner(p => ({ ...p, servingsMap: { ...p.servingsMap, [String(item.id)]: Math.max(0, v) } }));
+                                      }}
+                                      hint="trays"
+                                      defaultVal={1}
+                                    />
+                                  </div>
+                                )}
+
+                                <button
+                                  onClick={() => handleRemove(item.id)}
+                                  disabled={removingId === item.id}
+                                  className="self-start text-sm font-semibold text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {removingId === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
-
-                    <button
-                      onClick={() => handleRemove(item.id)}
-                      disabled={removingId === item.id}
-                      className="self-start text-sm font-semibold text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      {removingId === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                      Remove
-                    </button>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
