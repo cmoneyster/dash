@@ -203,10 +203,13 @@ export default function SharedPlan() {
   // Initial load
   useEffect(() => { fetchPlan(true); }, [fetchPlan]);
 
-  // Poll every 3 s for remote changes
+  // Poll every 3 s for remote changes — paused automatically when the tab is hidden
   useEffect(() => {
     if (!token) return;
-    pollTimerRef.current = setInterval(() => fetchPlan(false), 3000);
+    pollTimerRef.current = setInterval(() => {
+      if (document.visibilityState === "hidden") return; // skip while tab is not visible
+      fetchPlan(false);
+    }, 3000);
     return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); };
   }, [token, fetchPlan]);
 
