@@ -102,7 +102,9 @@ router.delete("/plan/:itemId", async (req, res) => {
 // Create or update a share token for a session
 router.post("/plan/share", async (req, res) => {
   try {
-    const { sessionId, planName } = req.body as { sessionId: string; planName?: string };
+    const { sessionId, planName, plannerState } = req.body as {
+      sessionId: string; planName?: string; plannerState?: unknown;
+    };
     if (!sessionId) return res.status(400).json({ error: "sessionId required" });
 
     // Re-use an existing token for this session if one exists
@@ -117,6 +119,7 @@ router.post("/plan/share", async (req, res) => {
         .update(sharedPlansTable)
         .set({
           planName: planName ?? existing.planName,
+          plannerState: plannerState !== undefined ? plannerState : existing.plannerState,
           lastModifiedAt: new Date(),
           expiresAt: expires,
         })
@@ -128,7 +131,7 @@ router.post("/plan/share", async (req, res) => {
     const expires = expiresAt60Days();
     const [created] = await db
       .insert(sharedPlansTable)
-      .values({ sessionId, planName: planName ?? null, expiresAt: expires })
+      .values({ sessionId, planName: planName ?? null, plannerState: plannerState ?? null, expiresAt: expires })
       .returning();
 
     res.json({ shareToken: created.shareToken, expiresAt: created.expiresAt });
@@ -147,10 +150,38 @@ router.get("/plan/share/:token", async (req, res) => {
 
     await touchSharedPlan(req.params.token);
     const plan = await getPlanData(record.sessionId);
-    res.json({ ...plan, shareToken: record.shareToken, planName: record.planName, expiresAt: record.expiresAt });
+    res.json({
+      ...plan,
+      shareToken: record.shareToken,
+      planName: record.planName,
+      plannerState: record.plannerState ?? null,
+      expiresAt: record.expiresAt,
+    });
   } catch (err) {
     req.log.error({ err }, "Error getting shared plan");
     res.status(500).json({ error: "Failed to get shared plan" });
+  }
+});
+
+// Update planner state on a shared plan
+router.patch("/plan/share/:token/planner", async (req, res) => {
+  try {
+    const record = await resolveSharedPlan(req.params.token);
+    if (!record) return res.status(404).json({ error: "Plan not found" });
+    if (new Date() > record.expiresAt) return res.status(410).json({ error: "This plan link has expired" });
+
+    const { plannerState } = req.body as { plannerState: unknown };
+    if (plannerState === undefined) return res.status(400).json({ error: "plannerState required" });
+
+    await db
+      .update(sharedPlansTable)
+      .set({ plannerState, lastModifiedAt: new Date(), expiresAt: expiresAt60Days() })
+      .where(eq(sharedPlansTable.shareToken, req.params.token));
+
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Error updating planner state");
+    res.status(500).json({ error: "Failed to update planner state" });
   }
 });
 

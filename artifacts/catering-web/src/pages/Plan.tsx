@@ -162,6 +162,10 @@ export default function Plan() {
   const planNameRef = useRef<HTMLInputElement>(null);
   const shareUrl = shareToken ? buildShareUrl(shareToken) : null;
 
+  const getPlannerState = () => ({
+    guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap,
+  });
+
   const openShare = async () => {
     setShareOpen(true);
     setShareLoading(true);
@@ -169,7 +173,7 @@ export default function Plan() {
       const res  = await fetch("/api/plan/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, planName: planName || undefined }),
+        body: JSON.stringify({ sessionId, planName: planName || undefined, plannerState: getPlannerState() }),
       });
       const data = await res.json();
       setShareToken(data.shareToken);
@@ -187,7 +191,7 @@ export default function Plan() {
     await fetch("/api/plan/share", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, planName: name || undefined }),
+      body: JSON.stringify({ sessionId, planName: name || undefined, plannerState: getPlannerState() }),
     }).catch(() => {});
   };
 
@@ -387,6 +391,9 @@ export default function Plan() {
                       </p>
                     )}
                   </div>
+                  <p className="text-xs text-muted-foreground bg-secondary/60 rounded-xl px-3 py-2">
+                    Your guest count and piece/serving quantities are saved with this link so collaborators see your current numbers.
+                  </p>
                   <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
                       Email the link
