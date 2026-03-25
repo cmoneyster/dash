@@ -457,7 +457,7 @@ export default function Plan() {
                     max={500}
                     value={guests}
                     onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) setGuests(clamp(v, 1, 500)); }}
-                    className="w-20 text-center font-bold text-xl rounded-xl border border-border bg-background py-1 px-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                    className="w-20 text-center font-bold text-xl rounded-xl border border-border bg-background py-1 px-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <button
                     onClick={() => setGuests(g => Math.min(500, g + 1))}
