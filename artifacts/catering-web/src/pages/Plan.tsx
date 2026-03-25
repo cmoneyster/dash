@@ -1,62 +1,92 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { 
-  useGetPlan, 
-  useRemoveFromPlan, 
+import {
+  useGetPlan,
+  useRemoveFromPlan,
   useAddToCart,
   getGetPlanQueryKey,
-  getGetCartQueryKey
+  getGetCartQueryKey,
 } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import { Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp, Share2, Copy, CheckCheck, X, Loader2 } from "lucide-react";
+import {
+  Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp,
+  Share2, Copy, CheckCheck, X, Loader2, Utensils,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
 
+// ── Category constants ───────────────────────────────────────────────────────
+
 const SAVORY_CAT = "Small Bites - Savory";
 const SWEET_CAT  = "Small Bites - Sweet";
+const ENTREE_CATS = new Set(["Entrées - Meat", "Entrées - Seafood", "Entrées - Noodles & Rice"]);
 
-function clamp(val: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, val));
+const CAT_ORDER = [
+  SAVORY_CAT,
+  SWEET_CAT,
+  "Entrées - Meat",
+  "Entrées - Seafood",
+  "Entrées - Noodles & Rice",
+];
+
+function isSmallBite(cat: string) { return cat === SAVORY_CAT || cat === SWEET_CAT; }
+function isEntree(cat: string)    { return ENTREE_CATS.has(cat); }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
+
+function daysUntil(dateStr: string) {
+  return Math.max(0, Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000));
 }
 
-function StatusBar({ need, have, label }: { need: number; have: number; label: string }) {
-  const pct = need === 0 ? 100 : clamp((have / need) * 100, 0, 100);
-  const over = have > need;
-  const color = have >= need ? "bg-emerald-500" : pct >= 75 ? "bg-amber-400" : "bg-red-400";
-  const textColor = have >= need ? "text-emerald-600" : pct >= 75 ? "text-amber-600" : "text-red-500";
+function buildShareUrl(shareToken: string) {
+  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+  return `${window.location.origin}${base}/plan/share/${shareToken}`;
+}
+
+// ── Sub-components ───────────────────────────────────────────────────────────
+
+function StatusBar({
+  need, have, label, unit = "pcs",
+}: {
+  need: number; have: number; label: string; unit?: string;
+}) {
+  const pct       = need === 0 ? 100 : clamp((have / need) * 100, 0, 100);
+  const over      = have > need;
+  const met       = have >= need;
+  const barColor  = met ? "bg-emerald-500" : pct >= 75 ? "bg-amber-400" : "bg-red-400";
+  const textColor = met ? "text-emerald-600" : pct >= 75 ? "text-amber-600" : "text-red-500";
 
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-baseline text-sm">
         <span className="font-semibold text-foreground">{label}</span>
         <span className={`font-bold tabular-nums ${textColor}`}>
-          {have} / {need} pcs
+          {have} / {need} {unit}
           {over && <span className="text-xs font-normal text-muted-foreground ml-1">(+{have - need} extra)</span>}
         </span>
       </div>
       <div className="h-2 bg-secondary rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${color}`}
-          style={{ width: `${pct}%` }}
-        />
+        <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${pct}%` }} />
       </div>
       <p className="text-xs text-muted-foreground">
-        {have >= need
+        {met
           ? `You're covered${over ? " and then some" : ""}!`
-          : `Need ${need - have} more piece${need - have !== 1 ? "s" : ""}`}
+          : `Need ${need - have} more ${unit === "srv" ? "serving" : "piece"}${need - have !== 1 ? "s" : ""}`}
       </p>
     </div>
   );
 }
 
 function NumInput({
-  label, value, onChange, min = 1, max = 999, step = 1, hint,
+  label, value, onChange, min = 1, max = 999, hint,
 }: {
   label: string; value: number; onChange: (v: number) => void;
-  min?: number; max?: number; step?: number; hint?: string;
+  min?: number; max?: number; hint?: string;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -65,12 +95,8 @@ function NumInput({
         type="number"
         min={min}
         max={max}
-        step={step}
         value={value}
-        onChange={e => {
-          const v = parseInt(e.target.value);
-          if (!isNaN(v)) onChange(clamp(v, min, max));
-        }}
+        onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) onChange(clamp(v, min, max)); }}
         className="w-full px-3 py-2 text-center text-lg font-bold rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       />
       {hint && <p className="text-xs text-muted-foreground text-center">{hint}</p>}
@@ -78,19 +104,47 @@ function NumInput({
   );
 }
 
-// ── Share modal helpers ──────────────────────────────────────────────────────
-
-function daysUntil(dateStr: string) {
-  const diff = new Date(dateStr).getTime() - Date.now();
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+function CountStepper({
+  value, onChange, hint, defaultVal,
+}: {
+  value: number; onChange: (v: number) => void; hint?: string; defaultVal?: number;
+}) {
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      <button
+        onClick={() => onChange(Math.max(0, value - 1))}
+        disabled={value <= 0}
+        className="w-8 h-8 rounded-lg border border-border bg-background flex items-center justify-center font-bold text-lg hover:bg-secondary disabled:opacity-30 transition-colors"
+      >−</button>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={value === 0 ? "" : value}
+        placeholder="0"
+        onChange={e => {
+          const v = parseInt(e.target.value.replace(/[^0-9]/g, ""));
+          onChange(isNaN(v) ? 0 : v);
+        }}
+        className="w-14 text-center font-bold text-base rounded-lg border border-border bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+      />
+      <button
+        onClick={() => onChange(value + 1)}
+        className="w-8 h-8 rounded-lg border border-border bg-background flex items-center justify-center font-bold text-lg hover:bg-secondary transition-colors"
+      >+</button>
+      {defaultVal !== undefined && value !== defaultVal && (
+        <button
+          onClick={() => onChange(defaultVal)}
+          className="ml-1 text-xs text-muted-foreground underline hover:text-foreground transition-colors"
+          title={`Reset to default (${defaultVal})`}
+        >↺</button>
+      )}
+      {hint && <span className="text-xs text-muted-foreground ml-1">{hint}</span>}
+    </div>
+  );
 }
 
-function buildShareUrl(shareToken: string) {
-  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-  return `${window.location.origin}${base}/plan/share/${shareToken}`;
-}
-
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Main Component ───────────────────────────────────────────────────────────
 
 export default function Plan() {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -98,22 +152,21 @@ export default function Plan() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Share modal
-  const [shareOpen, setShareOpen]       = useState(false);
+  // ── Share modal ──
+  const [shareOpen,    setShareOpen]    = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
-  const [shareToken, setShareToken]     = useState<string | null>(null);
-  const [shareExpiry, setShareExpiry]   = useState<string | null>(null);
-  const [planName, setPlanName]         = useState("");
-  const [linkCopied, setLinkCopied]     = useState(false);
+  const [shareToken,   setShareToken]   = useState<string | null>(null);
+  const [shareExpiry,  setShareExpiry]  = useState<string | null>(null);
+  const [planName,     setPlanName]     = useState("");
+  const [linkCopied,   setLinkCopied]   = useState(false);
   const planNameRef = useRef<HTMLInputElement>(null);
-
   const shareUrl = shareToken ? buildShareUrl(shareToken) : null;
 
   const openShare = async () => {
     setShareOpen(true);
     setShareLoading(true);
     try {
-      const res = await fetch("/api/plan/share", {
+      const res  = await fetch("/api/plan/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, planName: planName || undefined }),
@@ -149,19 +202,15 @@ export default function Plan() {
     }
   };
 
-  // Focus plan name input when modal opens
   useEffect(() => {
-    if (shareOpen && !shareLoading) {
-      setTimeout(() => planNameRef.current?.focus(), 50);
-    }
+    if (shareOpen && !shareLoading) setTimeout(() => planNameRef.current?.focus(), 50);
   }, [shareOpen, shareLoading]);
 
+  // ── Data ──
   const { data: plan, isLoading } = useGetPlan({ sessionId });
 
   const removeFromPlan = useRemoveFromPlan({
-    mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) })
-    }
+    mutation: { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) }) },
   });
 
   const addToCart = useAddToCart({
@@ -171,51 +220,98 @@ export default function Plan() {
         const planItem = plan?.items.find(i => i.menuItemId === variables.data.menuItemId);
         if (planItem) removeFromPlan.mutate({ itemId: planItem.id });
         toast({ title: "Moved to Cart", description: "Item is now in your order." });
-      }
-    }
+      },
+    },
   });
 
-  const handleMoveToCart = (menuItemId: number) => {
-    addToCart.mutate({ data: { sessionId, menuItemId, quantity: 1 } });
-  };
+  // ── Planner state ──
+  const [sbOpen,  setSbOpen]  = useState(true);
+  const [entOpen, setEntOpen] = useState(true);
 
-  // --- Calculator state ---
-  const [calcOpen, setCalcOpen] = useState(true);
-  const [guests, setGuests]       = useState(20);
-  const [savoryPPG, setSavoryPPG] = useState(3);
-  const [sweetPPG, setSweetPPG]   = useState(2);
-  // pieces per plan item (keyed by plan item id, local only)
-  const [piecesMap, setPiecesMap] = useState<Record<number, number>>({});
+  const [guests,      setGuests]      = useState(20);
+  const [savoryPPG,   setSavoryPPG]   = useState(3);
+  const [sweetPPG,    setSweetPPG]    = useState(2);
+  const [servingsPPG, setServingsPPG] = useState(4);
 
+  const [piecesMap,   setPiecesMap]   = useState<Record<number, number>>({});
+  const [servingsMap, setServingsMap] = useState<Record<number, number>>({});
+
+  // ── Per-category collapse ──
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
+  const toggleCat = (cat: string) =>
+    setCollapsedCats(prev => {
+      const next = new Set(prev);
+      next.has(cat) ? next.delete(cat) : next.add(cat);
+      return next;
+    });
+
+  // Auto-seed servingsMap from servingSize when items first load
+  useEffect(() => {
+    if (!plan?.items) return;
+    setServingsMap(prev => {
+      const next = { ...prev };
+      plan.items.forEach(item => {
+        if (isEntree(item.menuItem.category) && !(item.id in next)) {
+          next[item.id] = (item.menuItem as any).servingSize ?? 0;
+        }
+      });
+      return next;
+    });
+  }, [plan?.items]);
+
+  // ── Computed totals ──
   const smallBiteItems = useMemo(
-    () => plan?.items.filter(i =>
-      i.menuItem.category === SAVORY_CAT || i.menuItem.category === SWEET_CAT
-    ) ?? [],
-    [plan]
+    () => plan?.items.filter(i => isSmallBite(i.menuItem.category)) ?? [],
+    [plan],
+  );
+  const entreeItems = useMemo(
+    () => plan?.items.filter(i => isEntree(i.menuItem.category)) ?? [],
+    [plan],
   );
 
-  const hasSmallBites = smallBiteItems.length > 0;
-
-  const needSavory = guests * savoryPPG;
-  const needSweet  = guests * sweetPPG;
-  const needTotal  = needSavory + needSweet;
+  const needSavory  = guests * savoryPPG;
+  const needSweet   = guests * sweetPPG;
+  const needSbTotal = needSavory + needSweet;
+  const needEntrees = guests * servingsPPG;
 
   const haveSavory = useMemo(
-    () => smallBiteItems
-      .filter(i => i.menuItem.category === SAVORY_CAT)
-      .reduce((sum, i) => sum + (piecesMap[i.id] ?? 0), 0),
-    [smallBiteItems, piecesMap]
+    () => smallBiteItems.filter(i => i.menuItem.category === SAVORY_CAT).reduce((s, i) => s + (piecesMap[i.id] ?? 0), 0),
+    [smallBiteItems, piecesMap],
   );
   const haveSweet = useMemo(
-    () => smallBiteItems
-      .filter(i => i.menuItem.category === SWEET_CAT)
-      .reduce((sum, i) => sum + (piecesMap[i.id] ?? 0), 0),
-    [smallBiteItems, piecesMap]
+    () => smallBiteItems.filter(i => i.menuItem.category === SWEET_CAT).reduce((s, i) => s + (piecesMap[i.id] ?? 0), 0),
+    [smallBiteItems, piecesMap],
   );
-  const haveTotal = haveSavory + haveSweet;
+  const haveSbTotal = haveSavory + haveSweet;
 
-  const setPieces = (itemId: number, val: number) =>
-    setPiecesMap(prev => ({ ...prev, [itemId]: Math.max(0, val) }));
+  const entreeServingsBycat = useMemo(() => {
+    const map: Record<string, number> = {};
+    entreeItems.forEach(i => {
+      map[i.menuItem.category] = (map[i.menuItem.category] ?? 0) + (servingsMap[i.id] ?? 0);
+    });
+    return map;
+  }, [entreeItems, servingsMap]);
+
+  const haveEntreesTotal = Object.values(entreeServingsBycat).reduce((s, v) => s + v, 0);
+
+  // ── Grouped items for display ──
+  const groupedItems = useMemo(() => {
+    if (!plan?.items) return [] as [string, typeof plan.items][];
+    const map = new Map<string, typeof plan.items>();
+    CAT_ORDER.forEach(cat => map.set(cat, []));
+    plan.items.forEach(item => {
+      if (!map.has(item.menuItem.category)) map.set(item.menuItem.category, []);
+      map.get(item.menuItem.category)!.push(item);
+    });
+    return Array.from(map.entries()).filter(([, items]) => items.length > 0);
+  }, [plan?.items]);
+
+  const hasSmallBites = smallBiteItems.length > 0;
+  const hasEntrees    = entreeItems.length > 0;
+
+  // ── Collapsed planner summaries ──
+  const sbSummary  = `${guests} guests · ${needSbTotal} pcs needed · ${haveSbTotal} tracked`;
+  const entSummary = `${guests} guests · ${needEntrees} srv needed · ${haveEntreesTotal} tracked`;
 
   return (
     <Layout>
@@ -228,7 +324,6 @@ export default function Plan() {
           onClick={e => { if (e.target === e.currentTarget) setShareOpen(false); }}
         >
           <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-            {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-5 border-b border-border">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center">
@@ -251,7 +346,6 @@ export default function Plan() {
                 </div>
               ) : (
                 <>
-                  {/* Plan name */}
                   <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
                       Plan name <span className="font-normal normal-case tracking-normal text-muted-foreground/60">(optional)</span>
@@ -266,8 +360,6 @@ export default function Plan() {
                       className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                     />
                   </div>
-
-                  {/* Share link */}
                   <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
                       Your share link
@@ -282,9 +374,7 @@ export default function Plan() {
                       <button
                         onClick={handleCopyLink}
                         className={`px-4 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 transition-colors ${
-                          linkCopied
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-foreground text-background hover:bg-primary"
+                          linkCopied ? "bg-emerald-100 text-emerald-700" : "bg-foreground text-background hover:bg-primary"
                         }`}
                       >
                         {linkCopied ? <CheckCheck className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -293,12 +383,10 @@ export default function Plan() {
                     </div>
                     {shareExpiry && (
                       <p className="text-xs text-muted-foreground mt-1.5">
-                        Link stays active for {daysUntil(shareExpiry)} days after last use. Anyone with the link can view and edit.
+                        Link active for {daysUntil(shareExpiry)} days after last use. Anyone with the link can view and edit.
                       </p>
                     )}
                   </div>
-
-                  {/* Email */}
                   <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
                       Email the link
@@ -318,6 +406,8 @@ export default function Plan() {
       )}
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
+
+        {/* ── Page header ── */}
         <div className="flex items-center gap-4 mb-10">
           <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
             <Heart className="w-6 h-6 fill-current" />
@@ -336,7 +426,7 @@ export default function Plan() {
         </div>
 
         {isLoading ? (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">Loading...</div>
+          <div className="h-64 flex items-center justify-center text-muted-foreground">Loading…</div>
         ) : !plan?.items.length ? (
           <div className="text-center py-24 bg-card rounded-3xl border border-border border-dashed">
             <Heart className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
@@ -347,190 +437,258 @@ export default function Plan() {
             </Link>
           </div>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-6">
 
-            {/* ── Small Bites Calculator ── */}
-            {hasSmallBites && (
-              <div className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm">
-                <button
-                  onClick={() => setCalcOpen(o => !o)}
-                  className="w-full flex items-center justify-between px-6 py-4 hover:bg-secondary/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <Calculator className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-display font-bold text-base">Small Bites Planner</p>
-                      <p className="text-xs text-muted-foreground">
-                        {calcOpen
-                          ? "Adjust guests & servings to calculate how many pieces you need"
-                          : `${guests} guests · ${needTotal} pcs needed · ${haveTotal} pcs selected`}
-                      </p>
-                    </div>
+            {/* ── Planners row ── */}
+            {(hasSmallBites || hasEntrees) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                {/* Small Bites Planner */}
+                {hasSmallBites && (
+                  <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col">
+                    {/* Planner header */}
+                    <button
+                      onClick={() => setSbOpen(o => !o)}
+                      className="w-full flex items-center justify-between px-5 py-4 hover:bg-secondary/40 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <Calculator className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-display font-bold text-sm">Small Bites Planner</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {sbOpen ? "Tap to collapse" : sbSummary}
+                          </p>
+                        </div>
+                      </div>
+                      {sbOpen
+                        ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0 ml-2" />
+                        : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0 ml-2" />}
+                    </button>
+
+                    {sbOpen && (
+                      <div className="px-5 pb-5 border-t border-border space-y-4">
+                        {/* Shared guests input + small bites specific */}
+                        <div className="grid grid-cols-3 gap-3 mt-4">
+                          <NumInput label="Guests" value={guests} onChange={setGuests} min={1} max={500} hint="# of people" />
+                          <NumInput label="Savory pcs/person" value={savoryPPG} onChange={setSavoryPPG} min={1} max={20} hint="rec. 3–4" />
+                          <NumInput label="Sweet pcs/person"  value={sweetPPG}  onChange={setSweetPPG}  min={1} max={20} hint="rec. 2–3" />
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                          <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {guests} guests</span>
+                          <span>Target: <span className="font-bold text-foreground">{needSbTotal} pcs</span> ({needSavory} savory + {needSweet} sweet)</span>
+                        </div>
+
+                        <div className="space-y-3">
+                          <StatusBar need={needSavory} have={haveSavory} label="Savory" unit="pcs" />
+                          <StatusBar need={needSweet}  have={haveSweet}  label="Sweet"  unit="pcs" />
+                        </div>
+
+                        <p className="text-xs text-muted-foreground text-center">
+                          Enter how many pieces each item provides using the stepper on each item below.
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  {calcOpen ? (
-                    <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
-                  )}
-                </button>
+                )}
 
-                {calcOpen && (
-                  <div className="px-6 pb-6 border-t border-border">
-                    {/* Inputs row */}
-                    <div className="grid grid-cols-3 gap-4 mt-5 mb-6">
-                      <NumInput
-                        label="Guests"
-                        value={guests}
-                        onChange={setGuests}
-                        min={1}
-                        max={500}
-                        hint="# of people"
-                      />
-                      <NumInput
-                        label="Savory pcs/person"
-                        value={savoryPPG}
-                        onChange={setSavoryPPG}
-                        min={1}
-                        max={20}
-                        hint="recommended 3–4"
-                      />
-                      <NumInput
-                        label="Sweet pcs/person"
-                        value={sweetPPG}
-                        onChange={setSweetPPG}
-                        min={1}
-                        max={20}
-                        hint="recommended 2–3"
-                      />
-                    </div>
-
-                    {/* Totals summary row */}
-                    <div className="flex items-center justify-between gap-4 mb-5 p-3 bg-secondary/50 rounded-xl">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Users className="w-4 h-4" />
-                        <span><span className="font-bold text-foreground">{guests}</span> guests</span>
+                {/* Entrée Planner */}
+                {hasEntrees && (
+                  <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col">
+                    <button
+                      onClick={() => setEntOpen(o => !o)}
+                      className="w-full flex items-center justify-between px-5 py-4 hover:bg-secondary/40 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <Utensils className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-display font-bold text-sm">Entrée Planner</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {entOpen ? "Tap to collapse" : entSummary}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-sm text-muted-foreground text-right">
-                        Total target:{" "}
-                        <span className="font-bold text-foreground">
-                          {needTotal} pcs
-                        </span>
-                        <span className="text-xs ml-1">({needSavory} savory + {needSweet} sweet)</span>
+                      {entOpen
+                        ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0 ml-2" />
+                        : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0 ml-2" />}
+                    </button>
+
+                    {entOpen && (
+                      <div className="px-5 pb-5 border-t border-border space-y-4">
+                        <div className="grid grid-cols-2 gap-3 mt-4">
+                          <NumInput label="Guests" value={guests} onChange={setGuests} min={1} max={500} hint="# of people" />
+                          <NumInput label="Servings / person" value={servingsPPG} onChange={setServingsPPG} min={1} max={20} hint="rec. 4–5" />
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                          <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {guests} guests</span>
+                          <span>Target: <span className="font-bold text-foreground">{needEntrees} srv</span> total</span>
+                        </div>
+
+                        <StatusBar need={needEntrees} have={haveEntreesTotal} label="Total Entrée Servings" unit="srv" />
+
+                        {/* Per-category breakdown chips */}
+                        {Object.keys(entreeServingsBycat).length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(entreeServingsBycat).map(([cat, srv]) => (
+                              <span key={cat} className="text-xs bg-secondary rounded-full px-3 py-1 text-muted-foreground">
+                                {cat.replace("Entrées - ", "")}:{" "}
+                                <span className="font-bold text-foreground">{srv} srv</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <p className="text-xs text-muted-foreground text-center">
+                          Each item's servings pre-filled from its tray size. Adjust using the stepper on each item below.
+                        </p>
                       </div>
-                    </div>
-
-                    {/* Progress bars */}
-                    <div className="grid sm:grid-cols-2 gap-5">
-                      <StatusBar need={needSavory} have={haveSavory} label="Savory Small Bites" />
-                      <StatusBar need={needSweet}  have={haveSweet}  label="Sweet Small Bites" />
-                    </div>
-
-                    <p className="text-xs text-muted-foreground mt-4 text-center">
-                      Enter how many pieces each item provides below — the bars update automatically.
-                    </p>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* ── Plan Items ── */}
+            {/* ── Category sections ── */}
             <div className="space-y-4">
-              {plan.items.map(item => {
-                const isSmallBite = item.menuItem.category === SAVORY_CAT || item.menuItem.category === SWEET_CAT;
-                const pieces = piecesMap[item.id] ?? 0;
+              {groupedItems.map(([cat, items]) => {
+                const sb         = isSmallBite(cat);
+                const ent        = isEntree(cat);
+                const collapsed  = collapsedCats.has(cat);
+                const catPrice   = items.reduce((s, i) => s + i.menuItem.price, 0);
+
+                const catPieces  = sb
+                  ? items.reduce((s, i) => s + (piecesMap[i.id] ?? 0), 0)
+                  : null;
+                const catServings = ent
+                  ? items.reduce((s, i) => s + (servingsMap[i.id] ?? 0), 0)
+                  : null;
 
                 return (
-                  <div
-                    key={item.id}
-                    className={`flex flex-col sm:flex-row gap-6 bg-card p-6 rounded-2xl border shadow-sm group transition-colors ${
-                      isSmallBite ? "border-primary/20 hover:border-primary/40" : "border-border hover:border-primary/30"
-                    }`}
-                  >
-                    {item.menuItem.imageUrl && (
-                      <img
-                        src={item.menuItem.imageUrl}
-                        alt=""
-                        onClick={() => setLightboxSrc(item.menuItem.imageUrl!)}
-                        className="w-full sm:w-32 h-32 rounded-xl object-cover shrink-0 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity"
-                      />
+                  <div key={cat} className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+                    {/* Category header */}
+                    <button
+                      onClick={() => toggleCat(cat)}
+                      className="w-full flex items-center gap-3 px-5 py-4 hover:bg-secondary/40 transition-colors text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="font-display font-bold text-base">{cat}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {items.length} item{items.length !== 1 ? "s" : ""}
+                          </span>
+                          {catPieces !== null && (
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              catPieces > 0 ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+                            }`}>
+                              {catPieces} pcs tracked
+                            </span>
+                          )}
+                          {catServings !== null && (
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              catServings > 0 ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+                            }`}>
+                              {catServings} srv
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Subtotal: <span className="font-semibold text-foreground">{formatCurrency(catPrice)}</span>
+                        </p>
+                      </div>
+                      {collapsed
+                        ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                        : <ChevronUp   className="w-4 h-4 text-muted-foreground shrink-0" />}
+                    </button>
+
+                    {/* Items */}
+                    {!collapsed && (
+                      <div className="divide-y divide-border border-t border-border">
+                        {items.map(item => {
+                          const pieces   = piecesMap[item.id]   ?? 0;
+                          const servings = servingsMap[item.id] ?? 0;
+                          const defaultSrv = (item.menuItem as any).servingSize ?? 0;
+
+                          return (
+                            <div key={item.id} className="flex flex-col sm:flex-row gap-4 p-5">
+                              {item.menuItem.imageUrl && (
+                                <img
+                                  src={item.menuItem.imageUrl}
+                                  alt=""
+                                  onClick={() => setLightboxSrc(item.menuItem.imageUrl!)}
+                                  className="w-full sm:w-24 h-24 rounded-xl object-cover shrink-0 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity"
+                                />
+                              )}
+                              <div className="flex-1 flex flex-col justify-between gap-3">
+                                <div className="flex justify-between items-start gap-2">
+                                  <h4 className="font-display font-bold text-lg leading-tight">{item.menuItem.name}</h4>
+                                  <span className="font-bold text-primary shrink-0">{formatCurrency(item.menuItem.price)}</span>
+                                </div>
+
+                                <p className="text-muted-foreground text-sm line-clamp-2">{item.menuItem.description}</p>
+
+                                {/* Small Bites — pieces stepper */}
+                                {sb && (
+                                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
+                                    <div>
+                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pieces this item provides</p>
+                                      <p className="text-xs text-muted-foreground">How many individual pieces in your order?</p>
+                                    </div>
+                                    <CountStepper
+                                      value={pieces}
+                                      onChange={v => setPiecesMap(p => ({ ...p, [item.id]: Math.max(0, v) }))}
+                                      hint="pcs"
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Entrée — servings stepper */}
+                                {ent && (
+                                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
+                                    <div>
+                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Servings this item provides</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Default: {defaultSrv} servings/tray
+                                      </p>
+                                    </div>
+                                    <CountStepper
+                                      value={servings}
+                                      onChange={v => setServingsMap(p => ({ ...p, [item.id]: Math.max(0, v) }))}
+                                      hint="srv"
+                                      defaultVal={defaultSrv}
+                                    />
+                                  </div>
+                                )}
+
+                                <div className="flex justify-between items-center">
+                                  <button
+                                    onClick={() => removeFromPlan.mutate({ itemId: item.id })}
+                                    className="text-sm font-semibold text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1.5"
+                                  >
+                                    <Trash2 className="w-4 h-4" /> Remove
+                                  </button>
+                                  <button
+                                    onClick={() => addToCart.mutate({ data: { sessionId, menuItemId: item.menuItemId, quantity: 1 } })}
+                                    className="px-4 py-2 bg-foreground text-background font-semibold rounded-xl hover:bg-primary transition-colors flex items-center gap-2 text-sm"
+                                  >
+                                    <ShoppingBag className="w-4 h-4" /> Move to Cart
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
-                    <div className="flex-1 flex flex-col justify-between">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <span className={`text-xs font-bold uppercase tracking-wider mb-1 block ${
-                            isSmallBite ? "text-primary/70" : "text-muted-foreground"
-                          }`}>{item.menuItem.category}</span>
-                          <h4 className="font-display font-bold text-xl">{item.menuItem.name}</h4>
-                        </div>
-                        <span className="font-bold text-lg text-primary">{formatCurrency(item.menuItem.price)}</span>
-                      </div>
-
-                      <p className="text-muted-foreground text-sm line-clamp-2 mb-4">{item.menuItem.description}</p>
-
-                      {/* Pieces input — Small Bites only */}
-                      {isSmallBite && (
-                        <div className="flex items-center gap-3 mb-4 p-3 bg-secondary/50 rounded-xl border border-border/60">
-                          <div className="flex-1">
-                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
-                              Pieces this item provides
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              How many individual pieces in your order of this item?
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              onClick={() => setPieces(item.id, pieces - 1)}
-                              disabled={pieces <= 0}
-                              className="w-8 h-8 rounded-lg border border-border bg-background flex items-center justify-center font-bold text-lg hover:bg-secondary disabled:opacity-30 transition-colors"
-                            >
-                              −
-                            </button>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              value={pieces === 0 ? "" : pieces}
-                              placeholder="0"
-                              onChange={e => {
-                                const v = parseInt(e.target.value.replace(/[^0-9]/g, ""));
-                                setPieces(item.id, isNaN(v) ? 0 : v);
-                              }}
-                              className="w-14 text-center font-bold text-base rounded-lg border border-border bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-                            />
-                            <button
-                              onClick={() => setPieces(item.id, pieces + 1)}
-                              className="w-8 h-8 rounded-lg border border-border bg-background flex items-center justify-center font-bold text-lg hover:bg-secondary transition-colors"
-                            >
-                              +
-                            </button>
-                            <span className="text-xs text-muted-foreground ml-1">pcs</span>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex justify-between items-center mt-auto">
-                        <button
-                          onClick={() => removeFromPlan.mutate({ itemId: item.id })}
-                          className="text-sm font-semibold text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1.5"
-                        >
-                          <Trash2 className="w-4 h-4" /> Remove
-                        </button>
-
-                        <button
-                          onClick={() => handleMoveToCart(item.menuItemId)}
-                          className="px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary transition-colors flex items-center gap-2"
-                        >
-                          <ShoppingBag className="w-4 h-4" /> Move to Cart
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 );
               })}
             </div>
+
           </div>
         )}
       </div>
