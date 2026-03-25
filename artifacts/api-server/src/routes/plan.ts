@@ -2,8 +2,6 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { planItemsTable, menuItemsTable, sharedPlansTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
-import { sendSms } from "../lib/sms";
-
 const router: IRouter = Router();
 
 const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
@@ -137,22 +135,6 @@ router.post("/plan/share", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Error creating shared plan");
     res.status(500).json({ error: "Failed to create shared plan" });
-  }
-});
-
-// Send SMS with share link — must be before /:token routes
-router.post("/plan/share/send-sms", async (req, res) => {
-  try {
-    const { phone, shareUrl, planName } = req.body as { phone: string; shareUrl: string; planName?: string };
-    if (!phone || !shareUrl) return res.status(400).json({ error: "phone and shareUrl required" });
-
-    const planLabel = planName ? `"${planName}" ` : "";
-    const body = `Your dash catering event plan ${planLabel}is ready! View & collaborate here:\n${shareUrl}\n\nLink stays active for 60 days after last use. — dash by Hollywood East Cafe`;
-    await sendSms(phone, body);
-    res.json({ ok: true });
-  } catch (err) {
-    req.log.error({ err }, "Error sending plan SMS");
-    res.status(500).json({ error: "Failed to send SMS" });
   }
 });
 

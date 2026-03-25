@@ -10,7 +10,7 @@ import {
 import { getSessionId } from "@/lib/session";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import { Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp, Share2, Copy, CheckCheck, X, MessageSquare, Loader2 } from "lucide-react";
+import { Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp, Share2, Copy, CheckCheck, X, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
@@ -105,8 +105,6 @@ export default function Plan() {
   const [shareExpiry, setShareExpiry]   = useState<string | null>(null);
   const [planName, setPlanName]         = useState("");
   const [linkCopied, setLinkCopied]     = useState(false);
-  const [smsPhone, setSmsPhone]         = useState("");
-  const [smsSending, setSmsSending]     = useState(false);
   const planNameRef = useRef<HTMLInputElement>(null);
 
   const shareUrl = shareToken ? buildShareUrl(shareToken) : null;
@@ -148,25 +146,6 @@ export default function Plan() {
       setTimeout(() => setLinkCopied(false), 2500);
     } catch {
       toast({ title: "Could not copy", description: "Select and copy the link manually.", variant: "destructive" });
-    }
-  };
-
-  const handleSendSms = async () => {
-    if (!shareUrl || !smsPhone.trim()) return;
-    setSmsSending(true);
-    try {
-      const res = await fetch("/api/plan/share/send-sms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: smsPhone.trim(), shareUrl, planName: planName || undefined }),
-      });
-      if (!res.ok) throw new Error();
-      toast({ title: "Text sent!", description: "Check your phone for the link." });
-      setSmsPhone("");
-    } catch {
-      toast({ title: "Could not send text", description: "Check the number and try again.", variant: "destructive" });
-    } finally {
-      setSmsSending(false);
     }
   };
 
@@ -317,31 +296,6 @@ export default function Plan() {
                         Link stays active for {daysUntil(shareExpiry)} days after last use. Anyone with the link can view and edit.
                       </p>
                     )}
-                  </div>
-
-                  {/* SMS */}
-                  <div>
-                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
-                      <MessageSquare className="w-3 h-3 inline mr-1" />
-                      Text the link to a phone
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="tel"
-                        value={smsPhone}
-                        onChange={e => setSmsPhone(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter") handleSendSms(); }}
-                        placeholder="(555) 123-4567"
-                        className="flex-1 px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-                      />
-                      <button
-                        onClick={handleSendSms}
-                        disabled={smsSending || !smsPhone.trim()}
-                        className="px-4 py-2 rounded-xl font-semibold text-sm bg-foreground text-background hover:bg-primary transition-colors disabled:opacity-40 flex items-center gap-2"
-                      >
-                        {smsSending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
-                      </button>
-                    </div>
                   </div>
 
                   {/* Email */}
