@@ -213,16 +213,15 @@ export default function SharedPlan() {
     return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); };
   }, [token, fetchPlan]);
 
-  // Auto-seed servings from servingSize for entrée items not yet tracked
+  // Auto-seed maps at 1 tray for each new item
   useEffect(() => {
     if (!plan?.items) return;
     setPlannerState(prev => {
-      const next = { ...prev, servingsMap: { ...prev.servingsMap } };
+      const next = { ...prev, piecesMap: { ...prev.piecesMap }, servingsMap: { ...prev.servingsMap } };
       plan.items.forEach(item => {
         const key = String(item.id);
-        if (isEntree(item.menuItem.category) && !(key in next.servingsMap)) {
-          next.servingsMap[key] = item.menuItem.servingSize ?? 0;
-        }
+        if (isSmallBite(item.menuItem.category) && !(key in next.piecesMap))  next.piecesMap[key]   = 1;
+        if (isEntree(item.menuItem.category)    && !(key in next.servingsMap)) next.servingsMap[key] = 1;
       });
       return next;
     });
@@ -277,9 +276,9 @@ export default function SharedPlan() {
   const needSweet   = guests * sweetPPG;
   const needEntrees = guests * servingsPPG;
 
-  const haveSavory  = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SAVORY_CAT).reduce((s, i) => s + (Number(piecesMap[String(i.id)]) || 0), 0), [smallBiteItems, piecesMap]);
-  const haveSweet   = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SWEET_CAT).reduce((s, i) => s + (Number(piecesMap[String(i.id)]) || 0), 0), [smallBiteItems, piecesMap]);
-  const haveEntrees = useMemo(() => entreeItems.reduce((s, i) => s + (Number(servingsMap[String(i.id)]) || 0), 0), [entreeItems, servingsMap]);
+  const haveSavory  = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SAVORY_CAT).reduce((s, i) => s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1), 0), [smallBiteItems, piecesMap]);
+  const haveSweet   = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SWEET_CAT).reduce((s, i)  => s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1), 0), [smallBiteItems, piecesMap]);
+  const haveEntrees = useMemo(() => entreeItems.reduce((s, i) => s + (Number(servingsMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1), 0), [entreeItems, servingsMap]);
 
   // ── Item actions ──
   const handleRemove = async (itemId: number) => {
@@ -535,9 +534,9 @@ export default function SharedPlan() {
             {plan.items.map(item => {
               const sb  = isSmallBite(item.menuItem.category);
               const ent = isEntree(item.menuItem.category);
-              const pieces   = Number(piecesMap[String(item.id)])   || 0;
-              const srvs     = Number(servingsMap[String(item.id)]) || 0;
-              const defSrv   = item.menuItem.servingSize ?? 0;
+              const traysSmall = Number(piecesMap[String(item.id)])   || 0;
+              const traysEnt   = Number(servingsMap[String(item.id)]) || 0;
+              const sz         = item.menuItem.servingSize ?? 1;
 
               return (
                 <div
@@ -565,25 +564,25 @@ export default function SharedPlan() {
 
                     <p className="text-muted-foreground text-sm line-clamp-2">{item.menuItem.description}</p>
 
-                    {/* Pieces / servings stepper */}
+                    {/* Tray stepper */}
                     {(sb || ent) && (
                       <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
                         <div>
                           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            {sb ? "Pieces this item provides" : "Servings this item provides"}
+                            {sb ? "Trays / packs ordered" : "Trays ordered"}
                           </p>
-                          {ent && defSrv > 0 && (
-                            <p className="text-xs text-muted-foreground">Default: {defSrv} servings/tray</p>
-                          )}
+                          <p className="text-xs text-muted-foreground">
+                            {sz} {sb ? "pcs" : "srv"} per tray · {(sb ? traysSmall : traysEnt) * sz} {sb ? "pcs" : "srv"} total
+                          </p>
                         </div>
                         <CountStepper
-                          value={sb ? pieces : srvs}
+                          value={sb ? traysSmall : traysEnt}
                           onChange={v => {
                             if (sb) updatePlanner(p => ({ ...p, piecesMap:   { ...p.piecesMap,   [String(item.id)]: Math.max(0, v) } }));
-                            else     updatePlanner(p => ({ ...p, servingsMap: { ...p.servingsMap, [String(item.id)]: Math.max(0, v) } }));
+                            else    updatePlanner(p => ({ ...p, servingsMap: { ...p.servingsMap, [String(item.id)]: Math.max(0, v) } }));
                           }}
-                          hint={sb ? "pcs" : "srv"}
-                          defaultVal={ent ? defSrv : undefined}
+                          hint="trays"
+                          defaultVal={1}
                         />
                       </div>
                     )}

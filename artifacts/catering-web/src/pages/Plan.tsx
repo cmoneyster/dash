@@ -315,15 +315,20 @@ export default function Plan() {
       return next;
     });
 
-  // Auto-seed servingsMap from servingSize when items first load
+  // Auto-seed maps at 1 tray for each new item
   useEffect(() => {
     if (!plan?.items) return;
+    setPiecesMap(prev => {
+      const next = { ...prev };
+      plan.items.forEach(item => {
+        if (isSmallBite(item.menuItem.category) && !(item.id in next)) next[item.id] = 1;
+      });
+      return next;
+    });
     setServingsMap(prev => {
       const next = { ...prev };
       plan.items.forEach(item => {
-        if (isEntree(item.menuItem.category) && !(item.id in next)) {
-          next[item.id] = (item.menuItem as any).servingSize ?? 0;
-        }
+        if (isEntree(item.menuItem.category) && !(item.id in next)) next[item.id] = 1;
       });
       return next;
     });
@@ -345,11 +350,13 @@ export default function Plan() {
   const needEntrees = guests * servingsPPG;
 
   const haveSavory = useMemo(
-    () => smallBiteItems.filter(i => i.menuItem.category === SAVORY_CAT).reduce((s, i) => s + (piecesMap[i.id] ?? 0), 0),
+    () => smallBiteItems.filter(i => i.menuItem.category === SAVORY_CAT)
+      .reduce((s, i) => s + (piecesMap[i.id] ?? 0) * ((i.menuItem as any).servingSize ?? 1), 0),
     [smallBiteItems, piecesMap],
   );
   const haveSweet = useMemo(
-    () => smallBiteItems.filter(i => i.menuItem.category === SWEET_CAT).reduce((s, i) => s + (piecesMap[i.id] ?? 0), 0),
+    () => smallBiteItems.filter(i => i.menuItem.category === SWEET_CAT)
+      .reduce((s, i) => s + (piecesMap[i.id] ?? 0) * ((i.menuItem as any).servingSize ?? 1), 0),
     [smallBiteItems, piecesMap],
   );
   const haveSbTotal = haveSavory + haveSweet;
@@ -357,7 +364,8 @@ export default function Plan() {
   const entreeServingsBycat = useMemo(() => {
     const map: Record<string, number> = {};
     entreeItems.forEach(i => {
-      map[i.menuItem.category] = (map[i.menuItem.category] ?? 0) + (servingsMap[i.id] ?? 0);
+      const srv = (servingsMap[i.id] ?? 0) * ((i.menuItem as any).servingSize ?? 1);
+      map[i.menuItem.category] = (map[i.menuItem.category] ?? 0) + srv;
     });
     return map;
   }, [entreeItems, servingsMap]);
@@ -698,10 +706,10 @@ export default function Plan() {
                 const catPrice   = items.reduce((s, i) => s + i.menuItem.price, 0);
 
                 const catPieces  = sb
-                  ? items.reduce((s, i) => s + (piecesMap[i.id] ?? 0), 0)
+                  ? items.reduce((s, i) => s + (piecesMap[i.id] ?? 0) * ((i.menuItem as any).servingSize ?? 1), 0)
                   : null;
                 const catServings = ent
-                  ? items.reduce((s, i) => s + (servingsMap[i.id] ?? 0), 0)
+                  ? items.reduce((s, i) => s + (servingsMap[i.id] ?? 0) * ((i.menuItem as any).servingSize ?? 1), 0)
                   : null;
 
                 return (
@@ -745,9 +753,9 @@ export default function Plan() {
                     {!collapsed && (
                       <div className="divide-y divide-border border-t border-border">
                         {items.map(item => {
-                          const pieces   = piecesMap[item.id]   ?? 0;
-                          const servings = servingsMap[item.id] ?? 0;
-                          const defaultSrv = (item.menuItem as any).servingSize ?? 0;
+                          const traysSmall = piecesMap[item.id]   ?? 0;
+                          const traysEnt   = servingsMap[item.id] ?? 0;
+                          const sz         = (item.menuItem as any).servingSize ?? 1;
 
                           return (
                             <div key={item.id} className="flex flex-col sm:flex-row gap-4 p-5">
@@ -767,35 +775,38 @@ export default function Plan() {
 
                                 <p className="text-muted-foreground text-sm line-clamp-2">{item.menuItem.description}</p>
 
-                                {/* Small Bites — pieces stepper */}
+                                {/* Small Bites — tray stepper */}
                                 {sb && (
                                   <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
                                     <div>
-                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pieces this item provides</p>
-                                      <p className="text-xs text-muted-foreground">How many individual pieces in your order?</p>
+                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Trays / packs ordered</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {sz} pcs per tray · {traysSmall * sz} pcs total
+                                      </p>
                                     </div>
                                     <CountStepper
-                                      value={pieces}
+                                      value={traysSmall}
                                       onChange={v => setPiecesMap(p => ({ ...p, [item.id]: Math.max(0, v) }))}
-                                      hint="pcs"
+                                      hint="trays"
+                                      defaultVal={1}
                                     />
                                   </div>
                                 )}
 
-                                {/* Entrée — servings stepper */}
+                                {/* Entrée — tray stepper */}
                                 {ent && (
                                   <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
                                     <div>
-                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Servings this item provides</p>
+                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Trays ordered</p>
                                       <p className="text-xs text-muted-foreground">
-                                        Default: {defaultSrv} servings/tray
+                                        {sz} servings per tray · {traysEnt * sz} srv total
                                       </p>
                                     </div>
                                     <CountStepper
-                                      value={servings}
+                                      value={traysEnt}
                                       onChange={v => setServingsMap(p => ({ ...p, [item.id]: Math.max(0, v) }))}
-                                      hint="srv"
-                                      defaultVal={defaultSrv}
+                                      hint="trays"
+                                      defaultVal={1}
                                     />
                                   </div>
                                 )}
