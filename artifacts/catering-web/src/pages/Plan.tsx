@@ -165,6 +165,7 @@ export default function Plan() {
   const planPollTimer      = useRef<ReturnType<typeof setInterval> | null>(null);
   const receivedFromPoll   = useRef(false); // prevents auto-save echo after a poll update
   const currentPlannerRef  = useRef({ guests: 20, savoryPPG: 3, sweetPPG: 2, servingsPPG: 4, piecesMap: {} as Record<number,number>, servingsMap: {} as Record<number,number> });
+  const currentItemIdsRef  = useRef<string>("[]");
   const shareUrl = shareToken ? buildShareUrl(shareToken) : null;
 
   // Keep refs in sync
@@ -274,6 +275,15 @@ export default function Plan() {
         const res = await fetch(`/api/plan/share/${shareToken}`);
         if (!res.ok) return;
         const data = await res.json();
+
+        // ── Check for item list changes (sharee added/removed items) ──
+        const polledIds = JSON.stringify((data.items ?? []).map((i: { id: number }) => i.id).sort());
+        if (polledIds !== currentItemIdsRef.current) {
+          currentItemIdsRef.current = polledIds;
+          queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) });
+        }
+
+        // ── Check for plannerState changes ──
         const ps = data.plannerState;
         if (!ps) return;
         const cur = currentPlannerRef.current;
@@ -298,13 +308,19 @@ export default function Plan() {
     };
     planPollTimer.current = setInterval(poll, 3000);
     return () => { if (planPollTimer.current) clearInterval(planPollTimer.current); };
-  }, [shareToken]);
+  }, [shareToken, sessionId, queryClient]);
 
   // Keep currentPlannerRef up to date for poll comparisons
   useEffect(() => {
     currentPlannerRef.current = { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap]);
+
+  // Keep currentItemIdsRef in sync with plan items
+  useEffect(() => {
+    const ids = JSON.stringify((plan?.items ?? []).map(i => i.id).sort());
+    currentItemIdsRef.current = ids;
+  }, [plan?.items]);
 
   // ── Per-category collapse ──
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
