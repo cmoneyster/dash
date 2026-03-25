@@ -160,20 +160,24 @@ export default function Plan() {
   const [planName,     setPlanName]     = useState("");
   const [linkCopied,   setLinkCopied]   = useState(false);
   const planNameRef       = useRef<HTMLInputElement>(null);
-  const shareTokenRef     = useRef<string | null>(null);
-  const plannerSyncTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shareTokenRef      = useRef<string | null>(null);
+  const plannerSyncTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const planPollTimer      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const receivedFromPoll   = useRef(false); // prevents auto-save echo after a poll update
+  const currentPlannerRef  = useRef({ guests: 20, savoryPPG: 3, sweetPPG: 2, servingsPPG: 4, piecesMap: {} as Record<number,number>, servingsMap: {} as Record<number,number> });
   const shareUrl = shareToken ? buildShareUrl(shareToken) : null;
 
-  // Keep ref in sync so the auto-save effect can access the latest token
+  // Keep refs in sync
   useEffect(() => { shareTokenRef.current = shareToken; }, [shareToken]);
 
   const getPlannerState = () => ({
     guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap,
   });
 
-  // Auto-push plannerState to the shared record whenever it changes (after share is opened)
+  // Auto-push plannerState to the shared record — skip when change came from a poll
   useEffect(() => {
     if (!shareToken) return;
+    if (receivedFromPoll.current) { receivedFromPoll.current = false; return; }
     if (plannerSyncTimer.current) clearTimeout(plannerSyncTimer.current);
     plannerSyncTimer.current = setTimeout(async () => {
       const tok = shareTokenRef.current;
@@ -186,6 +190,47 @@ export default function Plan() {
     }, 800);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shareToken, guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap]);
+
+  // Poll for changes made by the sharee (only active once a share token exists)
+  useEffect(() => {
+    if (!shareToken) return;
+    const poll = async () => {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const res = await fetch(`/api/plan/share/${shareToken}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const ps = data.plannerState;
+        if (!ps) return;
+        const cur = currentPlannerRef.current;
+        const changed =
+          ps.guests !== cur.guests ||
+          ps.savoryPPG !== cur.savoryPPG ||
+          ps.sweetPPG !== cur.sweetPPG ||
+          ps.servingsPPG !== cur.servingsPPG ||
+          JSON.stringify(ps.piecesMap) !== JSON.stringify(cur.piecesMap) ||
+          JSON.stringify(ps.servingsMap) !== JSON.stringify(cur.servingsMap);
+        if (!changed) return;
+        receivedFromPoll.current = true;
+        if (ps.guests !== cur.guests) setGuests(ps.guests);
+        if (ps.savoryPPG !== cur.savoryPPG) setSavoryPPG(ps.savoryPPG);
+        if (ps.sweetPPG !== cur.sweetPPG) setSweetPPG(ps.sweetPPG);
+        if (ps.servingsPPG !== cur.servingsPPG) setServingsPPG(ps.servingsPPG);
+        if (JSON.stringify(ps.piecesMap) !== JSON.stringify(cur.piecesMap))
+          setPiecesMap(Object.fromEntries(Object.entries(ps.piecesMap).map(([k,v]) => [Number(k), Number(v)])));
+        if (JSON.stringify(ps.servingsMap) !== JSON.stringify(cur.servingsMap))
+          setServingsMap(Object.fromEntries(Object.entries(ps.servingsMap).map(([k,v]) => [Number(k), Number(v)])));
+      } catch {}
+    };
+    planPollTimer.current = setInterval(poll, 3000);
+    return () => { if (planPollTimer.current) clearInterval(planPollTimer.current); };
+  }, [shareToken]); // only restarts when share token changes
+
+  // Keep currentPlannerRef up to date for poll comparisons
+  useEffect(() => {
+    currentPlannerRef.current = { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap]);
 
   const openShare = async () => {
     setShareOpen(true);
