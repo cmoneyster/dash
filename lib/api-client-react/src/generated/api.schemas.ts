@@ -103,6 +103,9 @@ export interface CartItem {
   menuItemId: number;
   menuItem: MenuItem;
   quantity: number;
+  sizeSlot?: number | null;
+  sizeLabel?: string | null;
+  sizePrice?: number | null;
 }
 
 export interface Cart {
@@ -115,6 +118,9 @@ export interface AddToCartBody {
   sessionId: string;
   menuItemId: number;
   quantity: number;
+  sizeSlot?: number | null;
+  sizeLabel?: string | null;
+  sizePrice?: number | null;
 }
 
 export interface UpdateCartItemBody {

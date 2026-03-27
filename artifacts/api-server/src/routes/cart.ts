@@ -1,23 +1,27 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { cartItemsTable, menuItemsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-function getEffectivePrice(item: {
-  price: string;
-  tier2Qty: number | null;
-  tier2Price: string | null;
-  tier3Qty: number | null;
-  tier3Price: string | null;
-}, qty: number): number {
+function getEffectivePrice(
+  item: {
+    price: string;
+    tier2Qty: number | null;
+    tier2Price: string | null;
+    tier3Qty: number | null;
+    tier3Price: string | null;
+  },
+  qty: number,
+  sizePrice?: number | null,
+): number {
+  if (sizePrice != null) return sizePrice;
   const base = parseFloat(item.price);
   const t2q = item.tier2Qty;
   const t2p = item.tier2Price ? parseFloat(item.tier2Price) : null;
   const t3q = item.tier3Qty;
   const t3p = item.tier3Price ? parseFloat(item.tier3Price) : null;
-
   if (t3q && t3p && qty >= t3q) return t3p;
   if (t2q && t2p && qty >= t2q) return t2p;
   return base;
@@ -32,12 +36,16 @@ async function getCartData(sessionId: string) {
 
   const cartItems = rows.map((row) => {
     const qty = row.cart_items.quantity;
-    const effectivePrice = getEffectivePrice(row.menu_items, qty);
+    const sizePrice = row.cart_items.sizePrice ? parseFloat(row.cart_items.sizePrice) : null;
+    const effectivePrice = getEffectivePrice(row.menu_items, qty, sizePrice);
     return {
       id: row.cart_items.id,
       menuItemId: row.cart_items.menuItemId,
       quantity: qty,
       effectivePrice,
+      sizeSlot: row.cart_items.sizeSlot ?? null,
+      sizeLabel: row.cart_items.sizeLabel ?? null,
+      sizePrice,
       menuItem: {
         ...row.menu_items,
         price: parseFloat(row.menu_items.price),
@@ -66,7 +74,7 @@ router.get("/cart", async (req, res) => {
 
 router.post("/cart", async (req, res) => {
   try {
-    const { sessionId, menuItemId, quantity } = req.body;
+    const { sessionId, menuItemId, quantity, sizeSlot, sizeLabel, sizePrice } = req.body;
     if (!sessionId || !menuItemId) return res.status(400).json({ error: "sessionId and menuItemId required" });
 
     const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, menuItemId));
@@ -75,10 +83,29 @@ router.post("/cart", async (req, res) => {
     const requestedQty = quantity ?? 1;
     const minQty = menuItem.minimumOrderQty ?? 1;
 
-    const [existing] = await db
-      .select()
-      .from(cartItemsTable)
-      .where(and(eq(cartItemsTable.sessionId, sessionId), eq(cartItemsTable.menuItemId, menuItemId)));
+    const slotNum: number | null = sizeSlot != null ? Number(sizeSlot) : null;
+    const slotPriceNum: string | null = sizePrice != null ? String(sizePrice) : null;
+
+    let existing;
+    if (slotNum != null) {
+      [existing] = await db
+        .select()
+        .from(cartItemsTable)
+        .where(and(
+          eq(cartItemsTable.sessionId, sessionId),
+          eq(cartItemsTable.menuItemId, menuItemId),
+          eq(cartItemsTable.sizeSlot, slotNum),
+        ));
+    } else {
+      [existing] = await db
+        .select()
+        .from(cartItemsTable)
+        .where(and(
+          eq(cartItemsTable.sessionId, sessionId),
+          eq(cartItemsTable.menuItemId, menuItemId),
+          isNull(cartItemsTable.sizeSlot),
+        ));
+    }
 
     if (existing) {
       const newQty = existing.quantity + requestedQty;
@@ -86,7 +113,14 @@ router.post("/cart", async (req, res) => {
       await db.update(cartItemsTable).set({ quantity: newQty }).where(eq(cartItemsTable.id, existing.id));
     } else {
       const addQty = Math.max(requestedQty, minQty);
-      await db.insert(cartItemsTable).values({ sessionId, menuItemId, quantity: addQty });
+      await db.insert(cartItemsTable).values({
+        sessionId,
+        menuItemId,
+        quantity: addQty,
+        sizeSlot: slotNum,
+        sizeLabel: sizeLabel ?? null,
+        sizePrice: slotPriceNum,
+      });
     }
 
     const cart = await getCartData(sessionId);
@@ -124,7 +158,6 @@ router.delete("/cart/:itemId", async (req, res) => {
     const itemId = parseInt(req.params.itemId);
     const sessionId: string | undefined = req.body?.sessionId || (req.query.sessionId as string | undefined);
 
-    // Fetch the cart item first so we can return updated cart for the right session
     const [cartItem] = await db.select().from(cartItemsTable).where(eq(cartItemsTable.id, itemId));
     if (!cartItem) return res.status(404).json({ error: "Cart item not found" });
 

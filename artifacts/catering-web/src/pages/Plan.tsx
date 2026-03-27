@@ -208,7 +208,7 @@ export default function Plan() {
   const plannerSyncTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const planPollTimer      = useRef<ReturnType<typeof setInterval> | null>(null);
   const receivedFromPoll   = useRef(false); // prevents auto-save echo after a poll update
-  const currentPlannerRef  = useRef({ guests: 20, savoryPPG: 3, sweetPPG: 2, servingsPPG: 4, piecesMap: {} as Record<number,number>, servingsMap: {} as Record<number,number>, sizeMap: {} as Record<number,number> });
+  const currentPlannerRef  = useRef({ guests: 20, savoryPPG: 3, sweetPPG: 2, servingsPPG: 4, piecesMap: {} as Record<number,number>, servingsMap: {} as Record<number,number>, panQtys: {} as Record<number,Record<number,number>> });
   const currentItemIdsRef  = useRef<string>("[]");
   const shareUrl = shareToken ? buildShareUrl(shareToken) : null;
 
@@ -216,7 +216,7 @@ export default function Plan() {
   useEffect(() => { shareTokenRef.current = shareToken; }, [shareToken]);
 
   const getPlannerState = () => ({
-    guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap,
+    guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys,
   });
 
   const openShare = async () => {
@@ -290,11 +290,25 @@ export default function Plan() {
     if (!plan?.items.length || addingAll) return;
     setAddingAll(true);
     try {
-      await Promise.all(
-        plan.items.map(item =>
-          addToCartApi({ sessionId, menuItemId: item.menuItemId, quantity: item.menuItem.minimumOrderQty ?? 1 })
-        )
-      );
+      for (const item of plan.items) {
+        const isPanSizes = (item.menuItem as any).pricingTemplate === "pan_sizes";
+        if (isPanSizes) {
+          const slots = panQtys[item.id] ?? {};
+          const entries = Object.entries(slots).filter(([, q]) => q > 0);
+          for (const [idxStr, qty] of entries) {
+            const idx = Number(idxStr);
+            const lbl = (item.menuItem as any)[`size${idx}Label`];
+            const prc = parseFloat(String((item.menuItem as any)[`size${idx}Price`]));
+            await fetch("/api/cart", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId, menuItemId: item.menuItemId, quantity: qty, sizeSlot: idx, sizeLabel: lbl, sizePrice: prc }),
+            });
+          }
+        } else {
+          await addToCartApi({ sessionId, menuItemId: item.menuItemId, quantity: item.menuItem.minimumOrderQty ?? 1 });
+        }
+      }
       queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
       toast({ title: "Added to cart!", description: `${plan.items.length} item${plan.items.length !== 1 ? "s" : ""} added — ready to checkout.` });
       navigate("/cart");
@@ -315,7 +329,7 @@ export default function Plan() {
       queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) });
       setPiecesMap({});
       setServingsMap({});
-      setSizeMap({});
+      setPanQtys({});
       setClearConfirm(false);
       toast({ title: "Plan cleared", description: "Your event plan has been cleared." });
     } catch {
@@ -335,7 +349,7 @@ export default function Plan() {
 
   const [piecesMap,   setPiecesMap]   = useState<Record<number, number>>({});
   const [servingsMap, setServingsMap] = useState<Record<number, number>>({});
-  const [sizeMap,     setSizeMap]     = useState<Record<number, number>>({}); // planItemId → size slot 1–5
+  const [panQtys,     setPanQtys]     = useState<Record<number, Record<number, number>>>({}); // planItemId → slotIdx → qty
 
   // Auto-push plannerState to the shared record — skip when change came from a poll
   useEffect(() => {
@@ -348,11 +362,11 @@ export default function Plan() {
       await fetch(`/api/plan/share/${tok}/planner`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plannerState: { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, sizeMap } }),
+        body: JSON.stringify({ plannerState: { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys } }),
       }).catch(() => {});
     }, 800);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shareToken, guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, sizeMap]);
+  }, [shareToken, guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys]);
 
   // Poll for changes made by the sharee (only active once a share token exists)
   useEffect(() => {
@@ -382,7 +396,7 @@ export default function Plan() {
           ps.servingsPPG !== cur.servingsPPG ||
           JSON.stringify(ps.piecesMap) !== JSON.stringify(cur.piecesMap) ||
           JSON.stringify(ps.servingsMap) !== JSON.stringify(cur.servingsMap) ||
-          JSON.stringify(ps.sizeMap) !== JSON.stringify(cur.sizeMap);
+          JSON.stringify(ps.panQtys) !== JSON.stringify(cur.panQtys);
         if (!changed) return;
         receivedFromPoll.current = true;
         if (ps.guests !== cur.guests) setGuests(ps.guests);
@@ -393,8 +407,14 @@ export default function Plan() {
           setPiecesMap(Object.fromEntries(Object.entries(ps.piecesMap).map(([k,v]) => [Number(k), Number(v)])));
         if (JSON.stringify(ps.servingsMap) !== JSON.stringify(cur.servingsMap))
           setServingsMap(Object.fromEntries(Object.entries(ps.servingsMap).map(([k,v]) => [Number(k), Number(v)])));
-        if (ps.sizeMap && JSON.stringify(ps.sizeMap) !== JSON.stringify(cur.sizeMap))
-          setSizeMap(Object.fromEntries(Object.entries(ps.sizeMap).map(([k,v]) => [Number(k), Number(v)])));
+        if (ps.panQtys && JSON.stringify(ps.panQtys) !== JSON.stringify(cur.panQtys)) {
+          setPanQtys(Object.fromEntries(
+            Object.entries(ps.panQtys as Record<string, Record<string, number>>).map(([k, slots]) => [
+              Number(k),
+              Object.fromEntries(Object.entries(slots).map(([sk, sv]) => [Number(sk), Number(sv)])),
+            ])
+          ));
+        }
       } catch {}
     };
     planPollTimer.current = setInterval(poll, 3000);
@@ -406,9 +426,9 @@ export default function Plan() {
 
   // Keep currentPlannerRef up to date for poll comparisons
   useEffect(() => {
-    currentPlannerRef.current = { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, sizeMap };
+    currentPlannerRef.current = { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap]);
+  }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys]);
 
   // Keep currentItemIdsRef in sync with plan items
   useEffect(() => {
@@ -444,17 +464,17 @@ export default function Plan() {
       });
       return seeded ? next : prev;
     });
-    setSizeMap(prev => {
+    setPanQtys(prev => {
       let seeded = false;
       const next = { ...prev };
       plan.items.forEach(item => {
         if (isEntree(item.menuItem.category) && (item.menuItem as any).pricingTemplate === "pan_sizes" && !(item.id in next)) {
-          // Default to first size slot that has a price, otherwise slot 1
-          let firstIdx = 1;
+          // Start all slots at 0
+          const slots: Record<number, number> = {};
           for (let i = 1; i <= 5; i++) {
-            if ((item.menuItem as any)[`size${i}Price`] != null) { firstIdx = i; break; }
+            if ((item.menuItem as any)[`size${i}Price`] != null) slots[i] = 0;
           }
-          next[item.id] = firstIdx;
+          next[item.id] = slots;
           seeded = true;
         }
       });
@@ -493,18 +513,22 @@ export default function Plan() {
     const map: Record<string, number> = {};
     entreeItems.forEach(i => {
       const isPanSizes = (i.menuItem as any).pricingTemplate === "pan_sizes";
-      let srvPerUnit: number;
+      let srv = 0;
       if (isPanSizes) {
-        const idx = sizeMap[i.id] ?? 1;
-        srvPerUnit = (i.menuItem as any)[`size${idx}Servings`] ?? (i.menuItem as any).servingSize ?? 1;
+        const slots = panQtys[i.id] ?? {};
+        Object.entries(slots).forEach(([idxStr, qty]) => {
+          const idx = Number(idxStr);
+          const srvPerUnit = (i.menuItem as any)[`size${idx}Servings`] ?? (i.menuItem as any).servingSize ?? 1;
+          srv += qty * srvPerUnit;
+        });
       } else {
-        srvPerUnit = (i.menuItem as any).servingSize ?? 1;
+        const srvPerUnit = (i.menuItem as any).servingSize ?? 1;
+        srv = (servingsMap[i.id] ?? 0) * srvPerUnit;
       }
-      const srv = (servingsMap[i.id] ?? 0) * srvPerUnit;
       map[i.menuItem.category] = (map[i.menuItem.category] ?? 0) + srv;
     });
     return map;
-  }, [entreeItems, servingsMap, sizeMap]);
+  }, [entreeItems, servingsMap, panQtys]);
 
   const haveEntreesTotal = Object.values(entreeServingsBycat).reduce((s, v) => s + v, 0);
 
@@ -868,7 +892,18 @@ export default function Plan() {
                 const sb         = isSmallBite(cat);
                 const ent        = isEntree(cat);
                 const collapsed  = collapsedCats.has(cat);
-                const catPrice   = items.reduce((s, i) => s + i.menuItem.price, 0);
+                const catPrice   = items.reduce((s, i) => {
+                  if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
+                    const slots = panQtys[i.id] ?? {};
+                    let panTotal = 0;
+                    for (let idx = 1; idx <= 5; idx++) {
+                      const prc = (i.menuItem as any)[`size${idx}Price`];
+                      if (prc != null) panTotal += (slots[idx] ?? 0) * parseFloat(String(prc));
+                    }
+                    return s + panTotal;
+                  }
+                  return s + i.menuItem.price;
+                }, 0);
 
                 const catPieces  = sb
                   ? items.reduce((s, i) => s + (piecesMap[i.id] ?? 0) * ((i.menuItem as any).servingSize ?? 1), 0)
@@ -876,9 +911,14 @@ export default function Plan() {
                 const catServings = ent
                   ? items.reduce((s, i) => {
                       const isPan = (i.menuItem as any).pricingTemplate === "pan_sizes";
-                      const idx   = isPan ? (sizeMap[i.id] ?? 1) : 0;
-                      const spu   = isPan ? ((i.menuItem as any)[`size${idx}Servings`] ?? (i.menuItem as any).servingSize ?? 1) : ((i.menuItem as any).servingSize ?? 1);
-                      return s + (servingsMap[i.id] ?? 0) * spu;
+                      if (isPan) {
+                        const slots = panQtys[i.id] ?? {};
+                        return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
+                          const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? (i.menuItem as any).servingSize ?? 1;
+                          return ss + q * spu;
+                        }, 0);
+                      }
+                      return s + (servingsMap[i.id] ?? 0) * ((i.menuItem as any).servingSize ?? 1);
                     }, 0)
                   : null;
 
@@ -942,10 +982,30 @@ export default function Plan() {
                                 />
                               )}
                               <div className="flex-1 flex flex-col justify-between gap-3">
-                                <div className="flex justify-between items-start gap-2">
-                                  <h4 className="font-display font-bold text-lg leading-tight">{item.menuItem.name}</h4>
-                                  <span className="font-bold text-primary shrink-0">{formatCurrency(item.menuItem.price)}</span>
-                                </div>
+                                {(() => {
+                                  const isPanItem = (item.menuItem as any).pricingTemplate === "pan_sizes";
+                                  const panTotal  = isPanItem
+                                    ? (() => {
+                                        const slots = panQtys[item.id] ?? {};
+                                        let t = 0;
+                                        for (let i = 1; i <= 5; i++) {
+                                          const prc = (item.menuItem as any)[`size${i}Price`];
+                                          if (prc != null) t += (slots[i] ?? 0) * parseFloat(String(prc));
+                                        }
+                                        return t;
+                                      })()
+                                    : null;
+                                  return (
+                                    <div className="flex justify-between items-start gap-2">
+                                      <h4 className="font-display font-bold text-lg leading-tight">{item.menuItem.name}</h4>
+                                      <span className="font-bold text-primary shrink-0">
+                                        {isPanItem
+                                          ? (panTotal != null && panTotal > 0 ? formatCurrency(panTotal) : "—")
+                                          : formatCurrency(item.menuItem.price)}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
 
                                 <p className="text-muted-foreground text-sm line-clamp-2">{item.menuItem.description}</p>
 
@@ -971,7 +1031,7 @@ export default function Plan() {
                                   </div>
                                 )}
 
-                                {/* Entrée — pan sizes picker + unit stepper */}
+                                {/* Entrée — pan sizes multi-slot steppers or single stepper */}
                                 {ent && (() => {
                                   const isPanSizes = (item.menuItem as any).pricingTemplate === "pan_sizes";
                                   if (!isPanSizes) {
@@ -996,7 +1056,7 @@ export default function Plan() {
                                       </div>
                                     );
                                   }
-                                  // Pan sizes
+                                  // Pan sizes — per-slot steppers
                                   const activeSizes: Array<{ idx: number; label: string; servings: number; price: number }> = [];
                                   for (let i = 1; i <= 5; i++) {
                                     const lbl = (item.menuItem as any)[`size${i}Label`] as string | null | undefined;
@@ -1004,49 +1064,38 @@ export default function Plan() {
                                     const prc = (item.menuItem as any)[`size${i}Price`];
                                     if (lbl && prc != null) activeSizes.push({ idx: i, label: lbl, servings: srv ?? 1, price: parseFloat(String(prc)) });
                                   }
-                                  const selectedIdx = sizeMap[item.id] ?? activeSizes[0]?.idx ?? 1;
-                                  const selectedSize = activeSizes.find(s => s.idx === selectedIdx) ?? activeSizes[0];
-                                  const traysEntPan = Math.max(minQty, servingsMap[item.id] ?? 0);
+                                  const slots = panQtys[item.id] ?? {};
+                                  const totalPanPrice = activeSizes.reduce((s, sz2) => s + (slots[sz2.idx] ?? 0) * sz2.price, 0);
+                                  const totalPanSrv   = activeSizes.reduce((s, sz2) => s + (slots[sz2.idx] ?? 0) * sz2.servings, 0);
                                   return (
                                     <div className="space-y-2">
-                                      {/* Size selector */}
-                                      <div className="flex flex-wrap gap-2">
-                                        {activeSizes.map(s => (
-                                          <button
-                                            key={s.idx}
-                                            onClick={() => setSizeMap(p => ({ ...p, [item.id]: s.idx }))}
-                                            className={`px-3 py-1.5 rounded-xl border text-sm font-semibold transition-colors ${
-                                              s.idx === selectedIdx
-                                                ? "bg-foreground text-background border-foreground"
-                                                : "bg-secondary border-border hover:bg-secondary/80"
-                                            }`}
-                                          >
-                                            {s.label}
-                                            <span className={`ml-1.5 text-xs font-normal ${s.idx === selectedIdx ? "opacity-70" : "text-muted-foreground"}`}>
-                                              ~{s.servings} srv · ${s.price.toFixed(0)}
-                                            </span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                      {/* Quantity stepper */}
-                                      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
-                                        <div>
-                                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pans ordered</p>
-                                          {selectedSize && (
-                                            <p className="text-xs text-muted-foreground">
-                                              {selectedSize.label} · {selectedSize.servings} srv/pan · {traysEntPan * selectedSize.servings} srv total
-                                            </p>
-                                          )}
+                                      {activeSizes.map(s => {
+                                        const slotQty = slots[s.idx] ?? 0;
+                                        return (
+                                          <div key={s.idx} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
+                                            <div>
+                                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{s.label}</p>
+                                              <p className="text-xs text-muted-foreground">
+                                                {formatCurrency(s.price)}/pan · ~{s.servings} srv
+                                                {slotQty > 0 && ` · ${slotQty * s.servings} srv total`}
+                                              </p>
+                                            </div>
+                                            <CountStepper
+                                              value={slotQty}
+                                              onChange={v => setPanQtys(p => ({ ...p, [item.id]: { ...(p[item.id] ?? {}), [s.idx]: v } }))}
+                                              hint="pan"
+                                              defaultVal={1}
+                                              min={0}
+                                            />
+                                          </div>
+                                        );
+                                      })}
+                                      {totalPanPrice > 0 && (
+                                        <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+                                          <span>{totalPanSrv} servings total</span>
+                                          <span className="font-bold text-foreground">{formatCurrency(totalPanPrice)}</span>
                                         </div>
-                                        <CountStepper
-                                          value={traysEntPan}
-                                          onChange={v => setServingsMap(p => ({ ...p, [item.id]: v }))}
-                                          hint="pan"
-                                          defaultVal={minQty}
-                                          min={minQty}
-                                          minMessage={minMsg}
-                                        />
-                                      </div>
+                                      )}
                                     </div>
                                   );
                                 })()}
@@ -1059,7 +1108,32 @@ export default function Plan() {
                                     <Trash2 className="w-4 h-4" /> Remove
                                   </button>
                                   <button
-                                    onClick={() => addToCart.mutate({ data: { sessionId, menuItemId: item.menuItemId, quantity: item.menuItem.minimumOrderQty ?? 1 } })}
+                                    onClick={async () => {
+                                      const isPanSizes = (item.menuItem as any).pricingTemplate === "pan_sizes";
+                                      if (isPanSizes) {
+                                        const slots = panQtys[item.id] ?? {};
+                                        const entries = Object.entries(slots).filter(([, q]) => q > 0);
+                                        if (entries.length === 0) {
+                                          toast({ title: "Select quantities", description: "Choose at least one pan size before adding to cart.", variant: "destructive" });
+                                          return;
+                                        }
+                                        for (const [idxStr, qty] of entries) {
+                                          const idx = Number(idxStr);
+                                          const lbl = (item.menuItem as any)[`size${idx}Label`];
+                                          const prc = parseFloat(String((item.menuItem as any)[`size${idx}Price`]));
+                                          await fetch("/api/cart", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ sessionId, menuItemId: item.menuItemId, quantity: qty, sizeSlot: idx, sizeLabel: lbl, sizePrice: prc }),
+                                          });
+                                        }
+                                        queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
+                                        removePlanItem(item.id);
+                                        toast({ title: "Moved to Cart", description: "Item is now in your order." });
+                                      } else {
+                                        addToCart.mutate({ data: { sessionId, menuItemId: item.menuItemId, quantity: item.menuItem.minimumOrderQty ?? 1 } });
+                                      }
+                                    }}
                                     className="px-4 py-2 bg-foreground text-background font-semibold rounded-xl hover:bg-primary transition-colors flex items-center gap-2 text-sm"
                                   >
                                     <ShoppingBag className="w-4 h-4" /> Move to Cart

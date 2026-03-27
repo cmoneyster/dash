@@ -219,16 +219,18 @@ export default function Cart() {
                     <div className="space-y-4">
                       {items.map(item => {
                         const anyItem = item as any;
-                        const effectivePrice: number = anyItem.effectivePrice ?? item.menuItem.price;
+                        const sizeLabel: string | null = anyItem.sizeLabel ?? null;
+                        const sizePrice: number | null = anyItem.sizePrice != null ? parseFloat(String(anyItem.sizePrice)) : null;
+                        const effectivePrice: number = sizePrice ?? anyItem.effectivePrice ?? item.menuItem.price;
                         const basePrice: number = item.menuItem.price;
                         const minQty: number = anyItem.menuItem?.minimumOrderQty ?? (item.menuItem as any).minimumOrderQty ?? 1;
-                        const hasSavings = effectivePrice < basePrice;
-                        const tierLabel = (() => {
+                        const hasSavings = sizePrice == null && effectivePrice < basePrice;
+                        const tierLabel = sizePrice == null ? (() => {
                           const mi = item.menuItem as any;
                           if (mi.tier3Qty && mi.tier3Price && item.quantity >= mi.tier3Qty) return "Tier 3 price";
                           if (mi.tier2Qty && mi.tier2Price && item.quantity >= mi.tier2Qty) return "Tier 2 price";
                           return null;
-                        })();
+                        })() : null;
 
                         return (
                           <div key={item.id} className="flex gap-6 bg-card p-4 rounded-2xl border border-border shadow-sm">
@@ -243,10 +245,15 @@ export default function Cart() {
                             <div className="flex-1 flex flex-col justify-between py-1">
                               <div className="flex justify-between items-start">
                                 <div>
-                                  <h4 className="font-bold text-lg">{item.menuItem.name}</h4>
+                                  <h4 className="font-bold text-lg">
+                                    {item.menuItem.name}
+                                    {sizeLabel && (
+                                      <span className="ml-2 text-sm font-normal text-muted-foreground">— {sizeLabel}</span>
+                                    )}
+                                  </h4>
                                   <div className="flex items-center gap-2 mt-0.5">
                                     <p className="text-sm text-muted-foreground">
-                                      {formatCurrency(effectivePrice)} / {item.menuItem.unit}
+                                      {formatCurrency(effectivePrice)} / {sizeLabel ? "pan" : item.menuItem.unit}
                                     </p>
                                     {hasSavings && tierLabel && (
                                       <span className="text-xs font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">

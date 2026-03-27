@@ -335,6 +335,9 @@ export const AddToCartBody = zod.object({
   sessionId: zod.string(),
   menuItemId: zod.number(),
   quantity: zod.number(),
+  sizeSlot: zod.number().nullable().optional(),
+  sizeLabel: zod.string().nullable().optional(),
+  sizePrice: zod.number().nullable().optional(),
 });
 
 export const addToCartResponseItemsItemMenuItemMinimumOrderQtyDefault = 1;

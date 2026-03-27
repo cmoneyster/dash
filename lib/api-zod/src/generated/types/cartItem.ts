@@ -12,4 +12,7 @@ export interface CartItem {
   menuItemId: number;
   menuItem: MenuItem;
   quantity: number;
+  sizeSlot?: number | null;
+  sizeLabel?: string | null;
+  sizePrice?: number | null;
 }

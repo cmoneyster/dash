@@ -54,7 +54,7 @@ type PlannerState = {
   servingsPPG: number;
   piecesMap: Record<string, number>;
   servingsMap: Record<string, number>;
-  sizeMap: Record<string, number>; // planItemId → size slot index 1–5
+  panQtys: Record<string, Record<string, number>>; // planItemId → slotIdx → qty
 };
 
 type SharedPlanData = {
@@ -73,7 +73,7 @@ const DEFAULT_PLANNER: PlannerState = {
   servingsPPG: 4,
   piecesMap: {},
   servingsMap: {},
-  sizeMap: {},
+  panQtys: {},
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -275,19 +275,19 @@ export default function SharedPlan() {
       let seeded = false;
       const piecesMap   = { ...prev.piecesMap };
       const servingsMap = { ...prev.servingsMap };
-      const sizeMap     = { ...(prev.sizeMap ?? {}) };
+      const panQtys     = { ...(prev.panQtys ?? {}) };
       plan.items.forEach(item => {
         const key = String(item.id);
         if (isSmallBite(item.menuItem.category) && !(key in piecesMap))   { piecesMap[key]   = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
         if (isEntree(item.menuItem.category)    && !(key in servingsMap))  { servingsMap[key] = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
-        if (isEntree(item.menuItem.category) && (item.menuItem as any).pricingTemplate === "pan_sizes" && !(key in sizeMap)) {
-          let firstIdx = 1;
-          for (let i = 1; i <= 5; i++) { if ((item.menuItem as any)[`size${i}Price`] != null) { firstIdx = i; break; } }
-          sizeMap[key] = firstIdx;
+        if (isEntree(item.menuItem.category) && (item.menuItem as any).pricingTemplate === "pan_sizes" && !(key in panQtys)) {
+          const slots: Record<string, number> = {};
+          for (let i = 1; i <= 5; i++) { if ((item.menuItem as any)[`size${i}Price`] != null) slots[String(i)] = 0; }
+          panQtys[key] = slots;
           seeded = true;
         }
       });
-      return seeded ? { ...prev, piecesMap, servingsMap, sizeMap } : prev;
+      return seeded ? { ...prev, piecesMap, servingsMap, panQtys } : prev;
     });
   }, [plan?.items]);
 
@@ -328,7 +328,7 @@ export default function SharedPlan() {
   }, [savePlannerState]);
 
   // ── Computed quantities ──
-  const { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, sizeMap = {} } = plannerState;
+  const { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys = {} } = plannerState;
 
   // Sync guestRaw when guests changes externally (poll / initial load)
   useEffect(() => { setGuestRaw(String(guests)); }, [guests]);
@@ -364,12 +364,16 @@ export default function SharedPlan() {
   const haveSweet   = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SWEET_CAT).reduce((s, i)  => s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1), 0), [smallBiteItems, piecesMap]);
   const haveEntrees = useMemo(() => entreeItems.reduce((s, i) => {
     const isPanSizes = (i.menuItem as any).pricingTemplate === "pan_sizes";
-    const idx = isPanSizes ? (Number(sizeMap[String(i.id)]) || 1) : 0;
-    const srvPerUnit = isPanSizes
-      ? ((i.menuItem as any)[`size${idx}Servings`] ?? (i.menuItem as any).servingSize ?? 1)
-      : ((i.menuItem as any).servingSize ?? 1);
+    if (isPanSizes) {
+      const slots = panQtys[String(i.id)] ?? {};
+      return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
+        const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? (i.menuItem as any).servingSize ?? 1;
+        return ss + Number(q) * spu;
+      }, 0);
+    }
+    const srvPerUnit = (i.menuItem as any).servingSize ?? 1;
     return s + (Number(servingsMap[String(i.id)]) || 0) * srvPerUnit;
-  }, 0), [entreeItems, servingsMap, sizeMap]);
+  }, 0), [entreeItems, servingsMap, panQtys]);
 
   // ── Item actions ──
   const handleRemove = async (itemId: number) => {
@@ -629,7 +633,18 @@ export default function SharedPlan() {
                 const sb        = isSmallBite(cat);
                 const ent       = isEntree(cat);
                 const collapsed = collapsedCats.has(cat);
-                const catPrice  = items.reduce((s, i) => s + i.menuItem.price, 0);
+                const catPrice  = items.reduce((s, i) => {
+                  if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
+                    const slots = panQtys[String(i.id)] ?? {};
+                    let panTotal = 0;
+                    for (let idx = 1; idx <= 5; idx++) {
+                      const prc = (i.menuItem as any)[`size${idx}Price`];
+                      if (prc != null) panTotal += (Number(slots[String(idx)]) || 0) * parseFloat(String(prc));
+                    }
+                    return s + panTotal;
+                  }
+                  return s + i.menuItem.price;
+                }, 0);
 
                 const catPieces   = sb
                   ? items.reduce((s, i) => s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1), 0)
@@ -637,9 +652,14 @@ export default function SharedPlan() {
                 const catServings = ent
                   ? items.reduce((s, i) => {
                       const isPan = (i.menuItem as any).pricingTemplate === "pan_sizes";
-                      const idx   = isPan ? (Number(sizeMap[String(i.id)]) || 1) : 0;
-                      const spu   = isPan ? ((i.menuItem as any)[`size${idx}Servings`] ?? i.menuItem.servingSize ?? 1) : (i.menuItem.servingSize ?? 1);
-                      return s + (Number(servingsMap[String(i.id)]) || 0) * spu;
+                      if (isPan) {
+                        const slots = panQtys[String(i.id)] ?? {};
+                        return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
+                          const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? i.menuItem.servingSize ?? 1;
+                          return ss + Number(q) * spu;
+                        }, 0);
+                      }
+                      return s + (Number(servingsMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1);
                     }, 0)
                   : null;
 
@@ -703,10 +723,28 @@ export default function SharedPlan() {
                                 />
                               )}
                               <div className="flex-1 flex flex-col justify-between gap-3">
-                                <div className="flex justify-between items-start gap-2">
-                                  <h4 className="font-display font-bold text-lg leading-tight">{item.menuItem.name}</h4>
-                                  <span className="font-bold text-primary shrink-0">{formatCurrency(item.menuItem.price)}</span>
-                                </div>
+                                {(() => {
+                                  const isPanItem = (item.menuItem as any).pricingTemplate === "pan_sizes";
+                                  const panTotal = isPanItem ? (() => {
+                                    const slots = panQtys[String(item.id)] ?? {};
+                                    let t = 0;
+                                    for (let i = 1; i <= 5; i++) {
+                                      const prc = (item.menuItem as any)[`size${i}Price`];
+                                      if (prc != null) t += (Number(slots[String(i)]) || 0) * parseFloat(String(prc));
+                                    }
+                                    return t;
+                                  })() : null;
+                                  return (
+                                    <div className="flex justify-between items-start gap-2">
+                                      <h4 className="font-display font-bold text-lg leading-tight">{item.menuItem.name}</h4>
+                                      <span className="font-bold text-primary shrink-0">
+                                        {isPanItem
+                                          ? (panTotal != null && panTotal > 0 ? formatCurrency(panTotal) : "—")
+                                          : formatCurrency(item.menuItem.price)}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
 
                                 <p className="text-muted-foreground text-sm line-clamp-2">{item.menuItem.description}</p>
 
@@ -725,7 +763,7 @@ export default function SharedPlan() {
                                   </div>
                                 )}
 
-                                {/* Entrée — pan sizes picker + unit stepper */}
+                                {/* Entrée — pan sizes multi-slot steppers or single stepper */}
                                 {ent && (() => {
                                   const isPanSizes = (item.menuItem as any).pricingTemplate === "pan_sizes";
                                   if (!isPanSizes) {
@@ -743,7 +781,7 @@ export default function SharedPlan() {
                                       </div>
                                     );
                                   }
-                                  // Pan sizes item
+                                  // Pan sizes — per-slot steppers
                                   const activeSizes: Array<{ idx: number; label: string; servings: number; price: number }> = [];
                                   for (let i = 1; i <= 5; i++) {
                                     const lbl = (item.menuItem as any)[`size${i}Label`] as string | null | undefined;
@@ -751,40 +789,39 @@ export default function SharedPlan() {
                                     const prc = (item.menuItem as any)[`size${i}Price`];
                                     if (lbl && prc != null) activeSizes.push({ idx: i, label: lbl, servings: srv ?? 1, price: parseFloat(String(prc)) });
                                   }
-                                  const selectedIdx = Number(sizeMap[String(item.id)]) || activeSizes[0]?.idx || 1;
-                                  const selectedSize = activeSizes.find(s => s.idx === selectedIdx) ?? activeSizes[0];
-                                  const traysEntPan = Math.max(minQty, Number(servingsMap[String(item.id)]) || 0);
+                                  const slots = panQtys[String(item.id)] ?? {};
+                                  const totalPanPrice = activeSizes.reduce((s, sz2) => s + (Number(slots[String(sz2.idx)]) || 0) * sz2.price, 0);
+                                  const totalPanSrv   = activeSizes.reduce((s, sz2) => s + (Number(slots[String(sz2.idx)]) || 0) * sz2.servings, 0);
                                   return (
                                     <div className="space-y-2">
-                                      <div className="flex flex-wrap gap-2">
-                                        {activeSizes.map(s => (
-                                          <button
-                                            key={s.idx}
-                                            onClick={() => updatePlanner(p => ({ ...p, sizeMap: { ...(p.sizeMap ?? {}), [String(item.id)]: s.idx } }))}
-                                            className={`px-3 py-1.5 rounded-xl border text-sm font-semibold transition-colors ${
-                                              s.idx === selectedIdx
-                                                ? "bg-foreground text-background border-foreground"
-                                                : "bg-secondary border-border hover:bg-secondary/80"
-                                            }`}
-                                          >
-                                            {s.label}
-                                            <span className={`ml-1.5 text-xs font-normal ${s.idx === selectedIdx ? "opacity-70" : "text-muted-foreground"}`}>
-                                              ~{s.servings} srv · ${s.price.toFixed(0)}
-                                            </span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
-                                        <div>
-                                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pans ordered</p>
-                                          {selectedSize && <p className="text-xs text-muted-foreground">{selectedSize.label} · {selectedSize.servings} srv/pan · {traysEntPan * selectedSize.servings} srv total</p>}
+                                      {activeSizes.map(s => {
+                                        const slotQty = Number(slots[String(s.idx)]) || 0;
+                                        return (
+                                          <div key={s.idx} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
+                                            <div>
+                                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{s.label}</p>
+                                              <p className="text-xs text-muted-foreground">
+                                                {formatCurrency(s.price)}/pan · ~{s.servings} srv
+                                                {slotQty > 0 && ` · ${slotQty * s.servings} srv total`}
+                                              </p>
+                                            </div>
+                                            <CountStepper
+                                              value={slotQty}
+                                              onChange={v => updatePlanner(p => ({
+                                                ...p,
+                                                panQtys: { ...(p.panQtys ?? {}), [String(item.id)]: { ...(p.panQtys?.[String(item.id)] ?? {}), [String(s.idx)]: v } }
+                                              }))}
+                                              hint="pan" defaultVal={1} min={0}
+                                            />
+                                          </div>
+                                        );
+                                      })}
+                                      {totalPanPrice > 0 && (
+                                        <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+                                          <span>{totalPanSrv} servings total</span>
+                                          <span className="font-bold text-foreground">{formatCurrency(totalPanPrice)}</span>
                                         </div>
-                                        <CountStepper
-                                          value={traysEntPan}
-                                          onChange={v => updatePlanner(p => ({ ...p, servingsMap: { ...p.servingsMap, [String(item.id)]: v } }))}
-                                          hint="pan" defaultVal={minQty} min={minQty} minMessage={minMsg}
-                                        />
-                                      </div>
+                                      )}
                                     </div>
                                   );
                                 })()}

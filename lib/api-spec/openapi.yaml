@@ -844,6 +844,15 @@ components:
           $ref: "#/components/schemas/MenuItem"
         quantity:
           type: integer
+        sizeSlot:
+          type: integer
+          nullable: true
+        sizeLabel:
+          type: string
+          nullable: true
+        sizePrice:
+          type: number
+          nullable: true
       required:
         - id
         - menuItemId
@@ -875,6 +884,15 @@ components:
           type: integer
         quantity:
           type: integer
+        sizeSlot:
+          type: integer
+          nullable: true
+        sizeLabel:
+          type: string
+          nullable: true
+        sizePrice:
+          type: number
+          nullable: true
       required:
         - sessionId
         - menuItemId
