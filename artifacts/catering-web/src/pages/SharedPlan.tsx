@@ -38,6 +38,7 @@ type MenuItemData = {
   imageUrl: string | null;
   allergens: string[];
   servingSize?: number;
+  minimumOrderQty?: number;
 };
 
 type PlanItem = {
@@ -139,14 +140,35 @@ function NumInput({ label, value, onChange, min = 1, max = 999, hint }: {
   );
 }
 
-function CountStepper({ value, onChange, hint, defaultVal }: {
-  value: number; onChange: (v: number) => void; hint?: string; defaultVal?: number;
+function CountStepper({ value, onChange, hint, defaultVal, min = 0, minMessage }: {
+  value: number; onChange: (v: number) => void; hint?: string; defaultVal?: number; min?: number; minMessage?: string;
 }) {
+  const { toast } = useToast();
+
+  const handleDecrement = () => {
+    if (value <= min) {
+      if (minMessage) toast({ description: minMessage, variant: "destructive" });
+      return;
+    }
+    onChange(value - 1);
+  };
+
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseInt(e.target.value.replace(/[^0-9]/g, ""));
+    if (isNaN(v)) { onChange(min); return; }
+    if (v < min) {
+      onChange(min);
+      if (minMessage) toast({ description: minMessage, variant: "destructive" });
+      return;
+    }
+    onChange(v);
+  };
+
   return (
     <div className="flex items-center gap-1 shrink-0">
       <button
-        onClick={() => onChange(Math.max(0, value - 1))}
-        disabled={value <= 0}
+        onClick={handleDecrement}
+        disabled={value <= min}
         className="w-8 h-8 rounded-lg border border-border bg-background flex items-center justify-center font-bold text-lg hover:bg-secondary disabled:opacity-30 transition-colors"
       >−</button>
       <input
@@ -154,8 +176,8 @@ function CountStepper({ value, onChange, hint, defaultVal }: {
         inputMode="numeric"
         pattern="[0-9]*"
         value={value === 0 ? "" : value}
-        placeholder="0"
-        onChange={e => { const v = parseInt(e.target.value.replace(/[^0-9]/g, "")); onChange(isNaN(v) ? 0 : v); }}
+        placeholder={min > 0 ? String(min) : "0"}
+        onChange={handleInput}
         className="w-14 text-center font-bold text-base rounded-lg border border-border bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       />
       <button
@@ -627,9 +649,11 @@ export default function SharedPlan() {
                     {!collapsed && (
                       <div className="divide-y divide-border border-t border-border">
                         {items.map(item => {
-                          const traysSmall = Number(piecesMap[String(item.id)])   || 0;
-                          const traysEnt   = Number(servingsMap[String(item.id)]) || 0;
+                          const minQty     = item.menuItem.minimumOrderQty ?? 1;
+                          const traysSmall = piecesMap[String(item.id)]   !== undefined ? Number(piecesMap[String(item.id)])   : minQty;
+                          const traysEnt   = servingsMap[String(item.id)] !== undefined ? Number(servingsMap[String(item.id)]) : minQty;
                           const sz         = item.menuItem.servingSize ?? 1;
+                          const minMsg     = `Minimum order is ${minQty} tray${minQty !== 1 ? "s" : ""} for this item.`;
 
                           return (
                             <div key={item.id} className="flex flex-col sm:flex-row gap-4 p-5">
@@ -663,11 +687,13 @@ export default function SharedPlan() {
                                     <CountStepper
                                       value={sb ? traysSmall : traysEnt}
                                       onChange={v => {
-                                        if (sb) updatePlanner(p => ({ ...p, piecesMap:   { ...p.piecesMap,   [String(item.id)]: Math.max(0, v) } }));
-                                        else    updatePlanner(p => ({ ...p, servingsMap: { ...p.servingsMap, [String(item.id)]: Math.max(0, v) } }));
+                                        if (sb) updatePlanner(p => ({ ...p, piecesMap:   { ...p.piecesMap,   [String(item.id)]: v } }));
+                                        else    updatePlanner(p => ({ ...p, servingsMap: { ...p.servingsMap, [String(item.id)]: v } }));
                                       }}
                                       hint="trays"
-                                      defaultVal={1}
+                                      defaultVal={minQty}
+                                      min={minQty}
+                                      minMessage={minMsg}
                                     />
                                   </div>
                                 )}
