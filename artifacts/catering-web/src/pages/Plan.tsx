@@ -4,6 +4,7 @@ import {
   useGetPlan,
   useRemoveFromPlan,
   useAddToCart,
+  addToCart as addToCartApi,
   getGetPlanQueryKey,
   getGetCartQueryKey,
 } from "@workspace/api-client-react";
@@ -15,7 +16,7 @@ import {
   Share2, Copy, CheckCheck, X, Loader2, Utensils,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
 
 // ── Category constants ───────────────────────────────────────────────────────
@@ -160,6 +161,8 @@ export default function Plan() {
   const sessionId = getSessionId();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+  const [addingAll, setAddingAll] = useState(false);
 
   // ── Share modal ──
   const [shareOpen,    setShareOpen]    = useState(false);
@@ -245,6 +248,25 @@ export default function Plan() {
       },
     },
   });
+
+  const handleAddAllToCart = async () => {
+    if (!plan?.items.length || addingAll) return;
+    setAddingAll(true);
+    try {
+      await Promise.all(
+        plan.items.map(item =>
+          addToCartApi({ data: { sessionId, menuItemId: item.menuItemId, quantity: 1 } })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
+      toast({ title: "Added to cart!", description: `${plan.items.length} item${plan.items.length !== 1 ? "s" : ""} added — ready to checkout.` });
+      navigate("/cart");
+    } catch {
+      toast({ title: "Something went wrong", description: "Some items may not have been added. Please try again.", variant: "destructive" });
+    } finally {
+      setAddingAll(false);
+    }
+  };
 
   // ── Planner state ──
   const [sbOpen,  setSbOpen]  = useState(true);
@@ -868,6 +890,32 @@ export default function Plan() {
                 );
               })}
             </div>
+
+            {/* ── Add All to Cart ── */}
+            {plan.items.length > 0 && (() => {
+              const total = plan.items.reduce((s, i) => s + i.menuItem.price, 0);
+              return (
+                <div className="sticky bottom-4 z-20">
+                  <div className="bg-foreground text-background rounded-2xl shadow-xl px-5 py-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-display font-bold text-base leading-tight">
+                        {plan.items.length} item{plan.items.length !== 1 ? "s" : ""} ready to order
+                      </p>
+                      <p className="text-sm opacity-70">{formatCurrency(total)} estimated</p>
+                    </div>
+                    <button
+                      onClick={handleAddAllToCart}
+                      disabled={addingAll}
+                      className="shrink-0 flex items-center gap-2 bg-background text-foreground font-bold px-5 py-2.5 rounded-xl hover:bg-secondary transition-colors disabled:opacity-60 text-sm"
+                    >
+                      {addingAll
+                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Adding…</>
+                        : <><ShoppingBag className="w-4 h-4" /> Add All to Cart</>}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
           </div>
         )}
