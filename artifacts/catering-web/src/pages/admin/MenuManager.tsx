@@ -215,7 +215,7 @@ export default function MenuManager() {
 
   const openNew = () => {
     setEditingItem(null);
-    reset({ available: true, servingSize: 1, unit: "tray", price: 0, imageUrl: "" });
+    reset({ available: true, servingSize: 1, unit: "tray", price: 0, imageUrl: "", minimumOrderQty: 1 });
     setPreviewUrl("");
     setIsNewCategory(false);
     setIsDialogOpen(true);
@@ -561,7 +561,7 @@ export default function MenuManager() {
 
                 <div>
                   <label className="block text-sm font-semibold mb-1">Minimum Order Quantity</label>
-                  <input {...register("minimumOrderQty")} type="number" min="1" defaultValue={1} className="w-full px-4 py-2 border rounded-xl" />
+                  <input {...register("minimumOrderQty")} type="number" min="1" className="w-full px-4 py-2 border rounded-xl" />
                 </div>
 
                 <div className="space-y-2">
