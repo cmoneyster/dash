@@ -378,18 +378,34 @@ export default function MenuManager() {
                             />
                           </td>
                           <td className="px-2 py-2">
-                            <div className="relative">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={cur.price}
-                                onChange={e => patchEdit(item.id, item, { price: e.target.value })}
-                                disabled={isSaving}
-                                className="w-full pl-4 pr-1 py-1 text-sm font-semibold rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
-                              />
-                            </div>
+                            {(item as any).pricingTemplate === "pan_sizes" ? (
+                              <div className="text-xs text-muted-foreground space-y-0.5 min-w-[100px]">
+                                {[1,2,3,4,5].map(n => {
+                                  const lbl = (item as any)[`size${n}Label`];
+                                  const prc = (item as any)[`size${n}Price`];
+                                  if (!lbl || prc == null) return null;
+                                  return (
+                                    <div key={n} className="flex gap-1">
+                                      <span className="font-medium">{lbl}:</span>
+                                      <span>${parseFloat(String(prc)).toFixed(0)}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={cur.price}
+                                  onChange={e => patchEdit(item.id, item, { price: e.target.value })}
+                                  disabled={isSaving}
+                                  className="w-full pl-4 pr-1 py-1 text-sm font-semibold rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all"
+                                />
+                              </div>
+                            )}
                           </td>
                           <td className="px-2 py-2 text-center">
                             <button

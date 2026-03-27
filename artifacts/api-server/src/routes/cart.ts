@@ -74,7 +74,7 @@ router.get("/cart", async (req, res) => {
 
 router.post("/cart", async (req, res) => {
   try {
-    const { sessionId, menuItemId, quantity, sizeSlot, sizeLabel, sizePrice } = req.body;
+    const { sessionId, menuItemId, quantity, sizeSlot } = req.body;
     if (!sessionId || !menuItemId) return res.status(400).json({ error: "sessionId and menuItemId required" });
 
     const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, menuItemId));
@@ -84,7 +84,26 @@ router.post("/cart", async (req, res) => {
     const minQty = menuItem.minimumOrderQty ?? 1;
 
     const slotNum: number | null = sizeSlot != null ? Number(sizeSlot) : null;
-    const slotPriceNum: string | null = sizePrice != null ? String(sizePrice) : null;
+
+    // Derive sizePrice server-side from menu item — never trust client-supplied price
+    let slotPriceNum: string | null = null;
+    if (slotNum != null && slotNum >= 1 && slotNum <= 5) {
+      const slotPriceField = `size${slotNum}Price` as keyof typeof menuItem;
+      const rawPrice = menuItem[slotPriceField];
+      if (rawPrice != null) slotPriceNum = String(rawPrice);
+    }
+
+    // Validate that slotNum refers to a defined size slot for pan_sizes items
+    if (slotNum != null && slotPriceNum == null) {
+      return res.status(400).json({ error: `Size slot ${slotNum} is not defined for this item` });
+    }
+
+    // Derive sizeLabel server-side as well
+    let derivedLabel: string | null = null;
+    if (slotNum != null && slotNum >= 1 && slotNum <= 5) {
+      const slotLabelField = `size${slotNum}Label` as keyof typeof menuItem;
+      derivedLabel = (menuItem[slotLabelField] as string | null) ?? null;
+    }
 
     let existing;
     if (slotNum != null) {
@@ -118,7 +137,7 @@ router.post("/cart", async (req, res) => {
         menuItemId,
         quantity: addQty,
         sizeSlot: slotNum,
-        sizeLabel: sizeLabel ?? null,
+        sizeLabel: derivedLabel,
         sizePrice: slotPriceNum,
       });
     }

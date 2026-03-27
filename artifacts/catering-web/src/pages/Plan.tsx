@@ -469,10 +469,13 @@ export default function Plan() {
       const next = { ...prev };
       plan.items.forEach(item => {
         if (isEntree(item.menuItem.category) && (item.menuItem as any).pricingTemplate === "pan_sizes" && !(item.id in next)) {
-          // Start all slots at 0
           const slots: Record<number, number> = {};
+          let first = true;
           for (let i = 1; i <= 5; i++) {
-            if ((item.menuItem as any)[`size${i}Price`] != null) slots[i] = 0;
+            if ((item.menuItem as any)[`size${i}Price`] != null) {
+              slots[i] = first ? 1 : 0; // seed first available slot to 1
+              first = false;
+            }
           }
           next[item.id] = slots;
           seeded = true;
@@ -1152,7 +1155,18 @@ export default function Plan() {
 
             {/* ── Add All to Cart ── */}
             {plan.items.length > 0 && (() => {
-              const total = plan.items.reduce((s, i) => s + i.menuItem.price, 0);
+              const total = plan.items.reduce((s, i) => {
+                if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
+                  const slots = panQtys[i.id] ?? {};
+                  let panTotal = 0;
+                  for (let idx = 1; idx <= 5; idx++) {
+                    const prc = (i.menuItem as any)[`size${idx}Price`];
+                    if (prc != null) panTotal += (slots[idx] ?? 0) * parseFloat(String(prc));
+                  }
+                  return s + panTotal;
+                }
+                return s + i.menuItem.price;
+              }, 0);
               return (
                 <div className="sticky bottom-4 z-20">
                   <div className="bg-foreground text-background rounded-2xl shadow-xl px-5 py-4 flex items-center justify-between gap-4">

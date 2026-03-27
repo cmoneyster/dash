@@ -282,7 +282,13 @@ export default function SharedPlan() {
         if (isEntree(item.menuItem.category)    && !(key in servingsMap))  { servingsMap[key] = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
         if (isEntree(item.menuItem.category) && (item.menuItem as any).pricingTemplate === "pan_sizes" && !(key in panQtys)) {
           const slots: Record<string, number> = {};
-          for (let i = 1; i <= 5; i++) { if ((item.menuItem as any)[`size${i}Price`] != null) slots[String(i)] = 0; }
+          let first = true;
+          for (let i = 1; i <= 5; i++) {
+            if ((item.menuItem as any)[`size${i}Price`] != null) {
+              slots[String(i)] = first ? 1 : 0;
+              first = false;
+            }
+          }
           panQtys[key] = slots;
           seeded = true;
         }

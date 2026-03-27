@@ -253,7 +253,7 @@ export default function Cart() {
                                   </h4>
                                   <div className="flex items-center gap-2 mt-0.5">
                                     <p className="text-sm text-muted-foreground">
-                                      {formatCurrency(effectivePrice)} / {sizeLabel ? "pan" : item.menuItem.unit}
+                                      {formatCurrency(effectivePrice)} / {sizeLabel ? sizeLabel : item.menuItem.unit}
                                     </p>
                                     {hasSavings && tierLabel && (
                                       <span className="text-xs font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">
