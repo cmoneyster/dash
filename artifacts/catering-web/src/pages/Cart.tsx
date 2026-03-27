@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,6 +17,23 @@ import { getSessionId } from "@/lib/session";
 import { formatCurrency } from "@/lib/utils";
 import { Minus, Plus, Trash2, ArrowRight, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+// ── Category constants (mirrors Plan.tsx) ────────────────────────────────────
+const CAT_ORDER = [
+  "Small Bites - Savory",
+  "Small Bites - Sweet",
+  "Entrées - Meat",
+  "Entrées - Seafood",
+  "Entrées - Noodles & Rice",
+];
+
+const CAT_LABELS: Record<string, { label: string; sub?: string }> = {
+  "Small Bites - Savory": { label: "Small Bites", sub: "Savory" },
+  "Small Bites - Sweet":  { label: "Small Bites", sub: "Sweet"  },
+  "Entrées - Meat":       { label: "Entrées",      sub: "Meat"  },
+  "Entrées - Seafood":    { label: "Entrées",      sub: "Seafood" },
+  "Entrées - Noodles & Rice": { label: "Entrées",  sub: "Noodles & Rice" },
+};
 
 const checkoutSchema = z.object({
   customerName: z.string().min(2, "Name is required"),
@@ -76,6 +93,19 @@ export default function Cart() {
 
   const isEmpty = !cart?.items.length;
 
+  // Group cart items by category in canonical order
+  const groupedItems = useMemo(() => {
+    if (!cart?.items.length) return [];
+    const map = new Map<string, typeof cart.items>();
+    CAT_ORDER.forEach(cat => map.set(cat, []));
+    for (const item of cart.items) {
+      const cat = (item.menuItem as any).category ?? "Other";
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(item);
+    }
+    return [...map.entries()].filter(([, items]) => items.length > 0);
+  }, [cart?.items]);
+
   return (
     <Layout>
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
@@ -96,83 +126,109 @@ export default function Cart() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-            {/* Cart Items */}
-            <div className="lg:col-span-7 space-y-6">
-              {cart.items.map(item => {
-                const anyItem = item as any;
-                const effectivePrice: number = anyItem.effectivePrice ?? item.menuItem.price;
-                const basePrice: number = item.menuItem.price;
-                const minQty: number = (item.menuItem as any).minimumOrderQty ?? 1;
-                const hasSavings = effectivePrice < basePrice;
-                const tierLabel = (() => {
-                  const mi = item.menuItem as any;
-                  if (mi.tier3Qty && mi.tier3Price && item.quantity >= mi.tier3Qty) return "Tier 3 price";
-                  if (mi.tier2Qty && mi.tier2Price && item.quantity >= mi.tier2Qty) return "Tier 2 price";
-                  return null;
-                })();
+            {/* Cart Items — categorized */}
+            <div className="lg:col-span-7 space-y-10">
+              {groupedItems.map(([cat, items]) => {
+                const catInfo = CAT_LABELS[cat] ?? { label: cat };
+                const catSubtotal = items.reduce((s, i) => {
+                  const ep: number = (i as any).effectivePrice ?? i.menuItem.price;
+                  return s + ep * i.quantity;
+                }, 0);
 
                 return (
-                  <div key={item.id} className="flex gap-6 bg-card p-4 rounded-2xl border border-border shadow-sm">
-                    {item.menuItem.imageUrl && (
-                      <img
-                        src={item.menuItem.imageUrl}
-                        alt=""
-                        onClick={() => setLightboxSrc(item.menuItem.imageUrl!)}
-                        className="w-24 h-24 rounded-xl object-cover shrink-0 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity"
-                      />
-                    )}
-                    <div className="flex-1 flex flex-col justify-between py-1">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h4 className="font-bold text-lg">{item.menuItem.name}</h4>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <p className="text-sm text-muted-foreground">
-                              {formatCurrency(effectivePrice)} / {item.menuItem.unit}
-                            </p>
-                            {hasSavings && tierLabel && (
-                              <span className="text-xs font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">
-                                {tierLabel}
-                              </span>
-                            )}
-                          </div>
-                          {minQty > 1 && (
-                            <p className="text-xs text-amber-600 font-medium mt-0.5">Min. {minQty} {item.menuItem.unit}</p>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => removeItem.mutate({ itemId: item.id })}
-                          className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-full hover:bg-destructive/10"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                  <div key={cat}>
+                    {/* Category header */}
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-border">
+                      <div className="flex items-baseline gap-2">
+                        <h2 className="font-display font-bold text-xl">{catInfo.label}</h2>
+                        {catInfo.sub && (
+                          <span className="text-sm font-semibold text-muted-foreground">{catInfo.sub}</span>
+                        )}
                       </div>
+                      <span className="text-sm font-semibold text-muted-foreground">{formatCurrency(catSubtotal)}</span>
+                    </div>
 
-                      <div className="flex items-center gap-4 mt-4">
-                        <div className="flex items-center bg-secondary rounded-full p-1">
-                          <button
-                            onClick={() => updateItem.mutate({ itemId: item.id, data: { sessionId, quantity: Math.max(minQty, item.quantity - 1) } })}
-                            disabled={item.quantity <= minQty}
-                            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            <Minus className="w-4 h-4" />
-                          </button>
-                          <span className="w-8 text-center font-semibold text-sm">{item.quantity}</span>
-                          <button
-                            onClick={() => updateItem.mutate({ itemId: item.id, data: { sessionId, quantity: item.quantity + 1 } })}
-                            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <div className="ml-auto text-right">
-                          <div className="font-bold text-lg">{formatCurrency(effectivePrice * item.quantity)}</div>
-                          {hasSavings && (
-                            <div className="text-xs text-emerald-600 font-semibold">
-                              Save {formatCurrency((basePrice - effectivePrice) * item.quantity)}
+                    {/* Items in this category */}
+                    <div className="space-y-4">
+                      {items.map(item => {
+                        const anyItem = item as any;
+                        const effectivePrice: number = anyItem.effectivePrice ?? item.menuItem.price;
+                        const basePrice: number = item.menuItem.price;
+                        const minQty: number = anyItem.menuItem?.minimumOrderQty ?? (item.menuItem as any).minimumOrderQty ?? 1;
+                        const hasSavings = effectivePrice < basePrice;
+                        const tierLabel = (() => {
+                          const mi = item.menuItem as any;
+                          if (mi.tier3Qty && mi.tier3Price && item.quantity >= mi.tier3Qty) return "Tier 3 price";
+                          if (mi.tier2Qty && mi.tier2Price && item.quantity >= mi.tier2Qty) return "Tier 2 price";
+                          return null;
+                        })();
+
+                        return (
+                          <div key={item.id} className="flex gap-6 bg-card p-4 rounded-2xl border border-border shadow-sm">
+                            {item.menuItem.imageUrl && (
+                              <img
+                                src={item.menuItem.imageUrl}
+                                alt=""
+                                onClick={() => setLightboxSrc(item.menuItem.imageUrl!)}
+                                className="w-24 h-24 rounded-xl object-cover shrink-0 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity"
+                              />
+                            )}
+                            <div className="flex-1 flex flex-col justify-between py-1">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h4 className="font-bold text-lg">{item.menuItem.name}</h4>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <p className="text-sm text-muted-foreground">
+                                      {formatCurrency(effectivePrice)} / {item.menuItem.unit}
+                                    </p>
+                                    {hasSavings && tierLabel && (
+                                      <span className="text-xs font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">
+                                        {tierLabel}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {minQty > 1 && (
+                                    <p className="text-xs text-amber-600 font-medium mt-0.5">Min. {minQty} {item.menuItem.unit}</p>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={() => removeItem.mutate({ itemId: item.id })}
+                                  className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-full hover:bg-destructive/10"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              <div className="flex items-center gap-4 mt-4">
+                                <div className="flex items-center bg-secondary rounded-full p-1">
+                                  <button
+                                    onClick={() => updateItem.mutate({ itemId: item.id, data: { sessionId, quantity: Math.max(minQty, item.quantity - 1) } })}
+                                    disabled={item.quantity <= minQty}
+                                    className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
+                                    <Minus className="w-4 h-4" />
+                                  </button>
+                                  <span className="w-8 text-center font-semibold text-sm">{item.quantity}</span>
+                                  <button
+                                    onClick={() => updateItem.mutate({ itemId: item.id, data: { sessionId, quantity: item.quantity + 1 } })}
+                                    className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </button>
+                                </div>
+                                <div className="ml-auto text-right">
+                                  <div className="font-bold text-lg">{formatCurrency(effectivePrice * item.quantity)}</div>
+                                  {hasSavings && (
+                                    <div className="text-xs text-emerald-600 font-semibold">
+                                      Save {formatCurrency((basePrice - effectivePrice) * item.quantity)}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
