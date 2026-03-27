@@ -1,7 +1,10 @@
-// Twilio integration via Replit connector
+// SMS sender — uses ejointech gateway as primary, falls back to Twilio if not configured
 import twilio from "twilio";
+import { isEjoinConfigured, sendSmsViaEjoin } from "./sms-ejoin";
 
-async function getCredentials() {
+// ── Twilio (fallback) ─────────────────────────────────────────────────────────
+
+async function getTwilioCredentials() {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? "repl " + process.env.REPL_IDENTITY
@@ -37,8 +40,8 @@ async function getCredentials() {
   }
 }
 
-async function getClient() {
-  const creds = await getCredentials();
+async function getTwilioClient() {
+  const creds = await getTwilioCredentials();
   if (!creds) return null;
   return {
     client: twilio(creds.apiKey, creds.apiKeySecret, { accountSid: creds.accountSid }),
@@ -53,8 +56,8 @@ function normalizePhone(phone: string): string {
   return `+${digits}`;
 }
 
-export async function sendSms(to: string, body: string, fromOverride?: string | null): Promise<void> {
-  const conn = await getClient();
+async function sendViaTwilio(to: string, body: string, fromOverride?: string | null): Promise<void> {
+  const conn = await getTwilioClient();
   if (!conn) {
     console.warn("[SMS] Twilio not configured, skipping message to", to);
     return;
@@ -64,10 +67,27 @@ export async function sendSms(to: string, body: string, fromOverride?: string | 
     console.warn("[SMS] No Twilio from number configured, skipping message");
     return;
   }
+  await conn.client.messages.create({ to: normalizePhone(to), from, body });
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+export async function sendSms(to: string, body: string, fromOverride?: string | null): Promise<void> {
+  // Try ejointech gateway first
+  if (isEjoinConfigured()) {
+    try {
+      await sendSmsViaEjoin(to, body);
+      return;
+    } catch (err) {
+      console.error("[SMS] ejointech failed, falling back to Twilio:", err);
+    }
+  }
+
+  // Fall back to Twilio
   try {
-    await conn.client.messages.create({ to: normalizePhone(to), from, body });
+    await sendViaTwilio(to, body, fromOverride);
   } catch (err) {
-    console.error("[SMS] Failed to send message:", err);
+    console.error("[SMS] Twilio also failed:", err);
   }
 }
 
