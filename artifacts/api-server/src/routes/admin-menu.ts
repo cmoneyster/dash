@@ -5,16 +5,25 @@ import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
+function formatItem(item: typeof menuItemsTable.$inferSelect) {
+  return {
+    ...item,
+    price: parseFloat(item.price),
+    tier2Price: item.tier2Price != null ? parseFloat(item.tier2Price) : null,
+    tier3Price: item.tier3Price != null ? parseFloat(item.tier3Price) : null,
+    size1Price: item.size1Price != null ? parseFloat(item.size1Price) : null,
+    size2Price: item.size2Price != null ? parseFloat(item.size2Price) : null,
+    size3Price: item.size3Price != null ? parseFloat(item.size3Price) : null,
+    size4Price: item.size4Price != null ? parseFloat(item.size4Price) : null,
+    size5Price: item.size5Price != null ? parseFloat(item.size5Price) : null,
+    allergens: item.allergens ?? [],
+  };
+}
+
 router.get("/admin/menu", async (req, res) => {
   try {
     const items = await db.select().from(menuItemsTable).orderBy(menuItemsTable.createdAt);
-    res.json(items.map((item) => ({
-      ...item,
-      price: parseFloat(item.price),
-      tier2Price: item.tier2Price != null ? parseFloat(item.tier2Price) : null,
-      tier3Price: item.tier3Price != null ? parseFloat(item.tier3Price) : null,
-      allergens: item.allergens ?? [],
-    })));
+    res.json(items.map(formatItem));
   } catch (err) {
     req.log.error({ err }, "Error listing admin menu items");
     res.status(500).json({ error: "Failed to list menu items" });
@@ -29,6 +38,12 @@ router.post("/admin/menu", async (req, res) => {
       minimumOrderQty,
       tier2Qty, tier2Price, tier3Qty, tier3Price,
       eventActive, eventStock,
+      pricingTemplate,
+      size1Label, size1Servings, size1Price,
+      size2Label, size2Servings, size2Price,
+      size3Label, size3Servings, size3Price,
+      size4Label, size4Servings, size4Price,
+      size5Label, size5Servings, size5Price,
     } = req.body;
     const [item] = await db.insert(menuItemsTable).values({
       name,
@@ -48,14 +63,24 @@ router.post("/admin/menu", async (req, res) => {
       tier3Price: tier3Price != null ? String(tier3Price) : null,
       eventActive: eventActive ?? false,
       eventStock: eventStock != null ? parseInt(String(eventStock)) : null,
+      pricingTemplate: pricingTemplate ?? "per_unit",
+      size1Label: size1Label ?? "Small",
+      size1Servings: size1Servings != null ? parseInt(String(size1Servings)) : 15,
+      size1Price: size1Price != null ? String(size1Price) : null,
+      size2Label: size2Label ?? "Medium",
+      size2Servings: size2Servings != null ? parseInt(String(size2Servings)) : 30,
+      size2Price: size2Price != null ? String(size2Price) : null,
+      size3Label: size3Label ?? "Large",
+      size3Servings: size3Servings != null ? parseInt(String(size3Servings)) : 45,
+      size3Price: size3Price != null ? String(size3Price) : null,
+      size4Label: size4Label ?? null,
+      size4Servings: size4Servings != null ? parseInt(String(size4Servings)) : null,
+      size4Price: size4Price != null ? String(size4Price) : null,
+      size5Label: size5Label ?? null,
+      size5Servings: size5Servings != null ? parseInt(String(size5Servings)) : null,
+      size5Price: size5Price != null ? String(size5Price) : null,
     }).returning();
-    res.status(201).json({
-      ...item,
-      price: parseFloat(item.price),
-      tier2Price: item.tier2Price != null ? parseFloat(item.tier2Price) : null,
-      tier3Price: item.tier3Price != null ? parseFloat(item.tier3Price) : null,
-      allergens: item.allergens ?? [],
-    });
+    res.status(201).json(formatItem(item));
   } catch (err) {
     req.log.error({ err }, "Error creating menu item");
     res.status(500).json({ error: "Failed to create menu item" });
@@ -71,6 +96,12 @@ router.put("/admin/menu/:id", async (req, res) => {
       minimumOrderQty,
       tier2Qty, tier2Price, tier3Qty, tier3Price,
       eventActive, eventStock,
+      pricingTemplate,
+      size1Label, size1Servings, size1Price,
+      size2Label, size2Servings, size2Price,
+      size3Label, size3Servings, size3Price,
+      size4Label, size4Servings, size4Price,
+      size5Label, size5Servings, size5Price,
     } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined)             updates.name = name;
@@ -90,16 +121,26 @@ router.put("/admin/menu/:id", async (req, res) => {
     if (tier3Price !== undefined)       updates.tier3Price = tier3Price === null ? null : String(tier3Price);
     if (eventActive !== undefined)      updates.eventActive = eventActive;
     if (eventStock !== undefined)       updates.eventStock = eventStock === null ? null : parseInt(String(eventStock));
+    if (pricingTemplate !== undefined)  updates.pricingTemplate = pricingTemplate;
+    if (size1Label !== undefined)       updates.size1Label = size1Label;
+    if (size1Servings !== undefined)    updates.size1Servings = size1Servings != null ? parseInt(String(size1Servings)) : null;
+    if (size1Price !== undefined)       updates.size1Price = size1Price === null ? null : String(size1Price);
+    if (size2Label !== undefined)       updates.size2Label = size2Label;
+    if (size2Servings !== undefined)    updates.size2Servings = size2Servings != null ? parseInt(String(size2Servings)) : null;
+    if (size2Price !== undefined)       updates.size2Price = size2Price === null ? null : String(size2Price);
+    if (size3Label !== undefined)       updates.size3Label = size3Label;
+    if (size3Servings !== undefined)    updates.size3Servings = size3Servings != null ? parseInt(String(size3Servings)) : null;
+    if (size3Price !== undefined)       updates.size3Price = size3Price === null ? null : String(size3Price);
+    if (size4Label !== undefined)       updates.size4Label = size4Label;
+    if (size4Servings !== undefined)    updates.size4Servings = size4Servings != null ? parseInt(String(size4Servings)) : null;
+    if (size4Price !== undefined)       updates.size4Price = size4Price === null ? null : String(size4Price);
+    if (size5Label !== undefined)       updates.size5Label = size5Label;
+    if (size5Servings !== undefined)    updates.size5Servings = size5Servings != null ? parseInt(String(size5Servings)) : null;
+    if (size5Price !== undefined)       updates.size5Price = size5Price === null ? null : String(size5Price);
 
     const [item] = await db.update(menuItemsTable).set(updates).where(eq(menuItemsTable.id, id)).returning();
     if (!item) return res.status(404).json({ error: "Menu item not found" });
-    res.json({
-      ...item,
-      price: parseFloat(item.price),
-      tier2Price: item.tier2Price != null ? parseFloat(item.tier2Price) : null,
-      tier3Price: item.tier3Price != null ? parseFloat(item.tier3Price) : null,
-      allergens: item.allergens ?? [],
-    });
+    res.json(formatItem(item));
   } catch (err) {
     req.log.error({ err }, "Error updating menu item");
     res.status(500).json({ error: "Failed to update menu item" });

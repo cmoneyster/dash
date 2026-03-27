@@ -211,11 +211,28 @@ export default function MenuManager() {
   });
 
   const { register, handleSubmit, reset, setValue, watch } = useForm();
-  const imageUrlValue = watch("imageUrl", "");
+  const imageUrlValue   = watch("imageUrl", "");
+  const pricingTemplate = watch("pricingTemplate", "per_unit");
+  const watchedCategory = watch("category", "");
+
+  // Auto-set pricing template when category changes
+  React.useEffect(() => {
+    if (!watchedCategory) return;
+    const isEntreeCat = String(watchedCategory).startsWith("Entrées");
+    setValue("pricingTemplate", isEntreeCat ? "pan_sizes" : "per_unit");
+  }, [watchedCategory, setValue]);
 
   const openNew = () => {
     setEditingItem(null);
-    reset({ available: true, servingSize: 1, unit: "tray", price: 0, imageUrl: "", minimumOrderQty: 1 });
+    reset({
+      available: true, servingSize: 1, unit: "tray", price: 0, imageUrl: "", minimumOrderQty: 1,
+      pricingTemplate: "per_unit",
+      size1Label: "Small",  size1Servings: 15, size1Price: "",
+      size2Label: "Medium", size2Servings: 30, size2Price: "",
+      size3Label: "Large",  size3Servings: 45, size3Price: "",
+      size4Label: "",       size4Servings: "",  size4Price: "",
+      size5Label: "",       size5Servings: "",  size5Price: "",
+    });
     setPreviewUrl("");
     setIsNewCategory(false);
     setIsDialogOpen(true);
@@ -223,17 +240,30 @@ export default function MenuManager() {
 
   const openEdit = (item: any) => {
     setEditingItem(item);
-    reset({ ...item, allergens: item.allergens.join(", ") });
+    reset({
+      ...item,
+      allergens: item.allergens.join(", "),
+      size1Label: item.size1Label ?? "Small",  size1Servings: item.size1Servings ?? 15, size1Price: item.size1Price ?? "",
+      size2Label: item.size2Label ?? "Medium", size2Servings: item.size2Servings ?? 30, size2Price: item.size2Price ?? "",
+      size3Label: item.size3Label ?? "Large",  size3Servings: item.size3Servings ?? 45, size3Price: item.size3Price ?? "",
+      size4Label: item.size4Label ?? "",       size4Servings: item.size4Servings ?? "",  size4Price: item.size4Price ?? "",
+      size5Label: item.size5Label ?? "",       size5Servings: item.size5Servings ?? "",  size5Price: item.size5Price ?? "",
+      pricingTemplate: item.pricingTemplate ?? "per_unit",
+    });
     setPreviewUrl(item.imageUrl ?? "");
     setIsNewCategory(false);
     setIsDialogOpen(true);
   };
 
+  const parseSizePrice = (v: any) => (v === "" || v == null) ? null : parseFloat(String(v));
+  const parseSizeServings = (v: any) => (v === "" || v == null) ? null : parseInt(String(v), 10);
+  const parseSizeLabel = (v: any) => (v === "" || v == null) ? null : String(v).trim() || null;
+
   const onSubmit = (data: any) => {
     const payload = {
       ...data,
-      price: parseFloat(data.price),
-      servingSize: parseInt(data.servingSize, 10),
+      price: parseFloat(data.price) || 0,
+      servingSize: parseInt(data.servingSize, 10) || 1,
       allergens: data.allergens
         ? data.allergens.split(",").map((s: string) => s.trim()).filter(Boolean)
         : [],
@@ -242,6 +272,22 @@ export default function MenuManager() {
       tier2Price: data.tier2Price ? parseFloat(data.tier2Price) : null,
       tier3Qty: data.tier3Qty ? parseInt(data.tier3Qty, 10) : null,
       tier3Price: data.tier3Price ? parseFloat(data.tier3Price) : null,
+      pricingTemplate: data.pricingTemplate ?? "per_unit",
+      size1Label: parseSizeLabel(data.size1Label) ?? "Small",
+      size1Servings: parseSizeServings(data.size1Servings) ?? 15,
+      size1Price: parseSizePrice(data.size1Price),
+      size2Label: parseSizeLabel(data.size2Label) ?? "Medium",
+      size2Servings: parseSizeServings(data.size2Servings) ?? 30,
+      size2Price: parseSizePrice(data.size2Price),
+      size3Label: parseSizeLabel(data.size3Label) ?? "Large",
+      size3Servings: parseSizeServings(data.size3Servings) ?? 45,
+      size3Price: parseSizePrice(data.size3Price),
+      size4Label: parseSizeLabel(data.size4Label),
+      size4Servings: parseSizeServings(data.size4Servings),
+      size4Price: parseSizePrice(data.size4Price),
+      size5Label: parseSizeLabel(data.size5Label),
+      size5Servings: parseSizeServings(data.size5Servings),
+      size5Price: parseSizePrice(data.size5Price),
     };
     if (editingItem) {
       updateMut.mutate({ id: editingItem.id, data: payload });
@@ -512,20 +558,77 @@ export default function MenuManager() {
                   <textarea {...register("description")} required rows={2} className="w-full px-4 py-2 border rounded-xl resize-none" />
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold mb-1">Price</label>
-                    <input {...register("price")} type="number" step="0.01" required className="w-full px-4 py-2 border rounded-xl" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold mb-1">Serves</label>
-                    <input {...register("servingSize")} type="number" required className="w-full px-4 py-2 border rounded-xl" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold mb-1">Unit</label>
-                    <input {...register("unit")} required placeholder="tray" className="w-full px-4 py-2 border rounded-xl" />
+                {/* Pricing Template toggle */}
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Pricing Type</label>
+                  <div className="flex gap-2 flex-wrap">
+                    <label className="flex items-center gap-2 px-4 py-2.5 border rounded-xl cursor-pointer transition-colors hover:bg-secondary/50">
+                      <input {...register("pricingTemplate")} type="radio" value="per_unit" className="accent-primary" />
+                      <span className="text-sm font-medium">Per Unit <span className="text-muted-foreground font-normal text-xs">(pieces, packs…)</span></span>
+                    </label>
+                    <label className="flex items-center gap-2 px-4 py-2.5 border rounded-xl cursor-pointer transition-colors hover:bg-secondary/50">
+                      <input {...register("pricingTemplate")} type="radio" value="pan_sizes" className="accent-primary" />
+                      <span className="text-sm font-medium">Pan Sizes <span className="text-muted-foreground font-normal text-xs">(entrées — 5 size slots)</span></span>
+                    </label>
                   </div>
                 </div>
+
+                {pricingTemplate === "pan_sizes" ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-sm font-semibold">Pan Sizes &amp; Pricing</label>
+                      <span className="text-xs text-muted-foreground">Slots 4–5 hidden if left blank</span>
+                    </div>
+                    {([1, 2, 3, 4, 5] as const).map(n => (
+                      <div key={n} className={`grid grid-cols-3 gap-2 p-3 rounded-xl ${n <= 3 ? "bg-secondary/50 border border-border/60" : "bg-secondary/20 border border-dashed border-border/40"}`}>
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-1">{n <= 3 ? `Size ${n} — Label` : `Size ${n} (optional)`}</label>
+                          <input
+                            {...register(`size${n}Label`)}
+                            className="w-full px-3 py-1.5 border rounded-lg text-sm bg-background"
+                            placeholder={n === 1 ? "Small" : n === 2 ? "Medium" : n === 3 ? "Large" : `Size ${n}`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-1">Servings</label>
+                          <input
+                            {...register(`size${n}Servings`)}
+                            type="number" min="1"
+                            className="w-full px-3 py-1.5 border rounded-lg text-sm bg-background"
+                            placeholder={n === 1 ? "15" : n === 2 ? "30" : n === 3 ? "45" : ""}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-1">Price</label>
+                          <input
+                            {...register(`size${n}Price`)}
+                            type="number" step="0.01" min="0"
+                            className="w-full px-3 py-1.5 border rounded-lg text-sm bg-background"
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    {/* Hidden base price (required by schema) */}
+                    <input {...register("price")} type="hidden" value="0" />
+                    <p className="text-xs text-muted-foreground">Min. order qty applies per pan of the chosen size.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Price</label>
+                      <input {...register("price")} type="number" step="0.01" required className="w-full px-4 py-2 border rounded-xl" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Serves</label>
+                      <input {...register("servingSize")} type="number" required className="w-full px-4 py-2 border rounded-xl" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Unit</label>
+                      <input {...register("unit")} required placeholder="tray" className="w-full px-4 py-2 border rounded-xl" />
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-semibold mb-2">Photo</label>
@@ -564,6 +667,7 @@ export default function MenuManager() {
                   <input {...register("minimumOrderQty")} type="number" min="1" className="w-full px-4 py-2 border rounded-xl" />
                 </div>
 
+                {pricingTemplate !== "pan_sizes" && (
                 <div className="space-y-2">
                   <label className="block text-sm font-semibold">Volume Pricing Tiers <span className="font-normal text-muted-foreground text-xs">(optional)</span></label>
                   <div className="grid grid-cols-2 gap-3 p-4 bg-secondary/50 rounded-xl">
@@ -585,6 +689,7 @@ export default function MenuManager() {
                     </div>
                   </div>
                 </div>
+                )}
 
                 <div className="flex items-center gap-2">
                   <input {...register("available")} type="checkbox" id="available" className="w-4 h-4 accent-primary" />
