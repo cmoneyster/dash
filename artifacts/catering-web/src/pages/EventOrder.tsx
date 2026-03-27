@@ -315,6 +315,7 @@ export default function EventOrder() {
                   onChange={e => setGuestName(e.target.value)}
                   placeholder="e.g. Jane Smith"
                   required
+                  autoComplete="name"
                   className="w-full px-4 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 />
               </div>
@@ -330,6 +331,7 @@ export default function EventOrder() {
                   value={phoneNumber}
                   onChange={e => setPhoneNumber(e.target.value)}
                   placeholder="e.g. (301) 555-0123"
+                  autoComplete="tel"
                   className="w-full px-4 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 />
                 <p className="text-xs text-muted-foreground mt-1.5">We'll text you a confirmation and when your order is ready.</p>
