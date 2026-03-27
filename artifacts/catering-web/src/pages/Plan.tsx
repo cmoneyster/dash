@@ -115,15 +115,36 @@ function NumInput({
 }
 
 function CountStepper({
-  value, onChange, hint, defaultVal,
+  value, onChange, hint, defaultVal, min = 0, minMessage,
 }: {
-  value: number; onChange: (v: number) => void; hint?: string; defaultVal?: number;
+  value: number; onChange: (v: number) => void; hint?: string; defaultVal?: number; min?: number; minMessage?: string;
 }) {
+  const { toast } = useToast();
+
+  const handleDecrement = () => {
+    if (value <= min) {
+      if (minMessage) toast({ description: minMessage, variant: "destructive" });
+      return;
+    }
+    onChange(value - 1);
+  };
+
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseInt(e.target.value.replace(/[^0-9]/g, ""));
+    if (isNaN(v)) { onChange(min); return; }
+    if (v < min) {
+      onChange(min);
+      if (minMessage) toast({ description: minMessage, variant: "destructive" });
+      return;
+    }
+    onChange(v);
+  };
+
   return (
     <div className="flex items-center gap-1 shrink-0">
       <button
-        onClick={() => onChange(Math.max(0, value - 1))}
-        disabled={value <= 0}
+        onClick={handleDecrement}
+        disabled={value <= min}
         className="w-8 h-8 rounded-lg border border-border bg-background flex items-center justify-center font-bold text-lg hover:bg-secondary disabled:opacity-30 transition-colors"
       >−</button>
       <input
@@ -131,11 +152,8 @@ function CountStepper({
         inputMode="numeric"
         pattern="[0-9]*"
         value={value === 0 ? "" : value}
-        placeholder="0"
-        onChange={e => {
-          const v = parseInt(e.target.value.replace(/[^0-9]/g, ""));
-          onChange(isNaN(v) ? 0 : v);
-        }}
+        placeholder={min > 0 ? String(min) : "0"}
+        onChange={handleInput}
         className="w-14 text-center font-bold text-base rounded-lg border border-border bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       />
       <button
@@ -163,6 +181,7 @@ export default function Plan() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [addingAll, setAddingAll] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
 
   // ── Share modal ──
   const [shareOpen,    setShareOpen]    = useState(false);
@@ -265,6 +284,23 @@ export default function Plan() {
       toast({ title: "Something went wrong", description: "Some items may not have been added. Please try again.", variant: "destructive" });
     } finally {
       setAddingAll(false);
+    }
+  };
+
+  const handleClearPlan = async () => {
+    try {
+      await fetch("/api/plan", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) });
+      setPiecesMap({});
+      setServingsMap({});
+      setClearConfirm(false);
+      toast({ title: "Plan cleared", description: "Your event plan has been cleared." });
+    } catch {
+      toast({ title: "Error", description: "Could not clear the plan. Please try again.", variant: "destructive" });
     }
   };
 
@@ -548,14 +584,41 @@ export default function Plan() {
           </div>
           <h1 className="font-display font-bold text-4xl flex-1">Your Event Plan</h1>
           {!isLoading && (plan?.items.length ?? 0) > 0 && (
-            <button
-              onClick={openShare}
-              className="flex items-center gap-2 px-4 py-2.5 bg-foreground text-background font-semibold rounded-xl text-sm hover:bg-primary transition-colors"
-            >
-              <Share2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Save & Share</span>
-              <span className="sm:hidden">Share</span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {clearConfirm ? (
+                <>
+                  <span className="text-sm font-semibold text-destructive hidden sm:inline">Clear all items?</span>
+                  <button
+                    onClick={handleClearPlan}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-destructive text-destructive-foreground font-semibold rounded-xl text-sm hover:bg-destructive/90 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Yes, clear it
+                  </button>
+                  <button
+                    onClick={() => setClearConfirm(false)}
+                    className="px-3 py-2 border border-border font-semibold rounded-xl text-sm hover:bg-secondary transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setClearConfirm(true)}
+                  className="flex items-center gap-2 px-3 py-2.5 border border-border text-muted-foreground font-semibold rounded-xl text-sm hover:border-destructive hover:text-destructive transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span className="hidden sm:inline">Clear Plan</span>
+                </button>
+              )}
+              <button
+                onClick={openShare}
+                className="flex items-center gap-2 px-4 py-2.5 bg-foreground text-background font-semibold rounded-xl text-sm hover:bg-primary transition-colors"
+              >
+                <Share2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Save & Share</span>
+                <span className="sm:hidden">Share</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -808,9 +871,11 @@ export default function Plan() {
                     {!collapsed && (
                       <div className="divide-y divide-border border-t border-border">
                         {items.map(item => {
-                          const traysSmall = piecesMap[item.id]   ?? 0;
-                          const traysEnt   = servingsMap[item.id] ?? 0;
+                          const minQty     = item.menuItem.minimumOrderQty ?? 1;
+                          const traysSmall = piecesMap[item.id]   !== undefined ? piecesMap[item.id]   : minQty;
+                          const traysEnt   = servingsMap[item.id] !== undefined ? servingsMap[item.id] : minQty;
                           const sz         = (item.menuItem as any).servingSize ?? 1;
+                          const minMsg     = `Minimum order is ${minQty} tray${minQty !== 1 ? "s" : ""} for this item.`;
 
                           return (
                             <div key={item.id} className="flex flex-col sm:flex-row gap-4 p-5">
@@ -841,9 +906,11 @@ export default function Plan() {
                                     </div>
                                     <CountStepper
                                       value={traysSmall}
-                                      onChange={v => setPiecesMap(p => ({ ...p, [item.id]: Math.max(0, v) }))}
+                                      onChange={v => setPiecesMap(p => ({ ...p, [item.id]: v }))}
                                       hint="trays"
-                                      defaultVal={1}
+                                      defaultVal={minQty}
+                                      min={minQty}
+                                      minMessage={minMsg}
                                     />
                                   </div>
                                 )}
@@ -859,9 +926,11 @@ export default function Plan() {
                                     </div>
                                     <CountStepper
                                       value={traysEnt}
-                                      onChange={v => setServingsMap(p => ({ ...p, [item.id]: Math.max(0, v) }))}
+                                      onChange={v => setServingsMap(p => ({ ...p, [item.id]: v }))}
                                       hint="trays"
-                                      defaultVal={1}
+                                      defaultVal={minQty}
+                                      min={minQty}
+                                      minMessage={minMsg}
                                     />
                                   </div>
                                 )}

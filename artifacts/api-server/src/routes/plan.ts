@@ -82,6 +82,18 @@ router.post("/plan", async (req, res) => {
   }
 });
 
+router.delete("/plan", async (req, res) => {
+  try {
+    const sessionId = req.body?.sessionId || req.query.sessionId;
+    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    await db.delete(planItemsTable).where(eq(planItemsTable.sessionId, sessionId as string));
+    res.json({ sessionId, items: [] });
+  } catch (err) {
+    req.log.error({ err }, "Error clearing plan");
+    res.status(500).json({ error: "Failed to clear plan" });
+  }
+});
+
 router.delete("/plan/:itemId", async (req, res) => {
   try {
     const itemId = parseInt(req.params.itemId);
