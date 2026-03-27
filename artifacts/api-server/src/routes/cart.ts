@@ -122,11 +122,15 @@ router.put("/cart/:itemId", async (req, res) => {
 router.delete("/cart/:itemId", async (req, res) => {
   try {
     const itemId = parseInt(req.params.itemId);
-    const { sessionId } = req.body;
-    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    const sessionId: string | undefined = req.body?.sessionId || (req.query.sessionId as string | undefined);
 
-    await db.delete(cartItemsTable).where(and(eq(cartItemsTable.id, itemId), eq(cartItemsTable.sessionId, sessionId)));
-    const cart = await getCartData(sessionId);
+    // Fetch the cart item first so we can return updated cart for the right session
+    const [cartItem] = await db.select().from(cartItemsTable).where(eq(cartItemsTable.id, itemId));
+    if (!cartItem) return res.status(404).json({ error: "Cart item not found" });
+
+    const effectiveSessionId = sessionId ?? cartItem.sessionId;
+    await db.delete(cartItemsTable).where(eq(cartItemsTable.id, itemId));
+    const cart = await getCartData(effectiveSessionId);
     res.json(cart);
   } catch (err) {
     req.log.error({ err }, "Error removing from cart");

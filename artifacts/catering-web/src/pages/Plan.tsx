@@ -255,7 +255,7 @@ export default function Plan() {
     try {
       await Promise.all(
         plan.items.map(item =>
-          addToCartApi({ data: { sessionId, menuItemId: item.menuItemId, quantity: 1 } })
+          addToCartApi({ sessionId, menuItemId: item.menuItemId, quantity: 1 })
         )
       );
       queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
