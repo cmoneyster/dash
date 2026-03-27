@@ -227,9 +227,9 @@ export default function MenuManager() {
     reset({
       available: true, servingSize: 1, unit: "tray", price: 0, imageUrl: "", minimumOrderQty: 1,
       pricingTemplate: "per_unit",
-      size1Label: "Small",  size1Servings: 15, size1Price: "",
-      size2Label: "Medium", size2Servings: 30, size2Price: "",
-      size3Label: "Large",  size3Servings: 45, size3Price: "",
+      size1Label: "Small Pan",  size1Servings: 15, size1Price: "",
+      size2Label: "Medium Pan", size2Servings: 30, size2Price: "",
+      size3Label: "Large Pan",  size3Servings: 45, size3Price: "",
       size4Label: "",       size4Servings: "",  size4Price: "",
       size5Label: "",       size5Servings: "",  size5Price: "",
     });
@@ -243,9 +243,9 @@ export default function MenuManager() {
     reset({
       ...item,
       allergens: item.allergens.join(", "),
-      size1Label: item.size1Label ?? "Small",  size1Servings: item.size1Servings ?? 15, size1Price: item.size1Price ?? "",
-      size2Label: item.size2Label ?? "Medium", size2Servings: item.size2Servings ?? 30, size2Price: item.size2Price ?? "",
-      size3Label: item.size3Label ?? "Large",  size3Servings: item.size3Servings ?? 45, size3Price: item.size3Price ?? "",
+      size1Label: item.size1Label ?? "Small Pan",  size1Servings: item.size1Servings ?? 15, size1Price: item.size1Price ?? "",
+      size2Label: item.size2Label ?? "Medium Pan", size2Servings: item.size2Servings ?? 30, size2Price: item.size2Price ?? "",
+      size3Label: item.size3Label ?? "Large Pan",  size3Servings: item.size3Servings ?? 45, size3Price: item.size3Price ?? "",
       size4Label: item.size4Label ?? "",       size4Servings: item.size4Servings ?? "",  size4Price: item.size4Price ?? "",
       size5Label: item.size5Label ?? "",       size5Servings: item.size5Servings ?? "",  size5Price: item.size5Price ?? "",
       pricingTemplate: item.pricingTemplate ?? "per_unit",
@@ -273,13 +273,13 @@ export default function MenuManager() {
       tier3Qty: data.tier3Qty ? parseInt(data.tier3Qty, 10) : null,
       tier3Price: data.tier3Price ? parseFloat(data.tier3Price) : null,
       pricingTemplate: data.pricingTemplate ?? "per_unit",
-      size1Label: parseSizeLabel(data.size1Label) ?? "Small",
+      size1Label: parseSizeLabel(data.size1Label) ?? "Small Pan",
       size1Servings: parseSizeServings(data.size1Servings) ?? 15,
       size1Price: parseSizePrice(data.size1Price),
-      size2Label: parseSizeLabel(data.size2Label) ?? "Medium",
+      size2Label: parseSizeLabel(data.size2Label) ?? "Medium Pan",
       size2Servings: parseSizeServings(data.size2Servings) ?? 30,
       size2Price: parseSizePrice(data.size2Price),
-      size3Label: parseSizeLabel(data.size3Label) ?? "Large",
+      size3Label: parseSizeLabel(data.size3Label) ?? "Large Pan",
       size3Servings: parseSizeServings(data.size3Servings) ?? 45,
       size3Price: parseSizePrice(data.size3Price),
       size4Label: parseSizeLabel(data.size4Label),
@@ -602,7 +602,7 @@ export default function MenuManager() {
                           <input
                             {...register(`size${n}Label`)}
                             className="w-full px-3 py-1.5 border rounded-lg text-sm bg-background"
-                            placeholder={n === 1 ? "Small" : n === 2 ? "Medium" : n === 3 ? "Large" : `Size ${n}`}
+                            placeholder={n === 1 ? "Small Pan" : n === 2 ? "Medium Pan" : n === 3 ? "Large Pan" : `Size ${n}`}
                           />
                         </div>
                         <div>

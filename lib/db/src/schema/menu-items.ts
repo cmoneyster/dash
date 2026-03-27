@@ -26,13 +26,13 @@ export const menuItemsTable = pgTable("menu_items", {
   // "pan_sizes" → uses size1-5 fields              (Entrées)
   pricingTemplate: text("pricing_template").notNull().default("per_unit"),
   // Size slots 1–5 (1–3 pre-filled, 4–5 reserved for future use)
-  size1Label: text("size1_label").default("Small"),
+  size1Label: text("size1_label").default("Small Pan"),
   size1Servings: integer("size1_servings").default(15),
   size1Price: numeric("size1_price", { precision: 10, scale: 2 }),
-  size2Label: text("size2_label").default("Medium"),
+  size2Label: text("size2_label").default("Medium Pan"),
   size2Servings: integer("size2_servings").default(30),
   size2Price: numeric("size2_price", { precision: 10, scale: 2 }),
-  size3Label: text("size3_label").default("Large"),
+  size3Label: text("size3_label").default("Large Pan"),
   size3Servings: integer("size3_servings").default(45),
   size3Price: numeric("size3_price", { precision: 10, scale: 2 }),
   size4Label: text("size4_label"),
