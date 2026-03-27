@@ -172,6 +172,18 @@ router.put("/cart/:itemId", async (req, res) => {
   }
 });
 
+router.delete("/cart", async (req, res) => {
+  try {
+    const sessionId: string | undefined = req.body?.sessionId || (req.query.sessionId as string | undefined);
+    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    await db.delete(cartItemsTable).where(eq(cartItemsTable.sessionId, sessionId));
+    res.json({ sessionId, items: [], total: 0 });
+  } catch (err) {
+    req.log.error({ err }, "Error clearing cart");
+    res.status(500).json({ error: "Failed to clear cart" });
+  }
+});
+
 router.delete("/cart/:itemId", async (req, res) => {
   try {
     const itemId = parseInt(req.params.itemId);

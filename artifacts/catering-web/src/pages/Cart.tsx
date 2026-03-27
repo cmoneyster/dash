@@ -66,8 +66,29 @@ export default function Cart() {
   const [otp, setOtp]                   = useState("");
   const [otpError, setOtpError]         = useState("");
 
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
+
   const { data: cart, isLoading } = useGetCart({ sessionId });
   
+  const handleClearCart = async () => {
+    setClearing(true);
+    try {
+      await fetch(`${API_BASE}/api/cart`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
+      setClearConfirm(false);
+      toast({ title: "Cart cleared", description: "All items have been removed." });
+    } catch {
+      toast({ title: "Error", description: "Could not clear cart. Please try again.", variant: "destructive" });
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const updateItem = useUpdateCartItem({
     mutation: {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) })
@@ -177,7 +198,37 @@ export default function Cart() {
     <Layout>
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
-        <h1 className="font-display font-bold text-4xl mb-10">Review Your Order</h1>
+        <div className="flex items-center justify-between gap-4 mb-10">
+          <h1 className="font-display font-bold text-4xl">Review Your Order</h1>
+          {!isEmpty && !isLoading && (
+            clearConfirm ? (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-sm text-muted-foreground">Clear all items?</span>
+                <button
+                  onClick={handleClearCart}
+                  disabled={clearing}
+                  className="px-3 py-1.5 text-sm font-semibold bg-destructive text-white rounded-lg hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Yes, clear
+                </button>
+                <button
+                  onClick={() => setClearConfirm(false)}
+                  className="px-3 py-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setClearConfirm(true)}
+                className="shrink-0 text-sm font-semibold text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" /> Clear cart
+              </button>
+            )
+          )}
+        </div>
 
         {isLoading ? (
           <div className="h-64 flex items-center justify-center text-muted-foreground animate-pulse">Loading cart...</div>
