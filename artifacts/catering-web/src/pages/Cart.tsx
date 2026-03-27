@@ -434,7 +434,7 @@ export default function Cart() {
                       disabled={createOrder.isPending || verifyState !== "verified"}
                       className="w-full py-4 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 hover:-translate-y-0.5 transition-all shadow-lg shadow-primary/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none"
                     >
-                      {createOrder.isPending ? "Processing..." : "Place Order"}
+                      {createOrder.isPending ? "Submitting…" : "Submit Catering Inquiry"}
                       {!createOrder.isPending && <ArrowRight className="w-5 h-5" />}
                     </button>
                     {verifyState !== "verified" && (
