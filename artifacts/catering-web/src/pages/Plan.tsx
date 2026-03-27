@@ -255,7 +255,7 @@ export default function Plan() {
     try {
       await Promise.all(
         plan.items.map(item =>
-          addToCartApi({ sessionId, menuItemId: item.menuItemId, quantity: 1 })
+          addToCartApi({ sessionId, menuItemId: item.menuItemId, quantity: item.menuItem.minimumOrderQty ?? 1 })
         )
       );
       queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
@@ -874,7 +874,7 @@ export default function Plan() {
                                     <Trash2 className="w-4 h-4" /> Remove
                                   </button>
                                   <button
-                                    onClick={() => addToCart.mutate({ data: { sessionId, menuItemId: item.menuItemId, quantity: 1 } })}
+                                    onClick={() => addToCart.mutate({ data: { sessionId, menuItemId: item.menuItemId, quantity: item.menuItem.minimumOrderQty ?? 1 } })}
                                     className="px-4 py-2 bg-foreground text-background font-semibold rounded-xl hover:bg-primary transition-colors flex items-center gap-2 text-sm"
                                   >
                                     <ShoppingBag className="w-4 h-4" /> Move to Cart
