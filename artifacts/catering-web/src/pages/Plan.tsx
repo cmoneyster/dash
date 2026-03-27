@@ -402,14 +402,14 @@ export default function Plan() {
       return next;
     });
 
-  // Auto-seed maps at 1 tray for each new item — returns same ref if nothing changed
+  // Auto-seed maps at minimumOrderQty for each new item — returns same ref if nothing changed
   useEffect(() => {
     if (!plan?.items) return;
     setPiecesMap(prev => {
       let seeded = false;
       const next = { ...prev };
       plan.items.forEach(item => {
-        if (isSmallBite(item.menuItem.category) && !(item.id in next)) { next[item.id] = 1; seeded = true; }
+        if (isSmallBite(item.menuItem.category) && !(item.id in next)) { next[item.id] = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
       });
       return seeded ? next : prev;
     });
@@ -417,7 +417,7 @@ export default function Plan() {
       let seeded = false;
       const next = { ...prev };
       plan.items.forEach(item => {
-        if (isEntree(item.menuItem.category) && !(item.id in next)) { next[item.id] = 1; seeded = true; }
+        if (isEntree(item.menuItem.category) && !(item.id in next)) { next[item.id] = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
       });
       return seeded ? next : prev;
     });
@@ -875,7 +875,9 @@ export default function Plan() {
                           const traysSmall = Math.max(minQty, piecesMap[item.id]   ?? 0);
                           const traysEnt   = Math.max(minQty, servingsMap[item.id] ?? 0);
                           const sz         = (item.menuItem as any).servingSize ?? 1;
-                          const minMsg     = `Minimum order is ${minQty} tray${minQty !== 1 ? "s" : ""} for this item.`;
+                          const unit       = ((item.menuItem as any).unit as string | undefined)?.trim() || "trays";
+                          const unitCap    = unit.charAt(0).toUpperCase() + unit.slice(1);
+                          const minMsg     = `Minimum order is ${minQty} ${unit} for this item.`;
 
                           return (
                             <div key={item.id} className="flex flex-col sm:flex-row gap-4 p-5">
@@ -895,19 +897,21 @@ export default function Plan() {
 
                                 <p className="text-muted-foreground text-sm line-clamp-2">{item.menuItem.description}</p>
 
-                                {/* Small Bites — tray stepper */}
+                                {/* Small Bites — unit stepper */}
                                 {sb && (
                                   <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
                                     <div>
-                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Trays / packs ordered</p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {sz} pcs per tray · {traysSmall * sz} pcs total
-                                      </p>
+                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{unitCap} ordered</p>
+                                      {sz > 1 && (
+                                        <p className="text-xs text-muted-foreground">
+                                          {sz} pcs per {unit} · {traysSmall * sz} pcs total
+                                        </p>
+                                      )}
                                     </div>
                                     <CountStepper
                                       value={traysSmall}
                                       onChange={v => setPiecesMap(p => ({ ...p, [item.id]: v }))}
-                                      hint="trays"
+                                      hint={unit}
                                       defaultVal={minQty}
                                       min={minQty}
                                       minMessage={minMsg}
@@ -915,19 +919,21 @@ export default function Plan() {
                                   </div>
                                 )}
 
-                                {/* Entrée — tray stepper */}
+                                {/* Entrée — unit stepper */}
                                 {ent && (
                                   <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
                                     <div>
-                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Trays ordered</p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {sz} servings per tray · {traysEnt * sz} srv total
-                                      </p>
+                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{unitCap} ordered</p>
+                                      {sz > 1 && (
+                                        <p className="text-xs text-muted-foreground">
+                                          {sz} servings per {unit} · {traysEnt * sz} srv total
+                                        </p>
+                                      )}
                                     </div>
                                     <CountStepper
                                       value={traysEnt}
                                       onChange={v => setServingsMap(p => ({ ...p, [item.id]: v }))}
-                                      hint="trays"
+                                      hint={unit}
                                       defaultVal={minQty}
                                       min={minQty}
                                       minMessage={minMsg}

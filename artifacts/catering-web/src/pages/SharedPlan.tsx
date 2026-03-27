@@ -261,8 +261,8 @@ export default function SharedPlan() {
       const servingsMap = { ...prev.servingsMap };
       plan.items.forEach(item => {
         const key = String(item.id);
-        if (isSmallBite(item.menuItem.category) && !(key in piecesMap))   { piecesMap[key]   = 1; seeded = true; }
-        if (isEntree(item.menuItem.category)    && !(key in servingsMap))  { servingsMap[key] = 1; seeded = true; }
+        if (isSmallBite(item.menuItem.category) && !(key in piecesMap))   { piecesMap[key]   = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
+        if (isEntree(item.menuItem.category)    && !(key in servingsMap))  { servingsMap[key] = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
       });
       return seeded ? { ...prev, piecesMap, servingsMap } : prev;
     });
@@ -653,7 +653,9 @@ export default function SharedPlan() {
                           const traysSmall = Math.max(minQty, Number(piecesMap[String(item.id)])   || 0);
                           const traysEnt   = Math.max(minQty, Number(servingsMap[String(item.id)]) || 0);
                           const sz         = item.menuItem.servingSize ?? 1;
-                          const minMsg     = `Minimum order is ${minQty} tray${minQty !== 1 ? "s" : ""} for this item.`;
+                          const unit       = (item.menuItem.unit as string | undefined)?.trim() || "trays";
+                          const unitCap    = unit.charAt(0).toUpperCase() + unit.slice(1);
+                          const minMsg     = `Minimum order is ${minQty} ${unit} for this item.`;
 
                           return (
                             <div key={item.id} className="flex flex-col sm:flex-row gap-4 p-5">
@@ -673,16 +675,18 @@ export default function SharedPlan() {
 
                                 <p className="text-muted-foreground text-sm line-clamp-2">{item.menuItem.description}</p>
 
-                                {/* Tray stepper */}
+                                {/* Unit stepper */}
                                 {(sb || ent) && (
                                   <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
                                     <div>
                                       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                                        {sb ? "Trays / packs ordered" : "Trays ordered"}
+                                        {unitCap} ordered
                                       </p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {sz} {sb ? "pcs" : "srv"} per tray · {(sb ? traysSmall : traysEnt) * sz} {sb ? "pcs" : "srv"} total
-                                      </p>
+                                      {sz > 1 && (
+                                        <p className="text-xs text-muted-foreground">
+                                          {sz} {sb ? "pcs" : "srv"} per {unit} · {(sb ? traysSmall : traysEnt) * sz} {sb ? "pcs" : "srv"} total
+                                        </p>
+                                      )}
                                     </div>
                                     <CountStepper
                                       value={sb ? traysSmall : traysEnt}
@@ -690,7 +694,7 @@ export default function SharedPlan() {
                                         if (sb) updatePlanner(p => ({ ...p, piecesMap:   { ...p.piecesMap,   [String(item.id)]: v } }));
                                         else    updatePlanner(p => ({ ...p, servingsMap: { ...p.servingsMap, [String(item.id)]: v } }));
                                       }}
-                                      hint="trays"
+                                      hint={unit}
                                       defaultVal={minQty}
                                       min={minQty}
                                       minMessage={minMsg}
