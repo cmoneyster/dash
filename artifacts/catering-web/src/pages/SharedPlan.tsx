@@ -650,8 +650,8 @@ export default function SharedPlan() {
                       <div className="divide-y divide-border border-t border-border">
                         {items.map(item => {
                           const minQty     = item.menuItem.minimumOrderQty ?? 1;
-                          const traysSmall = piecesMap[String(item.id)]   !== undefined ? Number(piecesMap[String(item.id)])   : minQty;
-                          const traysEnt   = servingsMap[String(item.id)] !== undefined ? Number(servingsMap[String(item.id)]) : minQty;
+                          const traysSmall = Math.max(minQty, Number(piecesMap[String(item.id)])   || 0);
+                          const traysEnt   = Math.max(minQty, Number(servingsMap[String(item.id)]) || 0);
                           const sz         = item.menuItem.servingSize ?? 1;
                           const minMsg     = `Minimum order is ${minQty} tray${minQty !== 1 ? "s" : ""} for this item.`;
 
