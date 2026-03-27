@@ -413,8 +413,6 @@ export default function Cart() {
                     <label className="block text-sm font-semibold mb-1">Service Style</label>
                     <select {...register("serviceStyle")} className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all">
                       <option value="">Select style...</option>
-                      <option value="Buffet">Buffet</option>
-                      <option value="Plated">Plated / Sit-down</option>
                       <option value="Drop-off">Drop-off</option>
                       <option value="Food Trailer">Food Trailer On-site</option>
                     </select>
