@@ -175,7 +175,6 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
     if (order.phoneNumber) {
       const settings = await getEventSettings();
       const eventName = settings?.eventName ?? "";
-      const fromNumber = settings?.twilioFromNumber || null;
       const orderStatusUrl = statusUrlBase
         ? `${statusUrlBase}/event/order/${order.id}`
         : `${req.protocol}://${req.get("host")}/event/order/${order.id}`;
@@ -185,7 +184,6 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
         phoneNumber: order.phoneNumber,
         eventName,
         orderStatusUrl,
-        fromNumber,
       }).catch(() => {});
     }
 
@@ -258,7 +256,6 @@ router.patch("/event-ordering/orders/:id/status", verifyKitchenPassword, async (
         orderId: updated.id,
         phoneNumber: updated.phoneNumber,
         eventName: settings?.eventName ?? "",
-        fromNumber: settings?.twilioFromNumber || null,
       }).catch(() => {});
     }
 
