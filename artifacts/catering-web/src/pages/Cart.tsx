@@ -15,8 +15,10 @@ import {
 } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
 import { formatCurrency } from "@/lib/utils";
-import { Minus, Plus, Trash2, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // ── Category constants (mirrors Plan.tsx) ────────────────────────────────────
 const CAT_ORDER = [
@@ -38,7 +40,7 @@ const CAT_LABELS: Record<string, { label: string; sub?: string }> = {
 const checkoutSchema = z.object({
   customerName: z.string().min(2, "Name is required"),
   customerEmail: z.string().email("Valid email is required"),
-  customerPhone: z.string().optional(),
+  customerPhone: z.string().min(10, "Phone number is required"),
   eventDate: z.string().optional(),
   eventType: z.string().optional(),
   guestCount: z.coerce.number().min(1, "At least 1 guest required").optional(),
@@ -48,12 +50,21 @@ const checkoutSchema = z.object({
 
 type CheckoutForm = z.infer<typeof checkoutSchema>;
 
+// Phone verification states
+type VerifyState = "idle" | "sending" | "awaiting_code" | "verifying" | "verified";
+
 export default function Cart() {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const sessionId = getSessionId();
   const queryClient = useQueryClient();
+
+  // Phone verification
+  const [verifyState, setVerifyState]   = useState<VerifyState>("idle");
+  const [verifiedPhone, setVerifiedPhone] = useState<string>("");
+  const [otp, setOtp]                   = useState("");
+  const [otpError, setOtpError]         = useState("");
 
   const { data: cart, isLoading } = useGetCart({ sessionId });
   
@@ -79,13 +90,69 @@ export default function Cart() {
     }
   });
 
-  const { register, handleSubmit, formState: { errors } } = useForm<CheckoutForm>({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<CheckoutForm>({
     resolver: zodResolver(checkoutSchema)
   });
+
+  const phoneValue = watch("customerPhone") ?? "";
+
+  const handleSendCode = async () => {
+    const phone = phoneValue.trim();
+    if (!phone || phone.replace(/\D/g, "").length < 10) {
+      toast({ title: "Invalid phone number", description: "Please enter a valid 10-digit US phone number.", variant: "destructive" });
+      return;
+    }
+    setVerifyState("sending");
+    setOtp("");
+    setOtpError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/verify/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error ?? "Failed to send code");
+      }
+      setVerifyState("awaiting_code");
+      toast({ title: "Code sent!", description: "Check your phone for a 6-digit verification code." });
+    } catch (err: any) {
+      setVerifyState("idle");
+      toast({ title: "Couldn't send code", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (otp.trim().length !== 6) { setOtpError("Enter the 6-digit code"); return; }
+    setVerifyState("verifying");
+    setOtpError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/verify/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneValue.trim(), code: otp.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error ?? "Incorrect code");
+      }
+      setVerifiedPhone(phoneValue.trim());
+      setVerifyState("verified");
+      toast({ title: "Phone verified!", description: "Your number has been confirmed." });
+    } catch (err: any) {
+      setVerifyState("awaiting_code");
+      setOtpError(err.message);
+    }
+  };
 
   const onSubmit = (data: CheckoutForm) => {
     if (!cart?.items.length) {
       toast({ title: "Cart empty", description: "Add items before checking out.", variant: "destructive" });
+      return;
+    }
+    if (verifyState !== "verified") {
+      toast({ title: "Phone not verified", description: "Please verify your phone number before placing an order.", variant: "destructive" });
       return;
     }
     createOrder.mutate({ data: { sessionId, ...data } });
@@ -254,6 +321,83 @@ export default function Cart() {
                     </div>
                   </div>
 
+                  {/* ── Phone + SMS Verification ── */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">
+                      Phone <span className="text-destructive">*</span>
+                    </label>
+
+                    {verifyState === "verified" ? (
+                      <div className="flex items-center gap-3 px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                        <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                        <span className="text-sm font-semibold text-emerald-700">Verified: {verifiedPhone}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setVerifyState("idle"); setOtp(""); setOtpError(""); setVerifiedPhone(""); }}
+                          className="ml-auto text-xs text-emerald-600 hover:underline"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex gap-2">
+                          <input
+                            {...register("customerPhone")}
+                            type="tel"
+                            placeholder="(555) 000-0000"
+                            disabled={verifyState === "awaiting_code" || verifyState === "sending" || verifyState === "verifying"}
+                            className="flex-1 px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all disabled:opacity-60"
+                          />
+                          <button
+                            type="button"
+                            onClick={verifyState === "awaiting_code" ? handleSendCode : handleSendCode}
+                            disabled={verifyState === "sending" || verifyState === "verifying"}
+                            className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 bg-foreground text-background text-sm font-semibold rounded-xl hover:bg-primary transition-colors disabled:opacity-60"
+                          >
+                            {verifyState === "sending" ? (
+                              <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</>
+                            ) : verifyState === "awaiting_code" ? (
+                              <><RefreshCw className="w-4 h-4" /> Resend</>
+                            ) : (
+                              <><Phone className="w-4 h-4" /> Send Code</>
+                            )}
+                          </button>
+                        </div>
+                        {errors.customerPhone && <p className="text-destructive text-xs mt-1">{errors.customerPhone.message}</p>}
+
+                        {/* OTP entry */}
+                        {(verifyState === "awaiting_code" || verifyState === "verifying") && (
+                          <div className="mt-3 p-4 bg-secondary/50 border border-border rounded-xl space-y-3">
+                            <p className="text-sm text-muted-foreground">Enter the 6-digit code sent to your phone:</p>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={6}
+                                value={otp}
+                                onChange={e => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setOtpError(""); }}
+                                placeholder="000000"
+                                className="flex-1 px-4 py-2.5 bg-background border border-border rounded-xl text-center font-mono text-lg tracking-widest focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleVerifyCode}
+                                disabled={verifyState === "verifying" || otp.length < 6}
+                                className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-foreground text-background text-sm font-semibold rounded-xl hover:bg-primary transition-colors disabled:opacity-60"
+                              >
+                                {verifyState === "verifying"
+                                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</>
+                                  : <><ShieldCheck className="w-4 h-4" /> Verify</>}
+                              </button>
+                            </div>
+                            {otpError && <p className="text-destructive text-xs">{otpError}</p>}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-semibold mb-1">Event Date</label>
@@ -289,13 +433,18 @@ export default function Cart() {
                     
                     <button 
                       type="submit" 
-                      disabled={createOrder.isPending}
-                      className="w-full py-4 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 hover:-translate-y-0.5 transition-all shadow-lg shadow-primary/25 flex items-center justify-center gap-2"
+                      disabled={createOrder.isPending || verifyState !== "verified"}
+                      className="w-full py-4 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 hover:-translate-y-0.5 transition-all shadow-lg shadow-primary/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none"
                     >
                       {createOrder.isPending ? "Processing..." : "Place Order"}
                       {!createOrder.isPending && <ArrowRight className="w-5 h-5" />}
                     </button>
-                    <p className="text-center text-xs text-muted-foreground mt-4">
+                    {verifyState !== "verified" && (
+                      <p className="text-center text-xs text-amber-600 font-medium mt-3">
+                        Verify your phone number above to place your order.
+                      </p>
+                    )}
+                    <p className="text-center text-xs text-muted-foreground mt-2">
                       No payment required yet. Our team will contact you to finalize details and deposit.
                     </p>
                   </div>

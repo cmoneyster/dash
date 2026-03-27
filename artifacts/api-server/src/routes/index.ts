@@ -16,6 +16,7 @@ import eventOrderingRouter from "./event-ordering";
 import adminEventRouter from "./admin-event";
 import adminEventSessionsRouter from "./admin-event-sessions";
 import adminCateringRouter from "./admin-catering";
+import verifyRouter from "./verify";
 
 const router: IRouter = Router();
 
@@ -28,6 +29,7 @@ router.use(chatRouter);
 router.use(eventsRouter);
 router.use(storageRouter);
 router.use(eventOrderingRouter);
+router.use(verifyRouter);
 
 router.use(adminAuthRouter);
 
