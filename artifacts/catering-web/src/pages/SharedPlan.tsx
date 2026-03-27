@@ -144,6 +144,10 @@ function CountStepper({ value, onChange, hint, defaultVal, min = 0, minMessage }
   value: number; onChange: (v: number) => void; hint?: string; defaultVal?: number; min?: number; minMessage?: string;
 }) {
   const { toast } = useToast();
+  const [rawText, setRawText] = useState(value > 0 ? String(value) : "");
+
+  // Keep display in sync when value changes externally (+ button, parent reset, etc.)
+  useEffect(() => { setRawText(value > 0 ? String(value) : ""); }, [value]);
 
   const handleDecrement = () => {
     if (value <= min) {
@@ -153,15 +157,24 @@ function CountStepper({ value, onChange, hint, defaultVal, min = 0, minMessage }
     onChange(value - 1);
   };
 
+  // While typing: just update the raw display — no validation yet
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseInt(e.target.value.replace(/[^0-9]/g, ""));
-    if (isNaN(v)) { onChange(min); return; }
-    if (v < min) {
+    setRawText(e.target.value.replace(/[^0-9]/g, ""));
+  };
+
+  // On blur: commit and validate
+  const handleBlur = () => {
+    const v = parseInt(rawText, 10);
+    if (isNaN(v) || v < min) {
+      setRawText(String(min));
       onChange(min);
-      if (minMessage) toast({ description: minMessage, variant: "destructive" });
+      if (!isNaN(v) && v < min && minMessage) {
+        toast({ description: minMessage, variant: "destructive" });
+      }
       return;
     }
     onChange(v);
+    setRawText(String(v));
   };
 
   return (
@@ -175,9 +188,10 @@ function CountStepper({ value, onChange, hint, defaultVal, min = 0, minMessage }
         type="text"
         inputMode="numeric"
         pattern="[0-9]*"
-        value={value === 0 ? "" : value}
+        value={rawText}
         placeholder={min > 0 ? String(min) : "0"}
         onChange={handleInput}
+        onBlur={handleBlur}
         className="w-14 text-center font-bold text-base rounded-lg border border-border bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       />
       <button
