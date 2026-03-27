@@ -114,16 +114,25 @@ function StatusBar({ need, have, label, unit = "pcs" }: { need: number; have: nu
 function NumInput({ label, value, onChange, min = 1, max = 999, hint }: {
   label: string; value: number; onChange: (v: number) => void; min?: number; max?: number; hint?: string;
 }) {
+  const [raw, setRaw] = useState(String(value));
+  useEffect(() => { setRaw(String(value)); }, [value]);
+  const commit = () => {
+    const v = parseInt(raw, 10);
+    if (!isNaN(v)) onChange(clamp(v, min, max));
+    else setRaw(String(value));
+  };
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
       <input
-        type="number"
-        min={min}
-        max={max}
-        value={value}
-        onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) onChange(clamp(v, min, max)); }}
-        className="w-full px-3 py-2 text-center text-lg font-bold rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={raw}
+        onChange={e => setRaw(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => e.key === "Enter" && commit()}
+        className="w-full px-3 py-2 text-center text-lg font-bold rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       />
       {hint && <p className="text-xs text-muted-foreground text-center">{hint}</p>}
     </div>
@@ -181,6 +190,7 @@ export default function SharedPlan() {
 
   // ── Planner state ──
   const [plannerState, setPlannerState] = useState<PlannerState>(DEFAULT_PLANNER);
+  const [guestRaw, setGuestRaw] = useState(String(DEFAULT_PLANNER.guests));
   const [plannerSaving, setPlannerSaving] = useState(false);
   const [plannerSaved, setPlannerSaved] = useState(false);
   const [plannerOpen, setPlannerOpen] = useState(true);
@@ -274,6 +284,9 @@ export default function SharedPlan() {
 
   // ── Computed quantities ──
   const { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap } = plannerState;
+
+  // Sync guestRaw when guests changes externally (poll / initial load)
+  useEffect(() => { setGuestRaw(String(guests)); }, [guests]);
 
   const smallBiteItems = useMemo(() => plan?.items.filter(i => isSmallBite(i.menuItem.category)) ?? [], [plan]);
   const entreeItems    = useMemo(() => plan?.items.filter(i => isEntree(i.menuItem.category)) ?? [], [plan]);
@@ -472,12 +485,14 @@ export default function SharedPlan() {
                     className="w-8 h-8 rounded-full border border-border bg-background flex items-center justify-center text-base font-bold hover:bg-secondary transition-colors"
                   >−</button>
                   <input
-                    type="number"
-                    min={1}
-                    max={500}
-                    value={guests}
-                    onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) updatePlanner(p => ({ ...p, guests: clamp(v, 1, 500) })); }}
-                    className="w-20 text-center font-bold text-xl rounded-xl border border-border bg-background py-1 px-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={guestRaw}
+                    onChange={e => setGuestRaw(e.target.value)}
+                    onBlur={() => { const v = parseInt(guestRaw, 10); if (!isNaN(v)) updatePlanner(p => ({ ...p, guests: clamp(v, 1, 500) })); else setGuestRaw(String(guests)); }}
+                    onKeyDown={e => { if (e.key === "Enter") { const v = parseInt(guestRaw, 10); if (!isNaN(v)) updatePlanner(p => ({ ...p, guests: clamp(v, 1, 500) })); else setGuestRaw(String(guests)); } }}
+                    className="w-20 text-center font-bold text-xl rounded-xl border border-border bg-background py-1 px-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                   />
                   <button
                     onClick={() => updatePlanner(p => ({ ...p, guests: Math.min(500, p.guests + 1) }))}

@@ -88,15 +88,24 @@ function NumInput({
   label: string; value: number; onChange: (v: number) => void;
   min?: number; max?: number; hint?: string;
 }) {
+  const [raw, setRaw] = useState(String(value));
+  useEffect(() => { setRaw(String(value)); }, [value]);
+  const commit = () => {
+    const v = parseInt(raw, 10);
+    if (!isNaN(v)) onChange(clamp(v, min, max));
+    else setRaw(String(value));
+  };
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
       <input
-        type="number"
-        min={min}
-        max={max}
-        value={value}
-        onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) onChange(clamp(v, min, max)); }}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={raw}
+        onChange={e => setRaw(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => e.key === "Enter" && commit()}
         className="w-full px-3 py-2 text-center text-lg font-bold rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       />
       {hint && <p className="text-xs text-muted-foreground text-center">{hint}</p>}
@@ -242,6 +251,7 @@ export default function Plan() {
   const [entOpen, setEntOpen] = useState(true);
 
   const [guests,      setGuests]      = useState(20);
+  const [guestRaw,    setGuestRaw]    = useState("20");
   const [savoryPPG,   setSavoryPPG]   = useState(3);
   const [sweetPPG,    setSweetPPG]    = useState(2);
   const [servingsPPG, setServingsPPG] = useState(4);
@@ -309,6 +319,9 @@ export default function Plan() {
     planPollTimer.current = setInterval(poll, 3000);
     return () => { if (planPollTimer.current) clearInterval(planPollTimer.current); };
   }, [shareToken, sessionId, queryClient]);
+
+  // Sync guestRaw when guests changes externally (e.g. from poll)
+  useEffect(() => { setGuestRaw(String(guests)); }, [guests]);
 
   // Keep currentPlannerRef up to date for poll comparisons
   useEffect(() => {
@@ -551,12 +564,14 @@ export default function Plan() {
                     className="w-8 h-8 rounded-full border border-border bg-background flex items-center justify-center text-base font-bold hover:bg-secondary transition-colors"
                   >−</button>
                   <input
-                    type="number"
-                    min={1}
-                    max={500}
-                    value={guests}
-                    onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) setGuests(clamp(v, 1, 500)); }}
-                    className="w-20 text-center font-bold text-xl rounded-xl border border-border bg-background py-1 px-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={guestRaw}
+                    onChange={e => setGuestRaw(e.target.value)}
+                    onBlur={() => { const v = parseInt(guestRaw, 10); if (!isNaN(v)) setGuests(clamp(v, 1, 500)); else setGuestRaw(String(guests)); }}
+                    onKeyDown={e => { if (e.key === "Enter") { const v = parseInt(guestRaw, 10); if (!isNaN(v)) setGuests(clamp(v, 1, 500)); else setGuestRaw(String(guests)); } }}
+                    className="w-20 text-center font-bold text-xl rounded-xl border border-border bg-background py-1 px-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                   />
                   <button
                     onClick={() => setGuests(g => Math.min(500, g + 1))}
