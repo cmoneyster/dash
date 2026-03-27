@@ -6,7 +6,6 @@ import {
   useListMenuItems, 
   useAddToCart, 
   useAddToPlan, 
-  useRemoveFromPlan, 
   useGetPlan,
   getGetCartQueryKey,
   getGetPlanQueryKey
@@ -43,24 +42,23 @@ export default function Menu() {
     }
   });
 
-  const removeFromPlan = useRemoveFromPlan({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) });
-      }
-    }
-  });
-
   const planItemIds = new Set(plan?.items?.map(i => i.menuItemId) || []);
 
   const handleAddToCart = (item: MenuItem) => {
     addToCart.mutate({ data: { sessionId, menuItemId: item.id, quantity: 1 } });
   };
 
-  const handleTogglePlan = (item: MenuItem) => {
+  const handleTogglePlan = async (item: MenuItem) => {
     if (planItemIds.has(item.id)) {
       const planItem = plan?.items.find(i => i.menuItemId === item.id);
-      if (planItem) removeFromPlan.mutate({ itemId: planItem.id });
+      if (!planItem) return;
+      try {
+        await fetch(`/api/plan/${planItem.id}?sessionId=${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+        queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) });
+        toast({ title: "Removed from plan", description: "Item removed from your event plan." });
+      } catch {
+        toast({ title: "Error", description: "Could not remove item. Please try again.", variant: "destructive" });
+      }
     } else {
       addToPlan.mutate({ data: { sessionId, menuItemId: item.id } });
     }

@@ -2,7 +2,6 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import {
   useGetPlan,
-  useRemoveFromPlan,
   useAddToCart,
   addToCart as addToCartApi,
   getGetPlanQueryKey,
@@ -267,16 +266,21 @@ export default function Plan() {
   // ── Data ──
   const { data: plan, isLoading } = useGetPlan({ sessionId });
 
-  const removeFromPlan = useRemoveFromPlan({
-    mutation: { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) }) },
-  });
+  const removePlanItem = async (itemId: number) => {
+    try {
+      await fetch(`/api/plan/${itemId}?sessionId=${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+      queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) });
+    } catch {
+      toast({ title: "Error", description: "Could not remove item. Please try again.", variant: "destructive" });
+    }
+  };
 
   const addToCart = useAddToCart({
     mutation: {
       onSuccess: (_, variables) => {
         queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
         const planItem = plan?.items.find(i => i.menuItemId === variables.data.menuItemId);
-        if (planItem) removeFromPlan.mutate({ itemId: planItem.id });
+        if (planItem) removePlanItem(planItem.id);
         toast({ title: "Moved to Cart", description: "Item is now in your order." });
       },
     },
@@ -1049,7 +1053,7 @@ export default function Plan() {
 
                                 <div className="flex justify-between items-center">
                                   <button
-                                    onClick={() => removeFromPlan.mutate({ itemId: item.id })}
+                                    onClick={() => removePlanItem(item.id)}
                                     className="text-sm font-semibold text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1.5"
                                   >
                                     <Trash2 className="w-4 h-4" /> Remove
