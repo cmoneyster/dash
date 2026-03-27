@@ -1,5 +1,5 @@
 import { db, menuItemsTable } from "@workspace/db";
-import { count, isNull, eq, and } from "drizzle-orm";
+import { count, isNull, eq, and, sql } from "drizzle-orm";
 import { logger } from "./logger";
 
 const DIM_SUM_IMG    = "https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800&q=80";
@@ -103,6 +103,16 @@ export async function seedIfEmpty(): Promise<void> {
       }
       logger.info("Image URL patch complete");
     }
+
+    // Migrate old bare size labels ("Small" → "Small Pan", etc.)
+    await db.execute(sql`
+      UPDATE menu_items
+      SET
+        size1_label = CASE WHEN size1_label = 'Small'  THEN 'Small Pan'  ELSE size1_label END,
+        size2_label = CASE WHEN size2_label = 'Medium' THEN 'Medium Pan' ELSE size2_label END,
+        size3_label = CASE WHEN size3_label = 'Large'  THEN 'Large Pan'  ELSE size3_label END
+      WHERE size1_label = 'Small' OR size2_label = 'Medium' OR size3_label = 'Large'
+    `);
   } catch (err) {
     logger.error({ err }, "Failed to seed/patch menu items");
   }
