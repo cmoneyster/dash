@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const POLL_INTERVAL = 6000;
 const LS_KEY = "kitchen_item_checks";
 
-type OrderItem = { itemId: number; name: string; quantity: number; price: number };
+type OrderItem = { itemId: number; name: string; quantity: number; price: number; internalNotes?: string | null };
 type StockItem = { id: number; name: string; category: string; eventStock: number | null; imageUrl: string | null };
 type EventOrder = {
   id: number;
@@ -661,6 +661,13 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   onAdvance: () => void;
   onRevert: () => void;
 }) {
+  const [expandedNotes, setExpandedNotes] = useState<Set<number>>(new Set());
+  const toggleNote = (itemId: number) => setExpandedNotes(prev => {
+    const next = new Set(prev);
+    if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+    return next;
+  });
+
   const isPending = order.status === "pending";
   const isPreparing = order.status === "preparing";
   const isTrackable = isPending || isPreparing;
@@ -699,32 +706,71 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
         )}
         {order.items.map(item => {
           const isChecked = checkedItemIds.has(item.itemId);
+          const hasNotes = Boolean(item.internalNotes);
+          const notesOpen = expandedNotes.has(item.itemId);
           if (isTrackable) {
             return (
-              <button
-                key={item.itemId}
-                type="button"
-                onClick={() => onToggleItem(item.itemId)}
-                className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 transition-all text-left ${
+              <div key={item.itemId}>
+                <div className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 transition-all ${
                   isChecked
                     ? "bg-emerald-500/15 border border-emerald-500/30"
-                    : "bg-white/5 border border-white/10 hover:bg-white/10 active:scale-[0.98]"
-                }`}
-              >
-                <span className={`text-sm font-medium transition-all ${isChecked ? "text-emerald-400 line-through decoration-emerald-500/60" : "text-white/80"}`}>
-                  {item.quantity}× {item.name}
-                </span>
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ml-3 transition-all ${
-                  isChecked ? "bg-emerald-500 text-black" : "bg-white/10"
+                    : "bg-white/5 border border-white/10"
                 }`}>
-                  {isChecked && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                  <button
+                    type="button"
+                    onClick={() => onToggleItem(item.itemId)}
+                    className="flex-1 text-left active:scale-[0.98]"
+                  >
+                    <span className={`text-sm font-medium transition-all ${isChecked ? "text-emerald-400 line-through decoration-emerald-500/60" : "text-white/80"}`}>
+                      {item.quantity}× {item.name}
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                    {hasNotes && (
+                      <button
+                        type="button"
+                        onClick={() => toggleNote(item.itemId)}
+                        className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${notesOpen ? "bg-amber-500/30 text-amber-400" : "bg-white/10 text-white/40 hover:text-amber-400 hover:bg-amber-500/20"}`}
+                        title="Kitchen note"
+                      >
+                        <Info className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                      isChecked ? "bg-emerald-500 text-black" : "bg-white/10"
+                    }`}>
+                      {isChecked && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                    </div>
+                  </div>
                 </div>
-              </button>
+                {hasNotes && notesOpen && (
+                  <div className="mt-1 mb-1 ml-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300 leading-snug">
+                    {item.internalNotes}
+                  </div>
+                )}
+              </div>
             );
           }
           return (
-            <div key={item.itemId} className="text-sm px-1 text-white/80">
-              {item.quantity}× {item.name}
+            <div key={item.itemId}>
+              <div className="flex items-center gap-2 px-1">
+                <span className="text-sm text-white/80">{item.quantity}× {item.name}</span>
+                {hasNotes && (
+                  <button
+                    type="button"
+                    onClick={() => toggleNote(item.itemId)}
+                    className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors shrink-0 ${notesOpen ? "bg-amber-500/30 text-amber-400" : "bg-white/10 text-white/30 hover:text-amber-400"}`}
+                    title="Kitchen note"
+                  >
+                    <Info className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              {hasNotes && notesOpen && (
+                <div className="mt-1 ml-6 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300 leading-snug">
+                  {item.internalNotes}
+                </div>
+              )}
             </div>
           );
         })}

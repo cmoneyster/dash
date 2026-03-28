@@ -113,6 +113,11 @@ export async function seedIfEmpty(): Promise<void> {
         size3_label = CASE WHEN size3_label = 'Large'  THEN 'Large Pan'  ELSE size3_label END
       WHERE size1_label = 'Small' OR size2_label = 'Medium' OR size3_label = 'Large'
     `);
+
+    // Add internal_notes column if it doesn't exist (production migration)
+    await db.execute(sql`
+      ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS internal_notes text
+    `);
   } catch (err) {
     logger.error({ err }, "Failed to seed/patch menu items");
   }

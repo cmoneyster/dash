@@ -232,6 +232,7 @@ export default function MenuManager() {
       size3Label: "Large Pan",  size3Servings: 45, size3Price: "",
       size4Label: "",       size4Servings: "",  size4Price: "",
       size5Label: "",       size5Servings: "",  size5Price: "",
+      internalNotes: "",
     });
     setPreviewUrl("");
     setIsNewCategory(false);
@@ -706,6 +707,18 @@ export default function MenuManager() {
                   </div>
                 </div>
                 )}
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">
+                    Internal Notes <span className="font-normal text-muted-foreground text-xs">(kitchen-only — not shown to customers)</span>
+                  </label>
+                  <textarea
+                    {...register("internalNotes")}
+                    rows={2}
+                    placeholder="e.g. Contains peanut oil — alert staff if allergy; keep hot"
+                    className="w-full px-4 py-2 border rounded-xl resize-none text-sm"
+                  />
+                </div>
 
                 <div className="flex items-center gap-2">
                   <input {...register("available")} type="checkbox" id="available" className="w-4 h-4 accent-primary" />

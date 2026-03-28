@@ -204,7 +204,30 @@ router.get("/event-ordering/orders", verifyKitchenPassword, async (req, res) => 
       .select()
       .from(eventOrdersTable)
       .orderBy(desc(eventOrdersTable.createdAt));
-    res.json(orders);
+
+    // Collect all unique itemIds across all orders
+    const itemIds = [...new Set(orders.flatMap(o => (o.items as { itemId: number }[]).map(i => i.itemId)))];
+
+    // Fetch internalNotes for those menu items (if any)
+    const notesMap: Record<number, string | null> = {};
+    if (itemIds.length > 0) {
+      const menuItems = await db
+        .select({ id: menuItemsTable.id, internalNotes: menuItemsTable.internalNotes })
+        .from(menuItemsTable)
+        .where(sql`${menuItemsTable.id} = ANY(${sql.raw(`ARRAY[${itemIds.join(",")}]::int[]`)})`)
+      for (const m of menuItems) notesMap[m.id] = m.internalNotes ?? null;
+    }
+
+    // Augment order items with internalNotes
+    const enriched = orders.map(order => ({
+      ...order,
+      items: (order.items as { itemId: number }[]).map(item => ({
+        ...item,
+        internalNotes: notesMap[item.itemId] ?? null,
+      })),
+    }));
+
+    res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "Error fetching event orders");
     res.status(500).json({ error: "Failed to fetch event orders" });

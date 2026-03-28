@@ -41,6 +41,7 @@ export const menuItemsTable = pgTable("menu_items", {
   size5Label: text("size5_label"),
   size5Servings: integer("size5_servings"),
   size5Price: numeric("size5_price", { precision: 10, scale: 2 }),
+  internalNotes: text("internal_notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

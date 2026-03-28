@@ -18,7 +18,7 @@ router.get("/menu", async (req, res) => {
       items = items.filter((i) => i.available === avail);
     }
 
-    const formatted = items.map((item) => ({
+    const formatted = items.map(({ internalNotes: _notes, ...item }) => ({
       ...item,
       price: parseFloat(item.price),
       allergens: item.allergens ?? [],
@@ -35,7 +35,8 @@ router.get("/menu/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const [item] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, id));
     if (!item) return res.status(404).json({ error: "Menu item not found" });
-    res.json({ ...item, price: parseFloat(item.price), allergens: item.allergens ?? [] });
+    const { internalNotes: _notes, ...pub } = item;
+    res.json({ ...pub, price: parseFloat(pub.price), allergens: pub.allergens ?? [] });
   } catch (err) {
     req.log.error({ err }, "Error getting menu item");
     res.status(500).json({ error: "Failed to get menu item" });

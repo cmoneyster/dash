@@ -44,6 +44,7 @@ router.post("/admin/menu", async (req, res) => {
       size3Label, size3Servings, size3Price,
       size4Label, size4Servings, size4Price,
       size5Label, size5Servings, size5Price,
+      internalNotes,
     } = req.body;
     const [item] = await db.insert(menuItemsTable).values({
       name,
@@ -79,6 +80,7 @@ router.post("/admin/menu", async (req, res) => {
       size5Label: size5Label ?? null,
       size5Servings: size5Servings != null ? parseInt(String(size5Servings)) : null,
       size5Price: size5Price != null ? String(size5Price) : null,
+      internalNotes: internalNotes ? String(internalNotes).trim() || null : null,
     }).returning();
     res.status(201).json(formatItem(item));
   } catch (err) {
@@ -102,6 +104,7 @@ router.put("/admin/menu/:id", async (req, res) => {
       size3Label, size3Servings, size3Price,
       size4Label, size4Servings, size4Price,
       size5Label, size5Servings, size5Price,
+      internalNotes,
     } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined)             updates.name = name;
@@ -137,6 +140,7 @@ router.put("/admin/menu/:id", async (req, res) => {
     if (size5Label !== undefined)       updates.size5Label = size5Label;
     if (size5Servings !== undefined)    updates.size5Servings = size5Servings != null ? parseInt(String(size5Servings)) : null;
     if (size5Price !== undefined)       updates.size5Price = size5Price === null ? null : String(size5Price);
+    if (internalNotes !== undefined)    updates.internalNotes = internalNotes ? String(internalNotes).trim() || null : null;
 
     const [item] = await db.update(menuItemsTable).set(updates).where(eq(menuItemsTable.id, id)).returning();
     if (!item) return res.status(404).json({ error: "Menu item not found" });
