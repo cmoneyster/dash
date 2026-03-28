@@ -156,7 +156,7 @@ function NewSessionModal({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
-function SessionOrders({ sessionId, onClose }: { sessionId: number; onClose: () => void }) {
+function SessionOrders({ sessionId, onClose, onOrdersDeleted }: { sessionId: number; onClose: () => void; onOrdersDeleted: () => void }) {
   const [data, setData] = useState<{ session: Session; orders: Order[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
@@ -176,6 +176,7 @@ function SessionOrders({ sessionId, onClose }: { sessionId: number; onClose: () 
     try {
       await fetch(`${BASE}/api/admin/event-sessions/${sessionId}/orders`, { method: "DELETE", headers: authHeaders() });
       setData(prev => prev ? { ...prev, orders: [] } : null);
+      onOrdersDeleted();
     } catch {
       alert("Failed to delete orders. Please try again.");
     } finally {
@@ -462,7 +463,7 @@ export default function EventHistory() {
                     </div>
                   </div>
                 </div>
-                {isExpanded && <div className="px-5 pb-5"><SessionOrders sessionId={session.id} onClose={() => setExpandedId(null)} /></div>}
+                {isExpanded && <div className="px-5 pb-5"><SessionOrders sessionId={session.id} onClose={() => setExpandedId(null)} onOrdersDeleted={load} /></div>}
               </div>
             );
           })}

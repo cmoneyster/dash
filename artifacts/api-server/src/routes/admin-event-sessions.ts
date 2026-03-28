@@ -185,8 +185,8 @@ router.delete("/admin/event-sessions/:id/orders", async (req, res) => {
     const id = parseInt(req.params.id);
     const [session] = await db.select().from(eventSessionsTable).where(eq(eventSessionsTable.id, id));
     if (!session) return res.status(404).json({ error: "Session not found" });
-    await db.delete(eventOrdersTable).where(eq(eventOrdersTable.eventSessionId, id));
-    res.json({ ok: true });
+    const deleted = await db.delete(eventOrdersTable).where(eq(eventOrdersTable.eventSessionId, id)).returning({ id: eventOrdersTable.id });
+    res.json({ ok: true, deleted: deleted.length });
   } catch (err) {
     req.log.error({ err }, "Error deleting session orders");
     res.status(500).json({ error: "Failed to delete session orders" });
