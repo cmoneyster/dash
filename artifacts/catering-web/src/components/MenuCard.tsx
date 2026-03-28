@@ -1,4 +1,4 @@
-import { Plus, Heart, HeartOff, Info } from "lucide-react";
+import { Plus, Heart, HeartOff, Info, ChevronRight } from "lucide-react";
 import type { MenuItem } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -21,6 +21,7 @@ function TierRow({ label, price, isBase }: { label: string; price: number; isBas
 export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCardProps) {
   const hasTiers = !!(item.tier2Qty && item.tier2Price);
   const minQty = item.minimumOrderQty ?? 1;
+  const isPanSizes = (item as any).pricingTemplate === "pan_sizes";
 
   return (
     <div className="bg-card rounded-2xl border border-border/50 overflow-hidden hover:shadow-xl hover:shadow-black/5 hover:border-primary/20 transition-all duration-300 group flex flex-col">
@@ -103,8 +104,17 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCard
           disabled={!item.available}
           className="w-full py-3.5 px-4 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground disabled:opacity-50 disabled:hover:bg-foreground disabled:hover:text-background transition-colors flex items-center justify-center gap-2 group/btn mt-auto"
         >
-          <Plus className="w-5 h-5 group-hover/btn:rotate-90 transition-transform duration-300" />
-          {item.available ? "Add to Order" : "Unavailable"}
+          {isPanSizes ? (
+            <>
+              <ChevronRight className="w-5 h-5" />
+              {item.available ? "Select Size" : "Unavailable"}
+            </>
+          ) : (
+            <>
+              <Plus className="w-5 h-5 group-hover/btn:rotate-90 transition-transform duration-300" />
+              {item.available ? "Add to Order" : "Unavailable"}
+            </>
+          )}
         </button>
       </div>
     </div>

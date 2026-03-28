@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { MenuCard } from "@/components/MenuCard";
+import { PanSizePicker } from "@/components/PanSizePicker";
 import { 
   useListMenuItems, 
   useAddToCart, 
@@ -15,8 +16,12 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Search } from "lucide-react";
 import type { MenuItem } from "@workspace/api-client-react";
 
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 export default function Menu() {
   const [category, setCategory] = useState<string>("");
+  const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
+  const [pickerLoading, setPickerLoading] = useState(false);
   const sessionId = getSessionId();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -45,7 +50,46 @@ export default function Menu() {
   const planItemIds = new Set(plan?.items?.map(i => i.menuItemId) || []);
 
   const handleAddToCart = (item: MenuItem) => {
-    addToCart.mutate({ data: { sessionId, menuItemId: item.id, quantity: 1 } });
+    if ((item as any).pricingTemplate === "pan_sizes") {
+      setPickerItem(item);
+    } else {
+      addToCart.mutate({ data: { sessionId, menuItemId: item.id, quantity: 1 } });
+    }
+  };
+
+  const handlePanSizeConfirm = async (
+    selections: Array<{ slot: number; label: string; price: number; qty: number }>
+  ) => {
+    if (!pickerItem) return;
+    setPickerLoading(true);
+    try {
+      await Promise.all(
+        selections.map(s =>
+          fetch(`${API_BASE}/api/cart`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId,
+              menuItemId: pickerItem.id,
+              quantity: s.qty,
+              sizeSlot: s.slot,
+              sizeLabel: s.label,
+              sizePrice: s.price,
+            }),
+          })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
+      toast({
+        title: "Added to cart",
+        description: `${selections.reduce((sum, s) => sum + s.qty, 0)} pan${selections.length > 1 || selections[0].qty > 1 ? "s" : ""} added to your order.`,
+      });
+      setPickerItem(null);
+    } catch {
+      toast({ title: "Error", description: "Could not add to cart. Please try again.", variant: "destructive" });
+    } finally {
+      setPickerLoading(false);
+    }
   };
 
   const handleTogglePlan = async (item: MenuItem) => {
@@ -75,6 +119,14 @@ export default function Menu() {
 
   return (
     <Layout>
+      {pickerItem && (
+        <PanSizePicker
+          item={pickerItem}
+          onClose={() => setPickerItem(null)}
+          onConfirm={handlePanSizeConfirm}
+          loading={pickerLoading}
+        />
+      )}
       <div className="bg-secondary/30 py-16 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="font-display font-bold text-5xl mb-4">Curated Offerings</h1>
