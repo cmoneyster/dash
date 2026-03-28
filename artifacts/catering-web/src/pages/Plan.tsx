@@ -265,6 +265,23 @@ export default function Plan() {
     if (shareOpen && !shareLoading) setTimeout(() => planNameRef.current?.focus(), 50);
   }, [shareOpen, shareLoading]);
 
+  // On mount, recover an existing share record so auto-sync resumes without re-clicking Share
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/plan/share/by-session?sessionId=${encodeURIComponent(sessionId)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.found) {
+          setShareToken(data.shareToken);
+          setShareExpiry(data.expiresAt);
+          if (data.planName) setPlanName(data.planName);
+        }
+      } catch {}
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Data ──
   const { data: plan, isLoading } = useGetPlan({ sessionId });
 
@@ -365,7 +382,7 @@ export default function Plan() {
     try {
       const raw = localStorage.getItem(PLANNER_STORAGE_KEY);
       if (!raw) return;
-      const { guests: g, savoryPPG: sv, sweetPPG: sw, servingsPPG: sp, piecesMap: pm, servingsMap: sm, panQtys: pq } = JSON.parse(raw);
+      const { guests: g, savoryPPG: sv, sweetPPG: sw, servingsPPG: sp, piecesMap: pm, servingsMap: sm, panQtys: pq, planName: pn, shareToken: st, shareExpiry: se } = JSON.parse(raw);
       if (typeof g === "number")  setGuests(g);
       if (typeof sv === "number") setSavoryPPG(sv);
       if (typeof sw === "number") setSweetPPG(sw);
@@ -381,15 +398,18 @@ export default function Plan() {
             Object.fromEntries(Object.entries(slots).map(([sk, sv2]) => [Number(sk), Number(sv2)])),
           ])
         ));
+      if (typeof pn === "string" && pn) setPlanName(pn);
+      if (typeof st === "string" && st) setShareToken(st);
+      if (typeof se === "string" && se) setShareExpiry(se);
     } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     try {
-      localStorage.setItem(PLANNER_STORAGE_KEY, JSON.stringify({ guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys }));
+      localStorage.setItem(PLANNER_STORAGE_KEY, JSON.stringify({ guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys, planName, shareToken, shareExpiry }));
     } catch {}
-  }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys]);
+  }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys, planName, shareToken, shareExpiry]);
 
   // Auto-push plannerState to the shared record — skip when change came from a poll
   useEffect(() => {
@@ -650,9 +670,10 @@ export default function Plan() {
                 </div>
               ) : (
                 <>
+                  {/* Name field — primary CTA */}
                   <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
-                      Plan name <span className="font-normal normal-case tracking-normal text-muted-foreground/60">(optional)</span>
+                      Name your plan
                     </label>
                     <input
                       ref={planNameRef}
@@ -661,9 +682,22 @@ export default function Plan() {
                       onChange={e => setPlanName(e.target.value)}
                       onBlur={e => updatePlanName(e.target.value)}
                       placeholder="e.g. Smith Wedding Reception"
-                      className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                      className={`w-full px-4 py-2.5 rounded-xl border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all ${
+                        planName.trim() ? "border-border" : "border-amber-400 ring-1 ring-amber-200"
+                      }`}
                     />
+                    {!planName.trim() ? (
+                      <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                        <span className="font-bold">↑</span> Add a name — your plan won't appear in our system until you do.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-emerald-600 mt-1.5 font-medium">
+                        ✓ Plan saved to our team as "{planName.trim()}"
+                      </p>
+                    )}
                   </div>
+
+                  {/* Share link */}
                   <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
                       Your share link
@@ -691,9 +725,11 @@ export default function Plan() {
                       </p>
                     )}
                   </div>
+
                   <p className="text-xs text-muted-foreground bg-secondary/60 rounded-xl px-3 py-2">
                     Your guest count and piece/serving quantities are saved with this link so collaborators see your current numbers.
                   </p>
+
                   <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
                       Email the link
@@ -719,7 +755,14 @@ export default function Plan() {
           <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
             <Heart className="w-6 h-6 fill-current" />
           </div>
-          <h1 className="font-display font-bold text-4xl flex-1">Your Event Plan</h1>
+          <div className="flex-1 min-w-0">
+            <h1 className="font-display font-bold text-4xl leading-tight truncate">
+              {planName || "Your Event Plan"}
+            </h1>
+            {planName && (
+              <p className="text-sm text-muted-foreground mt-0.5">Event Plan</p>
+            )}
+          </div>
           {!isLoading && (plan?.items.length ?? 0) > 0 && (
             <div className="flex items-center gap-2 shrink-0">
               {clearConfirm ? (

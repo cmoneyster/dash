@@ -153,6 +153,32 @@ router.post("/plan/share", async (req, res) => {
   }
 });
 
+// Look up existing share record by sessionId (no auth — customer's own session)
+router.get("/plan/share/by-session", async (req, res) => {
+  try {
+    const { sessionId } = req.query as { sessionId?: string };
+    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+
+    const [existing] = await db
+      .select()
+      .from(sharedPlansTable)
+      .where(eq(sharedPlansTable.sessionId, sessionId));
+
+    if (!existing || new Date() > existing.expiresAt) return res.json({ found: false });
+
+    res.json({
+      found: true,
+      shareToken: existing.shareToken,
+      planName: existing.planName ?? null,
+      plannerState: existing.plannerState ?? null,
+      expiresAt: existing.expiresAt,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Error looking up plan by session");
+    res.status(500).json({ error: "Failed to look up plan" });
+  }
+});
+
 // Get shared plan
 router.get("/plan/share/:token", async (req, res) => {
   try {
