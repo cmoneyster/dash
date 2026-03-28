@@ -287,7 +287,9 @@ export default function SharedPlan() {
           const slots: Record<string, number> = {};
           let first = true;
           for (let i = 1; i <= 5; i++) {
-            if ((item.menuItem as any)[`size${i}Price`] != null) {
+            const lbl2 = (item.menuItem as any)[`size${i}Label`];
+            const prc2 = (item.menuItem as any)[`size${i}Price`];
+            if (lbl2 != null && prc2 != null) {
               slots[String(i)] = first ? (isSmallBiteItem ? minQty : 1) : 0;
               first = false;
             }

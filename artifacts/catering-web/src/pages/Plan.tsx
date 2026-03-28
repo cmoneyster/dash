@@ -476,7 +476,9 @@ export default function Plan() {
         const slots: Record<number, number> = {};
         let first = true;
         for (let i = 1; i <= 5; i++) {
-          if ((item.menuItem as any)[`size${i}Price`] != null) {
+          const lbl = (item.menuItem as any)[`size${i}Label`];
+          const prc = (item.menuItem as any)[`size${i}Price`];
+          if (lbl != null && prc != null) {
             slots[i] = first ? (isSmallBiteItem ? minQty : 1) : 0;
             first = false;
           }
