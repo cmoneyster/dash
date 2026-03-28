@@ -278,14 +278,17 @@ export default function SharedPlan() {
       const panQtys     = { ...(prev.panQtys ?? {}) };
       plan.items.forEach(item => {
         const key = String(item.id);
-        if (isSmallBite(item.menuItem.category) && !(key in piecesMap))   { piecesMap[key]   = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
-        if (isEntree(item.menuItem.category)    && !(key in servingsMap))  { servingsMap[key] = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
-        if (isEntree(item.menuItem.category) && (item.menuItem as any).pricingTemplate === "pan_sizes" && !(key in panQtys)) {
+        const isPanSizes = (item.menuItem as any).pricingTemplate === "pan_sizes";
+        if (isSmallBite(item.menuItem.category) && !isPanSizes && !(key in piecesMap)) { piecesMap[key] = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
+        if (isEntree(item.menuItem.category) && !(key in servingsMap)) { servingsMap[key] = item.menuItem.minimumOrderQty ?? 1; seeded = true; }
+        if (isPanSizes && (isEntree(item.menuItem.category) || isSmallBite(item.menuItem.category)) && !(key in panQtys)) {
+          const isSmallBiteItem = isSmallBite(item.menuItem.category);
+          const minQty = item.menuItem.minimumOrderQty ?? 1;
           const slots: Record<string, number> = {};
           let first = true;
           for (let i = 1; i <= 5; i++) {
             if ((item.menuItem as any)[`size${i}Price`] != null) {
-              slots[String(i)] = first ? 1 : 0;
+              slots[String(i)] = first ? (isSmallBiteItem ? minQty : 1) : 0;
               first = false;
             }
           }
@@ -366,8 +369,26 @@ export default function SharedPlan() {
   const needSweet   = guests * sweetPPG;
   const needEntrees = guests * servingsPPG;
 
-  const haveSavory  = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SAVORY_CAT).reduce((s, i) => s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1), 0), [smallBiteItems, piecesMap]);
-  const haveSweet   = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SWEET_CAT).reduce((s, i)  => s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1), 0), [smallBiteItems, piecesMap]);
+  const haveSavory  = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SAVORY_CAT).reduce((s, i) => {
+    if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
+      const slots = panQtys[String(i.id)] ?? {};
+      return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
+        const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? i.menuItem.servingSize ?? 1;
+        return ss + Number(q) * spu;
+      }, 0);
+    }
+    return s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1);
+  }, 0), [smallBiteItems, piecesMap, panQtys]);
+  const haveSweet   = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SWEET_CAT).reduce((s, i) => {
+    if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
+      const slots = panQtys[String(i.id)] ?? {};
+      return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
+        const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? i.menuItem.servingSize ?? 1;
+        return ss + Number(q) * spu;
+      }, 0);
+    }
+    return s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1);
+  }, 0), [smallBiteItems, piecesMap, panQtys]);
   const haveEntrees = useMemo(() => entreeItems.reduce((s, i) => {
     const isPanSizes = (i.menuItem as any).pricingTemplate === "pan_sizes";
     if (isPanSizes) {
@@ -653,7 +674,16 @@ export default function SharedPlan() {
                 }, 0);
 
                 const catPieces   = sb
-                  ? items.reduce((s, i) => s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1), 0)
+                  ? items.reduce((s, i) => {
+                      if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
+                        const slots = panQtys[String(i.id)] ?? {};
+                        return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
+                          const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? i.menuItem.servingSize ?? 1;
+                          return ss + Number(q) * spu;
+                        }, 0);
+                      }
+                      return s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1);
+                    }, 0)
                   : null;
                 const catServings = ent
                   ? items.reduce((s, i) => {
@@ -754,20 +784,67 @@ export default function SharedPlan() {
 
                                 <p className="text-muted-foreground text-sm line-clamp-2">{item.menuItem.description}</p>
 
-                                {/* Small Bites — unit stepper */}
-                                {sb && (
-                                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
-                                    <div>
-                                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{unitCap} ordered</p>
-                                      {sz > 1 && <p className="text-xs text-muted-foreground">{sz} pcs per {unit} · {traysSmall * sz} pcs total</p>}
+                                {/* Small Bites — pan sizes multi-slot or unit stepper */}
+                                {sb && (() => {
+                                  const isPanSizes = (item.menuItem as any).pricingTemplate === "pan_sizes";
+                                  if (isPanSizes) {
+                                    const activeSizes: Array<{ idx: number; label: string; pieces: number; price: number }> = [];
+                                    for (let i = 1; i <= 5; i++) {
+                                      const lbl = (item.menuItem as any)[`size${i}Label`] as string | null | undefined;
+                                      const pcs = (item.menuItem as any)[`size${i}Servings`] as number | null | undefined;
+                                      const prc = (item.menuItem as any)[`size${i}Price`];
+                                      if (lbl && prc != null) activeSizes.push({ idx: i, label: lbl, pieces: pcs ?? item.menuItem.servingSize ?? 1, price: parseFloat(String(prc)) });
+                                    }
+                                    const slots = panQtys[String(item.id)] ?? {};
+                                    const totalPanPrice = activeSizes.reduce((s2, s3) => s2 + (Number(slots[String(s3.idx)]) || 0) * s3.price, 0);
+                                    const totalPanPcs   = activeSizes.reduce((s2, s3) => s2 + (Number(slots[String(s3.idx)]) || 0) * s3.pieces, 0);
+                                    return (
+                                      <div className="space-y-2">
+                                        {activeSizes.map(s => {
+                                          const slotQty = Number(slots[String(s.idx)]) || 0;
+                                          return (
+                                            <div key={s.idx} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
+                                              <div>
+                                                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{s.label}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                  {formatCurrency(s.price)}/pan · ~{s.pieces} pcs
+                                                  {slotQty > 0 && ` · ${slotQty * s.pieces} pcs total`}
+                                                </p>
+                                              </div>
+                                              <CountStepper
+                                                value={slotQty}
+                                                onChange={v => updatePlanner(p => ({
+                                                  ...p,
+                                                  panQtys: { ...(p.panQtys ?? {}), [String(item.id)]: { ...(p.panQtys?.[String(item.id)] ?? {}), [String(s.idx)]: v } }
+                                                }))}
+                                                hint="pan" defaultVal={1} min={0}
+                                              />
+                                            </div>
+                                          );
+                                        })}
+                                        {totalPanPrice > 0 && (
+                                          <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+                                            <span>{totalPanPcs} pieces total</span>
+                                            <span className="font-bold text-foreground">{formatCurrency(totalPanPrice)}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-secondary/50 rounded-xl border border-border/60">
+                                      <div>
+                                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{unitCap} ordered</p>
+                                        {sz > 1 && <p className="text-xs text-muted-foreground">{sz} pcs per {unit} · {traysSmall * sz} pcs total</p>}
+                                      </div>
+                                      <CountStepper
+                                        value={traysSmall}
+                                        onChange={v => updatePlanner(p => ({ ...p, piecesMap: { ...p.piecesMap, [String(item.id)]: v } }))}
+                                        hint={unit} defaultVal={minQty} min={minQty} minMessage={minMsg}
+                                      />
                                     </div>
-                                    <CountStepper
-                                      value={traysSmall}
-                                      onChange={v => updatePlanner(p => ({ ...p, piecesMap: { ...p.piecesMap, [String(item.id)]: v } }))}
-                                      hint={unit} defaultVal={minQty} min={minQty} minMessage={minMsg}
-                                    />
-                                  </div>
-                                )}
+                                  );
+                                })()}
 
                                 {/* Entrée — pan sizes multi-slot steppers or single stepper */}
                                 {ent && (() => {
