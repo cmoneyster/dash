@@ -47,3 +47,19 @@ export async function sendOrderReady(opts: {
   const body  = `Hi ${name}! Your order #${orderId} is ready for pickup at ${event}! — dash by Hollywood East Cafe`;
   await sendSms(phoneNumber, body);
 }
+
+export async function sendNewInquiryAlert(opts: {
+  clientName: string;
+  source: "form" | "cart";
+  eventDate?: string | null;
+}): Promise<void> {
+  const ownerPhone = process.env.OWNER_PHONE;
+  if (!ownerPhone) {
+    console.warn("[SMS] OWNER_PHONE not set — skipping inquiry alert");
+    return;
+  }
+  const sourceLabel = opts.source === "cart" ? "cart order" : "form inquiry";
+  const datePart = opts.eventDate ? ` — Event: ${opts.eventDate}` : "";
+  const body = `New catering inquiry from ${opts.clientName} (${sourceLabel})${datePart}. Check admin for details.`;
+  await sendSms(ownerPhone, body);
+}

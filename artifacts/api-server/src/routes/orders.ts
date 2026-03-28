@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, orderItemsTable, cartItemsTable, menuItemsTable } from "@workspace/db/schema";
+import { ordersTable, orderItemsTable, cartItemsTable, menuItemsTable, cateringInquiriesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { sendNewInquiryAlert } from "../lib/sms";
 
 const router: IRouter = Router();
 
@@ -70,6 +71,38 @@ router.post("/orders", async (req, res) => {
 
     // Clear the cart
     await db.delete(cartItemsTable).where(eq(cartItemsTable.sessionId, sessionId));
+
+    // Dual-write: create a catering inquiry for this cart order
+    try {
+      const orderItemsForInquiry = cartItems.map(row => ({
+        name: row.menu_items.name,
+        quantity: row.cart_items.quantity,
+        price: parseFloat(row.menu_items.price),
+      }));
+      const orderTotalStr = `$${total.toFixed(2)}`;
+
+      await db.insert(cateringInquiriesTable).values({
+        clientName: customerName,
+        clientEmail: customerEmail ?? null,
+        clientPhone: customerPhone ?? null,
+        eventDate: eventDate ?? null,
+        guestCount: guestCount ?? null,
+        venueAddress: deliveryNotes ?? null,
+        source: "cart",
+        orderItems: orderItemsForInquiry,
+        orderTotal: orderTotalStr,
+        status: "inquiry",
+      });
+
+      // Fire-and-forget SMS alert
+      sendNewInquiryAlert({
+        clientName: customerName,
+        source: "cart",
+        eventDate: eventDate ?? null,
+      }).catch(() => {});
+    } catch (inquiryErr) {
+      req.log.error({ err: inquiryErr }, "Failed to create catering inquiry from cart order — order was still created");
+    }
 
     const result = await getOrderWithItems(order.id);
     res.status(201).json(result);

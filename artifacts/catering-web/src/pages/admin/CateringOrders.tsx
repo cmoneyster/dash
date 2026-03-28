@@ -4,8 +4,10 @@ import { getAdminToken } from "@/components/AdminGuard";
 import {
   Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
+  Search, ShoppingCart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -26,6 +28,8 @@ function getStatusMeta(key: string) {
   return STATUSES.find(s => s.key === key) ?? { key, label: key, color: "bg-secondary text-muted-foreground" };
 }
 
+type OrderItem = { name: string; quantity: number; price: number };
+
 type Inquiry = {
   id: number;
   clientName: string;
@@ -38,6 +42,9 @@ type Inquiry = {
   menuNotes: string | null;
   adminNotes: string | null;
   status: string;
+  source: string;
+  orderItems: OrderItem[] | null;
+  orderTotal: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -46,6 +53,7 @@ function emptyForm(): Partial<Inquiry> {
   return {
     clientName: "", clientEmail: "", clientPhone: "", organization: "",
     eventDate: "", guestCount: undefined, venueAddress: "", menuNotes: "", adminNotes: "", status: "inquiry",
+    source: "form", orderItems: null, orderTotal: null,
   };
 }
 
@@ -69,6 +77,45 @@ function Field({ icon: Icon, label, children }: { icon: any; label: string; chil
   );
 }
 
+function OrderItemsTable({ items, total }: { items: OrderItem[]; total: string | null }) {
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      <div className="bg-secondary/40 px-4 py-2 border-b border-border flex items-center gap-2">
+        <ShoppingCart className="w-3.5 h-3.5 text-primary" />
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Cart Order Items</span>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="border-b border-border bg-secondary/20">
+          <tr className="text-left text-xs text-muted-foreground">
+            <th className="px-4 py-2 font-semibold">Item</th>
+            <th className="px-4 py-2 font-semibold text-center">Qty</th>
+            <th className="px-4 py-2 font-semibold text-right">Unit</th>
+            <th className="px-4 py-2 font-semibold text-right">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, i) => (
+            <tr key={i} className="border-b border-border/50 last:border-0">
+              <td className="px-4 py-2.5 font-medium">{item.name}</td>
+              <td className="px-4 py-2.5 text-center">{item.quantity}</td>
+              <td className="px-4 py-2.5 text-right text-muted-foreground">{formatCurrency(item.price)}</td>
+              <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(item.price * item.quantity)}</td>
+            </tr>
+          ))}
+        </tbody>
+        {total && (
+          <tfoot>
+            <tr className="border-t-2 border-border bg-secondary/20">
+              <td colSpan={3} className="px-4 py-2.5 text-sm font-bold text-right">Total</td>
+              <td className="px-4 py-2.5 text-right font-bold text-primary">{total}</td>
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
+}
+
 function DetailPanel({
   inquiry,
   onClose,
@@ -88,6 +135,8 @@ function DetailPanel({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => { setForm(inquiry); setSaved(false); setError(""); }, [inquiry]);
+
   function set(key: keyof Inquiry, value: any) {
     setForm(p => ({ ...p, [key]: value }));
     setSaved(false);
@@ -103,10 +152,10 @@ function DetailPanel({
       const method = isNew ? "POST" : "PUT";
       const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(form) });
       if (!res.ok) throw new Error();
-      const saved = await res.json();
+      const savedData = await res.json();
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-      onSaved(saved);
+      onSaved(savedData);
     } catch {
       setError("Failed to save. Please try again.");
     } finally {
@@ -129,11 +178,20 @@ function DetailPanel({
 
   const inputCls = "w-full px-3 py-2 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm";
   const textareaCls = `${inputCls} resize-none`;
+  const isCartOrder = form.source === "cart";
+  const hasItems = isCartOrder && Array.isArray(form.orderItems) && form.orderItems.length > 0;
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-        <h2 className="font-display font-bold text-lg">{isNew ? "New Inquiry" : form.clientName || "Edit Inquiry"}</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="font-display font-bold text-lg">{isNew ? "New Inquiry" : form.clientName || "Edit Inquiry"}</h2>
+          {isCartOrder && (
+            <span className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-xs font-bold rounded-full">
+              <ShoppingCart className="w-3 h-3" /> Cart Order
+            </span>
+          )}
+        </div>
         <button onClick={onClose} className="p-2 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
           <X className="w-4 h-4" />
         </button>
@@ -141,6 +199,11 @@ function DetailPanel({
 
       <form onSubmit={handleSave} className="flex-1 overflow-y-auto">
         <div className="p-6 space-y-4">
+          {/* Cart items table */}
+          {hasItems && (
+            <OrderItemsTable items={form.orderItems!} total={form.orderTotal ?? null} />
+          )}
+
           {/* Status pipeline */}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">Status</label>
@@ -257,6 +320,7 @@ export default function CateringOrders() {
   const [selected, setSelected] = useState<Partial<Inquiry> | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   const load = useCallback(() => {
     fetch(`${BASE}/api/admin/catering`, { headers: authHeaders() })
@@ -298,7 +362,10 @@ export default function CateringOrders() {
     closePanel();
   }
 
-  const filtered = statusFilter === "all" ? inquiries : inquiries.filter(i => i.status === statusFilter);
+  const q = search.trim().toLowerCase();
+  const filtered = inquiries
+    .filter(i => statusFilter === "all" || i.status === statusFilter)
+    .filter(i => !q || i.clientName.toLowerCase().includes(q) || (i.clientEmail ?? "").toLowerCase().includes(q) || (i.clientPhone ?? "").toLowerCase().includes(q));
 
   const counts: Record<string, number> = {};
   inquiries.forEach(i => { counts[i.status] = (counts[i.status] ?? 0) + 1; });
@@ -312,7 +379,7 @@ export default function CateringOrders() {
           <div className="px-6 py-5 border-b border-border shrink-0">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h1 className="font-display font-bold text-2xl">Catering Orders</h1>
+                <h1 className="font-display font-bold text-2xl">Catering Inquiries</h1>
                 <p className="text-sm text-muted-foreground">{inquiries.length} total inquir{inquiries.length !== 1 ? "ies" : "y"}</p>
               </div>
               <button
@@ -321,6 +388,22 @@ export default function CateringOrders() {
               >
                 <Plus className="w-4 h-4" /> New
               </button>
+            </div>
+
+            {/* Search */}
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search by name, email, or phone…"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+              />
+              {search && (
+                <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             {/* Status filter */}
@@ -354,14 +437,17 @@ export default function CateringOrders() {
             ) : filtered.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground px-6">
                 <FileText className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                <p className="font-medium mb-1">{statusFilter === "all" ? "No catering inquiries yet" : `No ${statusFilter} inquiries`}</p>
-                {statusFilter === "all" && <p className="text-sm">Click "New" to add a catering inquiry.</p>}
+                <p className="font-medium mb-1">
+                  {q ? `No results for "${search}"` : statusFilter === "all" ? "No catering inquiries yet" : `No ${statusFilter} inquiries`}
+                </p>
+                {!q && statusFilter === "all" && <p className="text-sm">Click "New" to add a catering inquiry.</p>}
               </div>
             ) : (
               <div className="divide-y divide-border">
                 {filtered.map(inquiry => {
                   const status = getStatusMeta(inquiry.status);
                   const isSelected = selected && "id" in selected && (selected as Inquiry).id === inquiry.id;
+                  const isCart = inquiry.source === "cart";
                   return (
                     <button
                       key={inquiry.id}
@@ -372,14 +458,20 @@ export default function CateringOrders() {
                       )}
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                           <span className="font-semibold text-sm truncate">{inquiry.clientName}</span>
                           <span className={cn("shrink-0 text-xs px-2 py-0.5 rounded-full font-medium", status.color)}>{status.label}</span>
+                          {isCart && (
+                            <span className="shrink-0 flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded-full font-semibold">
+                              <ShoppingCart className="w-2.5 h-2.5" /> Cart
+                            </span>
+                          )}
                         </div>
                         {inquiry.organization && <p className="text-xs text-muted-foreground truncate">{inquiry.organization}</p>}
                         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                           {inquiry.eventDate && <span>{formatDate(inquiry.eventDate)}</span>}
                           {inquiry.guestCount && <span>{inquiry.guestCount} guests</span>}
+                          {isCart && inquiry.orderTotal && <span className="font-semibold text-foreground/70">{inquiry.orderTotal}</span>}
                           {!inquiry.eventDate && !inquiry.guestCount && <span>Added {formatDate(inquiry.createdAt)}</span>}
                         </div>
                       </div>

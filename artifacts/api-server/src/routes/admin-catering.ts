@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { cateringInquiriesTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { sendNewInquiryAlert } from "../lib/sms";
 
 const router: IRouter = Router();
 
@@ -34,7 +35,7 @@ router.get("/admin/catering/:id", async (req, res) => {
   }
 });
 
-// Create a new catering inquiry
+// Create a new catering inquiry (form submission)
 router.post("/admin/catering", async (req, res) => {
   try {
     const {
@@ -71,8 +72,16 @@ router.post("/admin/catering", async (req, res) => {
         menuNotes: menuNotes?.trim() || null,
         adminNotes: adminNotes?.trim() || null,
         status: VALID_STATUSES.includes(status ?? "") ? status! : "inquiry",
+        source: "form",
       })
       .returning();
+
+    // Fire-and-forget SMS alert
+    sendNewInquiryAlert({
+      clientName: clientName.trim(),
+      source: "form",
+      eventDate: eventDate?.trim() || null,
+    }).catch(() => {});
 
     res.status(201).json(inquiry);
   } catch (err) {

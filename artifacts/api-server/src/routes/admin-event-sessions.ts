@@ -179,6 +179,20 @@ router.get("/admin/event-sessions/:id/orders", async (req, res) => {
   }
 });
 
+// Delete ALL orders for a session (keep the session)
+router.delete("/admin/event-sessions/:id/orders", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [session] = await db.select().from(eventSessionsTable).where(eq(eventSessionsTable.id, id));
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    await db.delete(eventOrdersTable).where(eq(eventOrdersTable.eventSessionId, id));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Error deleting session orders");
+    res.status(500).json({ error: "Failed to delete session orders" });
+  }
+});
+
 // Delete a session and all its orders
 router.delete("/admin/event-sessions/:id", async (req, res) => {
   try {

@@ -159,13 +159,29 @@ function NewSessionModal({ onClose, onCreated }: { onClose: () => void; onCreate
 function SessionOrders({ sessionId, onClose }: { sessionId: number; onClose: () => void }) {
   const [data, setData] = useState<{ session: Session; orders: Order[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
+  function loadOrders() {
     fetch(`${BASE}/api/admin/event-sessions/${sessionId}/orders`, { headers: authHeaders() })
       .then(r => r.json())
       .then(setData)
       .finally(() => setLoading(false));
-  }, [sessionId]);
+  }
+
+  useEffect(() => { loadOrders(); }, [sessionId]);
+
+  async function handleDeleteAllOrders() {
+    if (!confirm("Delete ALL orders for this session? This cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      await fetch(`${BASE}/api/admin/event-sessions/${sessionId}/orders`, { method: "DELETE", headers: authHeaders() });
+      setData(prev => prev ? { ...prev, orders: [] } : null);
+    } catch {
+      alert("Failed to delete orders. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const orders = data?.orders ?? [];
   const totalRevenue = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.quantity, 0), 0);
@@ -204,6 +220,18 @@ function SessionOrders({ sessionId, onClose }: { sessionId: number; onClose: () 
             </div>
           </div>
 
+          {orders.length > 0 && (
+            <div className="flex justify-end">
+              <button
+                onClick={handleDeleteAllOrders}
+                disabled={deleting}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-red-50 rounded-xl border border-border hover:border-red-200 transition-colors disabled:opacity-50"
+              >
+                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Delete all orders
+              </button>
+            </div>
+          )}
           {orders.length === 0 ? (
             <p className="text-center text-muted-foreground text-sm py-4">No orders recorded for this event.</p>
           ) : (

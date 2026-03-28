@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, ShoppingCart, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, X, AlignJustify } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken } from "@/components/AdminGuard";
 
@@ -30,7 +30,6 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     <>
       <AdminNavLink href="/admin" icon={LayoutDashboard} onClick={onNavigate}>Dashboard</AdminNavLink>
       <AdminNavLink href="/admin/menu" icon={MenuIcon} onClick={onNavigate}>Menu Manager</AdminNavLink>
-      <AdminNavLink href="/admin/orders" icon={ShoppingCart} onClick={onNavigate}>Orders</AdminNavLink>
       <AdminNavLink href="/admin/calendar" icon={CalendarDays} onClick={onNavigate}>Availability</AdminNavLink>
       <AdminNavLink href="/admin/images" icon={Images} onClick={onNavigate}>Image Library</AdminNavLink>
       <div className="pt-2 pb-1">
@@ -41,7 +40,8 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
       <div className="pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Catering</p>
       </div>
-      <AdminNavLink href="/admin/catering" icon={Briefcase} onClick={onNavigate}>Catering Orders</AdminNavLink>
+      <AdminNavLink href="/admin/catering" icon={Briefcase} onClick={onNavigate}>Catering Inquiries</AdminNavLink>
+      <AdminNavLink href="/admin/catering/upcoming" icon={CalendarRange} onClick={onNavigate}>Upcoming Caterings</AdminNavLink>
       <AdminNavLink href="/admin/catering/plans" icon={ClipboardList} onClick={onNavigate}>Event Plans</AdminNavLink>
     </>
   );

@@ -25,6 +25,7 @@ import EventSettings from "@/pages/admin/EventSettings";
 import EventHistory from "@/pages/admin/EventHistory";
 import CateringOrders from "@/pages/admin/CateringOrders";
 import CateringPlans from "@/pages/admin/CateringPlans";
+import UpcomingCaterings from "@/pages/admin/UpcomingCaterings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -73,6 +74,9 @@ function Router() {
       </Route>
       <Route path="/admin/catering">
         {() => <AdminGuard><CateringOrders /></AdminGuard>}
+      </Route>
+      <Route path="/admin/catering/upcoming">
+        {() => <AdminGuard><UpcomingCaterings /></AdminGuard>}
       </Route>
       <Route path="/admin/catering/plans">
         {() => <AdminGuard><CateringPlans /></AdminGuard>}
