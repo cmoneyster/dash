@@ -16,6 +16,7 @@ import eventOrderingRouter from "./event-ordering";
 import adminEventRouter from "./admin-event";
 import adminEventSessionsRouter from "./admin-event-sessions";
 import adminCateringRouter from "./admin-catering";
+import adminPlansRouter from "./admin-plans";
 import verifyRouter from "./verify";
 
 const router: IRouter = Router();
@@ -40,6 +41,7 @@ router.use("/admin/blackout-dates", requireAdminAuth);
 router.use("/admin/event-settings", requireAdminAuth);
 router.use("/admin/event-sessions", requireAdminAuth);
 router.use("/admin/catering", requireAdminAuth);
+router.use("/admin/plans", requireAdminAuth);
 
 router.use(adminMenuRouter);
 router.use(adminStatsRouter);
@@ -47,5 +49,6 @@ router.use(adminImagesRouter);
 router.use(adminEventRouter);
 router.use(adminEventSessionsRouter);
 router.use(adminCateringRouter);
+router.use(adminPlansRouter);
 
 export default router;

@@ -118,6 +118,28 @@ export async function seedIfEmpty(): Promise<void> {
     await db.execute(sql`
       ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS internal_notes text
     `);
+
+    // Shared plans — add plan_number, created_at, admin_notes columns + sequence (production migration)
+    await db.execute(sql`
+      CREATE SEQUENCE IF NOT EXISTS shared_plans_plan_number_seq START 1001 INCREMENT 1
+    `);
+    await db.execute(sql`
+      ALTER TABLE shared_plans
+        ADD COLUMN IF NOT EXISTS plan_number integer,
+        ADD COLUMN IF NOT EXISTS created_at timestamp DEFAULT now(),
+        ADD COLUMN IF NOT EXISTS admin_notes text
+    `);
+    // Backfill plan_number for any existing rows that don't have one yet
+    await db.execute(sql`
+      UPDATE shared_plans
+      SET plan_number = nextval('shared_plans_plan_number_seq')
+      WHERE plan_number IS NULL
+    `);
+    // Ensure future inserts get a number automatically
+    await db.execute(sql`
+      ALTER TABLE shared_plans
+        ALTER COLUMN plan_number SET DEFAULT nextval('shared_plans_plan_number_seq')
+    `);
   } catch (err) {
     logger.error({ err }, "Failed to seed/patch menu items");
   }

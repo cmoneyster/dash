@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, varchar, timestamp, jsonb, integer, text } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 export const sharedPlansTable = pgTable("shared_plans", {
@@ -6,6 +6,9 @@ export const sharedPlansTable = pgTable("shared_plans", {
   sessionId:      varchar("session_id").notNull(),
   planName:       varchar("plan_name", { length: 100 }),
   plannerState:   jsonb("planner_state"),
+  adminNotes:     text("admin_notes"),
+  planNumber:     integer("plan_number"),
+  createdAt:      timestamp("created_at").defaultNow(),
   lastModifiedAt: timestamp("last_modified_at").notNull().defaultNow(),
   expiresAt:      timestamp("expires_at").notNull(),
 });

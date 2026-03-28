@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, ShoppingCart, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, X, AlignJustify } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, ShoppingCart, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, X, AlignJustify } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken } from "@/components/AdminGuard";
 
@@ -42,6 +42,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Catering</p>
       </div>
       <AdminNavLink href="/admin/catering" icon={Briefcase} onClick={onNavigate}>Catering Orders</AdminNavLink>
+      <AdminNavLink href="/admin/catering/plans" icon={ClipboardList} onClick={onNavigate}>Event Plans</AdminNavLink>
     </>
   );
 }

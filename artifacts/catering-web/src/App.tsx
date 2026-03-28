@@ -24,6 +24,7 @@ import ImageLibrary from "@/pages/admin/ImageLibrary";
 import EventSettings from "@/pages/admin/EventSettings";
 import EventHistory from "@/pages/admin/EventHistory";
 import CateringOrders from "@/pages/admin/CateringOrders";
+import CateringPlans from "@/pages/admin/CateringPlans";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -72,6 +73,9 @@ function Router() {
       </Route>
       <Route path="/admin/catering">
         {() => <AdminGuard><CateringOrders /></AdminGuard>}
+      </Route>
+      <Route path="/admin/catering/plans">
+        {() => <AdminGuard><CateringPlans /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />
