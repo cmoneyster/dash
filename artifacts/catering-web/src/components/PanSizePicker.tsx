@@ -70,6 +70,10 @@ export function PanSizePicker({ item, onClose, onConfirm, loading }: PanSizePick
       setError("Please select at least one size to add to your order.");
       return;
     }
+    if (totalPans < minQty) {
+      setError(`Minimum order is ${minQty} pan${minQty !== 1 ? "s" : ""} total. Please increase your selection.`);
+      return;
+    }
     onConfirm(selections);
   };
 

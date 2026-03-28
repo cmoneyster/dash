@@ -40,6 +40,9 @@ export default function Menu() {
     }
   });
 
+  // Silent variant used for pan-size multi-add — we invalidate + toast once at the end
+  const addToCartSilent = useAddToCart();
+
   const addToPlan = useAddToPlan({
     mutation: {
       onSuccess: () => {
@@ -63,27 +66,20 @@ export default function Menu() {
     if (!pickerItem) return;
     setPickerLoading(true);
     try {
-      const responses = await Promise.all(
+      await Promise.all(
         selections.map(s =>
-          fetch(`${API_BASE}/api/cart`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          addToCartSilent.mutateAsync({
+            data: {
               sessionId,
               menuItemId: pickerItem.id,
               quantity: s.qty,
               sizeSlot: s.slot,
               sizeLabel: s.label,
               sizePrice: s.price,
-            }),
+            },
           })
         )
       );
-      const failed = responses.find(r => !r.ok);
-      if (failed) {
-        const err = await failed.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? "Failed to add to cart");
-      }
       queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
       const totalPans = selections.reduce((sum, s) => sum + s.qty, 0);
       toast({
