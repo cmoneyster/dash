@@ -1,6 +1,7 @@
 import { Plus, Heart, HeartOff, Info, ChevronRight } from "lucide-react";
 import type { MenuItem } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
+import { isPanSizesItem } from "@/lib/menu-types";
 
 interface MenuCardProps {
   item: MenuItem;
@@ -21,7 +22,7 @@ function TierRow({ label, price, isBase }: { label: string; price: number; isBas
 export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCardProps) {
   const hasTiers = !!(item.tier2Qty && item.tier2Price);
   const minQty = item.minimumOrderQty ?? 1;
-  const isPanSizes = (item as any).pricingTemplate === "pan_sizes";
+  const isPanSizes = isPanSizesItem(item);
 
   return (
     <div className="bg-card rounded-2xl border border-border/50 overflow-hidden hover:shadow-xl hover:shadow-black/5 hover:border-primary/20 transition-all duration-300 group flex flex-col">

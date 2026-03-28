@@ -15,12 +15,14 @@ import { getSessionId } from "@/lib/session";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Search } from "lucide-react";
 import type { MenuItem } from "@workspace/api-client-react";
+import { isPanSizesItem, type PanSizeMenuItem } from "@/lib/menu-types";
+import type { PanSizeSelection } from "@/components/PanSizePicker";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function Menu() {
   const [category, setCategory] = useState<string>("");
-  const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
+  const [pickerItem, setPickerItem] = useState<PanSizeMenuItem | null>(null);
   const [pickerLoading, setPickerLoading] = useState(false);
   const sessionId = getSessionId();
   const queryClient = useQueryClient();
@@ -50,20 +52,18 @@ export default function Menu() {
   const planItemIds = new Set(plan?.items?.map(i => i.menuItemId) || []);
 
   const handleAddToCart = (item: MenuItem) => {
-    if ((item as any).pricingTemplate === "pan_sizes") {
+    if (isPanSizesItem(item)) {
       setPickerItem(item);
     } else {
       addToCart.mutate({ data: { sessionId, menuItemId: item.id, quantity: 1 } });
     }
   };
 
-  const handlePanSizeConfirm = async (
-    selections: Array<{ slot: number; label: string; price: number; qty: number }>
-  ) => {
+  const handlePanSizeConfirm = async (selections: PanSizeSelection[]) => {
     if (!pickerItem) return;
     setPickerLoading(true);
     try {
-      await Promise.all(
+      const responses = await Promise.all(
         selections.map(s =>
           fetch(`${API_BASE}/api/cart`, {
             method: "POST",
@@ -79,14 +79,21 @@ export default function Menu() {
           })
         )
       );
+      const failed = responses.find(r => !r.ok);
+      if (failed) {
+        const err = await failed.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? "Failed to add to cart");
+      }
       queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
+      const totalPans = selections.reduce((sum, s) => sum + s.qty, 0);
       toast({
         title: "Added to cart",
-        description: `${selections.reduce((sum, s) => sum + s.qty, 0)} pan${selections.length > 1 || selections[0].qty > 1 ? "s" : ""} added to your order.`,
+        description: `${totalPans} pan${totalPans !== 1 ? "s" : ""} added to your order.`,
       });
       setPickerItem(null);
-    } catch {
-      toast({ title: "Error", description: "Could not add to cart. Please try again.", variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Could not add to cart. Please try again.";
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setPickerLoading(false);
     }

@@ -1,30 +1,38 @@
 import { useState, useEffect } from "react";
 import { X, Minus, Plus, ShoppingCart } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import type { MenuItem } from "@workspace/api-client-react";
+import type { PanSizeMenuItem } from "@/lib/menu-types";
 
 interface SizeSlot {
-  idx: number;
+  idx: 1 | 2 | 3 | 4 | 5;
   label: string;
   price: number;
   servings: number | null;
 }
 
+export interface PanSizeSelection {
+  slot: number;
+  label: string;
+  price: number;
+  qty: number;
+}
+
 interface PanSizePickerProps {
-  item: MenuItem;
+  item: PanSizeMenuItem;
   onClose: () => void;
-  onConfirm: (selections: Array<{ slot: number; label: string; price: number; qty: number }>) => void;
+  onConfirm: (selections: PanSizeSelection[]) => void;
   loading?: boolean;
 }
 
-function getSizeSlots(item: MenuItem): SizeSlot[] {
+function getSizeSlots(item: PanSizeMenuItem): SizeSlot[] {
   const slots: SizeSlot[] = [];
-  for (let i = 1; i <= 5; i++) {
-    const label = (item as any)[`size${i}Label`] as string | null | undefined;
-    const rawPrice = (item as any)[`size${i}Price`] as string | number | null | undefined;
-    const servings = (item as any)[`size${i}Servings`] as number | null | undefined;
-    if (label && rawPrice != null) {
-      slots.push({ idx: i, label, price: parseFloat(String(rawPrice)), servings: servings ?? null });
+  const indices = [1, 2, 3, 4, 5] as const;
+  for (const i of indices) {
+    const label = item[`size${i}Label`];
+    const rawPrice = item[`size${i}Price`];
+    const servings = item[`size${i}Servings`] ?? null;
+    if (label != null && rawPrice != null) {
+      slots.push({ idx: i, label, price: Number(rawPrice), servings });
     }
   }
   return slots;
@@ -59,7 +67,7 @@ export function PanSizePicker({ item, onClose, onConfirm, loading }: PanSizePick
       .filter(s => qtys[s.idx] > 0)
       .map(s => ({ slot: s.idx, label: s.label, price: s.price, qty: qtys[s.idx] }));
     if (selections.length === 0) {
-      setError("Select at least one size to add to your order.");
+      setError("Please select at least one size to add to your order.");
       return;
     }
     onConfirm(selections);
@@ -143,7 +151,7 @@ export function PanSizePicker({ item, onClose, onConfirm, loading }: PanSizePick
         <div className="p-5 pt-4 border-t border-border space-y-2">
           <button
             onClick={handleConfirm}
-            disabled={loading || totalPans === 0}
+            disabled={loading}
             className="w-full py-3.5 px-4 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             <ShoppingCart className="w-4 h-4" />
@@ -151,7 +159,7 @@ export function PanSizePicker({ item, onClose, onConfirm, loading }: PanSizePick
               ? "Adding…"
               : totalPans > 0
               ? `Add ${totalPans} pan${totalPans !== 1 ? "s" : ""} to Order`
-              : "Select a Size"}
+              : "Add to Order"}
           </button>
           <button
             onClick={onClose}
