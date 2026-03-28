@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, type DayContentProps } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { Loader2, CalendarRange, Users, MapPin, Phone, Mail, ShoppingCart } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -86,54 +87,71 @@ export default function UpcomingCaterings() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Confirmed caterings with a date
-  const confirmed = inquiries.filter(i => i.eventDate && i.status !== "cancelled" && i.status !== "completed");
+  // Only confirmed inquiries with a set event date
+  const confirmed = useMemo(
+    () => inquiries.filter(i => i.status === "confirmed" && i.eventDate),
+    [inquiries]
+  );
 
-  const confirmedDates = confirmed
-    .filter(i => i.eventDate)
-    .map(i => parseDateLocal(i.eventDate!));
+  // Date → inquiry lookup for calendar tooltips
+  const bookedByDate = useMemo(() => {
+    const map: Record<string, Inquiry[]> = {};
+    for (const i of confirmed) {
+      if (!i.eventDate) continue;
+      if (!map[i.eventDate]) map[i.eventDate] = [];
+      map[i.eventDate].push(i);
+    }
+    return map;
+  }, [confirmed]);
 
+  // Date → blackout lookup for calendar tooltips
+  const blackoutByDate = useMemo(() => {
+    const map: Record<string, BlackoutDate> = {};
+    for (const b of blackouts) map[b.date] = b;
+    return map;
+  }, [blackouts]);
+
+  const confirmedDates = confirmed.map(i => parseDateLocal(i.eventDate!));
   const blackoutDates = blackouts.map(b => parseDateLocal(b.date));
 
+  // Custom DayContent: adds title tooltip for booked + blackout dates
+  const DayContentWithTooltip = useCallback(({ date }: DayContentProps) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    const bookings = bookedByDate[dateStr];
+    const blackout = blackoutByDate[dateStr];
+    const title = bookings
+      ? `Booked: ${bookings.map(i => i.clientName).join(", ")}`
+      : blackout
+      ? blackout.reason ? `Blocked: ${blackout.reason}` : "Blocked date"
+      : undefined;
+    return <span title={title}>{date.getDate()}</span>;
+  }, [bookedByDate, blackoutByDate]);
+
   function handleDayClick(day: Date) {
-    const yyyy = day.getFullYear();
-    const mm = String(day.getMonth() + 1).padStart(2, "0");
-    const dd = String(day.getDate()).padStart(2, "0");
-    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const dateStr = format(day, "yyyy-MM-dd");
     const match = confirmed.find(i => i.eventDate === dateStr);
     if (match) {
       setFocusedId(match.id);
-      // Scroll into view
       setTimeout(() => {
         document.getElementById(`catering-row-${match.id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }, 50);
     }
   }
 
-  // Sort by eventDate ascending
-  const sorted = [...confirmed].sort((a, b) => {
-    if (!a.eventDate) return 1;
-    if (!b.eventDate) return -1;
-    return a.eventDate.localeCompare(b.eventDate);
-  });
+  // Sort ascending by eventDate
+  const sorted = [...confirmed].sort((a, b) => a.eventDate!.localeCompare(b.eventDate!));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const upcoming = sorted.filter(i => {
-    if (!i.eventDate) return false;
-    return parseDateLocal(i.eventDate) >= today;
-  });
-  const past = sorted.filter(i => {
-    if (!i.eventDate) return false;
-    return parseDateLocal(i.eventDate) < today;
-  });
+  const upcoming = sorted.filter(i => parseDateLocal(i.eventDate!) >= today);
+  const past = sorted.filter(i => parseDateLocal(i.eventDate!) < today);
 
   return (
     <AdminLayout>
       <div className="mb-8">
         <h1 className="font-display font-bold text-4xl mb-2">Upcoming Caterings</h1>
-        <p className="text-muted-foreground">View all scheduled and confirmed catering bookings at a glance.</p>
+        <p className="text-muted-foreground">Confirmed catering bookings. Hover a date for details.</p>
       </div>
 
       {loading ? (
@@ -148,6 +166,7 @@ export default function UpcomingCaterings() {
               month={month}
               onMonthChange={setMonth}
               onDayClick={handleDayClick}
+              components={{ DayContent: DayContentWithTooltip }}
               modifiers={{
                 booked: confirmedDates,
                 blacked: blackoutDates,
@@ -170,7 +189,7 @@ export default function UpcomingCaterings() {
             {/* Legend */}
             <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t border-border w-full justify-center">
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-emerald-600 inline-block" /> Catering
+                <span className="w-3 h-3 rounded-full bg-emerald-600 inline-block" /> Confirmed
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-full bg-destructive inline-block" /> Blocked
@@ -183,8 +202,8 @@ export default function UpcomingCaterings() {
             {upcoming.length === 0 && past.length === 0 ? (
               <div className="bg-card border border-border rounded-3xl p-16 text-center text-muted-foreground">
                 <CalendarRange className="w-14 h-14 mx-auto mb-4 opacity-20" />
-                <p className="font-medium text-lg mb-1">No caterings scheduled</p>
-                <p className="text-sm">Inquiries with a set event date will appear here.</p>
+                <p className="font-medium text-lg mb-1">No confirmed caterings</p>
+                <p className="text-sm">Inquiries marked "Confirmed" with a set event date will appear here.</p>
               </div>
             ) : (
               <>

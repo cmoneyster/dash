@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, type DayContentProps } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { getAdminToken } from "@/components/AdminGuard";
 import { Loader2, Save, X, Plus, Trash2, CalendarDays, Info } from "lucide-react";
@@ -110,6 +110,29 @@ export default function CalendarManager() {
     }
   }
 
+  // Date → saved blackout lookup for tooltips
+  const savedByDate = useMemo(() => {
+    const map: Record<string, BlackoutDate> = {};
+    for (const b of saved) map[b.date] = b;
+    return map;
+  }, [saved]);
+
+  // Custom DayContent: adds title tooltip showing reason for blocked dates
+  const DayContentWithTooltip = useCallback(({ date }: DayContentProps) => {
+    const dateStr = toDateStr(date);
+    const blackout = savedByDate[dateStr];
+    const isAdding = toAdd.has(dateStr);
+    const isRemoving = blackout && toRemove.has(blackout.id);
+    const title = isAdding
+      ? "Pending: Adding as blocked"
+      : isRemoving
+      ? "Pending: Removing from blocked"
+      : blackout
+      ? blackout.reason ? `Blocked: ${blackout.reason}` : "Blocked date"
+      : undefined;
+    return <span title={title}>{date.getDate()}</span>;
+  }, [savedByDate, toAdd, toRemove]);
+
   // Modifier maps
   const savedDates = saved
     .filter(b => !toRemove.has(b.id))
@@ -141,6 +164,7 @@ export default function CalendarManager() {
           <div className="bg-card p-8 rounded-3xl border border-border shadow-sm flex flex-col items-center gap-5">
             <DayPicker
               onDayClick={handleDayClick}
+              components={{ DayContent: DayContentWithTooltip }}
               modifiers={{
                 blocked: savedDates,
                 removing: markedForRemoval,
