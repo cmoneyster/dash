@@ -61,7 +61,8 @@ function getItemQuantityInfo(item: PlanItem, ps: PlannerState | null): {
   sizes: SizeBreakdown[];
 } {
   const mi = item.menuItem;
-  const idStr = String(mi.id);
+  // piecesMap and panQtys are keyed by plan_items.id (not menu_items.id) — matches SharedPlan.tsx line 280
+  const idStr = String(item.id);
 
   if (mi.pricingTemplate === "pan_sizes") {
     const slots = ps?.panQtys?.[idStr] ?? {};
