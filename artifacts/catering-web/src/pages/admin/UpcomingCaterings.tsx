@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { DayPicker, type DayContentProps } from "react-day-picker";
+import { DayPicker, type DayButtonProps } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { Loader2, CalendarRange, Users, MapPin, Phone, Mail, ShoppingCart } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -114,9 +114,9 @@ export default function UpcomingCaterings() {
   const confirmedDates = confirmed.map(i => parseDateLocal(i.eventDate!));
   const blackoutDates = blackouts.map(b => parseDateLocal(b.date));
 
-  // Custom DayContent: adds title tooltip for booked + blackout dates
-  const DayContentWithTooltip = useCallback(({ date }: DayContentProps) => {
-    const dateStr = format(date, "yyyy-MM-dd");
+  // Custom DayButton (v9 API): adds title tooltip for booked + blackout dates
+  const DayButtonWithTooltip = useCallback(({ day, modifiers: _m, children, ...buttonProps }: DayButtonProps) => {
+    const dateStr = format(day.date, "yyyy-MM-dd");
     const bookings = bookedByDate[dateStr];
     const blackout = blackoutByDate[dateStr];
     const title = bookings
@@ -124,7 +124,7 @@ export default function UpcomingCaterings() {
       : blackout
       ? blackout.reason ? `Blocked: ${blackout.reason}` : "Blocked date"
       : undefined;
-    return <span title={title}>{date.getDate()}</span>;
+    return <button {...buttonProps} title={title}>{children}</button>;
   }, [bookedByDate, blackoutByDate]);
 
   function handleDayClick(day: Date) {
@@ -166,7 +166,7 @@ export default function UpcomingCaterings() {
               month={month}
               onMonthChange={setMonth}
               onDayClick={handleDayClick}
-              components={{ DayContent: DayContentWithTooltip }}
+              components={{ DayButton: DayButtonWithTooltip }}
               modifiers={{
                 booked: confirmedDates,
                 blacked: blackoutDates,
