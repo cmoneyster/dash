@@ -24,6 +24,11 @@ async function getPlanItems(sessionId: string) {
       unit: row.menu_items.unit,
       servingSize: row.menu_items.servingSize,
       pricingTemplate: row.menu_items.pricingTemplate,
+      size1Label: row.menu_items.size1Label, size1Price: row.menu_items.size1Price != null ? parseFloat(row.menu_items.size1Price) : null,
+      size2Label: row.menu_items.size2Label, size2Price: row.menu_items.size2Price != null ? parseFloat(row.menu_items.size2Price) : null,
+      size3Label: row.menu_items.size3Label, size3Price: row.menu_items.size3Price != null ? parseFloat(row.menu_items.size3Price) : null,
+      size4Label: row.menu_items.size4Label, size4Price: row.menu_items.size4Price != null ? parseFloat(row.menu_items.size4Price) : null,
+      size5Label: row.menu_items.size5Label, size5Price: row.menu_items.size5Price != null ? parseFloat(row.menu_items.size5Price) : null,
     },
   }));
 }

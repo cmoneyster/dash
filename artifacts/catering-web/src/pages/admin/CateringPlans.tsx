@@ -26,15 +26,73 @@ type PlanSummary = {
   guestCount: number | null;
 };
 
+type MenuItemData = {
+  id: number; name: string; category: string; price: number; unit: string;
+  pricingTemplate: string; servingSize: number;
+  size1Label: string | null; size1Price: number | null;
+  size2Label: string | null; size2Price: number | null;
+  size3Label: string | null; size3Price: number | null;
+  size4Label: string | null; size4Price: number | null;
+  size5Label: string | null; size5Price: number | null;
+};
+
 type PlanItem = {
   id: number;
   menuItemId: number;
   createdAt: string;
-  menuItem: { id: number; name: string; category: string; price: number; unit: string; pricingTemplate: string };
+  menuItem: MenuItemData;
 };
 
+type PlannerState = {
+  guests?: number;
+  savoryPPG?: number;
+  sweetPPG?: number;
+  servingsPPG?: number;
+  piecesMap?: Record<string, number>;
+  servingsMap?: Record<string, number>;
+  panQtys?: Record<string, Record<string, number>>;
+};
+
+type SizeBreakdown = { label: string; price: number; qty: number; subtotal: number };
+
+function getItemQuantityInfo(item: PlanItem, ps: PlannerState | null): {
+  qty: number | null;
+  subtotal: number | null;
+  sizes: SizeBreakdown[];
+} {
+  const mi = item.menuItem;
+  const idStr = String(mi.id);
+
+  if (mi.pricingTemplate === "pan_sizes") {
+    const slots = ps?.panQtys?.[idStr] ?? {};
+    const sizeEntries = [
+      { idx: 1, label: mi.size1Label, price: mi.size1Price },
+      { idx: 2, label: mi.size2Label, price: mi.size2Price },
+      { idx: 3, label: mi.size3Label, price: mi.size3Price },
+      { idx: 4, label: mi.size4Label, price: mi.size4Price },
+      { idx: 5, label: mi.size5Label, price: mi.size5Price },
+    ].filter(s => s.label && s.price != null);
+
+    const sizes: SizeBreakdown[] = sizeEntries
+      .map(s => {
+        const qty = slots[String(s.idx)] ?? 0;
+        return { label: s.label!, price: s.price!, qty, subtotal: qty * s.price! };
+      })
+      .filter(s => s.qty > 0);
+
+    const totalQty = sizes.reduce((sum, s) => sum + s.qty, 0);
+    const totalSubtotal = sizes.reduce((sum, s) => sum + s.subtotal, 0);
+    return { qty: totalQty || null, subtotal: totalSubtotal || null, sizes };
+  }
+
+  // per_unit items — quantity comes from piecesMap
+  const qty = ps?.piecesMap?.[idStr] ?? null;
+  const subtotal = qty != null ? qty * mi.price : null;
+  return { qty, subtotal, sizes: [] };
+}
+
 type PlanDetail = PlanSummary & {
-  plannerState: unknown;
+  plannerState: PlannerState | null;
   items: PlanItem[];
 };
 
@@ -313,9 +371,20 @@ function DetailPanel({
 
           {/* Items list */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Menu Items ({loading ? "…" : detail?.items.length ?? 0})
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Menu Items ({loading ? "…" : detail?.items.length ?? 0})
+              </p>
+              {detail && detail.items.length > 0 && (() => {
+                const grandTotal = detail.items.reduce((sum, item) => {
+                  const { subtotal } = getItemQuantityInfo(item, detail.plannerState);
+                  return sum + (subtotal ?? 0);
+                }, 0);
+                return grandTotal > 0 ? (
+                  <p className="text-xs font-bold text-primary">Total: ${grandTotal.toFixed(2)}</p>
+                ) : null;
+              })()}
+            </div>
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -326,30 +395,56 @@ function DetailPanel({
               </div>
             ) : (
               <div className="space-y-1.5">
-                {detail?.items.map(item => (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-3 p-3 bg-secondary/40 border border-border/60 rounded-xl"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate">{item.menuItem.name}</p>
-                      <p className="text-xs text-muted-foreground">{item.menuItem.category}</p>
-                    </div>
-                    <p className="text-sm font-semibold shrink-0 text-primary">
-                      ${item.menuItem.price.toFixed(2)}
-                    </p>
-                    <button
-                      onClick={() => removeItem(item)}
-                      disabled={removingId === item.id}
-                      title="Remove from plan"
-                      className="p-1.5 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-30"
+                {detail?.items.map(item => {
+                  const { qty, subtotal, sizes } = getItemQuantityInfo(item, detail.plannerState);
+                  const isPanSizes = item.menuItem.pricingTemplate === "pan_sizes";
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3 bg-secondary/40 border border-border/60 rounded-xl"
                     >
-                      {removingId === item.id
-                        ? <Loader2 className="w-4 h-4 animate-spin" />
-                        : <X className="w-4 h-4" />}
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate">{item.menuItem.name}</p>
+                          <p className="text-xs text-muted-foreground">{item.menuItem.category}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          {subtotal != null ? (
+                            <p className="text-sm font-bold text-primary">${subtotal.toFixed(2)}</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground italic">No qty set</p>
+                          )}
+                          {qty != null && (
+                            <p className="text-xs text-muted-foreground">
+                              {isPanSizes ? `${qty} pan${qty !== 1 ? "s" : ""}` : `${qty} ${item.menuItem.unit}`}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => removeItem(item)}
+                          disabled={removingId === item.id}
+                          title="Remove from plan"
+                          className="p-1 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-30 shrink-0 mt-0.5"
+                        >
+                          {removingId === item.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <X className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                      {/* Pan size breakdown */}
+                      {isPanSizes && sizes.length > 0 && (
+                        <div className="mt-2 pl-0 space-y-0.5 border-t border-border/40 pt-2">
+                          {sizes.map(s => (
+                            <div key={s.label} className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">{s.qty}× {s.label} <span className="text-muted-foreground/60">(${s.price.toFixed(2)}/ea)</span></span>
+                              <span className="font-semibold">${s.subtotal.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
