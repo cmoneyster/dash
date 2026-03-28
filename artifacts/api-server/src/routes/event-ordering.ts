@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { menuItemsTable, eventOrdersTable, eventSettingsTable, eventSessionsTable } from "@workspace/db/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { sendOrderConfirmation, sendOrderReady } from "../lib/sms";
 
 const router: IRouter = Router();
@@ -117,7 +117,9 @@ router.get("/event-ordering/menu", async (req, res) => {
       .select()
       .from(menuItemsTable)
       .where(eq(menuItemsTable.eventActive, true));
-    res.json(items);
+    // Strip staff-only fields before sending to guests
+    const safe = items.map(({ internalNotes: _notes, ...item }) => item);
+    res.json(safe);
   } catch (err) {
     req.log.error({ err }, "Error fetching event menu");
     res.status(500).json({ error: "Failed to fetch event menu" });
@@ -214,7 +216,7 @@ router.get("/event-ordering/orders", verifyKitchenPassword, async (req, res) => 
       const menuItems = await db
         .select({ id: menuItemsTable.id, internalNotes: menuItemsTable.internalNotes })
         .from(menuItemsTable)
-        .where(sql`${menuItemsTable.id} = ANY(${sql.raw(`ARRAY[${itemIds.join(",")}]::int[]`)})`)
+        .where(inArray(menuItemsTable.id, itemIds));
       for (const m of menuItems) notesMap[m.id] = m.internalNotes ?? null;
     }
 
