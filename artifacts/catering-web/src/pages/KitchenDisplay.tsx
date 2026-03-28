@@ -744,7 +744,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
                   </div>
                 </div>
                 {hasNotes && notesOpen && (
-                  <div className="mt-1 mb-1 ml-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300 leading-snug">
+                  <div className="mt-1 mb-1 ml-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300 leading-snug whitespace-pre-wrap">
                     {item.internalNotes}
                   </div>
                 )}
@@ -767,7 +767,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
                 )}
               </div>
               {hasNotes && notesOpen && (
-                <div className="mt-1 ml-6 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300 leading-snug">
+                <div className="mt-1 ml-6 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300 leading-snug whitespace-pre-wrap">
                   {item.internalNotes}
                 </div>
               )}
