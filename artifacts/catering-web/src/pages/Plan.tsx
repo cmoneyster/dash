@@ -308,7 +308,13 @@ export default function Plan() {
             });
           }
         } else {
-          await addToCartApi({ sessionId, menuItemId: item.menuItemId, quantity: item.menuItem.minimumOrderQty ?? 1 });
+          const minQ = item.menuItem.minimumOrderQty ?? 1;
+          const isSb  = isSmallBite(item.menuItem.category);
+          const isEnt = isEntree(item.menuItem.category);
+          const qty = isSb  ? Math.max(minQ, piecesMap[item.id]   ?? 0)
+                    : isEnt ? Math.max(minQ, servingsMap[item.id] ?? 0)
+                    : minQ;
+          await addToCartApi({ sessionId, menuItemId: item.menuItemId, quantity: qty });
         }
       }
       queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
@@ -962,7 +968,11 @@ export default function Plan() {
                     }
                     return s + panTotal;
                   }
-                  return s + i.menuItem.price;
+                  const minQ = i.menuItem.minimumOrderQty ?? 1;
+                  const qty = sb ? Math.max(minQ, piecesMap[i.id] ?? 0)
+                            : ent ? Math.max(minQ, servingsMap[i.id] ?? 0)
+                            : 1;
+                  return s + qty * parseFloat(String(i.menuItem.price));
                 }, 0);
 
                 const catPieces  = sb
@@ -1070,7 +1080,13 @@ export default function Plan() {
                                       <span className="font-bold text-primary shrink-0">
                                         {isPanItem
                                           ? (panTotal != null && panTotal > 0 ? formatCurrency(panTotal) : "—")
-                                          : formatCurrency(item.menuItem.price)}
+                                          : (() => {
+                                              const minQ2 = item.menuItem.minimumOrderQty ?? 1;
+                                              const qty2 = sb ? Math.max(minQ2, piecesMap[item.id] ?? 0)
+                                                         : ent ? Math.max(minQ2, servingsMap[item.id] ?? 0)
+                                                         : 1;
+                                              return formatCurrency(qty2 * parseFloat(String(item.menuItem.price)));
+                                            })()}
                                       </span>
                                     </div>
                                   );
