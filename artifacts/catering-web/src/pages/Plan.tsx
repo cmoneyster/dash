@@ -688,11 +688,11 @@ export default function Plan() {
                     />
                     {!planName.trim() ? (
                       <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
-                        <span className="font-bold">↑</span> Add a name — your plan won't appear in our system until you do.
+                        <span className="font-bold">↑</span> Your plan won't save until the event plan is named.
                       </p>
                     ) : (
                       <p className="text-xs text-emerald-600 mt-1.5 font-medium">
-                        ✓ Plan saved to our team as "{planName.trim()}"
+                        ✓ Event plan has been saved, and ready to share with your event collaborators.
                       </p>
                     )}
                   </div>
