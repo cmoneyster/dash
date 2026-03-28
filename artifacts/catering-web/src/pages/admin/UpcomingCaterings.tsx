@@ -290,7 +290,7 @@ function CateringCard({ inquiry, focused, onClick }: { inquiry: Inquiry; focused
             <StatusBadge status={inquiry.status} />
             {isCart && (
               <span className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded-full font-semibold">
-                <ShoppingCart className="w-2.5 h-2.5" /> Cart
+                <ShoppingCart className="w-2.5 h-2.5" /> Cart Order
               </span>
             )}
           </div>
