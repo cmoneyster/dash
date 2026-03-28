@@ -49,6 +49,17 @@ router.get("/events/availability", async (req, res) => {
   }
 });
 
+// Public blackout dates — no auth required (used in customer-facing checkout)
+router.get("/blackout-dates", async (req, res) => {
+  try {
+    const dates = await db.select().from(blackoutDatesTable).orderBy(blackoutDatesTable.date);
+    res.json(dates);
+  } catch (err) {
+    req.log.error({ err }, "Error listing blackout dates (public)");
+    res.status(500).json({ error: "Failed to list blackout dates" });
+  }
+});
+
 // Admin blackout date routes
 router.get("/admin/blackout-dates", async (req, res) => {
   try {

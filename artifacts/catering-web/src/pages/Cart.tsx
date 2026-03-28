@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,8 +15,105 @@ import {
 } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
 import { formatCurrency } from "@/lib/utils";
-import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw } from "lucide-react";
+import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw, CalendarDays, X as XIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/dist/style.css";
+import { format } from "date-fns";
+
+type BlackoutDate = { id: number; date: string; reason: string | null };
+
+function parseDateLocal(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function DatePickerField({
+  value,
+  onChange,
+  blackoutDates,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  blackoutDates: BlackoutDate[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  const blockedDates = blackoutDates.map(b => parseDateLocal(b.date));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const selected = value ? parseDateLocal(value) : undefined;
+
+  const displayValue = value
+    ? parseDateLocal(value).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
+    : "";
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(p => !p)}
+        className="w-full flex items-center gap-2 px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-left text-sm"
+      >
+        <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+        {displayValue
+          ? <span className="flex-1 truncate">{displayValue}</span>
+          : <span className="flex-1 text-muted-foreground">Select a date…</span>
+        }
+        {value && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); onChange(""); }}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 z-50 mt-1 bg-card border border-border rounded-2xl shadow-2xl p-3">
+          <DayPicker
+            mode="single"
+            selected={selected}
+            onSelect={day => {
+              if (!day) return;
+              onChange(format(day, "yyyy-MM-dd"));
+              setOpen(false);
+            }}
+            disabled={[
+              { before: today },
+              ...blockedDates,
+            ]}
+            modifiers={{ blocked: blockedDates }}
+            modifiersStyles={{
+              blocked: {
+                color: "hsl(var(--destructive))",
+                textDecoration: "line-through",
+                fontWeight: "700",
+              },
+            }}
+            defaultMonth={selected ?? today}
+          />
+          <p className="text-xs text-muted-foreground text-center px-2 pb-1">
+            <span className="text-destructive font-bold">Red</span> dates are unavailable.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -59,6 +156,15 @@ export default function Cart() {
   const { toast } = useToast();
   const sessionId = getSessionId();
   const queryClient = useQueryClient();
+
+  // Blackout dates for the event date picker
+  const [blackoutDates, setBlackoutDates] = useState<BlackoutDate[]>([]);
+  useEffect(() => {
+    fetch(`${API_BASE}/api/blackout-dates`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setBlackoutDates)
+      .catch(() => {});
+  }, []);
 
   // Phone verification
   const [verifyState, setVerifyState]   = useState<VerifyState>("idle");
@@ -111,11 +217,12 @@ export default function Cart() {
     }
   });
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<CheckoutForm>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CheckoutForm>({
     resolver: zodResolver(checkoutSchema)
   });
 
   const phoneValue = watch("customerPhone") ?? "";
+  const eventDateValue = watch("eventDate") ?? "";
 
   const handleSendCode = async () => {
     const phone = phoneValue.trim();
@@ -459,7 +566,11 @@ export default function Cart() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-semibold mb-1">Event Date</label>
-                      <input {...register("eventDate")} type="date" className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" />
+                      <DatePickerField
+                        value={eventDateValue}
+                        onChange={val => setValue("eventDate", val)}
+                        blackoutDates={blackoutDates}
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-semibold mb-1">Guests</label>
