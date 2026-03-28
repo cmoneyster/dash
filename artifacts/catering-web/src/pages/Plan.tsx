@@ -35,6 +35,8 @@ const CAT_ORDER = [
 function isSmallBite(cat: string) { return cat === SAVORY_CAT || cat === SWEET_CAT; }
 function isEntree(cat: string)    { return ENTREE_CATS.has(cat); }
 
+const PLANNER_STORAGE_KEY = "dash_plan_planner_v1";
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
@@ -330,6 +332,7 @@ export default function Plan() {
       setPiecesMap({});
       setServingsMap({});
       setPanQtys({});
+      localStorage.removeItem(PLANNER_STORAGE_KEY);
       setClearConfirm(false);
       toast({ title: "Plan cleared", description: "Your event plan has been cleared." });
     } catch {
@@ -350,6 +353,37 @@ export default function Plan() {
   const [piecesMap,   setPiecesMap]   = useState<Record<number, number>>({});
   const [servingsMap, setServingsMap] = useState<Record<number, number>>({});
   const [panQtys,     setPanQtys]     = useState<Record<number, Record<number, number>>>({}); // planItemId → slotIdx → qty
+
+  // ── Persist planner state to localStorage so it survives navigation ──
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PLANNER_STORAGE_KEY);
+      if (!raw) return;
+      const { guests: g, savoryPPG: sv, sweetPPG: sw, servingsPPG: sp, piecesMap: pm, servingsMap: sm, panQtys: pq } = JSON.parse(raw);
+      if (typeof g === "number")  setGuests(g);
+      if (typeof sv === "number") setSavoryPPG(sv);
+      if (typeof sw === "number") setSweetPPG(sw);
+      if (typeof sp === "number") setServingsPPG(sp);
+      if (pm && typeof pm === "object")
+        setPiecesMap(Object.fromEntries(Object.entries(pm).map(([k, v]) => [Number(k), Number(v)])));
+      if (sm && typeof sm === "object")
+        setServingsMap(Object.fromEntries(Object.entries(sm).map(([k, v]) => [Number(k), Number(v)])));
+      if (pq && typeof pq === "object")
+        setPanQtys(Object.fromEntries(
+          Object.entries(pq as Record<string, Record<string, number>>).map(([k, slots]) => [
+            Number(k),
+            Object.fromEntries(Object.entries(slots).map(([sk, sv2]) => [Number(sk), Number(sv2)])),
+          ])
+        ));
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PLANNER_STORAGE_KEY, JSON.stringify({ guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys }));
+    } catch {}
+  }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys]);
 
   // Auto-push plannerState to the shared record — skip when change came from a poll
   useEffect(() => {
