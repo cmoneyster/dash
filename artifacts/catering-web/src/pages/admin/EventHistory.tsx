@@ -174,7 +174,8 @@ function SessionOrders({ sessionId, onClose, onOrdersDeleted }: { sessionId: num
     if (!confirm("Delete ALL orders for this session? This cannot be undone.")) return;
     setDeleting(true);
     try {
-      await fetch(`${BASE}/api/admin/event-sessions/${sessionId}/orders`, { method: "DELETE", headers: authHeaders() });
+      const res = await fetch(`${BASE}/api/admin/event-sessions/${sessionId}/orders`, { method: "DELETE", headers: authHeaders() });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       setData(prev => prev ? { ...prev, orders: [] } : null);
       onOrdersDeleted();
     } catch {
