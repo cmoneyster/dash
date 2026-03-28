@@ -15,7 +15,7 @@ export default function Confirmation() {
           
           <h1 className="font-display font-bold text-4xl mb-4">Request Received!</h1>
           <p className="text-muted-foreground text-lg mb-8">
-            Thank you for choosing Epicurean. Our event planning team will review your order details and reach out within 24 hours to confirm your reservation and arrange the deposit.
+            Thank you for choosing dash by Hollywood East Cafe. Our event planning team will review your inquiry and reach out within 24 hours to discuss the details.
           </p>
           
           <Link 
