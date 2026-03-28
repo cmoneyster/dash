@@ -128,3 +128,80 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCard
     </>
   );
 }
+
+export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCardProps) {
+  const minQty = item.minimumOrderQty ?? 1;
+  const isPanSizes = isPanSizesItem(item);
+  const hasTiers = !!(item.tier2Qty && item.tier2Price);
+
+  return (
+    <div className="bg-card border border-border/50 rounded-2xl px-5 py-4 flex items-center gap-4 hover:border-primary/20 hover:shadow-md hover:shadow-black/5 transition-all duration-200 group">
+      {/* Left — item info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-2 mb-1">
+          <h3 className="font-display font-bold text-base leading-tight">{item.name}</h3>
+          {!item.available && (
+            <span className="px-2 py-0.5 bg-destructive/10 text-destructive text-[10px] font-bold uppercase tracking-wider rounded-full">
+              Sold Out
+            </span>
+          )}
+          {minQty > 1 && (
+            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">
+              Min. {minQty}
+            </span>
+          )}
+        </div>
+
+        <p className="text-muted-foreground text-sm line-clamp-1 mb-1.5">
+          {item.description}
+        </p>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/60">
+          <span className="flex items-center gap-1">
+            <Info className="w-3 h-3 text-primary/70" />
+            Serves {item.servingSize} ({item.unit})
+          </span>
+          {hasTiers && (
+            <span className="text-primary font-semibold">Volume pricing available</span>
+          )}
+          {item.allergens?.length > 0 && item.allergens.map(a => (
+            <span key={a} className="px-1.5 py-0.5 bg-secondary rounded text-[10px] uppercase tracking-wider">{a}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* Right — price + actions */}
+      <div className="flex items-center gap-3 shrink-0">
+        <span className="font-bold text-lg text-primary">{formatCurrency(item.price)}</span>
+
+        <button
+          onClick={() => onTogglePlan(item)}
+          className="p-2 rounded-full hover:bg-secondary transition-colors text-muted-foreground hover:text-primary"
+          title={isInPlan ? "Remove from plan" : "Save to plan"}
+        >
+          {isInPlan
+            ? <Heart className="w-5 h-5 fill-primary text-primary" />
+            : <HeartOff className="w-5 h-5" />}
+        </button>
+
+        <button
+          onClick={() => onAddToCart(item)}
+          disabled={!item.available}
+          className="flex items-center gap-1.5 px-4 py-2 bg-foreground text-background text-sm font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isPanSizes ? (
+            <>
+              <ChevronRight className="w-4 h-4" />
+              Select Size
+            </>
+          ) : (
+            <>
+              <Plus className="w-4 h-4" />
+              Add
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}

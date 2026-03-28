@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
-import { MenuCard } from "@/components/MenuCard";
+import { MenuCard, MenuCardCompact } from "@/components/MenuCard";
 import { PanSizePicker } from "@/components/PanSizePicker";
 import { 
   useListMenuItems, 
@@ -169,19 +169,44 @@ export default function Menu() {
             <h3 className="font-display font-bold text-2xl mb-2">No items found</h3>
             <p className="text-muted-foreground">Try selecting a different category.</p>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-            {menuItems?.map(item => (
-              <MenuCard 
-                key={item.id} 
-                item={item} 
-                onAddToCart={handleAddToCart}
-                onTogglePlan={handleTogglePlan}
-                isInPlan={planItemIds.has(item.id)}
-              />
-            ))}
-          </div>
-        )}
+        ) : (() => {
+          const featured = menuItems?.filter(i => i.imageUrl) ?? [];
+          const listed   = menuItems?.filter(i => !i.imageUrl) ?? [];
+          const cardProps = (item: typeof featured[0]) => ({
+            item,
+            onAddToCart: handleAddToCart,
+            onTogglePlan: handleTogglePlan,
+            isInPlan: planItemIds.has(item.id),
+          });
+          return (
+            <div className="space-y-10">
+              {/* Featured — items with photos */}
+              {featured.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {featured.map(item => <MenuCard key={item.id} {...cardProps(item)} />)}
+                </div>
+              )}
+
+              {/* Compact list — items without photos */}
+              {listed.length > 0 && (
+                <div>
+                  {featured.length > 0 && (
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-2">
+                        More on the Menu
+                      </span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                  )}
+                  <div className="space-y-3">
+                    {listed.map(item => <MenuCardCompact key={item.id} {...cardProps(item)} />)}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </Layout>
   );
