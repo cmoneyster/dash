@@ -140,6 +140,31 @@ export async function seedIfEmpty(): Promise<void> {
       ALTER TABLE shared_plans
         ALTER COLUMN plan_number SET DEFAULT nextval('shared_plans_plan_number_seq')
     `);
+
+    // Add "Fried Jalapeño Garlic Shrimp" if it doesn't exist yet
+    const [shrimpCheck] = await db
+      .select({ count: count() })
+      .from(menuItemsTable)
+      .where(eq(menuItemsTable.name, "Fried Jalapeño Garlic Shrimp | 椒盐虾"));
+    if (shrimpCheck && shrimpCheck.count === 0) {
+      logger.info("Inserting missing menu item: Fried Jalapeño Garlic Shrimp | 椒盐虾");
+      await db.insert(menuItemsTable).values({
+        name: "Fried Jalapeño Garlic Shrimp | 椒盐虾",
+        description: "Crispy shrimp tossed with fresh jalapeño and fragrant garlic. Bold, spicy, and irresistible — a must-have for any seafood lover.",
+        price: "95.00",
+        category: "Entrées - Seafood",
+        available: true,
+        pricingTemplate: "pan_sizes",
+        imageUrl: "https://images.unsplash.com/photo-1625943553852-781c6b42d20e?w=800&q=80",
+        size1Label: "Small Pan",
+        size1Servings: 15,
+        size2Label: "Medium Pan",
+        size2Servings: 30,
+        size3Label: "Large Pan",
+        size3Servings: 45,
+      });
+      logger.info("Inserted Fried Jalapeño Garlic Shrimp | 椒盐虾 successfully");
+    }
   } catch (err) {
     logger.error({ err }, "Failed to seed/patch menu items");
   }
