@@ -1336,7 +1336,11 @@ export default function Plan() {
                   }
                   return s + panTotal;
                 }
-                return s + i.menuItem.price;
+                const minQ = i.menuItem.minimumOrderQty ?? 1;
+                const qty = isSmallBite(i.menuItem.category) ? Math.max(minQ, piecesMap[i.id] ?? 0)
+                          : isEntree(i.menuItem.category)    ? Math.max(minQ, servingsMap[i.id] ?? 0)
+                          : 1;
+                return s + qty * parseFloat(String(i.menuItem.price));
               }, 0);
               return (
                 <div className="sticky bottom-4 z-20">
