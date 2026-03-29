@@ -26,6 +26,7 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCard
   const minQty = item.minimumOrderQty ?? 1;
   const isPanSizes = isPanSizesItem(item);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [descExpanded, setDescExpanded] = useState(false);
 
   return (
     <>
@@ -75,9 +76,19 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCard
             </span>
           </div>
 
-          <p className="text-muted-foreground text-sm leading-relaxed mb-4 line-clamp-2 flex-1">
-            {item.description}
-          </p>
+          <div className="mb-4 flex-1">
+            <p className={`text-muted-foreground text-sm leading-relaxed ${descExpanded ? "" : "line-clamp-2"}`}>
+              {item.description}
+            </p>
+            {item.description && item.description.length > 80 && (
+              <button
+                onClick={() => setDescExpanded(v => !v)}
+                className="text-xs text-primary font-semibold mt-1 hover:underline"
+              >
+                {descExpanded ? "Less" : "More"}
+              </button>
+            )}
+          </div>
 
           <div className="flex items-center gap-4 text-xs font-medium text-foreground/70 mb-4">
             <div className="flex items-center gap-1.5">
@@ -133,6 +144,7 @@ export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan }: M
   const minQty = item.minimumOrderQty ?? 1;
   const isPanSizes = isPanSizesItem(item);
   const hasTiers = !!(item.tier2Qty && item.tier2Price);
+  const [descExpanded, setDescExpanded] = useState(false);
 
   return (
     <div className="bg-card border border-border/50 rounded-2xl px-5 py-4 flex items-center gap-4 hover:border-primary/20 hover:shadow-md hover:shadow-black/5 transition-all duration-200 group">
@@ -152,9 +164,19 @@ export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan }: M
           )}
         </div>
 
-        <p className="text-muted-foreground text-sm line-clamp-1 mb-1.5">
-          {item.description}
-        </p>
+        <div className="mb-1.5">
+          <p className={`text-muted-foreground text-sm ${descExpanded ? "" : "line-clamp-2"}`}>
+            {item.description}
+          </p>
+          {item.description && item.description.length > 60 && (
+            <button
+              onClick={() => setDescExpanded(v => !v)}
+              className="text-xs text-primary font-semibold mt-0.5 hover:underline"
+            >
+              {descExpanded ? "Less" : "More"}
+            </button>
+          )}
+        </div>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/60">
           <span className="flex items-center gap-1">
