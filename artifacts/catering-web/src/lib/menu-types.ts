@@ -22,3 +22,22 @@ export interface PanSizeMenuItem extends MenuItem {
 export function isPanSizesItem(item: MenuItem): item is PanSizeMenuItem {
   return (item as { pricingTemplate?: string }).pricingTemplate === "pan_sizes";
 }
+
+export function getPanSizesFromPrice(item: MenuItem): number | null {
+  const anyItem = item as Record<string, unknown>;
+  const prices = [
+    anyItem.size1Price,
+    anyItem.size2Price,
+    anyItem.size3Price,
+    anyItem.size4Price,
+    anyItem.size5Price,
+  ]
+    .map((p) => {
+      if (p === null || p === undefined || p === "") return null;
+      const n = Number(p);
+      return isFinite(n) ? n : null;
+    })
+    .filter((p): p is number => p !== null)
+    .sort((a, b) => a - b);
+  return prices.length > 0 ? prices[0] : null;
+}

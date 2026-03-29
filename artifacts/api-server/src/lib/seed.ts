@@ -141,6 +141,20 @@ export async function seedIfEmpty(): Promise<void> {
         ALTER COLUMN plan_number SET DEFAULT nextval('shared_plans_plan_number_seq')
     `);
 
+    // Auto-correct items that have at least one pan price but are still marked per_unit
+    await db.execute(sql`
+      UPDATE menu_items
+      SET pricing_template = 'pan_sizes'
+      WHERE pricing_template = 'per_unit'
+        AND (
+          size1_price IS NOT NULL OR
+          size2_price IS NOT NULL OR
+          size3_price IS NOT NULL OR
+          size4_price IS NOT NULL OR
+          size5_price IS NOT NULL
+        )
+    `);
+
     // Add "Fried Jalapeño Garlic Shrimp" if it doesn't exist yet
     const [shrimpCheck] = await db
       .select({ count: count() })

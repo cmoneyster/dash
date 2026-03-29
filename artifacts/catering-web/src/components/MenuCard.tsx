@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Plus, Heart, HeartOff, Info, ChevronRight } from "lucide-react";
 import type { MenuItem } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
-import { isPanSizesItem } from "@/lib/menu-types";
+import { isPanSizesItem, getPanSizesFromPrice } from "@/lib/menu-types";
 import { ImageLightbox } from "@/components/ImageLightbox";
 
 interface MenuCardProps {
@@ -25,6 +25,7 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCard
   const hasTiers = !!(item.tier2Qty && item.tier2Price);
   const minQty = item.minimumOrderQty ?? 1;
   const isPanSizes = isPanSizesItem(item);
+  const panFromPrice = isPanSizes ? getPanSizesFromPrice(item) : null;
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
 
@@ -72,7 +73,11 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCard
           <div className="flex justify-between items-start mb-2 gap-4">
             <h3 className="font-display font-bold text-xl leading-tight">{item.name}</h3>
             <span className="font-bold text-lg text-primary whitespace-nowrap">
-              {formatCurrency(item.price)}
+              {isPanSizes
+                ? panFromPrice !== null
+                  ? `From ${formatCurrency(panFromPrice)}`
+                  : "Priced by size"
+                : formatCurrency(item.price)}
             </span>
           </div>
 
@@ -143,6 +148,7 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCard
 export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCardProps) {
   const minQty = item.minimumOrderQty ?? 1;
   const isPanSizes = isPanSizesItem(item);
+  const panFromPrice = isPanSizes ? getPanSizesFromPrice(item) : null;
   const hasTiers = !!(item.tier2Qty && item.tier2Price);
   const [descExpanded, setDescExpanded] = useState(false);
 
@@ -194,7 +200,13 @@ export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan }: M
 
       {/* Right — price + actions */}
       <div className="flex items-center gap-3 shrink-0">
-        <span className="font-bold text-lg text-primary">{formatCurrency(item.price)}</span>
+        <span className="font-bold text-lg text-primary">
+          {isPanSizes
+            ? panFromPrice !== null
+              ? `From ${formatCurrency(panFromPrice)}`
+              : "Priced by size"
+            : formatCurrency(item.price)}
+        </span>
 
         <button
           onClick={() => onTogglePlan(item)}
