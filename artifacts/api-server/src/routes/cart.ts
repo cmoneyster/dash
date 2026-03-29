@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { cartItemsTable, menuItemsTable } from "@workspace/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, asc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -32,7 +32,8 @@ async function getCartData(sessionId: string) {
     .select()
     .from(cartItemsTable)
     .innerJoin(menuItemsTable, eq(cartItemsTable.menuItemId, menuItemsTable.id))
-    .where(eq(cartItemsTable.sessionId, sessionId));
+    .where(eq(cartItemsTable.sessionId, sessionId))
+    .orderBy(asc(cartItemsTable.menuItemId), asc(cartItemsTable.sizeSlot));
 
   const cartItems = rows.map((row) => {
     const qty = row.cart_items.quantity;

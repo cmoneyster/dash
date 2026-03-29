@@ -288,7 +288,7 @@ export default function Cart() {
 
   const isEmpty = !cart?.items.length;
 
-  // Group cart items by category in canonical order
+  // Group cart items by category in canonical order, pan sizes sorted by slot index
   const groupedItems = useMemo(() => {
     if (!cart?.items.length) return [];
     const map = new Map<string, typeof cart.items>();
@@ -298,7 +298,17 @@ export default function Cart() {
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(item);
     }
-    return [...map.entries()].filter(([, items]) => items.length > 0);
+    return [...map.entries()]
+      .filter(([, items]) => items.length > 0)
+      .map(([cat, items]) => [
+        cat,
+        [...items].sort((a, b) => {
+          if (a.menuItemId !== b.menuItemId) return a.menuItemId - b.menuItemId;
+          const sa = (a as any).sizeSlot ?? Infinity;
+          const sb = (b as any).sizeSlot ?? Infinity;
+          return sa - sb;
+        }),
+      ] as [string, typeof cart.items]);
   }, [cart?.items]);
 
   return (
