@@ -450,7 +450,7 @@ export default function KitchenDisplay() {
           @page { size: 80mm auto; margin: 4mm; }
           html, body { background: #fff !important; }
           body * { visibility: hidden !important; }
-          #print-region, #print-region * { visibility: visible !important; }
+          #print-region, #print-region * { visibility: visible !important; opacity: 1 !important; }
           #print-region { position: absolute !important; left: 0; top: 0; width: 100%; color: #000 !important; }
         }
       `}</style>
