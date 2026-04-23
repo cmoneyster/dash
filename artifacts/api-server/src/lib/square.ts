@@ -240,14 +240,22 @@ export async function createAndPublishInvoiceForInquiry(opts: {
   // 2) Order
   const orderId = await createOrderForInquiry(cfg, inquiry);
 
-  // 3) Build payment_requests array
-  const dueIsoDate = dueDate ?? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  // 3) Build payment_requests array.
+  //
+  // Square requires every payment_request on an invoice to have a *different*
+  // due_date. The operator-supplied `dueDate` (or +14d default) is applied to
+  // the BALANCE request; the DEPOSIT is always due today since "pay your
+  // deposit immediately to confirm the booking" matches the catering UX. If
+  // the balance date happens to equal today, we push it out by one day so the
+  // two due dates remain distinct.
+  const todayIsoDate = new Date().toISOString().slice(0, 10);
+  const balanceDueIsoDate = dueDate ?? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const paymentRequests: Array<Record<string, unknown>> = [];
 
   if (deposit.kind === "none") {
     paymentRequests.push({
       request_type: "BALANCE",
-      due_date: dueIsoDate,
+      due_date: balanceDueIsoDate,
       automatic_payment_source: "NONE",
     });
   } else {
@@ -255,15 +263,24 @@ export async function createAndPublishInvoiceForInquiry(opts: {
       ? Math.round(totals.total * (deposit.value / 100) * 100) / 100
       : Math.min(deposit.value, totals.total);
 
+    let depositDueIsoDate = todayIsoDate;
+    let balanceDueAdjusted = balanceDueIsoDate;
+    if (depositDueIsoDate === balanceDueAdjusted) {
+      // Bump the balance out by one day to keep due_dates unique.
+      const next = new Date(`${balanceDueAdjusted}T00:00:00Z`);
+      next.setUTCDate(next.getUTCDate() + 1);
+      balanceDueAdjusted = next.toISOString().slice(0, 10);
+    }
+
     paymentRequests.push({
       request_type: "DEPOSIT",
-      due_date: dueIsoDate,
+      due_date: depositDueIsoDate,
       fixed_amount_requested_money: moneyUSD(depositAmountDollars),
       automatic_payment_source: "NONE",
     });
     paymentRequests.push({
       request_type: "BALANCE",
-      due_date: dueIsoDate,
+      due_date: balanceDueAdjusted,
       automatic_payment_source: "NONE",
     });
   }
