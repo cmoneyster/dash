@@ -55,6 +55,19 @@ export const cateringInquiriesTable = pgTable("catering_inquiries", {
   quoteLastEmailedAt: timestamp("quote_last_emailed_at"),
   quoteLastTextedAt: timestamp("quote_last_texted_at"),
   quoteNotes: text("quote_notes"),
+  // Square invoice mirror (Square is the system of record; we cache for display + lookup)
+  squareInvoiceId: text("square_invoice_id"),
+  squareInvoiceVersion: integer("square_invoice_version"),
+  squareOrderId: text("square_order_id"),
+  squareInvoiceStatus: text("square_invoice_status"), // DRAFT | UNPAID | SCHEDULED | PARTIALLY_PAID | PAID | CANCELED | FAILED | REFUNDED
+  squareHostedUrl: text("square_hosted_url"),
+  squareAmountPaid: numeric("square_amount_paid", { precision: 12, scale: 2 }),
+  squareBalanceDue: numeric("square_balance_due", { precision: 12, scale: 2 }),
+  squareDepositKind: text("square_deposit_kind"),    // 'percent' | 'fixed' | null
+  squareDepositValue: numeric("square_deposit_value", { precision: 12, scale: 2 }),
+  squareDueAt: timestamp("square_due_at"),
+  squareDepositPaidAt: timestamp("square_deposit_paid_at"),
+  squarePaidInFullAt: timestamp("square_paid_in_full_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
