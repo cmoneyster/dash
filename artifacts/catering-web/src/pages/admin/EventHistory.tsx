@@ -326,32 +326,64 @@ function SessionOrders({ sessionId, onOrdersDeleted }: { sessionId: number; onCl
               {/* Order list */}
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">All Orders</h4>
-                <div className="space-y-2">
-                  {orders.map(order => (
-                    <div key={order.id} className="bg-card border border-border rounded-xl px-4 py-3 flex items-start gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-sm">{order.guestName}</span>
-                          {order.orderSource === "staff" && (
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">Staff</span>
-                          )}
-                          {order.phoneNumber && <span className="text-xs text-muted-foreground">{order.phoneNumber}</span>}
-                          <span className={cn("ml-auto text-xs px-2 py-0.5 rounded-full font-medium", STATUS_COLORS[order.status] ?? "bg-secondary text-muted-foreground")}>
-                            {STATUS_LABELS[order.status] ?? order.status}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {order.items.map(i => `${i.quantity}× ${i.name}`).join(", ")}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-medium">{formatCurrency(order.items.reduce((s, i) => s + i.price * i.quantity, 0))}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(order.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-border bg-secondary/40">
+                      <tr className="text-left text-xs text-muted-foreground">
+                        <th className="px-3 py-2 font-semibold">Customer</th>
+                        <th className="px-3 py-2 font-semibold">Source</th>
+                        <th className="px-3 py-2 font-semibold">Status</th>
+                        <th className="px-3 py-2 font-semibold">Time</th>
+                        <th className="px-3 py-2 font-semibold text-right">Subtotal</th>
+                        <th className="px-3 py-2 font-semibold text-right">Tax</th>
+                        <th className="px-3 py-2 font-semibold text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orders.map(order => {
+                        const isStaff = order.orderSource === "staff";
+                        const lineSum = order.items.reduce((s, i) => s + i.price * i.quantity, 0);
+                        const sub = num(order.subtotal);
+                        const tax = num(order.taxAmount);
+                        const tot = num(order.total);
+                        return (
+                          <tr key={order.id} className="border-b border-border/50 last:border-0 align-top">
+                            <td className="px-3 py-2">
+                              <p className="font-semibold">{order.guestName}</p>
+                              {order.phoneNumber && <p className="text-[11px] text-muted-foreground">{order.phoneNumber}</p>}
+                              <p className="text-[11px] text-muted-foreground mt-0.5 max-w-[18rem] truncate">
+                                {order.items.map(i => `${i.quantity}× ${i.name}`).join(", ")}
+                              </p>
+                            </td>
+                            <td className="px-3 py-2">
+                              {isStaff ? (
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">Staff</span>
+                              ) : (
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Guest</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", STATUS_COLORS[order.status] ?? "bg-secondary text-muted-foreground")}>
+                                {STATUS_LABELS[order.status] ?? order.status}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                              {new Date(order.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {isStaff ? `$${sub.toFixed(2)}` : <span className="text-muted-foreground/50">—</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {isStaff ? `$${tax.toFixed(2)}` : <span className="text-muted-foreground/50">—</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums font-semibold">
+                              {isStaff ? `$${tot.toFixed(2)}` : formatCurrency(lineSum)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </>
