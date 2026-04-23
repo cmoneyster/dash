@@ -124,8 +124,8 @@ export default function EventSettings() {
         eventTakerTaxRate: eventTakerTaxRate.trim() === "" ? null : Number(eventTakerTaxRate),
       };
       if (orderPassword) body.orderPassword = orderPassword;
-      if (kitchenPassword !== undefined) body.kitchenPassword = kitchenPassword;
-      if (eventTakerPassword !== undefined) body.eventTakerPassword = eventTakerPassword;
+      if (kitchenPassword) body.kitchenPassword = kitchenPassword;
+      if (eventTakerPassword) body.eventTakerPassword = eventTakerPassword;
 
       const res = await fetch(`${BASE}/api/admin/event-settings`, {
         method: "PUT",
