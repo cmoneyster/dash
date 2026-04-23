@@ -19,10 +19,15 @@ interface ReportOrder {
   id: number; createdAt: string; source: string; guestName: string;
   phoneNumber: string | null; status: string; paymentMethod: PaymentMethod;
   items: ReportOrderLine[]; subtotal: number; taxRate: number | null; tax: number; total: number;
-  readyAt: string | null; pickedUpAt: string | null; timeToPickupSec: number | null;
+  readyAt: string | null; pickedUpAt: string | null;
+  timeToReadySec: number | null; timeReadyToPickupSec: number | null; timeToPickupSec: number | null;
 }
 interface PaymentMethodTotal { method: PaymentMethod; orderCount: number; revenue: number }
-interface PickupStats { pickedUpCount: number; avgPickupSec: number | null; medianPickupSec: number | null }
+interface PickupStats {
+  pickedUpCount: number; avgPickupSec: number | null; medianPickupSec: number | null;
+  prepCount: number; avgPrepSec: number | null; medianPrepSec: number | null;
+  readyToPickupCount: number; avgReadyToPickupSec: number | null; medianReadyToPickupSec: number | null;
+}
 interface ReportTotals {
   orderCount: number; itemCount: number; subtotal: number; tax: number;
   revenue: number; avgOrderValue: number; items: ReportItem[]; orders: ReportOrder[];
@@ -476,6 +481,48 @@ function PaymentBadge({ method }: { method: PaymentMethod }) {
   );
 }
 
+function ServicePhaseCard({
+  title, subtitle, count, avgSec, medianSec, totalOrders, accent,
+}: {
+  title: string; subtitle: string; count: number;
+  avgSec: number | null; medianSec: number | null;
+  totalOrders: number; accent: string;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className={`px-4 py-3 border-b border-border ${accent}`}>
+        <p className="font-semibold text-sm">{title}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>
+      </div>
+      {count === 0 ? (
+        <div className="px-4 py-6 text-center text-muted-foreground text-xs">
+          No data in range.
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-px bg-border">
+          <div className="bg-card p-3">
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Avg</p>
+            <p className="text-lg font-bold mt-0.5">{fmtDuration(avgSec)}</p>
+          </div>
+          <div className="bg-card p-3">
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Median</p>
+            <p className="text-lg font-bold mt-0.5">{fmtDuration(medianSec)}</p>
+          </div>
+          <div className="bg-card p-3">
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Orders</p>
+            <p className="text-lg font-bold mt-0.5">
+              {count}
+              {totalOrders > count && (
+                <span className="text-xs font-normal text-muted-foreground"> / {totalOrders}</span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PickupTimeCard({ stats, totalOrders }: { stats: PickupStats; totalOrders: number }) {
   return (
     <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden mb-6">
@@ -483,34 +530,38 @@ function PickupTimeCard({ stats, totalOrders }: { stats: PickupStats; totalOrder
         <Timer className="w-5 h-5 text-indigo-600" />
         <div>
           <h2 className="font-display font-bold text-lg">Service Time</h2>
-          <p className="text-xs text-muted-foreground">From order placed to picked up.</p>
+          <p className="text-xs text-muted-foreground">Kitchen flow and counter wait, broken down by phase.</p>
         </div>
       </div>
-      {stats.pickedUpCount === 0 ? (
-        <div className="px-5 py-8 text-center text-muted-foreground text-sm">
-          No orders have been picked up in this range yet.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-border">
-          <div className="bg-card p-4">
-            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Average</p>
-            <p className="text-2xl font-bold mt-1">{fmtDuration(stats.avgPickupSec)}</p>
-          </div>
-          <div className="bg-card p-4">
-            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Median</p>
-            <p className="text-2xl font-bold mt-1">{fmtDuration(stats.medianPickupSec)}</p>
-          </div>
-          <div className="bg-card p-4">
-            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Picked Up</p>
-            <p className="text-2xl font-bold mt-1">
-              {stats.pickedUpCount}
-              {totalOrders > stats.pickedUpCount && (
-                <span className="text-sm font-normal text-muted-foreground"> / {totalOrders}</span>
-              )}
-            </p>
-          </div>
-        </div>
-      )}
+      <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <ServicePhaseCard
+          title="Prep Time"
+          subtitle="Placed → Ready (kitchen)"
+          count={stats.prepCount}
+          avgSec={stats.avgPrepSec}
+          medianSec={stats.medianPrepSec}
+          totalOrders={totalOrders}
+          accent="bg-amber-50"
+        />
+        <ServicePhaseCard
+          title="Counter Wait"
+          subtitle="Ready → Picked Up"
+          count={stats.readyToPickupCount}
+          avgSec={stats.avgReadyToPickupSec}
+          medianSec={stats.medianReadyToPickupSec}
+          totalOrders={totalOrders}
+          accent="bg-blue-50"
+        />
+        <ServicePhaseCard
+          title="Total Wait"
+          subtitle="Placed → Picked Up"
+          count={stats.pickedUpCount}
+          avgSec={stats.avgPickupSec}
+          medianSec={stats.medianPickupSec}
+          totalOrders={totalOrders}
+          accent="bg-emerald-50"
+        />
+      </div>
     </div>
   );
 }
