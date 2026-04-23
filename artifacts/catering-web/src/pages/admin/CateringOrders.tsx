@@ -5,7 +5,7 @@ import {
   Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
-  ArrowUp, ArrowDown, CreditCard, RefreshCw, ExternalLink, Ban,
+  ArrowUp, ArrowDown, CreditCard, RefreshCw, ExternalLink, Ban, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
@@ -45,6 +45,7 @@ type QuoteLineItem = {
   unit?: string | null;
   servingSize?: number | null;
   tierApplied?: boolean | null;
+  priceMode?: "auto" | "manual" | null;
 };
 
 type QuoteAdjustment = {
@@ -405,7 +406,7 @@ function QuoteEditor({
     onChange({ lineItems: [...lineItems, {
       id: uid(), menuItemId: null, name: "", quantity: 1, unitPrice: 0, notes: null,
       pricingTemplate: null, sizeSlot: null, sizeLabel: null, sizeServings: null,
-      unit: null, servingSize: null, tierApplied: false,
+      unit: null, servingSize: null, tierApplied: false, priceMode: "auto",
     }] });
   }
   function pickMenu(m: AdminMenuItem, size?: AdminMenuItemSize) {
@@ -416,7 +417,7 @@ function QuoteEditor({
         quantity: 1, unitPrice: size.price, notes: null,
         pricingTemplate: "pan_sizes",
         sizeSlot: size.slot, sizeLabel: size.label, sizeServings: size.servings,
-        unit: null, servingSize: null, tierApplied: false,
+        unit: null, servingSize: null, tierApplied: false, priceMode: "auto",
       }] });
     } else {
       const { price, tierApplied } = priceForQuantity(m, 1);
@@ -426,7 +427,7 @@ function QuoteEditor({
         pricingTemplate: "per_unit",
         sizeSlot: null, sizeLabel: null, sizeServings: null,
         unit: m.unit, servingSize: m.servingSize,
-        tierApplied,
+        tierApplied, priceMode: "auto",
       }] });
     }
   }
@@ -434,31 +435,25 @@ function QuoteEditor({
     onChange({ lineItems: lineItems.map(li => li.id === id ? { ...li, ...patch } : li) });
   }
   // Quantity change: re-apply tier price for per_unit menu items, but only
-  // when staff hasn't manually overridden it (tierApplied still true OR the
-  // current price equals the menu base/tier price).
+  // when the line is still in "auto" pricing mode. A manual price edit flips
+  // the line to "manual" so subsequent quantity changes don't clobber it.
   function changeQuantity(id: string, qty: number) {
     const li = lineItems.find(x => x.id === id);
     if (!li) return;
     const m = li.menuItemId != null ? menuById.get(li.menuItemId) : undefined;
     const patch: Partial<QuoteLineItem> = { quantity: qty };
-    if (m && li.pricingTemplate === "per_unit") {
-      // Was the current price one we would have set automatically? If so,
-      // it's safe to recompute. Otherwise leave the manual override alone.
-      const isManaged = li.tierApplied
-        || li.unitPrice === m.price
-        || li.unitPrice === m.tier2Price
-        || li.unitPrice === m.tier3Price;
-      if (isManaged) {
-        const { price, tierApplied } = priceForQuantity(m, qty);
-        patch.unitPrice = price;
-        patch.tierApplied = tierApplied;
-      }
+    // Treat legacy rows (no priceMode) as "auto" for backwards compatibility.
+    const isAuto = li.priceMode !== "manual";
+    if (m && li.pricingTemplate === "per_unit" && isAuto) {
+      const { price, tierApplied } = priceForQuantity(m, qty);
+      patch.unitPrice = price;
+      patch.tierApplied = tierApplied;
     }
     updateItem(id, patch);
   }
   function changeUnitPrice(id: string, price: number) {
-    // Manual price override clears the tier auto-flag.
-    updateItem(id, { unitPrice: price, tierApplied: false });
+    // Manual price override locks the price and clears the tier auto-flag.
+    updateItem(id, { unitPrice: price, tierApplied: false, priceMode: "manual" });
   }
   function changeSize(id: string, slot: number) {
     const li = lineItems.find(x => x.id === id);
@@ -469,7 +464,7 @@ function QuoteEditor({
     if (!s) return;
     updateItem(id, {
       sizeSlot: s.slot, sizeLabel: s.label, sizeServings: s.servings,
-      unitPrice: s.price, tierApplied: false,
+      unitPrice: s.price, tierApplied: false, priceMode: "auto",
     });
   }
   function removeItem(id: string) {
@@ -576,7 +571,7 @@ function QuoteEditor({
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  {(descriptor || li.tierApplied || isPan) && (
+                  {(descriptor || li.tierApplied || isPan || li.priceMode === "manual") && (
                     <div className="pl-[44px] flex items-center flex-wrap gap-2 text-xs text-muted-foreground">
                       {isPan && m ? (
                         <>
@@ -596,11 +591,18 @@ function QuoteEditor({
                       ) : descriptor ? (
                         <span>{descriptor}</span>
                       ) : null}
-                      {li.tierApplied && (
+                      {li.priceMode === "manual" ? (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-semibold uppercase tracking-wider"
+                          title="Manual price — quantity changes won't re-apply tier pricing. Re-pick the item or size to unlock."
+                        >
+                          <Lock className="w-2.5 h-2.5" /> Manual price
+                        </span>
+                      ) : li.tierApplied ? (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-semibold uppercase tracking-wider">
                           Tier price applied
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   )}
                 </div>

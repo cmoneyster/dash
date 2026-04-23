@@ -101,6 +101,7 @@ function normalizeLineItems(raw: unknown): QuoteLineItem[] | undefined {
         unit: li.unit ? String(li.unit).slice(0, 30) : null,
         servingSize: safeIntOrNull(servingSizeN, 100_000),
         tierApplied: li.tierApplied === true,
+        priceMode: li.priceMode === "manual" ? "manual" : "auto",
       };
     });
 }

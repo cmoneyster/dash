@@ -27,6 +27,11 @@ export type QuoteLineItem = {
   // True when the unit price was auto-applied from a tier break (tier2/tier3).
   // Set to false (or omit) once staff manually overrides the price.
   tierApplied?: boolean | null;
+  // Explicit pricing mode. "auto" allows the Quote Builder to (re)apply
+  // tier-break pricing on quantity changes; "manual" locks the unit price
+  // to whatever staff typed. Re-picking a menu item or pan size resets to
+  // "auto". Legacy rows (null/undefined) are treated as "auto".
+  priceMode?: "auto" | "manual" | null;
 };
 
 export type QuoteAdjustment = {
