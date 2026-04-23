@@ -70,14 +70,17 @@ router.get("/admin/plans", async (req, res) => {
 });
 
 // Get full plan detail
-router.get("/admin/plans/:token", async (req, res) => {
+router.get("/admin/plans/:token", async (req, res): Promise<void> => {
   try {
     const [plan] = await db
       .select()
       .from(sharedPlansTable)
       .where(eq(sharedPlansTable.shareToken, req.params.token));
 
-    if (!plan) return res.status(404).json({ error: "Plan not found" });
+    if (!plan) {
+      res.status(404).json({ error: "Plan not found" });
+      return;
+    }
 
     const items = await getPlanItems(plan.sessionId);
 
@@ -99,7 +102,7 @@ router.get("/admin/plans/:token", async (req, res) => {
 });
 
 // Update plan name or admin notes
-router.patch("/admin/plans/:token", async (req, res) => {
+router.patch("/admin/plans/:token", async (req, res): Promise<void> => {
   try {
     const { planName, adminNotes } = req.body as { planName?: string; adminNotes?: string };
     const updates: Record<string, unknown> = { lastModifiedAt: new Date() };
@@ -112,7 +115,10 @@ router.patch("/admin/plans/:token", async (req, res) => {
       .where(eq(sharedPlansTable.shareToken, req.params.token))
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Plan not found" });
+    if (!updated) {
+      res.status(404).json({ error: "Plan not found" });
+      return;
+    }
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Error updating admin plan");
@@ -121,13 +127,16 @@ router.patch("/admin/plans/:token", async (req, res) => {
 });
 
 // Remove an item from a plan
-router.delete("/admin/plans/:token/items/:itemId", async (req, res) => {
+router.delete("/admin/plans/:token/items/:itemId", async (req, res): Promise<void> => {
   try {
     const [plan] = await db
       .select({ sessionId: sharedPlansTable.sessionId })
       .from(sharedPlansTable)
       .where(eq(sharedPlansTable.shareToken, req.params.token));
-    if (!plan) return res.status(404).json({ error: "Plan not found" });
+    if (!plan) {
+      res.status(404).json({ error: "Plan not found" });
+      return;
+    }
 
     const itemId = parseInt(req.params.itemId);
     await db
@@ -148,13 +157,16 @@ router.delete("/admin/plans/:token/items/:itemId", async (req, res) => {
 });
 
 // Delete an entire plan
-router.delete("/admin/plans/:token", async (req, res) => {
+router.delete("/admin/plans/:token", async (req, res): Promise<void> => {
   try {
     const [plan] = await db
       .select({ sessionId: sharedPlansTable.sessionId })
       .from(sharedPlansTable)
       .where(eq(sharedPlansTable.shareToken, req.params.token));
-    if (!plan) return res.status(404).json({ error: "Plan not found" });
+    if (!plan) {
+      res.status(404).json({ error: "Plan not found" });
+      return;
+    }
 
     await db.delete(planItemsTable).where(eq(planItemsTable.sessionId, plan.sessionId));
     await db.delete(sharedPlansTable).where(eq(sharedPlansTable.shareToken, req.params.token));

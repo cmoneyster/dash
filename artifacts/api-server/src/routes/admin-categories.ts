@@ -35,20 +35,27 @@ router.get("/admin/categories", async (req, res) => {
   }
 });
 
-router.post("/admin/categories", async (req, res) => {
+router.post("/admin/categories", async (req, res): Promise<void> => {
   try {
     const name = String(req.body?.name ?? "").trim();
     const plannerGroup = String(req.body?.plannerGroup ?? "other");
     const visible = req.body?.visible !== false;
-    if (!name) return res.status(400).json({ error: "Name is required" });
+    if (!name) {
+      res.status(400).json({ error: "Name is required" });
+      return;
+    }
     if (!VALID_PLANNER_GROUPS.has(plannerGroup)) {
-      return res.status(400).json({ error: "Invalid plannerGroup" });
+      res.status(400).json({ error: "Invalid plannerGroup" });
+      return;
     }
     const [existing] = await db
       .select()
       .from(menuCategoriesTable)
       .where(eq(menuCategoriesTable.name, name));
-    if (existing) return res.status(409).json({ error: "Category with that name already exists" });
+    if (existing) {
+      res.status(409).json({ error: "Category with that name already exists" });
+      return;
+    }
 
     const [maxRow] = await db
       .select({ max: sql<number>`COALESCE(MAX(${menuCategoriesTable.sortOrder}), -1)` })
@@ -66,12 +73,18 @@ router.post("/admin/categories", async (req, res) => {
   }
 });
 
-router.patch("/admin/categories/:id", async (req, res) => {
+router.patch("/admin/categories/:id", async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
     const [current] = await db.select().from(menuCategoriesTable).where(eq(menuCategoriesTable.id, id));
-    if (!current) return res.status(404).json({ error: "Category not found" });
+    if (!current) {
+      res.status(404).json({ error: "Category not found" });
+      return;
+    }
 
     const updates: Record<string, unknown> = {};
     let renameFrom: string | null = null;
@@ -79,13 +92,19 @@ router.patch("/admin/categories/:id", async (req, res) => {
 
     if (req.body?.name !== undefined) {
       const newName = String(req.body.name).trim();
-      if (!newName) return res.status(400).json({ error: "Name cannot be empty" });
+      if (!newName) {
+        res.status(400).json({ error: "Name cannot be empty" });
+        return;
+      }
       if (newName !== current.name) {
         const [conflict] = await db
           .select()
           .from(menuCategoriesTable)
           .where(and(eq(menuCategoriesTable.name, newName), ne(menuCategoriesTable.id, id)));
-        if (conflict) return res.status(409).json({ error: "Another category already uses that name" });
+        if (conflict) {
+          res.status(409).json({ error: "Another category already uses that name" });
+          return;
+        }
         renameFrom = current.name;
         renameTo = newName;
         updates.name = newName;
@@ -93,13 +112,19 @@ router.patch("/admin/categories/:id", async (req, res) => {
     }
     if (req.body?.plannerGroup !== undefined) {
       const pg = String(req.body.plannerGroup);
-      if (!VALID_PLANNER_GROUPS.has(pg)) return res.status(400).json({ error: "Invalid plannerGroup" });
+      if (!VALID_PLANNER_GROUPS.has(pg)) {
+        res.status(400).json({ error: "Invalid plannerGroup" });
+        return;
+      }
       updates.plannerGroup = pg;
     }
     if (req.body?.visible !== undefined) updates.visible = !!req.body.visible;
     if (req.body?.sortOrder !== undefined) {
       const so = parseInt(String(req.body.sortOrder), 10);
-      if (isNaN(so)) return res.status(400).json({ error: "Invalid sortOrder" });
+      if (isNaN(so)) {
+        res.status(400).json({ error: "Invalid sortOrder" });
+        return;
+      }
       updates.sortOrder = so;
     }
 
@@ -128,19 +153,26 @@ router.patch("/admin/categories/:id", async (req, res) => {
   }
 });
 
-router.delete("/admin/categories/:id", async (req, res) => {
+router.delete("/admin/categories/:id", async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
     const [current] = await db.select().from(menuCategoriesTable).where(eq(menuCategoriesTable.id, id));
-    if (!current) return res.status(404).json({ error: "Category not found" });
+    if (!current) {
+      res.status(404).json({ error: "Category not found" });
+      return;
+    }
 
     const [countRow] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(menuItemsTable)
       .where(eq(menuItemsTable.category, current.name));
     if (Number(countRow?.count ?? 0) > 0) {
-      return res.status(409).json({ error: "Category still has menu items. Remove or reassign them first." });
+      res.status(409).json({ error: "Category still has menu items. Remove or reassign them first." });
+      return;
     }
 
     await db.delete(menuCategoriesTable).where(eq(menuCategoriesTable.id, id));
@@ -151,10 +183,13 @@ router.delete("/admin/categories/:id", async (req, res) => {
   }
 });
 
-router.post("/admin/categories/reorder", async (req, res) => {
+router.post("/admin/categories/reorder", async (req, res): Promise<void> => {
   try {
     const items = Array.isArray(req.body?.items) ? req.body.items : null;
-    if (!items) return res.status(400).json({ error: "items array required" });
+    if (!items) {
+      res.status(400).json({ error: "items array required" });
+      return;
+    }
     await db.transaction(async (tx) => {
       for (const it of items) {
         const id = parseInt(String(it.id), 10);

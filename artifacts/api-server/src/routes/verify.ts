@@ -32,14 +32,18 @@ setInterval(() => {
 }, 60_000);
 
 // POST /api/verify/send
-router.post("/verify/send", async (req, res) => {
+router.post("/verify/send", async (req, res): Promise<void> => {
   try {
     const { phone } = req.body as { phone?: string };
-    if (!phone) return res.status(400).json({ error: "phone is required" });
+    if (!phone) {
+      res.status(400).json({ error: "phone is required" });
+      return;
+    }
 
     const normalized = normalizePhone(phone);
     if (normalized.replace(/\D/g, "").length < 10) {
-      return res.status(400).json({ error: "Invalid phone number" });
+      res.status(400).json({ error: "Invalid phone number" });
+      return;
     }
 
     const code = randomCode();
@@ -55,28 +59,37 @@ router.post("/verify/send", async (req, res) => {
 });
 
 // POST /api/verify/confirm
-router.post("/verify/confirm", (req, res) => {
+router.post("/verify/confirm", (req, res): void => {
   try {
     const { phone, code } = req.body as { phone?: string; code?: string };
-    if (!phone || !code) return res.status(400).json({ error: "phone and code are required" });
+    if (!phone || !code) {
+      res.status(400).json({ error: "phone and code are required" });
+      return;
+    }
 
     const normalized = normalizePhone(phone);
     const entry = store.get(normalized);
 
-    if (!entry) return res.status(400).json({ error: "No verification pending for this number. Please request a new code." });
+    if (!entry) {
+      res.status(400).json({ error: "No verification pending for this number. Please request a new code." });
+      return;
+    }
     if (Date.now() > entry.expiresAt) {
       store.delete(normalized);
-      return res.status(400).json({ error: "Code has expired. Please request a new one." });
+      res.status(400).json({ error: "Code has expired. Please request a new one." });
+      return;
     }
 
     entry.attempts += 1;
     if (entry.attempts > 5) {
       store.delete(normalized);
-      return res.status(429).json({ error: "Too many attempts. Please request a new code." });
+      res.status(429).json({ error: "Too many attempts. Please request a new code." });
+      return;
     }
 
     if (entry.code !== code.trim()) {
-      return res.status(400).json({ error: "Incorrect code. Please try again." });
+      res.status(400).json({ error: "Incorrect code. Please try again." });
+      return;
     }
 
     store.delete(normalized);

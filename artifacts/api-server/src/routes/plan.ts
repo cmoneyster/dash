@@ -50,10 +50,13 @@ async function touchSharedPlan(token: string) {
 
 // ── Regular plan CRUD ──────────────────────────────────────────────────────
 
-router.get("/plan", async (req, res) => {
+router.get("/plan", async (req, res): Promise<void> => {
   try {
     const { sessionId } = req.query as { sessionId: string };
-    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
     res.json(await getPlanData(sessionId));
   } catch (err) {
     req.log.error({ err }, "Error getting plan");
@@ -61,10 +64,13 @@ router.get("/plan", async (req, res) => {
   }
 });
 
-router.post("/plan", async (req, res) => {
+router.post("/plan", async (req, res): Promise<void> => {
   try {
     const { sessionId, menuItemId } = req.body;
-    if (!sessionId || !menuItemId) return res.status(400).json({ error: "sessionId and menuItemId required" });
+    if (!sessionId || !menuItemId) {
+      res.status(400).json({ error: "sessionId and menuItemId required" });
+      return;
+    }
 
     const [existing] = await db
       .select()
@@ -82,10 +88,13 @@ router.post("/plan", async (req, res) => {
   }
 });
 
-router.delete("/plan", async (req, res) => {
+router.delete("/plan", async (req, res): Promise<void> => {
   try {
     const sessionId = req.body?.sessionId || req.query.sessionId;
-    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
     await db.delete(planItemsTable).where(eq(planItemsTable.sessionId, sessionId as string));
     res.json({ sessionId, items: [] });
   } catch (err) {
@@ -94,11 +103,14 @@ router.delete("/plan", async (req, res) => {
   }
 });
 
-router.delete("/plan/:itemId", async (req, res) => {
+router.delete("/plan/:itemId", async (req, res): Promise<void> => {
   try {
     const itemId = parseInt(req.params.itemId);
     const sessionId = req.body?.sessionId || req.query.sessionId;
-    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
 
     await db.delete(planItemsTable).where(and(eq(planItemsTable.id, itemId), eq(planItemsTable.sessionId, sessionId as string)));
 
@@ -112,12 +124,15 @@ router.delete("/plan/:itemId", async (req, res) => {
 // ── Shared plan ────────────────────────────────────────────────────────────
 
 // Create or update a share token for a session
-router.post("/plan/share", async (req, res) => {
+router.post("/plan/share", async (req, res): Promise<void> => {
   try {
     const { sessionId, planName, plannerState } = req.body as {
       sessionId: string; planName?: string; plannerState?: unknown;
     };
-    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
 
     // Re-use an existing token for this session if one exists
     const [existing] = await db
@@ -137,7 +152,8 @@ router.post("/plan/share", async (req, res) => {
         })
         .where(eq(sharedPlansTable.shareToken, existing.shareToken));
 
-      return res.json({ shareToken: existing.shareToken, expiresAt: expires });
+      res.json({ shareToken: existing.shareToken, expiresAt: expires });
+      return;
     }
 
     const expires = expiresAt60Days();
@@ -154,17 +170,23 @@ router.post("/plan/share", async (req, res) => {
 });
 
 // Look up existing share record by sessionId (no auth — customer's own session)
-router.get("/plan/share/by-session", async (req, res) => {
+router.get("/plan/share/by-session", async (req, res): Promise<void> => {
   try {
     const { sessionId } = req.query as { sessionId?: string };
-    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
 
     const [existing] = await db
       .select()
       .from(sharedPlansTable)
       .where(eq(sharedPlansTable.sessionId, sessionId));
 
-    if (!existing || new Date() > existing.expiresAt) return res.json({ found: false });
+    if (!existing || new Date() > existing.expiresAt) {
+      res.json({ found: false });
+      return;
+    }
 
     res.json({
       found: true,
@@ -180,11 +202,17 @@ router.get("/plan/share/by-session", async (req, res) => {
 });
 
 // Get shared plan
-router.get("/plan/share/:token", async (req, res) => {
+router.get("/plan/share/:token", async (req, res): Promise<void> => {
   try {
     const record = await resolveSharedPlan(req.params.token);
-    if (!record) return res.status(404).json({ error: "Plan not found" });
-    if (new Date() > record.expiresAt) return res.status(410).json({ error: "This plan link has expired" });
+    if (!record) {
+      res.status(404).json({ error: "Plan not found" });
+      return;
+    }
+    if (new Date() > record.expiresAt) {
+      res.status(410).json({ error: "This plan link has expired" });
+      return;
+    }
 
     await touchSharedPlan(req.params.token);
     const plan = await getPlanData(record.sessionId);
@@ -202,14 +230,23 @@ router.get("/plan/share/:token", async (req, res) => {
 });
 
 // Update planner state on a shared plan
-router.patch("/plan/share/:token/planner", async (req, res) => {
+router.patch("/plan/share/:token/planner", async (req, res): Promise<void> => {
   try {
     const record = await resolveSharedPlan(req.params.token);
-    if (!record) return res.status(404).json({ error: "Plan not found" });
-    if (new Date() > record.expiresAt) return res.status(410).json({ error: "This plan link has expired" });
+    if (!record) {
+      res.status(404).json({ error: "Plan not found" });
+      return;
+    }
+    if (new Date() > record.expiresAt) {
+      res.status(410).json({ error: "This plan link has expired" });
+      return;
+    }
 
     const { plannerState } = req.body as { plannerState: unknown };
-    if (plannerState === undefined) return res.status(400).json({ error: "plannerState required" });
+    if (plannerState === undefined) {
+      res.status(400).json({ error: "plannerState required" });
+      return;
+    }
 
     await db
       .update(sharedPlansTable)
@@ -224,14 +261,23 @@ router.patch("/plan/share/:token/planner", async (req, res) => {
 });
 
 // Add item to shared plan
-router.post("/plan/share/:token/items", async (req, res) => {
+router.post("/plan/share/:token/items", async (req, res): Promise<void> => {
   try {
     const record = await resolveSharedPlan(req.params.token);
-    if (!record) return res.status(404).json({ error: "Plan not found" });
-    if (new Date() > record.expiresAt) return res.status(410).json({ error: "This plan link has expired" });
+    if (!record) {
+      res.status(404).json({ error: "Plan not found" });
+      return;
+    }
+    if (new Date() > record.expiresAt) {
+      res.status(410).json({ error: "This plan link has expired" });
+      return;
+    }
 
     const { menuItemId } = req.body as { menuItemId: number };
-    if (!menuItemId) return res.status(400).json({ error: "menuItemId required" });
+    if (!menuItemId) {
+      res.status(400).json({ error: "menuItemId required" });
+      return;
+    }
 
     const [existing] = await db
       .select()
@@ -252,11 +298,17 @@ router.post("/plan/share/:token/items", async (req, res) => {
 });
 
 // Remove item from shared plan
-router.delete("/plan/share/:token/items/:itemId", async (req, res) => {
+router.delete("/plan/share/:token/items/:itemId", async (req, res): Promise<void> => {
   try {
     const record = await resolveSharedPlan(req.params.token);
-    if (!record) return res.status(404).json({ error: "Plan not found" });
-    if (new Date() > record.expiresAt) return res.status(410).json({ error: "This plan link has expired" });
+    if (!record) {
+      res.status(404).json({ error: "Plan not found" });
+      return;
+    }
+    if (new Date() > record.expiresAt) {
+      res.status(410).json({ error: "This plan link has expired" });
+      return;
+    }
 
     const itemId = parseInt(req.params.itemId);
     await db

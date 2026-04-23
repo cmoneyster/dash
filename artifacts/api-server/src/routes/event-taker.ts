@@ -284,7 +284,7 @@ router.get("/event-taker/orders/pending", verifyTakerPassword, async (req, res) 
 // and returns the updated order so the POS can print/receipt it.
 router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     if (!Number.isInteger(id) || id <= 0) {
       res.status(400).json({ error: "Invalid order id" });
       return;
@@ -399,7 +399,7 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
 // Override — send an unpaid order to the kitchen anyway.
 router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     if (!Number.isInteger(id) || id <= 0) {
       res.status(400).json({ error: "Invalid order id" });
       return;
@@ -480,7 +480,7 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
 // to the kitchen, since those are no longer "pending".
 router.delete("/event-taker/orders/:id", verifyTakerPassword, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     if (!Number.isInteger(id) || id <= 0) {
       res.status(400).json({ error: "Invalid order id" });
       return;

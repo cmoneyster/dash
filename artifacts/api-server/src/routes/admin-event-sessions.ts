@@ -75,7 +75,7 @@ router.post("/admin/event-sessions", async (req, res) => {
 });
 
 // Update an event session
-router.put("/admin/event-sessions/:id", async (req, res) => {
+router.put("/admin/event-sessions/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const { name, date, notes, status } = req.body as {
@@ -97,7 +97,10 @@ router.put("/admin/event-sessions/:id", async (req, res) => {
       .set(updates)
       .where(eq(eventSessionsTable.id, id))
       .returning();
-    if (!updated) return res.status(404).json({ error: "Session not found" });
+    if (!updated) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
     res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Error updating event session");
@@ -106,11 +109,14 @@ router.put("/admin/event-sessions/:id", async (req, res) => {
 });
 
 // Set a session as the active event session
-router.post("/admin/event-sessions/:id/activate", async (req, res) => {
+router.post("/admin/event-sessions/:id/activate", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [session] = await db.select().from(eventSessionsTable).where(eq(eventSessionsTable.id, id));
-    if (!session) return res.status(404).json({ error: "Session not found" });
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
 
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     if (existing) {
@@ -137,7 +143,7 @@ router.post("/admin/event-sessions/deactivate", async (req, res) => {
 });
 
 // Archive a session
-router.post("/admin/event-sessions/:id/archive", async (req, res) => {
+router.post("/admin/event-sessions/:id/archive", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [updated] = await db
@@ -145,7 +151,10 @@ router.post("/admin/event-sessions/:id/archive", async (req, res) => {
       .set({ status: "archived", archivedAt: new Date() })
       .where(eq(eventSessionsTable.id, id))
       .returning();
-    if (!updated) return res.status(404).json({ error: "Session not found" });
+    if (!updated) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
 
     // If this was the active session, clear it
     await db.update(eventSettingsTable)
@@ -160,11 +169,14 @@ router.post("/admin/event-sessions/:id/archive", async (req, res) => {
 });
 
 // Get all orders for a specific session
-router.get("/admin/event-sessions/:id/orders", async (req, res) => {
+router.get("/admin/event-sessions/:id/orders", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [session] = await db.select().from(eventSessionsTable).where(eq(eventSessionsTable.id, id));
-    if (!session) return res.status(404).json({ error: "Session not found" });
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
 
     const orders = await db
       .select()
@@ -180,11 +192,14 @@ router.get("/admin/event-sessions/:id/orders", async (req, res) => {
 });
 
 // Delete ALL orders for a session (keep the session)
-router.delete("/admin/event-sessions/:id/orders", async (req, res) => {
+router.delete("/admin/event-sessions/:id/orders", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [session] = await db.select().from(eventSessionsTable).where(eq(eventSessionsTable.id, id));
-    if (!session) return res.status(404).json({ error: "Session not found" });
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
     const deleted = await db.delete(eventOrdersTable).where(eq(eventOrdersTable.eventSessionId, id)).returning({ id: eventOrdersTable.id });
     res.json({ ok: true, deleted: deleted.length });
   } catch (err) {
@@ -194,7 +209,7 @@ router.delete("/admin/event-sessions/:id/orders", async (req, res) => {
 });
 
 // Delete a session and all its orders
-router.delete("/admin/event-sessions/:id", async (req, res) => {
+router.delete("/admin/event-sessions/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     // Unlink orders first
@@ -208,7 +223,10 @@ router.delete("/admin/event-sessions/:id", async (req, res) => {
       .delete(eventSessionsTable)
       .where(eq(eventSessionsTable.id, id))
       .returning();
-    if (!deleted) return res.status(404).json({ error: "Session not found" });
+    if (!deleted) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Error deleting event session");

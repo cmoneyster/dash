@@ -184,11 +184,14 @@ router.get("/admin/catering", async (req, res) => {
   }
 });
 
-router.get("/admin/catering/:id", async (req, res) => {
+router.get("/admin/catering/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-    if (!inquiry) return res.status(404).json({ error: "Inquiry not found" });
+    if (!inquiry) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
     res.json(inquiry);
   } catch (err) {
     req.log.error({ err }, "Error fetching catering inquiry");
@@ -198,7 +201,7 @@ router.get("/admin/catering/:id", async (req, res) => {
 
 // ── Create ────────────────────────────────────────────────────────────────────
 
-router.post("/admin/catering", async (req, res) => {
+router.post("/admin/catering", async (req, res): Promise<void> => {
   try {
     const body = req.body as Body;
     const clientName = asString(body.clientName)?.trim();
@@ -227,7 +230,7 @@ router.post("/admin/catering", async (req, res) => {
     };
     applyTotalsToUpdates(insertVals);
 
-    const [inquiry] = await db.insert(cateringInquiriesTable).values(insertVals).returning();
+    const [inquiry] = await db.insert(cateringInquiriesTable).values(insertVals as typeof cateringInquiriesTable.$inferInsert).returning();
 
     sendNewInquiryAlert({
       clientName,
@@ -248,7 +251,7 @@ router.post("/admin/catering", async (req, res) => {
 
 // ── Update ────────────────────────────────────────────────────────────────────
 
-router.put("/admin/catering/:id", async (req, res) => {
+router.put("/admin/catering/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const body = req.body as Body;
@@ -274,7 +277,10 @@ router.put("/admin/catering/:id", async (req, res) => {
     const discounts = normalizeAdjustments(body.discounts);
     if (lineItems !== undefined || fees !== undefined || discounts !== undefined) {
       const [current] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-      if (!current) return res.status(404).json({ error: "Inquiry not found" });
+      if (!current) {
+        res.status(404).json({ error: "Inquiry not found" });
+        return;
+      }
       updates.lineItems = lineItems ?? current.lineItems ?? [];
       updates.fees = fees ?? current.fees ?? [];
       updates.discounts = discounts ?? current.discounts ?? [];
@@ -287,7 +293,10 @@ router.put("/admin/catering/:id", async (req, res) => {
       .where(eq(cateringInquiriesTable.id, id))
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Inquiry not found" });
+    if (!updated) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
     res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Error updating catering inquiry");
@@ -297,11 +306,14 @@ router.put("/admin/catering/:id", async (req, res) => {
 
 // ── Delete ────────────────────────────────────────────────────────────────────
 
-router.delete("/admin/catering/:id", async (req, res) => {
+router.delete("/admin/catering/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [deleted] = await db.delete(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id)).returning();
-    if (!deleted) return res.status(404).json({ error: "Inquiry not found" });
+    if (!deleted) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Error deleting catering inquiry");
@@ -322,11 +334,14 @@ async function generateQuoteNumber(): Promise<string> {
   return `Q-${yyyymm}-${String(seq).padStart(4, "0")}`;
 }
 
-router.post("/admin/catering/:id/quote", async (req, res) => {
+router.post("/admin/catering/:id/quote", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [current] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-    if (!current) return res.status(404).json({ error: "Inquiry not found" });
+    if (!current) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
 
     // Always rotate the public token on (re)generation so any previously-shared
     // links are invalidated.
@@ -368,11 +383,14 @@ router.post("/admin/catering/:id/quote", async (req, res) => {
 
 // ── Quote: PDF (admin) — prefer persisted, fallback to live render ────────────
 
-router.get("/admin/catering/:id/quote.pdf", async (req, res) => {
+router.get("/admin/catering/:id/quote.pdf", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-    if (!inquiry) return res.status(404).json({ error: "Inquiry not found" });
+    if (!inquiry) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
     const persisted = await getPersistedQuotePdf(inquiry);
     const pdf = persisted ?? (await renderQuotePdf(inquiry));
     res.setHeader("Content-Type", "application/pdf");
@@ -386,17 +404,24 @@ router.get("/admin/catering/:id/quote.pdf", async (req, res) => {
 
 // ── Quote: send by email ──────────────────────────────────────────────────────
 
-router.post("/admin/catering/:id/quote/email", async (req, res) => {
+router.post("/admin/catering/:id/quote/email", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-    if (!inquiry) return res.status(404).json({ error: "Inquiry not found" });
+    if (!inquiry) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
 
     const body = (req.body ?? {}) as Body;
     const to = asString(body.to)?.trim() || inquiry.clientEmail?.trim();
-    if (!to) return res.status(400).json({ error: "No client email on file" });
+    if (!to) {
+      res.status(400).json({ error: "No client email on file" });
+      return;
+    }
     if (!inquiry.quoteToken || !inquiry.quoteIssuedAt) {
-      return res.status(400).json({ error: "Generate the quote first" });
+      res.status(400).json({ error: "Generate the quote first" });
+      return;
     }
 
     let pdf = await getPersistedQuotePdf(inquiry);
@@ -448,7 +473,10 @@ router.post("/admin/catering/:id/quote/email", async (req, res) => {
         contentType: "application/pdf",
       }],
     });
-    if (!result.ok) return res.status(502).json({ error: result.error ?? "Failed to send email" });
+    if (!result.ok) {
+      res.status(502).json({ error: result.error ?? "Failed to send email" });
+      return;
+    }
 
     const [updated] = await db
       .update(cateringInquiriesTable)
@@ -464,17 +492,24 @@ router.post("/admin/catering/:id/quote/email", async (req, res) => {
 
 // ── Quote: send by SMS ────────────────────────────────────────────────────────
 
-router.post("/admin/catering/:id/quote/sms", async (req, res) => {
+router.post("/admin/catering/:id/quote/sms", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-    if (!inquiry) return res.status(404).json({ error: "Inquiry not found" });
+    if (!inquiry) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
 
     const body = (req.body ?? {}) as Body;
     const to = asString(body.to)?.trim() || inquiry.clientPhone?.trim();
-    if (!to) return res.status(400).json({ error: "No client phone on file" });
+    if (!to) {
+      res.status(400).json({ error: "No client phone on file" });
+      return;
+    }
     if (!inquiry.quoteToken || !inquiry.quoteIssuedAt) {
-      return res.status(400).json({ error: "Generate the quote first" });
+      res.status(400).json({ error: "Generate the quote first" });
+      return;
     }
 
     const link = quoteViewUrl(req, inquiry.quoteToken);
@@ -486,7 +521,8 @@ router.post("/admin/catering/:id/quote/sms", async (req, res) => {
       (payUrl && !inquiry.squarePaidInFullAt ? `\nPay: ${payUrl}` : "");
 
     if (!isEjoinConfigured()) {
-      return res.status(502).json({ error: "SMS gateway not configured" });
+      res.status(502).json({ error: "SMS gateway not configured" });
+      return;
     }
     try {
       // Bypass the fire-and-forget sendSms wrapper so we only stamp the
@@ -494,7 +530,8 @@ router.post("/admin/catering/:id/quote/sms", async (req, res) => {
       await sendSmsViaEjoin(to, smsBody);
     } catch (sendErr) {
       req.log.error({ err: sendErr }, "Quote SMS gateway send failed");
-      return res.status(502).json({ error: "Failed to send SMS via gateway" });
+      res.status(502).json({ error: "Failed to send SMS via gateway" });
+      return;
     }
 
     const [updated] = await db
@@ -686,14 +723,17 @@ type PlannerStateShape = {
   panQtys?: Record<string, Record<string, number>>;
 };
 
-router.post("/admin/catering/from-plan/:token", async (req, res) => {
+router.post("/admin/catering/from-plan/:token", async (req, res): Promise<void> => {
   try {
     const token = req.params.token;
     const [plan] = await db
       .select()
       .from(sharedPlansTable)
       .where(eq(sharedPlansTable.shareToken, token));
-    if (!plan) return res.status(404).json({ error: "Plan not found" });
+    if (!plan) {
+      res.status(404).json({ error: "Plan not found" });
+      return;
+    }
 
     const itemRows = await db
       .select()
@@ -761,7 +801,7 @@ router.post("/admin/catering/from-plan/:token", async (req, res) => {
     };
     applyTotalsToUpdates(insertVals);
 
-    const [created] = await db.insert(cateringInquiriesTable).values(insertVals).returning();
+    const [created] = await db.insert(cateringInquiriesTable).values(insertVals as typeof cateringInquiriesTable.$inferInsert).returning();
     res.status(201).json(created);
   } catch (err) {
     req.log.error({ err }, "Error converting plan to inquiry");

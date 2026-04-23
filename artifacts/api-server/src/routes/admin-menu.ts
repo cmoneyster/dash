@@ -119,7 +119,7 @@ router.post("/admin/menu", async (req, res) => {
   }
 });
 
-router.put("/admin/menu/:id", async (req, res) => {
+router.put("/admin/menu/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const {
@@ -176,7 +176,10 @@ router.put("/admin/menu/:id", async (req, res) => {
     if (internalNotes !== undefined)    updates.internalNotes = internalNotes ? String(internalNotes).trim() || null : null;
 
     const [item] = await db.update(menuItemsTable).set(updates).where(eq(menuItemsTable.id, id)).returning();
-    if (!item) return res.status(404).json({ error: "Menu item not found" });
+    if (!item) {
+      res.status(404).json({ error: "Menu item not found" });
+      return;
+    }
     if (category !== undefined) await ensureCategoryExists(category);
     res.json(formatItem(item));
   } catch (err) {
@@ -185,11 +188,14 @@ router.put("/admin/menu/:id", async (req, res) => {
   }
 });
 
-router.delete("/admin/menu/:id", async (req, res) => {
+router.delete("/admin/menu/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [deleted] = await db.delete(menuItemsTable).where(eq(menuItemsTable.id, id)).returning();
-    if (!deleted) return res.status(404).json({ error: "Menu item not found" });
+    if (!deleted) {
+      res.status(404).json({ error: "Menu item not found" });
+      return;
+    }
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Error deleting menu item");

@@ -17,7 +17,7 @@ async function getOrderWithItems(orderId: number) {
   };
 }
 
-router.post("/orders", async (req, res) => {
+router.post("/orders", async (req, res): Promise<void> => {
   try {
     const {
       sessionId, customerName, customerEmail, customerPhone,
@@ -25,7 +25,8 @@ router.post("/orders", async (req, res) => {
     } = req.body;
 
     if (!sessionId || !customerName || !customerEmail) {
-      return res.status(400).json({ error: "sessionId, customerName, and customerEmail are required" });
+      res.status(400).json({ error: "sessionId, customerName, and customerEmail are required" });
+      return;
     }
 
     // Get cart items
@@ -36,7 +37,8 @@ router.post("/orders", async (req, res) => {
       .where(eq(cartItemsTable.sessionId, sessionId));
 
     if (cartItems.length === 0) {
-      return res.status(400).json({ error: "Cart is empty" });
+      res.status(400).json({ error: "Cart is empty" });
+      return;
     }
 
     const total = cartItems.reduce(
@@ -134,14 +136,20 @@ router.get("/admin/orders", async (req, res) => {
   }
 });
 
-router.put("/admin/orders/:id", async (req, res) => {
+router.put("/admin/orders/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const { status } = req.body;
-    if (!status) return res.status(400).json({ error: "status required" });
+    if (!status) {
+      res.status(400).json({ error: "status required" });
+      return;
+    }
 
     const [updated] = await db.update(ordersTable).set({ status }).where(eq(ordersTable.id, id)).returning();
-    if (!updated) return res.status(404).json({ error: "Order not found" });
+    if (!updated) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
 
     const result = await getOrderWithItems(id);
     res.json(result);

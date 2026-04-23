@@ -5,11 +5,12 @@ import { eq, between } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-router.get("/events/availability", async (req, res) => {
+router.get("/events/availability", async (req, res): Promise<void> => {
   try {
     const { startDate, endDate } = req.query as { startDate: string; endDate: string };
     if (!startDate || !endDate) {
-      return res.status(400).json({ error: "startDate and endDate are required" });
+      res.status(400).json({ error: "startDate and endDate are required" });
+      return;
     }
 
     const allBlackouts = await db.select().from(blackoutDatesTable);
@@ -71,10 +72,13 @@ router.get("/admin/blackout-dates", async (req, res) => {
   }
 });
 
-router.post("/admin/blackout-dates", async (req, res) => {
+router.post("/admin/blackout-dates", async (req, res): Promise<void> => {
   try {
     const { date, reason } = req.body;
-    if (!date) return res.status(400).json({ error: "date is required" });
+    if (!date) {
+      res.status(400).json({ error: "date is required" });
+      return;
+    }
     const [created] = await db.insert(blackoutDatesTable).values({ date, reason: reason ?? null }).returning();
     res.status(201).json(created);
   } catch (err) {

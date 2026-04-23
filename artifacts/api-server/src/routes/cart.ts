@@ -61,10 +61,13 @@ async function getCartData(sessionId: string) {
   return { sessionId, items: cartItems, total };
 }
 
-router.get("/cart", async (req, res) => {
+router.get("/cart", async (req, res): Promise<void> => {
   try {
     const { sessionId } = req.query as { sessionId: string };
-    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
     const cart = await getCartData(sessionId);
     res.json(cart);
   } catch (err) {
@@ -73,13 +76,19 @@ router.get("/cart", async (req, res) => {
   }
 });
 
-router.post("/cart", async (req, res) => {
+router.post("/cart", async (req, res): Promise<void> => {
   try {
     const { sessionId, menuItemId, quantity, sizeSlot } = req.body;
-    if (!sessionId || !menuItemId) return res.status(400).json({ error: "sessionId and menuItemId required" });
+    if (!sessionId || !menuItemId) {
+      res.status(400).json({ error: "sessionId and menuItemId required" });
+      return;
+    }
 
     const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, menuItemId));
-    if (!menuItem) return res.status(404).json({ error: "Menu item not found" });
+    if (!menuItem) {
+      res.status(404).json({ error: "Menu item not found" });
+      return;
+    }
 
     const requestedQty = quantity ?? 1;
     const minQty = menuItem.minimumOrderQty ?? 1;
@@ -96,7 +105,8 @@ router.post("/cart", async (req, res) => {
 
     // Validate that slotNum refers to a defined size slot for pan_sizes items
     if (slotNum != null && slotPriceNum == null) {
-      return res.status(400).json({ error: `Size slot ${slotNum} is not defined for this item` });
+      res.status(400).json({ error: `Size slot ${slotNum} is not defined for this item` });
+      return;
     }
 
     // Derive sizeLabel server-side as well
@@ -129,7 +139,10 @@ router.post("/cart", async (req, res) => {
 
     if (existing) {
       const newQty = existing.quantity + requestedQty;
-      if (newQty < minQty) return res.status(400).json({ error: `Minimum order quantity is ${minQty}` });
+      if (newQty < minQty) {
+        res.status(400).json({ error: `Minimum order quantity is ${minQty}` });
+        return;
+      }
       await db.update(cartItemsTable).set({ quantity: newQty }).where(eq(cartItemsTable.id, existing.id));
     } else {
       const addQty = Math.max(requestedQty, minQty);
@@ -151,17 +164,23 @@ router.post("/cart", async (req, res) => {
   }
 });
 
-router.put("/cart/:itemId", async (req, res) => {
+router.put("/cart/:itemId", async (req, res): Promise<void> => {
   try {
     const itemId = parseInt(req.params.itemId);
     const { sessionId, quantity } = req.body;
-    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
 
     const [cartItem] = await db.select().from(cartItemsTable).where(eq(cartItemsTable.id, itemId));
     if (cartItem) {
       const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, cartItem.menuItemId));
       const minQty = menuItem?.minimumOrderQty ?? 1;
-      if (quantity < minQty) return res.status(400).json({ error: `Minimum order quantity is ${minQty}` });
+      if (quantity < minQty) {
+        res.status(400).json({ error: `Minimum order quantity is ${minQty}` });
+        return;
+      }
     }
 
     await db.update(cartItemsTable).set({ quantity }).where(and(eq(cartItemsTable.id, itemId), eq(cartItemsTable.sessionId, sessionId)));
@@ -173,10 +192,13 @@ router.put("/cart/:itemId", async (req, res) => {
   }
 });
 
-router.delete("/cart", async (req, res) => {
+router.delete("/cart", async (req, res): Promise<void> => {
   try {
     const sessionId: string | undefined = req.body?.sessionId || (req.query.sessionId as string | undefined);
-    if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
     await db.delete(cartItemsTable).where(eq(cartItemsTable.sessionId, sessionId));
     res.json({ sessionId, items: [], total: 0 });
   } catch (err) {
@@ -185,13 +207,16 @@ router.delete("/cart", async (req, res) => {
   }
 });
 
-router.delete("/cart/:itemId", async (req, res) => {
+router.delete("/cart/:itemId", async (req, res): Promise<void> => {
   try {
     const itemId = parseInt(req.params.itemId);
     const sessionId: string | undefined = req.body?.sessionId || (req.query.sessionId as string | undefined);
 
     const [cartItem] = await db.select().from(cartItemsTable).where(eq(cartItemsTable.id, itemId));
-    if (!cartItem) return res.status(404).json({ error: "Cart item not found" });
+    if (!cartItem) {
+      res.status(404).json({ error: "Cart item not found" });
+      return;
+    }
 
     const effectiveSessionId = sessionId ?? cartItem.sessionId;
     await db.delete(cartItemsTable).where(eq(cartItemsTable.id, itemId));

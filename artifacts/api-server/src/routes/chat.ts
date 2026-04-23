@@ -28,11 +28,12 @@ If they've decided on items, encourage them to add to cart and check out.
 
 IMPORTANT: You represent an authentic, passionate local catering business. Emphasize freshness, quality, and personalized service.`;
 
-router.post("/chat/message", async (req, res) => {
+router.post("/chat/message", async (req, res): Promise<void> => {
   const { sessionId, message, history } = req.body;
 
   if (!message) {
-    return res.status(400).json({ error: "message is required" });
+    res.status(400).json({ error: "message is required" });
+    return;
   }
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -72,12 +73,13 @@ router.post("/chat/message", async (req, res) => {
   }
 });
 
-router.post("/chat/suggest-items", async (req, res) => {
+router.post("/chat/suggest-items", async (req, res): Promise<void> => {
   try {
     const { guestCount, serviceStyle, preferences } = req.body;
 
     if (!guestCount || !serviceStyle) {
-      return res.status(400).json({ error: "guestCount and serviceStyle are required" });
+      res.status(400).json({ error: "guestCount and serviceStyle are required" });
+      return;
     }
 
     // Get all available menu items
@@ -89,7 +91,8 @@ router.post("/chat/suggest-items", async (req, res) => {
     const availableItems = items.filter((i) => i.available);
 
     if (availableItems.length === 0) {
-      return res.json({ suggestions: [] });
+      res.json({ suggestions: [] });
+      return;
     }
 
     // Use AI to suggest items and quantities

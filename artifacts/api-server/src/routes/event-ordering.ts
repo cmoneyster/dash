@@ -248,7 +248,7 @@ router.get("/event-ordering/orders", verifyKitchenPassword, async (req, res) => 
 });
 
 // Public endpoint — no auth required — to check a single order's status
-router.get("/event-ordering/orders/:id/public", async (req, res) => {
+router.get("/event-ordering/orders/:id/public", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [order] = await db
@@ -261,7 +261,10 @@ router.get("/event-ordering/orders/:id/public", async (req, res) => {
       })
       .from(eventOrdersTable)
       .where(eq(eventOrdersTable.id, id));
-    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
     const settings = await getEventSettings();
     res.json({ ...order, eventName: settings?.eventName ?? "" });
   } catch (err) {
@@ -270,9 +273,9 @@ router.get("/event-ordering/orders/:id/public", async (req, res) => {
   }
 });
 
-router.patch("/event-ordering/orders/:id/status", verifyKitchenPassword, async (req, res) => {
+router.patch("/event-ordering/orders/:id/status", verifyKitchenPassword, async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     const { status } = req.body as { status: string };
     const valid = ["pending", "preparing", "ready", "done", "picked_up"];
     if (!valid.includes(status)) {
@@ -334,9 +337,9 @@ router.get("/event-ordering/stock", verifyKitchenPassword, async (req, res) => {
   }
 });
 
-router.patch("/event-ordering/stock/:itemId", verifyKitchenPassword, async (req, res) => {
+router.patch("/event-ordering/stock/:itemId", verifyKitchenPassword, async (req, res): Promise<void> => {
   try {
-    const itemId = parseInt(req.params.itemId);
+    const itemId = parseInt(String(req.params.itemId));
     const { eventStock } = req.body as { eventStock: number | null };
     const stock = eventStock === null ? null : Math.max(0, parseInt(String(eventStock)));
     const [item] = await db
@@ -344,7 +347,10 @@ router.patch("/event-ordering/stock/:itemId", verifyKitchenPassword, async (req,
       .set({ eventStock: stock })
       .where(and(eq(menuItemsTable.id, itemId), eq(menuItemsTable.eventActive, true)))
       .returning({ id: menuItemsTable.id, name: menuItemsTable.name, eventStock: menuItemsTable.eventStock });
-    if (!item) return res.status(404).json({ error: "Item not found or not event-active" });
+    if (!item) {
+      res.status(404).json({ error: "Item not found or not event-active" });
+      return;
+    }
     res.json(item);
   } catch (err) {
     req.log.error({ err }, "Error updating event stock");

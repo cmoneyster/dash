@@ -35,11 +35,14 @@ router.get("/menu", async (req, res) => {
   }
 });
 
-router.get("/menu/:id", async (req, res) => {
+router.get("/menu/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     const [item] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, id));
-    if (!item) return res.status(404).json({ error: "Menu item not found" });
+    if (!item) {
+      res.status(404).json({ error: "Menu item not found" });
+      return;
+    }
     const { internalNotes: _notes, ...pub } = item;
     res.json({ ...pub, price: parseFloat(pub.price), allergens: pub.allergens ?? [] });
   } catch (err) {
