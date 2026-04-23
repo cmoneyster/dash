@@ -268,7 +268,7 @@ function DetailPanel({
 
   const expired = isExpired(plan.expiresAt);
   const days = daysUntilExpiry(plan.expiresAt);
-  const plannerState = detail?.plannerState as Record<string, unknown> | null | undefined;
+  const plannerState: PlannerState | null | undefined = detail?.plannerState;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -374,22 +374,22 @@ function DetailPanel({
                     <span className="font-semibold">{String(plannerState.guests)}</span>
                   </div>
                 )}
-                {typeof plannerState.savoryPpg !== "undefined" && (
+                {typeof plannerState.savoryPPG !== "undefined" && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Savory pieces/guest</span>
-                    <span className="font-semibold">{String(plannerState.savoryPpg)}</span>
+                    <span className="font-semibold">{String(plannerState.savoryPPG)}</span>
                   </div>
                 )}
-                {typeof plannerState.sweetPpg !== "undefined" && (
+                {typeof plannerState.sweetPPG !== "undefined" && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Sweet pieces/guest</span>
-                    <span className="font-semibold">{String(plannerState.sweetPpg)}</span>
+                    <span className="font-semibold">{String(plannerState.sweetPPG)}</span>
                   </div>
                 )}
-                {plannerState.panQtys && typeof plannerState.panQtys === "object" && Object.keys(plannerState.panQtys as object).length > 0 && (
+                {plannerState.panQtys && Object.keys(plannerState.panQtys).length > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Pan size selections</span>
-                    <span className="font-semibold">{Object.keys(plannerState.panQtys as object).length} items</span>
+                    <span className="font-semibold">{Object.keys(plannerState.panQtys).length} items</span>
                   </div>
                 )}
               </div>
