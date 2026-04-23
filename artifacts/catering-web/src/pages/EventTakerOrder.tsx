@@ -73,6 +73,11 @@ interface PendingOrder {
   taxAmount: number | null;
   total: number | null;
   createdAt: string;
+  paymentStatus?: "unpaid" | "paid" | "override" | string | null;
+  paymentMethod?: PaymentMethod | null;
+  cashReceived?: number | null;
+  changeDue?: number | null;
+  paymentOverrideReason?: string | null;
 }
 
 function getStoredPassword(): string | null {
@@ -100,6 +105,11 @@ export default function EventTakerOrder() {
   const [lastReceipt, setLastReceipt] = useState<null | {
     id: string; guestName: string; phone: string; items: CartLine[];
     subtotal: number; taxRate: number; taxAmount: number; total: number; placedAt: string;
+    paymentStatus: string | null;
+    paymentMethod: PaymentMethod | null;
+    cashReceived: number | null;
+    changeDue: number | null;
+    paymentOverrideReason: string | null;
   }>(null);
 
   // ── Payment-gating state ──────────────────────────────────────────
@@ -331,6 +341,11 @@ export default function EventTakerOrder() {
       taxAmount: tx,
       total: tot,
       placedAt: paidAt.toLocaleString(),
+      paymentStatus: o.paymentStatus ?? null,
+      paymentMethod: (o.paymentMethod ?? null) as PaymentMethod | null,
+      cashReceived: o.cashReceived ?? null,
+      changeDue: o.changeDue ?? null,
+      paymentOverrideReason: o.paymentOverrideReason ?? null,
     };
   }
 
@@ -553,6 +568,34 @@ export default function EventTakerOrder() {
               )}
               <div className="flex justify-between font-bold text-sm pt-1 border-t border-dashed mt-1"><span>TOTAL</span><span>${lastReceipt.total.toFixed(2)}</span></div>
             </div>
+            {/* Payment summary — what was tendered, plus change for cash. */}
+            {(lastReceipt.paymentStatus === "paid" || lastReceipt.paymentStatus === "override") && (
+              <div className="border-t border-dashed pt-2 mt-2 space-y-0.5 text-xs">
+                {lastReceipt.paymentStatus === "override" ? (
+                  <>
+                    <div className="flex justify-between"><span>Paid</span><span>Override</span></div>
+                    {lastReceipt.paymentOverrideReason && (
+                      <div className="text-[11px] italic">Reason: {lastReceipt.paymentOverrideReason}</div>
+                    )}
+                  </>
+                ) : lastReceipt.paymentMethod === "cash" ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Paid: Cash</span>
+                      <span>{lastReceipt.cashReceived != null ? `$${lastReceipt.cashReceived.toFixed(2)}` : "—"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Change</span>
+                      <span>{lastReceipt.changeDue != null ? `$${lastReceipt.changeDue.toFixed(2)}` : "—"}</span>
+                    </div>
+                  </>
+                ) : lastReceipt.paymentMethod === "card" ? (
+                  <div className="flex justify-between"><span>Paid</span><span>Card</span></div>
+                ) : lastReceipt.paymentMethod === "venmo" ? (
+                  <div className="flex justify-between"><span>Paid</span><span>Venmo</span></div>
+                ) : null}
+              </div>
+            )}
             <p className="text-center text-xs mt-3">Thank you!</p>
           </div>
 

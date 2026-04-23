@@ -64,7 +64,34 @@ type Order = {
   taxRate?: number | string | null;
   taxAmount?: number | string | null;
   total?: number | string | null;
+  paymentStatus?: "unpaid" | "paid" | "override" | string | null;
+  paymentMethod?: "cash" | "card" | "venmo" | string | null;
+  cashReceived?: number | string | null;
+  changeDue?: number | string | null;
+  paymentOverrideReason?: string | null;
 };
+
+function formatPaymentSummary(o: Order): { label: string; reason?: string | null } | null {
+  if (o.orderSource !== "staff") return null;
+  const status = o.paymentStatus;
+  if (status === "override") {
+    return { label: "Override", reason: o.paymentOverrideReason ?? null };
+  }
+  if (status !== "paid") return null;
+  const num = (v: unknown) => v == null ? null : Number(v);
+  switch (o.paymentMethod) {
+    case "cash": {
+      const cash = num(o.cashReceived);
+      const change = num(o.changeDue);
+      const cashStr = cash != null ? `$${cash.toFixed(2)}` : "—";
+      const changeStr = change != null ? ` (change $${change.toFixed(2)})` : "";
+      return { label: `Cash ${cashStr}${changeStr}` };
+    }
+    case "card": return { label: "Card" };
+    case "venmo": return { label: "Venmo" };
+    default: return { label: "Paid" };
+  }
+}
 
 function NewSessionModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState("");
@@ -354,6 +381,26 @@ function SessionOrders({ sessionId, onOrdersDeleted }: { sessionId: number; onCl
                               <p className="text-[11px] text-muted-foreground mt-0.5 max-w-[18rem] truncate">
                                 {order.items.map(i => `${i.quantity}× ${i.name}`).join(", ")}
                               </p>
+                              {(() => {
+                                const pay = formatPaymentSummary(order);
+                                if (!pay) return null;
+                                const isOverride = order.paymentStatus === "override";
+                                return (
+                                  <div className="mt-1">
+                                    <span className={cn(
+                                      "inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
+                                      isOverride ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700",
+                                    )}>
+                                      Paid: {pay.label}
+                                    </span>
+                                    {isOverride && pay.reason && (
+                                      <p className="text-[11px] italic text-amber-800 mt-0.5 max-w-[18rem]">
+                                        Reason: {pay.reason}
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className="px-3 py-2">
                               {isStaff ? (
