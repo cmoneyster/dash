@@ -54,6 +54,10 @@ export default function EventTakerOrder() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState<null | { id: string; total: number; phoneSent: boolean }>(null);
   const [submitError, setSubmitError] = useState("");
+  const [lastReceipt, setLastReceipt] = useState<null | {
+    id: string; guestName: string; phone: string; items: CartLine[];
+    subtotal: number; taxRate: number; taxAmount: number; total: number; placedAt: string;
+  }>(null);
 
   // Public settings (always available)
   useEffect(() => {
@@ -172,6 +176,14 @@ export default function EventTakerOrder() {
         return;
       }
       const data = await res.json();
+      setLastReceipt({
+        id: String(data.id),
+        guestName: guestName.trim(),
+        phone: phone.trim(),
+        items: cart,
+        subtotal, taxRate, taxAmount, total,
+        placedAt: new Date().toLocaleString(),
+      });
       setConfirmation({ id: data.id, total: data.total ?? total, phoneSent: !!phone.trim() });
       setCart([]);
       setGuestName("");
@@ -228,26 +240,66 @@ export default function EventTakerOrder() {
     );
   }
 
-  // ── Confirmation screen ──────────────────────────────────────────
-  if (confirmation) {
+  // ── Confirmation / printable receipt screen ─────────────────────
+  if (confirmation && lastReceipt) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-background to-emerald-100 flex items-center justify-center p-4">
-        <div className="bg-card border border-border rounded-3xl shadow-xl p-8 max-w-md w-full text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mb-4">
-            <Check className="w-8 h-8" />
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-background to-emerald-100 flex items-center justify-center p-4 print:bg-white print:p-0">
+        <div className="bg-card border border-border rounded-3xl shadow-xl p-6 max-w-md w-full print:shadow-none print:border-0 print:rounded-none">
+          <div className="text-center mb-4 print:hidden">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 mb-2">
+              <Check className="w-7 h-7" />
+            </div>
+            <h2 className="font-display font-bold text-2xl">Order placed!</h2>
+            {confirmation.phoneSent && (
+              <p className="text-xs text-muted-foreground mt-1">SMS confirmation sent.</p>
+            )}
           </div>
-          <h2 className="font-display font-bold text-2xl mb-1">Order placed!</h2>
-          <p className="text-muted-foreground mb-4">Order #{String(confirmation.id).slice(0, 8)} sent to the kitchen.</p>
-          <p className="text-3xl font-bold mb-2">${confirmation.total.toFixed(2)}</p>
-          {confirmation.phoneSent && (
-            <p className="text-xs text-muted-foreground mb-4">SMS confirmation has been sent.</p>
-          )}
-          <button
-            onClick={() => setConfirmation(null)}
-            className="w-full px-5 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700"
-          >
-            Take next order
-          </button>
+
+          {/* Printable receipt */}
+          <div id="receipt" className="font-mono text-sm bg-white border border-dashed border-border rounded-xl p-4 print:border-0 print:p-0">
+            <div className="text-center mb-3">
+              <p className="font-bold text-base">{settings?.eventName || "dash by Hollywood East Cafe"}</p>
+              <p className="text-xs">{lastReceipt.placedAt}</p>
+              <p className="text-xs">Order #{lastReceipt.id.slice(0, 8)}</p>
+            </div>
+            <div className="border-t border-b border-dashed py-2 mb-2 space-y-1">
+              <p>Customer: {lastReceipt.guestName}</p>
+              {lastReceipt.phone && <p>Phone: {lastReceipt.phone}</p>}
+            </div>
+            <table className="w-full text-xs mb-2">
+              <tbody>
+                {lastReceipt.items.map(l => (
+                  <tr key={l.itemId}>
+                    <td className="py-0.5">{l.quantity}× {l.name}</td>
+                    <td className="py-0.5 text-right">${(l.unitPrice * l.quantity).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="border-t border-dashed pt-2 space-y-0.5 text-xs">
+              <div className="flex justify-between"><span>Subtotal</span><span>${lastReceipt.subtotal.toFixed(2)}</span></div>
+              {lastReceipt.taxRate > 0 && (
+                <div className="flex justify-between"><span>Tax ({lastReceipt.taxRate.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}%)</span><span>${lastReceipt.taxAmount.toFixed(2)}</span></div>
+              )}
+              <div className="flex justify-between font-bold text-sm pt-1 border-t border-dashed mt-1"><span>TOTAL</span><span>${lastReceipt.total.toFixed(2)}</span></div>
+            </div>
+            <p className="text-center text-xs mt-3">Thank you!</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 mt-4 print:hidden">
+            <button
+              onClick={() => window.print()}
+              className="px-4 py-3 bg-secondary text-foreground font-semibold rounded-xl hover:bg-secondary/70 flex items-center justify-center gap-2"
+            >
+              <Receipt className="w-4 h-4" /> Print receipt
+            </button>
+            <button
+              onClick={() => { setConfirmation(null); setLastReceipt(null); }}
+              className="px-4 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700"
+            >
+              Next order
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -300,16 +352,19 @@ export default function EventTakerOrder() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {menu.filter(m => m.category === cat).map(item => {
                   const outOfStock = item.eventStock !== null && item.eventStock <= 0;
+                  const inCart = cart.find(l => l.itemId === item.id);
                   return (
                     <button
                       key={item.id}
                       type="button"
                       disabled={outOfStock}
                       onClick={() => addToCart(item)}
-                      className={`relative bg-card border border-border rounded-2xl overflow-hidden text-left transition-all ${
+                      className={`relative bg-card border rounded-2xl overflow-hidden text-left transition-all ${
                         outOfStock
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:border-indigo-400 hover:shadow-md active:scale-[0.98]"
+                          ? "opacity-50 cursor-not-allowed border-border"
+                          : inCart
+                            ? "border-indigo-500 ring-2 ring-indigo-500/20 hover:shadow-md"
+                            : "border-border hover:border-indigo-400 hover:shadow-md active:scale-[0.98]"
                       }`}
                     >
                       {item.imageUrl && (
@@ -331,6 +386,35 @@ export default function EventTakerOrder() {
                       {outOfStock && (
                         <div className="absolute inset-0 bg-foreground/5 flex items-center justify-center">
                           <span className="bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full">Sold out</span>
+                        </div>
+                      )}
+                      {inCart && !outOfStock && (
+                        <div
+                          className="absolute top-2 right-2 flex items-center gap-1 bg-indigo-600 text-white rounded-full pl-1 pr-1 py-0.5 shadow-md"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={e => { e.stopPropagation(); changeQty(item.id, -1); }}
+                            className="w-6 h-6 rounded-full hover:bg-indigo-700 flex items-center justify-center cursor-pointer"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </span>
+                          <span className="text-xs font-bold min-w-[16px] text-center">{inCart.quantity}</span>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={e => { e.stopPropagation(); changeQty(item.id, 1); }}
+                            className="w-6 h-6 rounded-full hover:bg-indigo-700 flex items-center justify-center cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </span>
+                        </div>
+                      )}
+                      {inCart && (
+                        <div className="px-3 pb-2 -mt-1 text-[11px] text-indigo-700 font-semibold">
+                          Line: ${(inCart.unitPrice * inCart.quantity).toFixed(2)}
                         </div>
                       )}
                     </button>

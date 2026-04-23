@@ -19,7 +19,7 @@ export const eventOrdersTable = pgTable("event_orders", {
   orderSource: text("order_source").notNull().default("guest"),
   // Snapshotted totals (staff orders only — guest orders leave these null)
   subtotal: numeric("subtotal", { precision: 10, scale: 2 }),
-  taxRate: numeric("tax_rate", { precision: 5, scale: 2 }),
+  taxRate: numeric("tax_rate", { precision: 6, scale: 3 }),
   taxAmount: numeric("tax_amount", { precision: 10, scale: 2 }),
   total: numeric("total", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),

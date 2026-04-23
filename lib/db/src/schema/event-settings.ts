@@ -10,7 +10,7 @@ export const eventSettingsTable = pgTable("event_settings", {
   // Staff Order Taker (POS-style) settings
   eventTakerPassword: text("event_taker_password"),
   eventTakerTaxEnabled: boolean("event_taker_tax_enabled").notNull().default(false),
-  eventTakerTaxRate: numeric("event_taker_tax_rate", { precision: 5, scale: 2 }),
+  eventTakerTaxRate: numeric("event_taker_tax_rate", { precision: 6, scale: 3 }),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

@@ -763,7 +763,7 @@ export default function MenuManager() {
 
                 <div>
                   <label className="block text-sm font-semibold mb-1">
-                    Event Order Taker Price <span className="font-normal text-muted-foreground text-xs">(optional — overrides base price for staff POS only)</span>
+                    Event Order Taker Price <span className="font-normal text-muted-foreground text-xs">(required for staff POS — items without this are hidden from the order taker)</span>
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
@@ -772,7 +772,7 @@ export default function MenuManager() {
                       type="number"
                       step="0.01"
                       min="0"
-                      placeholder="Leave blank to use base price"
+                      placeholder="Leave blank to hide from POS"
                       className="w-full pl-7 pr-4 py-2 border rounded-xl"
                     />
                   </div>
