@@ -49,25 +49,30 @@ const verifyKitchenPassword = makeAuthMiddleware(resolveKitchenPassword);
 // Resolve the live-effective ordering state for one channel. If state is 'paused' but
 // the pausedUntil deadline has passed, treat it as 'accepting' (the timer expired).
 type ChannelState = "accepting" | "paused" | "closed";
-function resolveChannelState(rawState: string | null | undefined, pausedUntil: Date | null | undefined): {
-  state: ChannelState; pausedUntil: string | null; remainingSec: number | null;
+function resolveChannelState(
+  rawState: string | null | undefined,
+  pausedUntil: Date | null | undefined,
+  pausedMessage?: string | null,
+): {
+  state: ChannelState; pausedUntil: string | null; remainingSec: number | null; pausedMessage: string | null;
 } {
   const raw = (rawState as ChannelState | null | undefined) ?? "accepting";
+  const msg = pausedMessage?.trim() ? pausedMessage.trim() : null;
   if (raw === "paused" && pausedUntil) {
     const ms = pausedUntil.getTime() - Date.now();
-    if (ms > 0) return { state: "paused", pausedUntil: pausedUntil.toISOString(), remainingSec: Math.ceil(ms / 1000) };
-    return { state: "accepting", pausedUntil: null, remainingSec: null };
+    if (ms > 0) return { state: "paused", pausedUntil: pausedUntil.toISOString(), remainingSec: Math.ceil(ms / 1000), pausedMessage: msg };
+    return { state: "accepting", pausedUntil: null, remainingSec: null, pausedMessage: null };
   }
-  if (raw === "closed") return { state: "closed", pausedUntil: null, remainingSec: null };
-  return { state: "accepting", pausedUntil: null, remainingSec: null };
+  if (raw === "closed") return { state: "closed", pausedUntil: null, remainingSec: null, pausedMessage: null };
+  return { state: "accepting", pausedUntil: null, remainingSec: null, pausedMessage: null };
 }
 
 // Read both channels in their resolved/effective form for client display + gating.
 export async function getOrderingChannelStates() {
   const s = await getEventSettings();
   return {
-    guest: resolveChannelState(s?.guestOrderingState, s?.guestOrderingPausedUntil ?? null),
-    taker: resolveChannelState(s?.takerOrderingState, s?.takerOrderingPausedUntil ?? null),
+    guest: resolveChannelState(s?.guestOrderingState, s?.guestOrderingPausedUntil ?? null, s?.guestOrderingPausedMessage ?? null),
+    taker: resolveChannelState(s?.takerOrderingState, s?.takerOrderingPausedUntil ?? null, s?.takerOrderingPausedMessage ?? null),
   };
 }
 
@@ -82,7 +87,7 @@ router.get("/event-ordering/settings", async (req, res) => {
         .where(eq(eventSessionsTable.id, settings.activeEventSessionId));
       activeSessionName = session?.name ?? null;
     }
-    const guest = resolveChannelState(settings?.guestOrderingState, settings?.guestOrderingPausedUntil ?? null);
+    const guest = resolveChannelState(settings?.guestOrderingState, settings?.guestOrderingPausedUntil ?? null, settings?.guestOrderingPausedMessage ?? null);
     res.json({
       eventName: settings?.eventName ?? "",
       activeSessionId: settings?.activeEventSessionId ?? null,
@@ -90,6 +95,7 @@ router.get("/event-ordering/settings", async (req, res) => {
       orderingState: guest.state,
       orderingPausedUntil: guest.pausedUntil,
       orderingRemainingSec: guest.remainingSec,
+      orderingPausedMessage: guest.pausedMessage,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching event settings");
@@ -154,8 +160,8 @@ router.get("/event-ordering/ordering-state", async (_req, res) => {
 // Body: { channel: 'guest'|'taker', state: 'accepting'|'paused'|'closed', pauseMinutes?: number }
 router.put("/event-ordering/ordering-state", verifyKitchenPassword, async (req, res) => {
   try {
-    const { channel, state, pauseMinutes } = req.body as {
-      channel?: "guest" | "taker"; state?: ChannelState; pauseMinutes?: number;
+    const { channel, state, pauseMinutes, pausedMessage } = req.body as {
+      channel?: "guest" | "taker"; state?: ChannelState; pauseMinutes?: number; pausedMessage?: string | null;
     };
     if (channel !== "guest" && channel !== "taker") {
       res.status(400).json({ error: "channel must be 'guest' or 'taker'" });
@@ -174,29 +180,41 @@ router.put("/event-ordering/ordering-state", verifyKitchenPassword, async (req, 
       }
       pausedUntil = new Date(Date.now() + mins * 60_000);
     }
+    // Custom note shown to guests/staff. Only persisted when pausing; cleared
+    // otherwise so old notes don't leak into a future pause. Cap length so a
+    // typo'd paste can't blow up the banner layout.
+    let pausedMessageNormalized: string | null = null;
+    if (state === "paused" && typeof pausedMessage === "string") {
+      const trimmed = pausedMessage.trim();
+      if (trimmed.length > 200) {
+        res.status(400).json({ error: "pausedMessage must be 200 characters or fewer" });
+        return;
+      }
+      pausedMessageNormalized = trimmed.length > 0 ? trimmed : null;
+    }
 
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     if (existing) {
       const updatedAt = new Date();
       if (channel === "guest") {
         await db.update(eventSettingsTable)
-          .set({ guestOrderingState: state, guestOrderingPausedUntil: pausedUntil, updatedAt })
+          .set({ guestOrderingState: state, guestOrderingPausedUntil: pausedUntil, guestOrderingPausedMessage: pausedMessageNormalized, updatedAt })
           .where(eq(eventSettingsTable.id, 1));
       } else {
         await db.update(eventSettingsTable)
-          .set({ takerOrderingState: state, takerOrderingPausedUntil: pausedUntil, updatedAt })
+          .set({ takerOrderingState: state, takerOrderingPausedUntil: pausedUntil, takerOrderingPausedMessage: pausedMessageNormalized, updatedAt })
           .where(eq(eventSettingsTable.id, 1));
       }
     } else {
       if (channel === "guest") {
         await db.insert(eventSettingsTable).values({
           id: 1, eventName: "",
-          guestOrderingState: state, guestOrderingPausedUntil: pausedUntil,
+          guestOrderingState: state, guestOrderingPausedUntil: pausedUntil, guestOrderingPausedMessage: pausedMessageNormalized,
         });
       } else {
         await db.insert(eventSettingsTable).values({
           id: 1, eventName: "",
-          takerOrderingState: state, takerOrderingPausedUntil: pausedUntil,
+          takerOrderingState: state, takerOrderingPausedUntil: pausedUntil, takerOrderingPausedMessage: pausedMessageNormalized,
         });
       }
     }
@@ -240,11 +258,12 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
     if (channels.guest.state !== "accepting") {
       res.status(423).json({
         error: channels.guest.state === "paused"
-          ? "Ordering is paused — please try again shortly."
+          ? (channels.guest.pausedMessage ?? "Ordering is paused — please try again shortly.")
           : "We're not accepting orders right now.",
         state: channels.guest.state,
         pausedUntil: channels.guest.pausedUntil,
         remainingSec: channels.guest.remainingSec,
+        pausedMessage: channels.guest.pausedMessage,
       });
       return;
     }
@@ -255,10 +274,10 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
       // Re-check the kitchen toggle inside the transaction to close the small
       // window between the gate above and committing the row.
       const [s] = await tx.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1)).for("update");
-      const live = resolveChannelState(s?.guestOrderingState, s?.guestOrderingPausedUntil ?? null);
+      const live = resolveChannelState(s?.guestOrderingState, s?.guestOrderingPausedUntil ?? null, s?.guestOrderingPausedMessage ?? null);
       if (live.state !== "accepting") {
         throw Object.assign(new Error(live.state === "paused"
-          ? "Ordering is paused — please try again shortly."
+          ? (live.pausedMessage ?? "Ordering is paused — please try again shortly.")
           : "We're not accepting orders right now."),
           { status: 423, channelState: live });
       }
@@ -326,6 +345,7 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
         state: err.channelState.state,
         pausedUntil: err.channelState.pausedUntil,
         remainingSec: err.channelState.remainingSec,
+        pausedMessage: err.channelState.pausedMessage,
       });
       return;
     }

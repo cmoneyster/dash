@@ -54,6 +54,7 @@ interface TakerSettings {
   orderingState?: "accepting" | "paused" | "closed";
   orderingPausedUntil?: string | null;
   orderingRemainingSec?: number | null;
+  orderingPausedMessage?: string | null;
 }
 
 function formatTakerBannerTime(pausedUntil: string | null | undefined, now: number): string {
@@ -932,7 +933,11 @@ export default function EventTakerOrder() {
                       ? `Kitchen paused order taking — back in ${formatTakerBannerTime(settings.orderingPausedUntil ?? null, tickNow)}`
                       : "Kitchen has stopped order taking."}
                   </p>
-                  <p className="text-xs mt-0.5 opacity-80">New orders cannot be charged until this clears.</p>
+                  <p className="text-xs mt-0.5 opacity-80">
+                    {settings.orderingState === "paused" && settings.orderingPausedMessage
+                      ? settings.orderingPausedMessage
+                      : "New orders cannot be charged until this clears."}
+                  </p>
                 </div>
               )}
               {submitError && (

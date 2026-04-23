@@ -62,6 +62,7 @@ router.get("/event-taker/settings", async (req, res) => {
       orderingState: channels.taker.state,
       orderingPausedUntil: channels.taker.pausedUntil,
       orderingRemainingSec: channels.taker.remainingSec,
+      orderingPausedMessage: channels.taker.pausedMessage,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching taker settings");

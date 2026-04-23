@@ -46,7 +46,7 @@ export default function EventOrder() {
   const [submittedOrderId, setSubmittedOrderId] = useState<number | null>(null);
   const { data: categoriesData } = useCategories();
 
-  type ChState = { state: "accepting" | "paused" | "closed"; pausedUntil: string | null; remainingSec: number | null };
+  type ChState = { state: "accepting" | "paused" | "closed"; pausedUntil: string | null; remainingSec: number | null; pausedMessage?: string | null };
   const [orderingState, setOrderingState] = useState<ChState | null>(null);
   const [tickNow, setTickNow] = useState(Date.now());
 
@@ -61,6 +61,7 @@ export default function EventOrder() {
               state: data.orderingState,
               pausedUntil: data.orderingPausedUntil ?? null,
               remainingSec: data.orderingRemainingSec ?? null,
+              pausedMessage: data.orderingPausedMessage ?? null,
             });
           }
         })
@@ -174,6 +175,7 @@ export default function EventOrder() {
           state: data.state ?? "paused",
           pausedUntil: data.pausedUntil ?? null,
           remainingSec: data.remainingSec ?? null,
+          pausedMessage: data.pausedMessage ?? null,
         });
         alert(data.error ?? "Ordering is paused right now. Please try again shortly.");
       } else {
@@ -315,7 +317,8 @@ export default function EventOrder() {
             </p>
             <p className="text-xs mt-1 opacity-80">
               {orderingState.state === "paused"
-                ? "The kitchen is catching up. You can build your order, but submission is disabled until ordering resumes."
+                ? (orderingState.pausedMessage
+                    ?? "The kitchen is catching up. You can build your order, but submission is disabled until ordering resumes.")
                 : "Please check back later or ask a staff member."}
             </p>
           </div>

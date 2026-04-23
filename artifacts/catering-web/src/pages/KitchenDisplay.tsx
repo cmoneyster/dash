@@ -173,7 +173,7 @@ export default function KitchenDisplay() {
   }
 
   // Kitchen-controlled ordering toggles. Two independent channels: guest + staff taker.
-  type ChState = { state: "accepting" | "paused" | "closed"; pausedUntil: string | null; remainingSec: number | null };
+  type ChState = { state: "accepting" | "paused" | "closed"; pausedUntil: string | null; remainingSec: number | null; pausedMessage?: string | null };
   const [channels, setChannels] = useState<{ guest: ChState; taker: ChState } | null>(null);
   const [tickNow, setTickNow] = useState(Date.now());
   const [chBusy, setChBusy] = useState<"guest" | "taker" | null>(null);
@@ -222,7 +222,7 @@ export default function KitchenDisplay() {
     }
   }, [tickNow, channels, fetchChannels]);
 
-  async function setChannelState(channel: "guest" | "taker", state: "accepting" | "paused" | "closed", pauseMinutes?: number) {
+  async function setChannelState(channel: "guest" | "taker", state: "accepting" | "paused" | "closed", pauseMinutes?: number, pausedMessage?: string) {
     if (!authedPassword) return;
     setChBusy(channel);
     setChError("");
@@ -230,7 +230,7 @@ export default function KitchenDisplay() {
       const res = await fetch(`${BASE}/api/event-ordering/ordering-state`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
-        body: JSON.stringify({ channel, state, pauseMinutes }),
+        body: JSON.stringify({ channel, state, pauseMinutes, pausedMessage }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -541,8 +541,9 @@ export default function KitchenDisplay() {
       {pauseModal && (
         <PauseDurationModal
           channel={pauseModal}
+          currentMessage={channels?.[pauseModal]?.pausedMessage ?? null}
           onCancel={() => setPauseModal(null)}
-          onConfirm={(m) => setChannelState(pauseModal, "paused", m)}
+          onConfirm={(m, msg) => setChannelState(pauseModal, "paused", m, msg)}
         />
       )}
 
@@ -1112,7 +1113,7 @@ function PrintableTicket({ order, mode, eventName }: { order: EventOrder; mode: 
   );
 }
 
-type ChannelState = { state: "accepting" | "paused" | "closed"; pausedUntil: string | null; remainingSec: number | null };
+type ChannelState = { state: "accepting" | "paused" | "closed"; pausedUntil: string | null; remainingSec: number | null; pausedMessage?: string | null };
 
 function formatRemaining(pausedUntil: string | null, tickNow: number): string {
   if (!pausedUntil) return "";
@@ -1230,15 +1231,18 @@ function OrderingTogglePanel({
 }
 
 export function PauseDurationModal({
-  channel, onCancel, onConfirm,
+  channel, currentMessage, onCancel, onConfirm,
 }: {
   channel: "guest" | "taker";
+  currentMessage?: string | null;
   onCancel: () => void;
-  onConfirm: (minutes: number) => void;
+  onConfirm: (minutes: number, message: string) => void;
 }) {
   const [custom, setCustom] = useState("");
+  const [note, setNote] = useState(currentMessage ?? "");
   const presets = [5, 10, 15, 30];
   const title = channel === "guest" ? "Pause Guest Ordering" : "Pause Staff Order Taker";
+  const audience = channel === "guest" ? "guests" : "staff";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6">
@@ -1251,11 +1255,24 @@ export function PauseDurationModal({
             <p className="text-xs text-white/50">Auto-resumes when the timer ends</p>
           </div>
         </div>
+        <div className="mb-4">
+          <label className="block text-xs font-semibold text-white/70 mb-1.5">
+            Message for {audience} <span className="font-normal text-white/40">(optional)</span>
+          </label>
+          <textarea
+            value={note}
+            onChange={e => setNote(e.target.value.slice(0, 200))}
+            placeholder="e.g. Catching up on the rush — back in 10!"
+            rows={2}
+            className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-amber-400 resize-none"
+          />
+          <p className="text-[10px] text-white/40 mt-1 text-right">{note.length}/200 · leave blank for the default note</p>
+        </div>
         <div className="grid grid-cols-4 gap-2 mb-4">
           {presets.map(m => (
             <button
               key={m}
-              onClick={() => onConfirm(m)}
+              onClick={() => onConfirm(m, note)}
               className="py-2.5 rounded-xl bg-white/10 hover:bg-amber-500/30 text-white font-semibold text-sm transition-colors"
             >
               {m}m
@@ -1275,7 +1292,7 @@ export function PauseDurationModal({
           <button
             onClick={() => {
               const n = Number(custom);
-              if (Number.isFinite(n) && n > 0) onConfirm(n);
+              if (Number.isFinite(n) && n > 0) onConfirm(n, note);
             }}
             disabled={!custom || Number(custom) <= 0}
             className="px-4 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold disabled:opacity-40"

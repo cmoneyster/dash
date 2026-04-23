@@ -18,8 +18,10 @@ export const eventSettingsTable = pgTable("event_settings", {
   // When state='paused', pausedUntil holds the auto-resume timestamp.
   guestOrderingState: text("guest_ordering_state").notNull().default("accepting"),
   guestOrderingPausedUntil: timestamp("guest_ordering_paused_until"),
+  guestOrderingPausedMessage: text("guest_ordering_paused_message"),
   takerOrderingState: text("taker_ordering_state").notNull().default("accepting"),
   takerOrderingPausedUntil: timestamp("taker_ordering_paused_until"),
+  takerOrderingPausedMessage: text("taker_ordering_paused_message"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
