@@ -288,7 +288,7 @@ export default function EventSettings() {
                 label=""
                 sublabel={
                   hasKitchenPassword
-                    ? "Leave blank to keep the existing password. Clear the field and save to remove it (falls back to guest password)."
+                    ? "Leave blank to keep the existing password. Use Remove password to clear it (falls back to guest password)."
                     : "If left blank, the guest ordering password is used for the kitchen display too."
                 }
                 hasExisting={hasKitchenPassword}
@@ -296,6 +296,8 @@ export default function EventSettings() {
                 placeholder={hasKitchenPassword ? "Enter a new password to change it" : "Same as guest password (leave blank)"}
                 value={kitchenPassword}
                 onChange={setKitchenPassword}
+                cleared={clearKitchenPassword}
+                onClear={setClearKitchenPassword}
               />
             </div>
 
