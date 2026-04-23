@@ -38,6 +38,13 @@ type QuoteLineItem = {
   quantity: number;
   unitPrice: number;
   notes?: string | null;
+  pricingTemplate?: "per_unit" | "pan_sizes" | null;
+  sizeSlot?: number | null;
+  sizeLabel?: string | null;
+  sizeServings?: number | null;
+  unit?: string | null;
+  servingSize?: number | null;
+  tierApplied?: boolean | null;
 };
 
 type QuoteAdjustment = {

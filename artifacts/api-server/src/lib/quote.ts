@@ -158,22 +158,31 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     }
     const descriptor = descriptorParts.join(" · ");
 
-    doc.fillColor("#111").text(li.name, colItem, y, { width: 260 });
-    let extra = 0;
+    const itemWidth = 260;
+    doc.fillColor("#111").fontSize(10);
+    const nameH = doc.heightOfString(li.name, { width: itemWidth });
+    doc.text(li.name, colItem, y, { width: itemWidth });
+    let yCursor = y + nameH;
     if (descriptor) {
-      extra += 12;
-      doc.fillColor("#666").fontSize(9).text(descriptor, colItem, y + extra, { width: 260 });
+      doc.fillColor("#666").fontSize(9);
+      const h = doc.heightOfString(descriptor, { width: itemWidth });
+      doc.text(descriptor, colItem, yCursor, { width: itemWidth });
+      yCursor += h;
       doc.fontSize(10);
     }
     if (li.notes) {
-      extra += descriptor ? 11 : 12;
-      doc.fillColor("#888").fontSize(9).text(li.notes, colItem, y + extra, { width: 260 });
+      doc.fillColor("#888").fontSize(9);
+      const h = doc.heightOfString(li.notes, { width: itemWidth });
+      doc.text(li.notes, colItem, yCursor, { width: itemWidth });
+      yCursor += h;
       doc.fontSize(10);
     }
-    doc.fillColor("#111").text(String(li.quantity), colQty, y, { width: 50, align: "right" });
+    doc.fillColor("#111").fontSize(10);
+    doc.text(String(li.quantity), colQty, y, { width: 50, align: "right" });
     doc.text(fmtUSD(li.unitPrice), colUnit, y, { width: 80, align: "right" });
     doc.text(fmtUSD(li.lineTotal), colTotal, y, { width: 80, align: "right" });
-    y += extra > 0 ? extra + 16 : 18;
+    const blockH = yCursor - y;
+    y += Math.max(blockH, 14) + 6;
   }
 
   // Totals block

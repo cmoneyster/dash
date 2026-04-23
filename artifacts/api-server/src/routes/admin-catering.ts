@@ -78,19 +78,28 @@ function normalizeLineItems(raw: unknown): QuoteLineItem[] | undefined {
       const sizeSlot = sizeSlotN != null && sizeSlotN >= 1 && sizeSlotN <= 5 ? Math.floor(sizeSlotN) : null;
       const sizeServingsN = li.sizeServings == null ? null : Number(li.sizeServings);
       const servingSizeN = li.servingSize == null ? null : Number(li.servingSize);
+      const safeNum = (v: unknown, max: number) => {
+        const n = Number(v);
+        if (!Number.isFinite(n) || n < 0) return 0;
+        return Math.min(n, max);
+      };
+      const safeIntOrNull = (n: number | null, max: number) => {
+        if (n == null || !Number.isFinite(n) || n < 0) return null;
+        return Math.min(Math.floor(n), max);
+      };
       return {
         id: String(li.id ?? randomUUID()),
         menuItemId: li.menuItemId == null ? null : Number(li.menuItemId) || null,
         name: String(li.name ?? "").slice(0, 200),
-        quantity: Number(li.quantity) || 0,
-        unitPrice: Number(li.unitPrice) || 0,
+        quantity: safeNum(li.quantity, 1_000_000),
+        unitPrice: safeNum(li.unitPrice, 1_000_000),
         notes: li.notes ? String(li.notes).slice(0, 500) : null,
         pricingTemplate,
         sizeSlot,
         sizeLabel: li.sizeLabel ? String(li.sizeLabel).slice(0, 60) : null,
-        sizeServings: sizeServingsN != null && Number.isFinite(sizeServingsN) ? sizeServingsN : null,
+        sizeServings: safeIntOrNull(sizeServingsN, 100_000),
         unit: li.unit ? String(li.unit).slice(0, 30) : null,
-        servingSize: servingSizeN != null && Number.isFinite(servingSizeN) ? servingSizeN : null,
+        servingSize: safeIntOrNull(servingSizeN, 100_000),
         tierApplied: li.tierApplied === true,
       };
     });
