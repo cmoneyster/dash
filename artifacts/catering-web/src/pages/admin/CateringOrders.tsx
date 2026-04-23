@@ -933,10 +933,13 @@ export default function CateringOrders() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    type RawMenuItem = { id: number; name: string; category: string; price: number | string };
     fetch(`${BASE}/api/admin/menu`, { headers: authHeaders() })
-      .then(r => r.ok ? r.json() : [])
-      .then((data: any[]) => setMenu(
-        (data ?? []).map(m => ({ id: m.id, name: m.name, category: m.category, price: Number(m.price) || 0 })),
+      .then(r => r.ok ? r.json() as Promise<RawMenuItem[]> : [] as RawMenuItem[])
+      .then((data) => setMenu(
+        (data ?? []).map((m): AdminMenuItem => ({
+          id: m.id, name: m.name, category: m.category, price: Number(m.price) || 0,
+        })),
       ))
       .catch(() => setMenu([]));
   }, []);

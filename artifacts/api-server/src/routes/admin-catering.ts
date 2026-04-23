@@ -12,7 +12,8 @@ import type {
   QuoteLineItem,
 } from "@workspace/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
-import { sendNewInquiryAlert, sendSms } from "../lib/sms";
+import { sendNewInquiryAlert } from "../lib/sms";
+import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
 import { sendMail } from "../lib/mail";
 import { computeQuoteTotals, renderQuotePdf, fmtUSD } from "../lib/quote";
 import { objectStorageClient } from "../lib/objectStorage";
@@ -460,7 +461,17 @@ router.post("/admin/catering/:id/quote/sms", async (req, res) => {
       `Hi ${inquiry.clientName.split(" ")[0]}! Your catering quote ${inquiry.quoteNumber ?? ""} ` +
       `(${fmtUSD(totals.total)}) from Hollywood East Cafe is ready: ${link}`;
 
-    await sendSms(to, smsBody);
+    if (!isEjoinConfigured()) {
+      return res.status(502).json({ error: "SMS gateway not configured" });
+    }
+    try {
+      // Bypass the fire-and-forget sendSms wrapper so we only stamp the
+      // last-texted timestamp on a confirmed gateway success.
+      await sendSmsViaEjoin(to, smsBody);
+    } catch (sendErr) {
+      req.log.error({ err: sendErr }, "Quote SMS gateway send failed");
+      return res.status(502).json({ error: "Failed to send SMS via gateway" });
+    }
 
     const [updated] = await db
       .update(cateringInquiriesTable)
