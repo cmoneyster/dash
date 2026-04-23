@@ -279,9 +279,20 @@ router.patch("/event-ordering/orders/:id/status", verifyKitchenPassword, async (
       res.status(400).json({ error: "Invalid status" });
       return;
     }
+    // Stamp service-time milestones the first time we reach each step so
+    // re-flipping status (e.g. ready → preparing → ready) doesn't reset the
+    // original timestamps the Sales Report depends on.
+    const [existing] = await db
+      .select({ readyAt: eventOrdersTable.readyAt, pickedUpAt: eventOrdersTable.pickedUpAt })
+      .from(eventOrdersTable)
+      .where(eq(eventOrdersTable.id, id));
+    const updates: Record<string, unknown> = { status };
+    const now = new Date();
+    if (status === "ready" && existing && !existing.readyAt) updates.readyAt = now;
+    if (status === "picked_up" && existing && !existing.pickedUpAt) updates.pickedUpAt = now;
     const [updated] = await db
       .update(eventOrdersTable)
-      .set({ status })
+      .set(updates)
       .where(eq(eventOrdersTable.id, id))
       .returning();
 

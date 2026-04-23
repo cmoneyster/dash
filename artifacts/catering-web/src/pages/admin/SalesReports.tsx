@@ -3,7 +3,7 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
   Loader2, Download, BarChart3, Users, ShoppingBag, DollarSign,
-  Receipt, Package, ChevronDown, ChevronRight, Wallet,
+  Receipt, Package, ChevronDown, ChevronRight, Wallet, Timer,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -19,12 +19,15 @@ interface ReportOrder {
   id: number; createdAt: string; source: string; guestName: string;
   phoneNumber: string | null; status: string; paymentMethod: PaymentMethod;
   items: ReportOrderLine[]; subtotal: number; taxRate: number | null; tax: number; total: number;
+  readyAt: string | null; pickedUpAt: string | null; timeToPickupSec: number | null;
 }
 interface PaymentMethodTotal { method: PaymentMethod; orderCount: number; revenue: number }
+interface PickupStats { pickedUpCount: number; avgPickupSec: number | null; medianPickupSec: number | null }
 interface ReportTotals {
   orderCount: number; itemCount: number; subtotal: number; tax: number;
   revenue: number; avgOrderValue: number; items: ReportItem[]; orders: ReportOrder[];
   byPaymentMethod: PaymentMethodTotal[];
+  pickupStats: PickupStats;
 }
 interface Report {
   from: string; to: string; source: SourceFilter;
@@ -38,6 +41,16 @@ function todayISO(d: Date = new Date()) {
   return x.toISOString().slice(0, 10);
 }
 function fmt(n: number) { return `$${n.toFixed(2)}`; }
+function fmtDuration(sec: number | null): string {
+  if (sec == null) return "—";
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return mm ? `${h}h ${mm}m` : `${h}h`;
+}
 
 function presetRange(p: Preset): { from: string; to: string } | null {
   const now = new Date();
@@ -249,6 +262,8 @@ export default function SalesReports() {
             <Kpi label="Tax Collected" value={fmt(report.totals.tax)} icon={<Receipt className="w-5 h-5" />} accent="text-rose-600 bg-rose-50" />
           </div>
 
+          <PickupTimeCard stats={report.totals.pickupStats} totalOrders={report.totals.orderCount} />
+
           {source === "all" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
               <SourceCard title="Guest Event Ordering" totals={report.bySource.guest} />
@@ -284,6 +299,7 @@ export default function SalesReports() {
                       <th className="px-3 py-2.5 font-semibold text-right">Subtotal</th>
                       <th className="px-3 py-2.5 font-semibold text-right">Tax</th>
                       <th className="px-3 py-2.5 font-semibold text-right">Total</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">Time to Pickup</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -312,10 +328,39 @@ export default function SalesReports() {
                             <td className="px-3 py-2.5 text-right">{fmt(o.subtotal)}</td>
                             <td className="px-3 py-2.5 text-right text-muted-foreground">{fmt(o.tax)}</td>
                             <td className="px-3 py-2.5 text-right font-semibold">{fmt(o.total)}</td>
+                            <td className="px-3 py-2.5 text-right text-xs">
+                              {o.timeToPickupSec != null ? (
+                                <span className="font-medium">{fmtDuration(o.timeToPickupSec)}</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
                           </tr>
                           {isOpen && (
                             <tr key={`${o.id}-d`} className="border-b border-border/50 bg-secondary/20">
-                              <td colSpan={9} className="px-12 py-3">
+                              <td colSpan={10} className="px-12 py-3">
+                                {(o.readyAt || o.pickedUpAt) && (
+                                  <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+                                    {o.readyAt && (
+                                      <span>
+                                        <span className="font-semibold text-foreground">Ready:</span>{" "}
+                                        {new Date(o.readyAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                                      </span>
+                                    )}
+                                    {o.pickedUpAt && (
+                                      <span>
+                                        <span className="font-semibold text-foreground">Picked up:</span>{" "}
+                                        {new Date(o.pickedUpAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                                      </span>
+                                    )}
+                                    {o.timeToPickupSec != null && (
+                                      <span>
+                                        <span className="font-semibold text-foreground">Total wait:</span>{" "}
+                                        {fmtDuration(o.timeToPickupSec)}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                                 <table className="w-full text-xs">
                                   <thead>
                                     <tr className="text-left text-muted-foreground">
@@ -428,6 +473,45 @@ function PaymentBadge({ method }: { method: PaymentMethod }) {
     <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${PAYMENT_STYLES[method]}`}>
       {PAYMENT_LABELS[method]}
     </span>
+  );
+}
+
+function PickupTimeCard({ stats, totalOrders }: { stats: PickupStats; totalOrders: number }) {
+  return (
+    <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden mb-6">
+      <div className="px-5 py-4 border-b border-border bg-secondary/30 flex items-center gap-2">
+        <Timer className="w-5 h-5 text-indigo-600" />
+        <div>
+          <h2 className="font-display font-bold text-lg">Service Time</h2>
+          <p className="text-xs text-muted-foreground">From order placed to picked up.</p>
+        </div>
+      </div>
+      {stats.pickedUpCount === 0 ? (
+        <div className="px-5 py-8 text-center text-muted-foreground text-sm">
+          No orders have been picked up in this range yet.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-border">
+          <div className="bg-card p-4">
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Average</p>
+            <p className="text-2xl font-bold mt-1">{fmtDuration(stats.avgPickupSec)}</p>
+          </div>
+          <div className="bg-card p-4">
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Median</p>
+            <p className="text-2xl font-bold mt-1">{fmtDuration(stats.medianPickupSec)}</p>
+          </div>
+          <div className="bg-card p-4">
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Picked Up</p>
+            <p className="text-2xl font-bold mt-1">
+              {stats.pickedUpCount}
+              {totalOrders > stats.pickedUpCount && (
+                <span className="text-sm font-normal text-muted-foreground"> / {totalOrders}</span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

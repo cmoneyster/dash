@@ -188,7 +188,12 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
     taxRate: number | null;
     tax: number;
     total: number;
+    readyAt: string | null;
+    pickedUpAt: string | null;
+    timeToPickupSec: number | null;
   }> = [];
+  // Collect per-order durations (seconds) for averaging across the report.
+  const pickupDurations: number[] = [];
 
   for (const o of orders) {
     const items = (o.items ?? []) as SnapshotItem[];
@@ -214,6 +219,10 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
       itemBreakdown[key].quantity += i.quantity;
       itemBreakdown[key].revenue += i.lineTotal;
     }
+    const timeToPickupSec = o.pickedUpAt
+      ? Math.max(0, Math.round((o.pickedUpAt.getTime() - o.createdAt.getTime()) / 1000))
+      : null;
+    if (timeToPickupSec != null) pickupDurations.push(timeToPickupSec);
     orderRows.push({
       id: o.id,
       createdAt: o.createdAt.toISOString(),
@@ -227,7 +236,23 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
       taxRate: o.taxRate != null ? parseFloat(o.taxRate) : null,
       tax: round2(orderTax),
       total: round2(orderTotal),
+      readyAt: o.readyAt ? o.readyAt.toISOString() : null,
+      pickedUpAt: o.pickedUpAt ? o.pickedUpAt.toISOString() : null,
+      timeToPickupSec,
     });
+  }
+
+  // Service-time aggregates across orders that actually reached picked_up.
+  const sortedDurations = [...pickupDurations].sort((a, b) => a - b);
+  const avgPickupSec = sortedDurations.length
+    ? Math.round(sortedDurations.reduce((s, n) => s + n, 0) / sortedDurations.length)
+    : null;
+  let medianPickupSec: number | null = null;
+  if (sortedDurations.length) {
+    const mid = Math.floor(sortedDurations.length / 2);
+    medianPickupSec = sortedDurations.length % 2
+      ? sortedDurations[mid]
+      : Math.round((sortedDurations[mid - 1] + sortedDurations[mid]) / 2);
   }
 
   return {
@@ -237,6 +262,11 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
     tax: round2(tax),
     revenue: round2(revenue),
     avgOrderValue: orders.length ? round2(revenue / orders.length) : 0,
+    pickupStats: {
+      pickedUpCount: sortedDurations.length,
+      avgPickupSec,
+      medianPickupSec,
+    },
     items: Object.values(itemBreakdown)
       .map(i => ({ ...i, revenue: round2(i.revenue) }))
       .sort((a, b) => b.revenue - a.revenue),
@@ -355,7 +385,7 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
       }
     } else {
       // Order-level CSV — one row per order
-      rows.push(["Order ID", "Created", "Source", "Guest Name", "Phone", "Status", "payment_method", "Items", "Subtotal", "Tax Rate (%)", "Tax", "Total"].join(","));
+      rows.push(["Order ID", "Created", "Source", "Guest Name", "Phone", "Status", "payment_method", "Items", "Subtotal", "Tax Rate (%)", "Tax", "Total", "Ready At", "Picked Up At", "Time to Pickup (min)"].join(","));
       for (const o of orders) {
         const items = (o.items ?? []) as SnapshotItem[];
         const itemsStr = items.map(i => `${i.quantity}× ${i.name}`).join("; ");
@@ -364,6 +394,9 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
           return s + unit * i.quantity;
         }, 0);
         const total = o.total != null ? parseFloat(o.total) : subtotal;
+        const pickupMin = o.pickedUpAt
+          ? (Math.max(0, o.pickedUpAt.getTime() - o.createdAt.getTime()) / 60000).toFixed(1)
+          : "";
         rows.push([
           o.id,
           o.createdAt.toISOString(),
@@ -377,6 +410,9 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
           o.taxRate != null ? parseFloat(o.taxRate).toFixed(2) : "",
           o.taxAmount != null ? parseFloat(o.taxAmount).toFixed(2) : "0.00",
           total.toFixed(2),
+          o.readyAt ? o.readyAt.toISOString() : "",
+          o.pickedUpAt ? o.pickedUpAt.toISOString() : "",
+          pickupMin,
         ].map(escape).join(","));
       }
     }

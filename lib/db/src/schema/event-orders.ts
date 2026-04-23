@@ -33,6 +33,10 @@ export const eventOrdersTable = pgTable("event_orders", {
   changeDue: numeric("change_due", { precision: 10, scale: 2 }),
   paymentRecordedAt: timestamp("payment_recorded_at"),
   paymentOverrideReason: text("payment_override_reason"),
+  // Service-time milestones — set once when status first reaches that step.
+  // Used by Sales Reports to compute time-to-pickup metrics.
+  readyAt: timestamp("ready_at"),
+  pickedUpAt: timestamp("picked_up_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
