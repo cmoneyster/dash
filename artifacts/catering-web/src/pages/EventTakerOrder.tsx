@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut } from "lucide-react";
+import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
@@ -58,6 +58,13 @@ export default function EventTakerOrder() {
     id: string; guestName: string; phone: string; items: CartLine[];
     subtotal: number; taxRate: number; taxAmount: number; total: number; placedAt: string;
   }>(null);
+  const [printMode, setPrintMode] = useState<"receipt" | "kitchen">("receipt");
+
+  function handlePrint(mode: "receipt" | "kitchen") {
+    setPrintMode(mode);
+    // Wait for the DOM to update so the right ticket is in the printable layer.
+    setTimeout(() => window.print(), 50);
+  }
 
   // Public settings (always available)
   useEffect(() => {
@@ -255,8 +262,19 @@ export default function EventTakerOrder() {
             )}
           </div>
 
-          {/* Printable receipt */}
-          <div id="receipt" className="font-mono text-sm bg-white border border-dashed border-border rounded-xl p-4 print:border-0 print:p-0">
+          {/* Print page sizing — narrow for thermal/ESC-POS, A4 fallback otherwise */}
+          <style>{`
+            @media print {
+              @page { size: 80mm auto; margin: 4mm; }
+              body { background: #fff !important; }
+            }
+          `}</style>
+
+          {/* Customer receipt — visible on screen as preview, printed only in receipt mode */}
+          <div
+            id="receipt"
+            className={`font-mono text-sm bg-white border border-dashed border-border rounded-xl p-4 print:border-0 print:p-0 ${printMode === "kitchen" ? "print:hidden" : ""}`}
+          >
             <div className="text-center mb-3">
               <p className="font-bold text-base">{settings?.eventName || "dash by Hollywood East Cafe"}</p>
               <p className="text-xs">{lastReceipt.placedAt}</p>
@@ -286,16 +304,51 @@ export default function EventTakerOrder() {
             <p className="text-center text-xs mt-3">Thank you!</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 mt-4 print:hidden">
+          {/* Kitchen ticket — hidden on screen, only printed when in kitchen mode */}
+          <div
+            id="kitchen-ticket"
+            className={`hidden ${printMode === "kitchen" ? "print:block" : ""} font-mono text-base bg-white text-black print:border-0 print:p-0`}
+          >
+            <div className="text-center mb-3">
+              <p className="font-bold text-lg uppercase tracking-wider">Kitchen Ticket</p>
+              <p className="text-xs">{settings?.eventName || "dash by Hollywood East Cafe"}</p>
+              <p className="text-xs">{lastReceipt.placedAt}</p>
+              <p className="text-base font-bold mt-1">Order #{lastReceipt.id.slice(0, 8)}</p>
+            </div>
+            <div className="border-t border-b border-dashed border-black py-2 mb-2">
+              <p className="font-bold text-lg">{lastReceipt.guestName}</p>
+            </div>
+            <table className="w-full mb-2">
+              <tbody>
+                {lastReceipt.items.map(l => (
+                  <tr key={l.itemId}>
+                    <td className="py-1 align-top w-10 font-bold text-xl">{l.quantity}×</td>
+                    <td className="py-1 align-top font-semibold">{l.name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-center text-xs border-t border-dashed border-black pt-2 mt-2">
+              {lastReceipt.items.reduce((s, l) => s + l.quantity, 0)} item(s) total
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mt-4 print:hidden">
             <button
-              onClick={() => window.print()}
-              className="px-4 py-3 bg-secondary text-foreground font-semibold rounded-xl hover:bg-secondary/70 flex items-center justify-center gap-2"
+              onClick={() => handlePrint("receipt")}
+              className="px-3 py-3 bg-secondary text-foreground font-semibold rounded-xl hover:bg-secondary/70 flex items-center justify-center gap-1.5 text-sm"
             >
-              <Receipt className="w-4 h-4" /> Print receipt
+              <Receipt className="w-4 h-4" /> Print Receipt
             </button>
             <button
-              onClick={() => { setConfirmation(null); setLastReceipt(null); }}
-              className="px-4 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700"
+              onClick={() => handlePrint("kitchen")}
+              className="px-3 py-3 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-600 flex items-center justify-center gap-1.5 text-sm"
+            >
+              <ChefHat className="w-4 h-4" /> Print Kitchen
+            </button>
+            <button
+              onClick={() => { setConfirmation(null); setLastReceipt(null); setPrintMode("receipt"); }}
+              className="px-3 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 text-sm"
             >
               Next order
             </button>
