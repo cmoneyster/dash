@@ -125,7 +125,7 @@ export default function MenuManager() {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [isNewCategory, setIsNewCategory] = useState(false);
 
-  type InlineEdit = { name: string; description: string; price: string; available: boolean; eventActive: boolean; eventStock: string };
+  type InlineEdit = { name: string; description: string; price: string; available: boolean; eventActive: boolean; eventTakerVisible: boolean; eventStock: string };
   const [localEdits, setLocalEdits] = useState<Record<number, InlineEdit>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
 
@@ -140,6 +140,7 @@ export default function MenuManager() {
         price: String(item.price),
         available: item.available,
         eventActive: item.eventActive ?? false,
+        eventTakerVisible: item.eventTakerVisible ?? false,
         eventStock: item.eventStock == null ? "" : String(item.eventStock),
       };
       return { ...prev, [id]: { ...base, ...patch } };
@@ -187,6 +188,7 @@ export default function MenuManager() {
             price: parseFloat(edit.price),
             available: edit.available,
             eventActive: edit.eventActive,
+            eventTakerVisible: edit.eventTakerVisible,
             eventStock: edit.eventStock.trim() === "" ? null : parseInt(edit.eventStock),
             allergens: original.allergens ?? [],
             servingSize: original.servingSize,
@@ -325,15 +327,16 @@ export default function MenuManager() {
                 <th className="px-3 py-3 font-semibold w-12"></th>
                 <th className="px-3 py-3 font-semibold">Name &amp; Description</th>
                 <th className="px-3 py-3 font-semibold w-20">Price</th>
-                <th className="px-3 py-3 font-semibold w-16 text-center" title="Visible on catering menu">Active</th>
-                <th className="px-3 py-3 font-semibold w-16 text-center" title="Show at in-person events">Event</th>
+                <th className="px-3 py-3 font-semibold w-16 text-center" title="Visible on catering menu">Catering</th>
+                <th className="px-3 py-3 font-semibold w-16 text-center" title="Show on guest /event ordering page">Guest Event</th>
+                <th className="px-3 py-3 font-semibold w-16 text-center" title="Show on staff /event-taker ordering page">Taker</th>
                 <th className="px-3 py-3 font-semibold w-20 text-center" title="Stock limit — leave blank for unlimited">Stock</th>
                 <th className="px-3 py-3 font-semibold text-right w-16"></th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
+                <tr><td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                 </td></tr>
               )}
@@ -343,7 +346,7 @@ export default function MenuManager() {
                 return (
                   <React.Fragment key={cat}>
                     <tr className="bg-secondary/40 border-y border-border">
-                      <td colSpan={7} className="px-6 py-2">
+                      <td colSpan={8} className="px-6 py-2">
                         <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{cat}</span>
                         <span className="ml-2 text-xs text-muted-foreground/50">{catItems.length} item{catItems.length !== 1 ? "s" : ""}</span>
                       </td>
@@ -352,7 +355,7 @@ export default function MenuManager() {
                       const edit = localEdits[item.id];
                       const isDirty = !!edit;
                       const isSaving = savingIds.has(item.id);
-                      const cur = edit ?? { name: item.name, description: item.description, price: String(item.price), available: item.available, eventActive: item.eventActive ?? false, eventStock: item.eventStock == null ? "" : String(item.eventStock) };
+                      const cur = edit ?? { name: item.name, description: item.description, price: String(item.price), available: item.available, eventActive: item.eventActive ?? false, eventTakerVisible: item.eventTakerVisible ?? false, eventStock: item.eventStock == null ? "" : String(item.eventStock) };
 
                       return (
                         <tr key={item.id} className={`border-b border-border/50 transition-colors ${isDirty ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}>
@@ -423,11 +426,22 @@ export default function MenuManager() {
                             <button
                               type="button"
                               disabled={isSaving}
-                              title={cur.eventActive ? "On event menu — click to remove" : "Off event menu — click to add"}
+                              title={cur.eventActive ? "On guest event menu — click to remove" : "Off guest event menu — click to add"}
                               onClick={() => patchEdit(item.id, item, { eventActive: !cur.eventActive })}
                               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${cur.eventActive ? "bg-primary" : "bg-muted"}`}
                             >
                               <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${cur.eventActive ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+                            </button>
+                          </td>
+                          <td className="px-2 py-2 text-center">
+                            <button
+                              type="button"
+                              disabled={isSaving}
+                              title={cur.eventTakerVisible ? "On staff order taker — click to remove" : "Off staff order taker — click to add"}
+                              onClick={() => patchEdit(item.id, item, { eventTakerVisible: !cur.eventTakerVisible })}
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${cur.eventTakerVisible ? "bg-indigo-500" : "bg-muted"}`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${cur.eventTakerVisible ? "translate-x-[18px]" : "translate-x-0.5"}`} />
                             </button>
                           </td>
                           <td className="px-2 py-2">
@@ -720,9 +734,48 @@ export default function MenuManager() {
                   />
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <input {...register("available")} type="checkbox" id="available" className="w-4 h-4 accent-primary" />
-                  <label htmlFor="available" className="text-sm font-semibold">Available for order</label>
+                <div className="space-y-3 p-4 bg-secondary/40 rounded-xl border border-border/50">
+                  <label className="block text-sm font-semibold">Visibility</label>
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input {...register("available")} type="checkbox" className="w-4 h-4 mt-0.5 accent-primary" />
+                      <span className="text-sm">
+                        <span className="font-medium">Catering Menu</span>
+                        <span className="text-muted-foreground"> — show on the public catering ordering page</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input {...register("eventActive")} type="checkbox" className="w-4 h-4 mt-0.5 accent-primary" />
+                      <span className="text-sm">
+                        <span className="font-medium">Guest Event Page</span>
+                        <span className="text-muted-foreground"> — show on the guest <code>/event</code> ordering page</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input {...register("eventTakerVisible")} type="checkbox" className="w-4 h-4 mt-0.5 accent-primary" />
+                      <span className="text-sm">
+                        <span className="font-medium">Staff Order Taker</span>
+                        <span className="text-muted-foreground"> — show on the staff <code>/event-taker</code> POS page</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">
+                    Event Order Taker Price <span className="font-normal text-muted-foreground text-xs">(optional — overrides base price for staff POS only)</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                    <input
+                      {...register("eventTakerPrice")}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Leave blank to use base price"
+                      className="w-full pl-7 pr-4 py-2 border rounded-xl"
+                    />
+                  </div>
                 </div>
               </form>
             </div>

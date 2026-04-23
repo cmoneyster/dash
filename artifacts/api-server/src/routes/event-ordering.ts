@@ -220,9 +220,13 @@ router.get("/event-ordering/orders", verifyKitchenPassword, async (req, res) => 
       for (const m of menuItems) notesMap[m.id] = m.internalNotes ?? null;
     }
 
-    // Augment order items with internalNotes
+    // Augment order items with internalNotes; coerce numeric fields
     const enriched = orders.map(order => ({
       ...order,
+      subtotal: order.subtotal != null ? parseFloat(order.subtotal) : null,
+      taxRate: order.taxRate != null ? parseFloat(order.taxRate) : null,
+      taxAmount: order.taxAmount != null ? parseFloat(order.taxAmount) : null,
+      total: order.total != null ? parseFloat(order.total) : null,
       items: (order.items as { itemId: number }[]).map(item => ({
         ...item,
         internalNotes: notesMap[item.itemId] ?? null,

@@ -668,7 +668,14 @@ components:
           description: Price per unit at tier 3
         eventActive:
           type: boolean
-          description: Whether this item is shown on the on-site event ordering page
+          description: Whether this item is shown on the on-site event ordering page (guest-facing /event)
+        eventTakerVisible:
+          type: boolean
+          description: Whether this item is shown on the staff Event Order Taker page (/event-taker)
+        eventTakerPrice:
+          type: number
+          nullable: true
+          description: Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.
         createdAt:
           type: string
           format: date-time
@@ -728,6 +735,11 @@ components:
           nullable: true
         eventActive:
           type: boolean
+        eventTakerVisible:
+          type: boolean
+        eventTakerPrice:
+          type: number
+          nullable: true
       required:
         - name
         - description
@@ -781,6 +793,11 @@ components:
           nullable: true
         eventActive:
           type: boolean
+        eventTakerVisible:
+          type: boolean
+        eventTakerPrice:
+          type: number
+          nullable: true
 
     BlackoutDate:
       type: object

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken } from "@/components/AdminGuard";
 
@@ -37,6 +37,17 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
       </div>
       <AdminNavLink href="/admin/event-settings" icon={Zap} onClick={onNavigate}>Event Settings</AdminNavLink>
       <AdminNavLink href="/admin/event-history" icon={History} onClick={onNavigate}>Event Log</AdminNavLink>
+      <AdminNavLink href="/admin/sales-reports" icon={BarChart3} onClick={onNavigate}>Sales Reports</AdminNavLink>
+      <a
+        href="/event-taker"
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={onNavigate}
+        className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-foreground/70 hover:bg-secondary hover:text-foreground transition-all"
+      >
+        <ShoppingCart className="w-5 h-5" />
+        Order Taker (POS)
+      </a>
       <div className="pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Catering</p>
       </div>

@@ -1,4 +1,4 @@
-import { pgTable, integer, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, integer, text, timestamp, boolean, numeric } from "drizzle-orm/pg-core";
 
 export const eventSettingsTable = pgTable("event_settings", {
   id: integer("id").primaryKey(),
@@ -7,6 +7,10 @@ export const eventSettingsTable = pgTable("event_settings", {
   kitchenPassword: text("kitchen_password"),
   twilioFromNumber: text("twilio_from_number"),
   activeEventSessionId: integer("active_event_session_id"),
+  // Staff Order Taker (POS-style) settings
+  eventTakerPassword: text("event_taker_password"),
+  eventTakerTaxEnabled: boolean("event_taker_tax_enabled").notNull().default(false),
+  eventTakerTaxRate: numeric("event_taker_tax_rate", { precision: 5, scale: 2 }),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

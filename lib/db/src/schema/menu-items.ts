@@ -21,6 +21,9 @@ export const menuItemsTable = pgTable("menu_items", {
   tier3Price: numeric("tier3_price", { precision: 10, scale: 2 }),
   eventActive: boolean("event_active").notNull().default(false),
   eventStock: integer("event_stock"),
+  // Staff-only Event Order Taker (POS-style) flags
+  eventTakerVisible: boolean("event_taker_visible").notNull().default(false),
+  eventTakerPrice: numeric("event_taker_price", { precision: 10, scale: 2 }),
   // ── Pricing template ────────────────────────────────────────────────────────
   // "per_unit"  → uses price / servingSize / unit  (Small Bites and default)
   // "pan_sizes" → uses size1-5 fields              (Entrées)

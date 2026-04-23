@@ -59,6 +59,7 @@ type Order = {
   items: Array<{ name: string; quantity: number; price: number }>;
   status: string;
   createdAt: string;
+  orderSource?: "guest" | "staff" | string;
 };
 
 function NewSessionModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
@@ -272,6 +273,9 @@ function SessionOrders({ sessionId, onClose, onOrdersDeleted }: { sessionId: num
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-semibold text-sm">{order.guestName}</span>
+                          {order.orderSource === "staff" && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">Staff</span>
+                          )}
                           {order.phoneNumber && <span className="text-xs text-muted-foreground">{order.phoneNumber}</span>}
                           <span className={cn("ml-auto text-xs px-2 py-0.5 rounded-full font-medium", STATUS_COLORS[order.status] ?? "bg-secondary text-muted-foreground")}>
                             {STATUS_LABELS[order.status] ?? order.status}

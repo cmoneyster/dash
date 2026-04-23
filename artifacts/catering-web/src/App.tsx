@@ -11,6 +11,7 @@ import Plan from "@/pages/Plan";
 import Confirmation from "@/pages/Confirmation";
 import NotFound from "@/pages/not-found";
 import EventOrder from "@/pages/EventOrder";
+import EventTakerOrder from "@/pages/EventTakerOrder";
 import KitchenDisplay from "@/pages/KitchenDisplay";
 import OrderStatus from "@/pages/OrderStatus";
 
@@ -23,6 +24,7 @@ import CalendarManager from "@/pages/admin/CalendarManager";
 import ImageLibrary from "@/pages/admin/ImageLibrary";
 import EventSettings from "@/pages/admin/EventSettings";
 import EventHistory from "@/pages/admin/EventHistory";
+import SalesReports from "@/pages/admin/SalesReports";
 import CateringOrders from "@/pages/admin/CateringOrders";
 import CateringPlans from "@/pages/admin/CateringPlans";
 import UpcomingCaterings from "@/pages/admin/UpcomingCaterings";
@@ -46,6 +48,7 @@ function Router() {
       <Route path="/plan/share/:token" component={SharedPlan} />
       <Route path="/confirmation" component={Confirmation} />
       <Route path="/event" component={EventOrder} />
+      <Route path="/event-taker" component={EventTakerOrder} />
       <Route path="/event/order/:id" component={OrderStatus} />
       <Route path="/kitchen" component={KitchenDisplay} />
 
@@ -71,6 +74,9 @@ function Router() {
       </Route>
       <Route path="/admin/event-history">
         {() => <AdminGuard><EventHistory /></AdminGuard>}
+      </Route>
+      <Route path="/admin/sales-reports">
+        {() => <AdminGuard><SalesReports /></AdminGuard>}
       </Route>
       <Route path="/admin/catering">
         {() => <AdminGuard><CateringOrders /></AdminGuard>}

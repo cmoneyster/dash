@@ -53,7 +53,21 @@ export const ListMenuItemsResponseItem = zod.object({
   eventActive: zod
     .boolean()
     .optional()
-    .describe("Whether this item is shown on the on-site event ordering page"),
+    .describe(
+      "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+    ),
+  eventTakerVisible: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+    ),
+  eventTakerPrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+    ),
   createdAt: zod.date(),
 });
 export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
@@ -96,7 +110,21 @@ export const GetMenuItemResponse = zod.object({
   eventActive: zod
     .boolean()
     .optional()
-    .describe("Whether this item is shown on the on-site event ordering page"),
+    .describe(
+      "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+    ),
+  eventTakerVisible: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+    ),
+  eventTakerPrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+    ),
   createdAt: zod.date(),
 });
 
@@ -134,7 +162,21 @@ export const AdminListMenuItemsResponseItem = zod.object({
   eventActive: zod
     .boolean()
     .optional()
-    .describe("Whether this item is shown on the on-site event ordering page"),
+    .describe(
+      "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+    ),
+  eventTakerVisible: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+    ),
+  eventTakerPrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+    ),
   createdAt: zod.date(),
 });
 export const AdminListMenuItemsResponse = zod.array(
@@ -161,6 +203,8 @@ export const CreateMenuItemBody = zod.object({
   tier3Qty: zod.number().nullish(),
   tier3Price: zod.number().nullish(),
   eventActive: zod.boolean().optional(),
+  eventTakerVisible: zod.boolean().optional(),
+  eventTakerPrice: zod.number().nullish(),
 });
 
 /**
@@ -187,6 +231,8 @@ export const UpdateMenuItemBody = zod.object({
   tier3Qty: zod.number().nullish(),
   tier3Price: zod.number().nullish(),
   eventActive: zod.boolean().optional(),
+  eventTakerVisible: zod.boolean().optional(),
+  eventTakerPrice: zod.number().nullish(),
 });
 
 export const updateMenuItemResponseMinimumOrderQtyDefault = 1;
@@ -220,7 +266,21 @@ export const UpdateMenuItemResponse = zod.object({
   eventActive: zod
     .boolean()
     .optional()
-    .describe("Whether this item is shown on the on-site event ordering page"),
+    .describe(
+      "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+    ),
+  eventTakerVisible: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+    ),
+  eventTakerPrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+    ),
   createdAt: zod.date(),
 });
 
@@ -318,11 +378,26 @@ export const GetCartResponse = zod.object({
           .boolean()
           .optional()
           .describe(
-            "Whether this item is shown on the on-site event ordering page",
+            "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+          ),
+        eventTakerVisible: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+          ),
+        eventTakerPrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
           ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
+      sizeSlot: zod.number().nullish(),
+      sizeLabel: zod.string().nullish(),
+      sizePrice: zod.number().nullish(),
     }),
   ),
   total: zod.number(),
@@ -335,9 +410,9 @@ export const AddToCartBody = zod.object({
   sessionId: zod.string(),
   menuItemId: zod.number(),
   quantity: zod.number(),
-  sizeSlot: zod.number().nullable().optional(),
-  sizeLabel: zod.string().nullable().optional(),
-  sizePrice: zod.number().nullable().optional(),
+  sizeSlot: zod.number().nullish(),
+  sizeLabel: zod.string().nullish(),
+  sizePrice: zod.number().nullish(),
 });
 
 export const addToCartResponseItemsItemMenuItemMinimumOrderQtyDefault = 1;
@@ -378,11 +453,26 @@ export const AddToCartResponse = zod.object({
           .boolean()
           .optional()
           .describe(
-            "Whether this item is shown on the on-site event ordering page",
+            "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+          ),
+        eventTakerVisible: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+          ),
+        eventTakerPrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
           ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
+      sizeSlot: zod.number().nullish(),
+      sizeLabel: zod.string().nullish(),
+      sizePrice: zod.number().nullish(),
     }),
   ),
   total: zod.number(),
@@ -440,11 +530,26 @@ export const UpdateCartItemResponse = zod.object({
           .boolean()
           .optional()
           .describe(
-            "Whether this item is shown on the on-site event ordering page",
+            "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+          ),
+        eventTakerVisible: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+          ),
+        eventTakerPrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
           ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
+      sizeSlot: zod.number().nullish(),
+      sizeLabel: zod.string().nullish(),
+      sizePrice: zod.number().nullish(),
     }),
   ),
   total: zod.number(),
@@ -497,11 +602,26 @@ export const RemoveFromCartResponse = zod.object({
           .boolean()
           .optional()
           .describe(
-            "Whether this item is shown on the on-site event ordering page",
+            "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+          ),
+        eventTakerVisible: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+          ),
+        eventTakerPrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
           ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
+      sizeSlot: zod.number().nullish(),
+      sizeLabel: zod.string().nullish(),
+      sizePrice: zod.number().nullish(),
     }),
   ),
   total: zod.number(),
@@ -552,7 +672,19 @@ export const GetPlanResponse = zod.object({
           .boolean()
           .optional()
           .describe(
-            "Whether this item is shown on the on-site event ordering page",
+            "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+          ),
+        eventTakerVisible: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+          ),
+        eventTakerPrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
           ),
         createdAt: zod.date(),
       }),
@@ -606,7 +738,19 @@ export const AddToPlanResponse = zod.object({
           .boolean()
           .optional()
           .describe(
-            "Whether this item is shown on the on-site event ordering page",
+            "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+          ),
+        eventTakerVisible: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+          ),
+        eventTakerPrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
           ),
         createdAt: zod.date(),
       }),
@@ -661,7 +805,19 @@ export const RemoveFromPlanResponse = zod.object({
           .boolean()
           .optional()
           .describe(
-            "Whether this item is shown on the on-site event ordering page",
+            "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+          ),
+        eventTakerVisible: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+          ),
+        eventTakerPrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
           ),
         createdAt: zod.date(),
       }),
@@ -830,7 +986,19 @@ export const SuggestMenuItemsResponse = zod.object({
           .boolean()
           .optional()
           .describe(
-            "Whether this item is shown on the on-site event ordering page",
+            "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+          ),
+        eventTakerVisible: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+          ),
+        eventTakerPrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
           ),
         createdAt: zod.date(),
       }),

@@ -16,6 +16,7 @@ type EventOrder = {
   items: OrderItem[];
   status: "pending" | "preparing" | "ready" | "done";
   createdAt: string;
+  orderSource?: "guest" | "staff" | string;
 };
 
 // localStorage helpers — persist checked item sets across polls
@@ -680,7 +681,14 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
       {/* Header */}
       <div className="px-4 py-3 border-b border-white/10 flex justify-between items-start">
         <div>
-          <p className="font-bold">{order.guestName}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-bold">{order.guestName}</p>
+            {order.orderSource === "staff" && (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+                Staff
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2 mt-0.5">
             {order.tableNumber && <p className="text-xs text-white/50">{order.tableNumber}</p>}
             {order.phoneNumber && (

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare, ShoppingBag, ChefHat } from "lucide-react";
+import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare, ShoppingBag, ChefHat, Receipt, Users } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -76,8 +76,12 @@ export default function EventSettings() {
   const [eventName, setEventName] = useState("");
   const [orderPassword, setOrderPassword] = useState("");
   const [kitchenPassword, setKitchenPassword] = useState("");
+  const [eventTakerPassword, setEventTakerPassword] = useState("");
+  const [eventTakerTaxEnabled, setEventTakerTaxEnabled] = useState(false);
+  const [eventTakerTaxRate, setEventTakerTaxRate] = useState<string>("");
   const [hasOrderPassword, setHasOrderPassword] = useState(false);
   const [hasKitchenPassword, setHasKitchenPassword] = useState(false);
+  const [hasEventTakerPassword, setHasEventTakerPassword] = useState(false);
   const [twilioConfigured, setTwilioConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -91,6 +95,7 @@ export default function EventSettings() {
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   const eventUrl = `${origin}${base}/event`;
   const kitchenUrl = `${origin}${base}/kitchen`;
+  const takerUrl = `${origin}${base}/event-taker`;
 
   useEffect(() => {
     fetch(`${BASE}/api/admin/event-settings`, { headers })
@@ -99,6 +104,9 @@ export default function EventSettings() {
         setEventName(data.eventName ?? "");
         setHasOrderPassword(data.hasOrderPassword ?? data.hasPassword ?? false);
         setHasKitchenPassword(data.hasKitchenPassword ?? false);
+        setHasEventTakerPassword(data.hasEventTakerPassword ?? false);
+        setEventTakerTaxEnabled(data.eventTakerTaxEnabled ?? false);
+        setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
         setTwilioConfigured(data.twilioConfigured ?? false);
       })
       .catch(() => setError("Failed to load event settings"))
@@ -110,9 +118,14 @@ export default function EventSettings() {
     setSaving(true);
     setError("");
     try {
-      const body: Record<string, string> = { eventName };
+      const body: Record<string, unknown> = {
+        eventName,
+        eventTakerTaxEnabled,
+        eventTakerTaxRate: eventTakerTaxRate.trim() === "" ? null : Number(eventTakerTaxRate),
+      };
       if (orderPassword) body.orderPassword = orderPassword;
       if (kitchenPassword !== undefined) body.kitchenPassword = kitchenPassword;
+      if (eventTakerPassword !== undefined) body.eventTakerPassword = eventTakerPassword;
 
       const res = await fetch(`${BASE}/api/admin/event-settings`, {
         method: "PUT",
@@ -124,9 +137,13 @@ export default function EventSettings() {
       setEventName(data.eventName);
       setHasOrderPassword(data.hasOrderPassword ?? false);
       setHasKitchenPassword(data.hasKitchenPassword ?? false);
+      setHasEventTakerPassword(data.hasEventTakerPassword ?? false);
+      setEventTakerTaxEnabled(data.eventTakerTaxEnabled ?? false);
+      setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
       setTwilioConfigured(data.twilioConfigured ?? false);
       setOrderPassword("");
       setKitchenPassword("");
+      setEventTakerPassword("");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
@@ -177,6 +194,57 @@ export default function EventSettings() {
                 value={orderPassword}
                 onChange={setOrderPassword}
               />
+            </div>
+
+            <div className="border-t border-border pt-5 space-y-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <Users className="w-4 h-4" />
+                <span className="font-semibold text-foreground">Event Order Taker (Staff) Password</span>
+              </div>
+              <PasswordField
+                label=""
+                sublabel={
+                  hasEventTakerPassword
+                    ? "Leave blank to keep the existing password. Clear the field and save to remove it (falls back to guest password)."
+                    : "If left blank, the guest ordering password is used for the staff order taker too."
+                }
+                hasExisting={hasEventTakerPassword}
+                existingLabel="Separate password set"
+                placeholder={hasEventTakerPassword ? "Enter a new password to change it" : "Same as guest password (leave blank)"}
+                value={eventTakerPassword}
+                onChange={setEventTakerPassword}
+              />
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Receipt className="w-4 h-4" />
+                  <span className="font-semibold text-foreground">Sales Tax (Order Taker)</span>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={eventTakerTaxEnabled}
+                    onChange={e => setEventTakerTaxEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-primary"
+                  />
+                  <span className="text-sm font-medium">Apply sales tax to order taker totals</span>
+                </label>
+                {eventTakerTaxEnabled && (
+                  <div className="max-w-xs">
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Tax Rate (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={eventTakerTaxRate}
+                      onChange={e => setEventTakerTaxRate(e.target.value)}
+                      placeholder="e.g. 6.25"
+                      className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Applied as a percentage of subtotal.</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="border-t border-border pt-5 space-y-4">
@@ -246,6 +314,20 @@ export default function EventSettings() {
                   <span className="flex-1 text-sm font-mono truncate">{eventUrl}</span>
                   <CopyButton text={eventUrl} />
                   <a href="/event" target="_blank" rel="noopener noreferrer" className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-background">
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Staff Order Taker (POS)</p>
+                </div>
+                <div className="flex items-center gap-2 bg-secondary rounded-xl px-4 py-2.5">
+                  <span className="flex-1 text-sm font-mono truncate">{takerUrl}</span>
+                  <CopyButton text={takerUrl} />
+                  <a href="/event-taker" target="_blank" rel="noopener noreferrer" className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-background">
                     <ExternalLink className="w-4 h-4" />
                   </a>
                 </div>

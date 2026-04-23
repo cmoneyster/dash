@@ -16,6 +16,7 @@ function formatItem(item: typeof menuItemsTable.$inferSelect) {
     size3Price: item.size3Price != null ? parseFloat(item.size3Price) : null,
     size4Price: item.size4Price != null ? parseFloat(item.size4Price) : null,
     size5Price: item.size5Price != null ? parseFloat(item.size5Price) : null,
+    eventTakerPrice: item.eventTakerPrice != null ? parseFloat(item.eventTakerPrice) : null,
     allergens: item.allergens ?? [],
   };
 }
@@ -38,6 +39,7 @@ router.post("/admin/menu", async (req, res) => {
       minimumOrderQty,
       tier2Qty, tier2Price, tier3Qty, tier3Price,
       eventActive, eventStock,
+      eventTakerVisible, eventTakerPrice,
       pricingTemplate,
       size1Label, size1Servings, size1Price,
       size2Label, size2Servings, size2Price,
@@ -64,6 +66,8 @@ router.post("/admin/menu", async (req, res) => {
       tier3Price: tier3Price != null ? String(tier3Price) : null,
       eventActive: eventActive ?? false,
       eventStock: eventStock != null ? parseInt(String(eventStock)) : null,
+      eventTakerVisible: eventTakerVisible ?? false,
+      eventTakerPrice: eventTakerPrice != null && eventTakerPrice !== "" ? String(eventTakerPrice) : null,
       pricingTemplate: pricingTemplate ?? "per_unit",
       size1Label: size1Label ?? "Small Pan",
       size1Servings: size1Servings != null ? parseInt(String(size1Servings)) : 15,
@@ -98,6 +102,7 @@ router.put("/admin/menu/:id", async (req, res) => {
       minimumOrderQty,
       tier2Qty, tier2Price, tier3Qty, tier3Price,
       eventActive, eventStock,
+      eventTakerVisible, eventTakerPrice,
       pricingTemplate,
       size1Label, size1Servings, size1Price,
       size2Label, size2Servings, size2Price,
@@ -124,6 +129,8 @@ router.put("/admin/menu/:id", async (req, res) => {
     if (tier3Price !== undefined)       updates.tier3Price = tier3Price === null ? null : String(tier3Price);
     if (eventActive !== undefined)      updates.eventActive = eventActive;
     if (eventStock !== undefined)       updates.eventStock = eventStock === null ? null : parseInt(String(eventStock));
+    if (eventTakerVisible !== undefined) updates.eventTakerVisible = eventTakerVisible;
+    if (eventTakerPrice !== undefined)  updates.eventTakerPrice = eventTakerPrice === null || eventTakerPrice === "" ? null : String(eventTakerPrice);
     if (pricingTemplate !== undefined)  updates.pricingTemplate = pricingTemplate;
     if (size1Label !== undefined)       updates.size1Label = size1Label;
     if (size1Servings !== undefined)    updates.size1Servings = size1Servings != null ? parseInt(String(size1Servings)) : null;
