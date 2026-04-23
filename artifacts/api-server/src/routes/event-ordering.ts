@@ -175,21 +175,30 @@ router.put("/event-ordering/ordering-state", verifyKitchenPassword, async (req, 
       pausedUntil = new Date(Date.now() + mins * 60_000);
     }
 
-    const stateCol = channel === "guest" ? "guestOrderingState" : "takerOrderingState";
-    const untilCol = channel === "guest" ? "guestOrderingPausedUntil" : "takerOrderingPausedUntil";
-
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     if (existing) {
-      await db.update(eventSettingsTable)
-        .set({ [stateCol]: state, [untilCol]: pausedUntil, updatedAt: new Date() } as any)
-        .where(eq(eventSettingsTable.id, 1));
+      const updatedAt = new Date();
+      if (channel === "guest") {
+        await db.update(eventSettingsTable)
+          .set({ guestOrderingState: state, guestOrderingPausedUntil: pausedUntil, updatedAt })
+          .where(eq(eventSettingsTable.id, 1));
+      } else {
+        await db.update(eventSettingsTable)
+          .set({ takerOrderingState: state, takerOrderingPausedUntil: pausedUntil, updatedAt })
+          .where(eq(eventSettingsTable.id, 1));
+      }
     } else {
-      await db.insert(eventSettingsTable).values({
-        id: 1,
-        eventName: "",
-        [stateCol]: state,
-        [untilCol]: pausedUntil,
-      } as any);
+      if (channel === "guest") {
+        await db.insert(eventSettingsTable).values({
+          id: 1, eventName: "",
+          guestOrderingState: state, guestOrderingPausedUntil: pausedUntil,
+        });
+      } else {
+        await db.insert(eventSettingsTable).values({
+          id: 1, eventName: "",
+          takerOrderingState: state, takerOrderingPausedUntil: pausedUntil,
+        });
+      }
     }
 
     const channels = await getOrderingChannelStates();
