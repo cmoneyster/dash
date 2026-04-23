@@ -225,5 +225,17 @@ export function publicQuoteFromInquiry(inquiry: CateringInquiry) {
       venueAddress: inquiry.venueAddress,
     },
     ...totals,
+    // Square — exposed only when an invoice has been issued, so the public
+    // quote page can render a "Pay deposit / Pay balance" CTA.
+    square: inquiry.squareInvoiceId
+      ? {
+          status: inquiry.squareInvoiceStatus ?? null,
+          hostedUrl: inquiry.squareHostedUrl ?? null,
+          amountPaid: inquiry.squareAmountPaid != null ? Number(inquiry.squareAmountPaid) : 0,
+          balanceDue: inquiry.squareBalanceDue != null ? Number(inquiry.squareBalanceDue) : 0,
+          depositPaidAt: inquiry.squareDepositPaidAt ? inquiry.squareDepositPaidAt.toISOString() : null,
+          paidInFullAt: inquiry.squarePaidInFullAt ? inquiry.squarePaidInFullAt.toISOString() : null,
+        }
+      : null,
   };
 }

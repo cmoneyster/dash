@@ -17,6 +17,14 @@ import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
 import { sendMail } from "../lib/mail";
 import { computeQuoteTotals, renderQuotePdf, fmtUSD } from "../lib/quote";
 import { objectStorageClient } from "../lib/objectStorage";
+import {
+  isSquareConfigured,
+  createAndPublishInvoiceForInquiry,
+  cancelInvoice,
+  getInvoiceSnapshot,
+  SquareApiError,
+  type DepositSpec,
+} from "../lib/square";
 import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
@@ -398,6 +406,12 @@ router.post("/admin/catering/:id/quote/email", async (req, res) => {
     }
     const link = quoteViewUrl(req, inquiry.quoteToken);
     const totals = computeQuoteTotals(inquiry.lineItems, inquiry.fees, inquiry.discounts);
+    const payUrl = inquiry.squareHostedUrl ?? null;
+    const payLabel = inquiry.squarePaidInFullAt
+      ? null
+      : inquiry.squareDepositPaidAt
+        ? "Pay your remaining balance"
+        : "Pay your invoice";
     const subject = `Your catering quote ${inquiry.quoteNumber ?? ""} from Hollywood East Cafe`.trim();
     const text = [
       `Hi ${inquiry.clientName},`,
@@ -405,6 +419,7 @@ router.post("/admin/catering/:id/quote/email", async (req, res) => {
       `Attached is your catering quote (${inquiry.quoteNumber ?? "draft"}) for a total of ${fmtUSD(totals.total)}.`,
       ``,
       `You can also view it online: ${link}`,
+      ...(payUrl && payLabel ? [``, `${payLabel} securely with Square: ${payUrl}`] : []),
       ``,
       `Reply to this email with any questions or to confirm.`,
       ``,
@@ -415,6 +430,9 @@ router.post("/admin/catering/:id/quote/email", async (req, res) => {
       <p>Attached is your catering quote <strong>${inquiry.quoteNumber ?? "(draft)"}</strong>
          for a total of <strong>${fmtUSD(totals.total)}</strong>.</p>
       <p><a href="${link}">View this quote online</a></p>
+      ${payUrl && payLabel
+        ? `<p><a href="${payUrl}" style="display:inline-block;padding:10px 18px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">${payLabel}</a></p>`
+        : ""}
       <p>Reply to this email with any questions or to confirm.</p>
       <p>— Hollywood East Cafe</p>
     `;
@@ -461,9 +479,11 @@ router.post("/admin/catering/:id/quote/sms", async (req, res) => {
 
     const link = quoteViewUrl(req, inquiry.quoteToken);
     const totals = computeQuoteTotals(inquiry.lineItems, inquiry.fees, inquiry.discounts);
+    const payUrl = inquiry.squareHostedUrl ?? null;
     const smsBody =
       `Hi ${inquiry.clientName.split(" ")[0]}! Your catering quote ${inquiry.quoteNumber ?? ""} ` +
-      `(${fmtUSD(totals.total)}) from Hollywood East Cafe is ready: ${link}`;
+      `(${fmtUSD(totals.total)}) from Hollywood East Cafe is ready: ${link}` +
+      (payUrl && !inquiry.squarePaidInFullAt ? `\nPay: ${payUrl}` : "");
 
     if (!isEjoinConfigured()) {
       return res.status(502).json({ error: "SMS gateway not configured" });
@@ -486,6 +506,175 @@ router.post("/admin/catering/:id/quote/sms", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Error texting quote");
     res.status(500).json({ error: "Failed to text quote" });
+  }
+});
+
+// ── Square: send invoice ──────────────────────────────────────────────────────
+
+function parseDepositSpec(raw: unknown): DepositSpec {
+  if (!raw || typeof raw !== "object") return { kind: "none" };
+  const r = raw as { kind?: unknown; value?: unknown };
+  if (r.kind === "percent") {
+    const v = Math.max(0, Math.min(100, Number(r.value) || 0));
+    return v > 0 ? { kind: "percent", value: v } : { kind: "none" };
+  }
+  if (r.kind === "fixed") {
+    const v = Math.max(0, Number(r.value) || 0);
+    return v > 0 ? { kind: "fixed", value: v } : { kind: "none" };
+  }
+  return { kind: "none" };
+}
+
+router.post("/admin/catering/:id/square/invoice", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (!isSquareConfigured()) {
+      return res.status(503).json({
+        error: "Square is not configured. Add SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID.",
+      });
+    }
+    const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
+    if (!inquiry) return res.status(404).json({ error: "Inquiry not found" });
+
+    if (inquiry.squareInvoiceId) {
+      return res.status(409).json({
+        error: "An invoice already exists. Cancel it first to issue a new one.",
+      });
+    }
+
+    const body = (req.body ?? {}) as Body;
+    const deposit = parseDepositSpec(body.deposit);
+    const dueDate = asString(body.dueDate)?.trim() || null;
+
+    const created = await createAndPublishInvoiceForInquiry({
+      inquiry,
+      deposit,
+      dueDate,
+    });
+
+    const updates: Record<string, unknown> = {
+      squareInvoiceId: created.invoiceId,
+      squareInvoiceVersion: created.invoiceVersion,
+      squareOrderId: created.orderId,
+      squareInvoiceStatus: created.status,
+      squareHostedUrl: created.hostedUrl,
+      squareAmountPaid: "0.00",
+      squareBalanceDue: (created.balanceDueCents / 100).toFixed(2),
+      squareDepositKind: deposit.kind === "none" ? null : deposit.kind,
+      squareDepositValue: deposit.kind === "none" ? null : String(deposit.value),
+      squareDueAt: dueDate ? new Date(`${dueDate}T00:00:00`) : null,
+      updatedAt: new Date(),
+    };
+
+    const [updated] = await db
+      .update(cateringInquiriesTable)
+      .set(updates)
+      .where(eq(cateringInquiriesTable.id, id))
+      .returning();
+    res.json({ ok: true, inquiry: updated });
+  } catch (err) {
+    if (err instanceof SquareApiError) {
+      req.log.error({ status: err.status, errors: err.errors }, "Square invoice create failed");
+      return res.status(502).json({ error: err.message });
+    }
+    req.log.error({ err }, "Error creating Square invoice");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create invoice" });
+  }
+});
+
+// ── Square: cancel ────────────────────────────────────────────────────────────
+
+router.post("/admin/catering/:id/square/cancel", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (!isSquareConfigured()) {
+      return res.status(503).json({ error: "Square is not configured" });
+    }
+    const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
+    if (!inquiry) return res.status(404).json({ error: "Inquiry not found" });
+    if (!inquiry.squareInvoiceId || inquiry.squareInvoiceVersion == null) {
+      return res.status(400).json({ error: "No Square invoice to cancel" });
+    }
+    if (inquiry.squareInvoiceStatus === "PAID" || inquiry.squarePaidInFullAt) {
+      return res.status(400).json({ error: "Cannot cancel a paid invoice" });
+    }
+
+    await cancelInvoice(inquiry.squareInvoiceId, inquiry.squareInvoiceVersion);
+
+    // Clear Square fields so a fresh invoice can be issued.
+    const [updated] = await db
+      .update(cateringInquiriesTable)
+      .set({
+        squareInvoiceId: null,
+        squareInvoiceVersion: null,
+        squareOrderId: null,
+        squareInvoiceStatus: "CANCELED",
+        squareHostedUrl: null,
+        squareAmountPaid: null,
+        squareBalanceDue: null,
+        squareDepositKind: null,
+        squareDepositValue: null,
+        squareDueAt: null,
+        squareDepositPaidAt: null,
+        squarePaidInFullAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(cateringInquiriesTable.id, id))
+      .returning();
+    res.json({ ok: true, inquiry: updated });
+  } catch (err) {
+    if (err instanceof SquareApiError) {
+      req.log.error({ status: err.status, errors: err.errors }, "Square invoice cancel failed");
+      return res.status(502).json({ error: err.message });
+    }
+    req.log.error({ err }, "Error cancelling Square invoice");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to cancel invoice" });
+  }
+});
+
+// ── Square: refresh (manual re-pull) ──────────────────────────────────────────
+
+router.post("/admin/catering/:id/square/refresh", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (!isSquareConfigured()) {
+      return res.status(503).json({ error: "Square is not configured" });
+    }
+    const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
+    if (!inquiry) return res.status(404).json({ error: "Inquiry not found" });
+    if (!inquiry.squareInvoiceId) return res.status(400).json({ error: "No Square invoice on file" });
+
+    const snap = await getInvoiceSnapshot(inquiry.squareInvoiceId);
+    const updates: Record<string, unknown> = {
+      squareInvoiceVersion: snap.invoiceVersion,
+      squareInvoiceStatus: snap.status,
+      squareHostedUrl: snap.hostedUrl,
+      squareAmountPaid: snap.amountPaidDollars.toFixed(2),
+      squareBalanceDue: snap.balanceDueDollars.toFixed(2),
+      updatedAt: new Date(),
+    };
+    const now = new Date();
+    if (snap.status === "PARTIALLY_PAID" && !inquiry.squareDepositPaidAt) {
+      updates.squareDepositPaidAt = now;
+    }
+    if (snap.status === "PAID") {
+      if (!inquiry.squareDepositPaidAt) updates.squareDepositPaidAt = now;
+      if (!inquiry.squarePaidInFullAt) updates.squarePaidInFullAt = now;
+    }
+
+    const [updated] = await db
+      .update(cateringInquiriesTable)
+      .set(updates)
+      .where(eq(cateringInquiriesTable.id, id))
+      .returning();
+    res.json({ ok: true, inquiry: updated });
+  } catch (err) {
+    if (err instanceof SquareApiError) {
+      req.log.error({ status: err.status, errors: err.errors }, "Square invoice refresh failed");
+      return res.status(502).json({ error: err.message });
+    }
+    req.log.error({ err }, "Error refreshing Square invoice");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to refresh invoice" });
   }
 });
 

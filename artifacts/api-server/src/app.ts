@@ -26,6 +26,10 @@ app.use(
   }),
 );
 app.use(cors());
+// Square webhook signature is HMAC over the EXACT raw request body. Mount a
+// raw-body parser for that one path BEFORE express.json so the buffer is
+// preserved; the route handler parses the JSON itself.
+app.use("/api/webhooks/square", express.raw({ type: "*/*", limit: "1mb" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

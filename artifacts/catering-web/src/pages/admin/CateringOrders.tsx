@@ -5,7 +5,7 @@ import {
   Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
-  ArrowUp, ArrowDown,
+  ArrowUp, ArrowDown, CreditCard, RefreshCw, ExternalLink, Ban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
@@ -76,6 +76,16 @@ type Inquiry = {
   quoteLastEmailedAt: string | null;
   quoteLastTextedAt: string | null;
   quoteNotes: string | null;
+  squareInvoiceId: string | null;
+  squareInvoiceStatus: string | null;
+  squareHostedUrl: string | null;
+  squareAmountPaid: string | null;
+  squareBalanceDue: string | null;
+  squareDepositKind: "percent" | "fixed" | null;
+  squareDepositValue: string | null;
+  squareDueAt: string | null;
+  squareDepositPaidAt: string | null;
+  squarePaidInFullAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -657,6 +667,218 @@ function QuoteActions({
   );
 }
 
+// ── Square Invoice panel ─────────────────────────────────────────────────────
+
+const SQUARE_STATUS_COLORS: Record<string, string> = {
+  DRAFT: "bg-secondary text-muted-foreground",
+  UNPAID: "bg-amber-100 text-amber-700",
+  SCHEDULED: "bg-amber-100 text-amber-700",
+  PARTIALLY_PAID: "bg-blue-100 text-blue-700",
+  PAID: "bg-emerald-100 text-emerald-700",
+  CANCELED: "bg-red-100 text-red-600",
+  FAILED: "bg-red-100 text-red-600",
+  REFUNDED: "bg-secondary text-muted-foreground",
+};
+
+function SquarePanel({
+  inquiry, onUpdated,
+}: {
+  inquiry: Inquiry;
+  onUpdated: (i: Inquiry) => void;
+}) {
+  const [busy, setBusy] = useState<null | "send" | "cancel" | "refresh">(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [depositKind, setDepositKind] = useState<"none" | "percent" | "fixed">("percent");
+  const [depositValue, setDepositValue] = useState<string>("25");
+  const [dueDate, setDueDate] = useState<string>("");
+
+  const hasInvoice = !!inquiry.squareInvoiceId;
+  const status = inquiry.squareInvoiceStatus ?? null;
+  const isPaid = !!inquiry.squarePaidInFullAt || status === "PAID";
+  const canCancel = hasInvoice && !isPaid;
+
+  async function sendInvoice() {
+    if (!inquiry.clientEmail) { setMsg("Client must have an email on file."); return; }
+    setBusy("send"); setMsg(null);
+    try {
+      const body = {
+        deposit: depositKind === "none"
+          ? { kind: "none" }
+          : { kind: depositKind, value: Number(depositValue) || 0 },
+        dueDate: dueDate || null,
+      };
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/square/invoice`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to send invoice"); return; }
+      onUpdated(data.inquiry);
+      setMsg("Invoice sent — Square will email the customer.");
+    } catch { setMsg("Failed to send invoice."); }
+    finally { setBusy(null); }
+  }
+
+  async function cancelSquareInvoice() {
+    if (!confirm("Cancel this Square invoice? You can issue a new one afterwards.")) return;
+    setBusy("cancel"); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/square/cancel`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to cancel"); return; }
+      onUpdated(data.inquiry);
+      setMsg("Invoice cancelled.");
+    } catch { setMsg("Failed to cancel."); }
+    finally { setBusy(null); }
+  }
+
+  async function refresh() {
+    setBusy("refresh"); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/square/refresh`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to refresh"); return; }
+      onUpdated(data.inquiry);
+      setMsg("Status refreshed from Square.");
+    } catch { setMsg("Failed to refresh."); }
+    finally { setBusy(null); }
+  }
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      <div className="bg-emerald-50 px-4 py-2 border-b border-border flex items-center gap-2">
+        <CreditCard className="w-3.5 h-3.5 text-emerald-700" />
+        <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">Square Invoice</span>
+      </div>
+      <div className="p-4 space-y-3 text-sm">
+        {!hasInvoice ? (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Send a payable invoice via Square. The customer will receive an email with a hosted payment page.
+              Requires a client email and a generated quote with totals greater than $0.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Deposit</span>
+                <select
+                  value={depositKind}
+                  onChange={e => setDepositKind(e.target.value as "none" | "percent" | "fixed")}
+                  className="mt-1 w-full px-3 py-2 border border-border rounded-xl bg-background text-sm"
+                >
+                  <option value="none">None — full balance</option>
+                  <option value="percent">Percent of total</option>
+                  <option value="fixed">Fixed amount</option>
+                </select>
+              </label>
+              {depositKind !== "none" && (
+                <label className="block">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    {depositKind === "percent" ? "Percent (%)" : "Amount ($)"}
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={depositKind === "percent" ? "100" : undefined}
+                    step={depositKind === "percent" ? "1" : "0.01"}
+                    value={depositValue}
+                    onChange={e => setDepositValue(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 border border-border rounded-xl bg-background text-sm"
+                  />
+                </label>
+              )}
+              <label className="block col-span-2">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Due date (optional)</span>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={e => setDueDate(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 border border-border rounded-xl bg-background text-sm"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={sendInvoice}
+              disabled={busy !== null || !inquiry.clientEmail || !inquiry.quoteIssuedAt}
+              title={
+                !inquiry.clientEmail ? "Client email required" :
+                !inquiry.quoteIssuedAt ? "Generate the quote first" : ""
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {busy === "send" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Send Square Invoice
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Status</p>
+                <span className={cn(
+                  "inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold",
+                  SQUARE_STATUS_COLORS[status ?? ""] ?? "bg-secondary text-muted-foreground",
+                )}>
+                  {status ?? "—"}
+                </span>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Balance / Paid</p>
+                <p className="font-semibold">
+                  {formatCurrency(Number(inquiry.squareBalanceDue ?? 0))} due
+                  <span className="text-muted-foreground font-normal"> · {formatCurrency(Number(inquiry.squareAmountPaid ?? 0))} paid</span>
+                </p>
+              </div>
+            </div>
+            {(inquiry.squareDepositPaidAt || inquiry.squarePaidInFullAt) && (
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                {inquiry.squareDepositPaidAt && <p>Deposit received {formatDateTime(inquiry.squareDepositPaidAt)}</p>}
+                {inquiry.squarePaidInFullAt && <p>Paid in full {formatDateTime(inquiry.squarePaidInFullAt)}</p>}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {inquiry.squareHostedUrl && (
+                <a
+                  href={inquiry.squareHostedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-secondary text-foreground text-sm font-semibold rounded-xl hover:bg-border transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" /> View on Square
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-secondary text-foreground text-sm font-semibold rounded-xl hover:bg-border transition-colors disabled:opacity-50"
+              >
+                {busy === "refresh" ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Refresh
+              </button>
+              {canCancel && (
+                <button
+                  type="button"
+                  onClick={cancelSquareInvoice}
+                  disabled={busy !== null}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-50 text-destructive text-sm font-semibold rounded-xl hover:bg-red-100 transition-colors disabled:opacity-50"
+                >
+                  {busy === "cancel" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+                  Cancel Invoice
+                </button>
+              )}
+            </div>
+          </>
+        )}
+        {msg && <p className="text-xs text-muted-foreground border-t border-border pt-2">{msg}</p>}
+      </div>
+    </div>
+  );
+}
+
 // ── Detail Panel ─────────────────────────────────────────────────────────────
 
 function DetailPanel({
@@ -877,10 +1099,16 @@ function DetailPanel({
               </p>
 
               {form.id !== undefined && (
-                <QuoteActions
-                  inquiry={form as Inquiry}
-                  onUpdated={(i) => { setForm(i); onSaved(i); }}
-                />
+                <>
+                  <QuoteActions
+                    inquiry={form as Inquiry}
+                    onUpdated={(i) => { setForm(i); onSaved(i); }}
+                  />
+                  <SquarePanel
+                    inquiry={form as Inquiry}
+                    onUpdated={(i) => { setForm(i); onSaved(i); }}
+                  />
+                </>
               )}
             </>
           )}

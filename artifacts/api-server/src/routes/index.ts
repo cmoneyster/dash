@@ -19,6 +19,7 @@ import adminEventSessionsRouter from "./admin-event-sessions";
 import adminCateringRouter from "./admin-catering";
 import adminPlansRouter from "./admin-plans";
 import quotePublicRouter from "./quote-public";
+import webhooksSquareRouter from "./webhooks-square";
 import verifyRouter from "./verify";
 import categoriesRouter from "./categories";
 import adminCategoriesRouter from "./admin-categories";
@@ -38,6 +39,8 @@ router.use(eventOrderingRouter);
 router.use(eventTakerRouter);
 router.use(verifyRouter);
 router.use(quotePublicRouter);
+// Public webhook — must be mounted BEFORE the admin auth middleware below.
+router.use(webhooksSquareRouter);
 
 router.use(adminAuthRouter);
 

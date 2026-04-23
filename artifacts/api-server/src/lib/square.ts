@@ -58,7 +58,7 @@ export class SquareApiError extends Error {
   status: number;
   errors: SquareError[];
   constructor(status: number, errors: SquareError[], message?: string) {
-    super(message ?? errors.map(e => `${e.code ?? "ERR"}: ${e.detail ?? ""}`).join("; ") || "Square API error");
+    super(message ?? (errors.map(e => `${e.code ?? "ERR"}: ${e.detail ?? ""}`).join("; ") || "Square API error"));
     this.status = status;
     this.errors = errors;
   }

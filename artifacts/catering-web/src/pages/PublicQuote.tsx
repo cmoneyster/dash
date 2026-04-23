@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
-import { Loader2, Download, AlertCircle, CalendarDays, MapPin, Users } from "lucide-react";
+import { Loader2, Download, AlertCircle, CalendarDays, MapPin, Users, CreditCard, CheckCircle2 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -43,6 +43,14 @@ type Quote = {
   discounts: Adjustment[];
   discountsTotal: number;
   total: number;
+  square: {
+    status: string | null;
+    hostedUrl: string | null;
+    amountPaid: number;
+    balanceDue: number;
+    depositPaidAt: string | null;
+    paidInFullAt: string | null;
+  } | null;
 };
 
 function fmtDate(d: string | null) {
@@ -190,6 +198,44 @@ export default function PublicQuote() {
           <div className="px-8 py-5 border-t border-border bg-secondary/40">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Notes</p>
             <p className="text-sm whitespace-pre-wrap">{quote.quoteNotes}</p>
+          </div>
+        )}
+
+        {/* Square payment status */}
+        {quote.square && (
+          <div className="px-8 py-5 border-t border-border bg-violet-50/40">
+            {quote.square.paidInFullAt ? (
+              <div className="flex items-center gap-2 text-emerald-700">
+                <CheckCircle2 className="w-5 h-5" />
+                <p className="font-semibold">Paid in full — thank you!</p>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="text-sm">
+                  {quote.square.depositPaidAt ? (
+                    <>
+                      <p className="font-semibold text-emerald-700">Deposit received: {formatCurrency(quote.square.amountPaid)}</p>
+                      <p className="text-muted-foreground">Remaining balance: <strong>{formatCurrency(quote.square.balanceDue)}</strong></p>
+                    </>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      Balance due: <strong className="text-foreground">{formatCurrency(quote.square.balanceDue || quote.total)}</strong>
+                    </p>
+                  )}
+                </div>
+                {quote.square.hostedUrl && (
+                  <a
+                    href={quote.square.hostedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white font-semibold rounded-xl hover:bg-violet-700 transition-colors text-sm shadow-sm"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    {quote.square.depositPaidAt ? "Pay remaining balance" : "Pay invoice"}
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         )}
 
