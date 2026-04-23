@@ -1,8 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
+const AUTO_PRINT_KEY = "event_taker_auto_print";
+
+function getStoredAutoPrint(): boolean {
+  try { return localStorage.getItem(AUTO_PRINT_KEY) === "1"; } catch { return false; }
+}
+function setStoredAutoPrint(v: boolean) {
+  try { localStorage.setItem(AUTO_PRINT_KEY, v ? "1" : "0"); } catch {}
+}
 
 interface MenuItem {
   id: number;
@@ -59,12 +67,55 @@ export default function EventTakerOrder() {
     subtotal: number; taxRate: number; taxAmount: number; total: number; placedAt: string;
   }>(null);
   const [printMode, setPrintMode] = useState<"receipt" | "kitchen">("receipt");
+  const [autoPrint, setAutoPrint] = useState<boolean>(getStoredAutoPrint());
+  const autoPrintedFor = useRef<string | null>(null);
+
+  function toggleAutoPrint() {
+    setAutoPrint(prev => {
+      const next = !prev;
+      setStoredAutoPrint(next);
+      return next;
+    });
+  }
 
   function handlePrint(mode: "receipt" | "kitchen") {
     setPrintMode(mode);
     // Wait for the DOM to update so the right ticket is in the printable layer.
     setTimeout(() => window.print(), 50);
   }
+
+  // Print kitchen ticket first, then receipt — used by auto-print and the manual button.
+  function printBoth() {
+    setPrintMode("kitchen");
+    setTimeout(() => {
+      let receiptPrinted = false;
+      const printReceipt = () => {
+        if (receiptPrinted) return;
+        receiptPrinted = true;
+        window.removeEventListener("afterprint", afterKitchen);
+        setPrintMode("receipt");
+        setTimeout(() => window.print(), 150);
+      };
+      const afterKitchen = () => printReceipt();
+      window.addEventListener("afterprint", afterKitchen);
+      window.print();
+      // Fallback: if `afterprint` never fires (some browsers/printers/dialog cancels),
+      // still proceed to the receipt print so staff aren't left with only the kitchen ticket.
+      // The `receiptPrinted` guard makes this idempotent with the event handler above.
+      setTimeout(printReceipt, 4000);
+    }, 100);
+  }
+
+  // Auto-print: when a fresh confirmation appears and the toggle is on, fire both prints.
+  useEffect(() => {
+    if (!autoPrint) return;
+    if (!confirmation || !lastReceipt) return;
+    if (autoPrintedFor.current === lastReceipt.id) return;
+    autoPrintedFor.current = lastReceipt.id;
+    // Tiny delay so the confirmation screen has rendered the printable nodes.
+    const t = setTimeout(() => printBoth(), 200);
+    return () => clearTimeout(t);
+  }, [autoPrint, confirmation, lastReceipt]);
 
   // Public settings (always available)
   useEffect(() => {
@@ -372,13 +423,29 @@ export default function EventTakerOrder() {
               <p className="text-xs text-muted-foreground leading-tight">{settings?.eventName || "dash by Hollywood East Cafe"}</p>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
-            title="Sign out"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleAutoPrint}
+              title={autoPrint ? "Auto-print is ON — orders print kitchen + receipt automatically" : "Auto-print is OFF — print manually after each order"}
+              aria-pressed={autoPrint}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors border ${
+                autoPrint
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                  : "bg-secondary text-muted-foreground border-transparent hover:text-foreground"
+              }`}
+            >
+              {autoPrint ? <PrinterCheck className="w-4 h-4" /> : <Printer className="w-4 h-4" />}
+              <span className="hidden sm:inline">Auto-print: {autoPrint ? "On" : "Off"}</span>
+              <span className="sm:hidden">{autoPrint ? "On" : "Off"}</span>
+            </button>
+            <button
+              onClick={handleLogout}
+              className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </header>
 
