@@ -112,38 +112,82 @@ export default function EventTakerOrder() {
   const [autoPrintMode, setAutoPrintMode] = useState<AutoPrintMode>(getStoredAutoPrint());
   const autoPrintedFor = useRef<string | null>(null);
 
+  // Per-ticket print status so staff can see whether each auto-print actually
+  // reached the printer. `idle` = not attempted yet, `printing` = dialog open,
+  // `printed` = afterprint fired after a real print, `canceled` = dialog closed
+  // immediately (user dismissed), `blocked` = no print dialog ever opened
+  // (popup/print blocker, no printer configured, etc.).
+  type PrintStatus = "idle" | "printing" | "printed" | "canceled" | "blocked";
+  const [kitchenStatus, setKitchenStatus] = useState<PrintStatus>("idle");
+  const [receiptStatus, setReceiptStatus] = useState<PrintStatus>("idle");
+
   function chooseAutoPrintMode(mode: AutoPrintMode) {
     setAutoPrintMode(mode);
     setStoredAutoPrint(mode);
   }
 
+  // Run a single print and resolve with whether it actually printed,
+  // was canceled, or never opened a dialog. We bracket `window.print()` with
+  // beforeprint/afterprint listeners: if beforeprint never fires the dialog
+  // was blocked entirely; if afterprint follows beforeprint within a few
+  // hundred ms we treat it as a cancel (no real print job sent).
+  function runPrint(kind: "receipt" | "kitchen"): Promise<PrintStatus> {
+    const setStatus = kind === "kitchen" ? setKitchenStatus : setReceiptStatus;
+    setPrintMode(kind);
+    setStatus("printing");
+    return new Promise(resolve => {
+      // Wait for the DOM to swap to the right printable layer.
+      setTimeout(() => {
+        let beforeAt = 0;
+        let afterAt = 0;
+        let settled = false;
+        const onBefore = () => { beforeAt = Date.now(); };
+        const onAfter = () => { afterAt = Date.now(); finalize(); };
+        const finalize = () => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener("beforeprint", onBefore);
+          window.removeEventListener("afterprint", onAfter);
+          let result: PrintStatus;
+          if (!beforeAt) result = "blocked";
+          else if (afterAt && afterAt - beforeAt < 400) result = "canceled";
+          else result = "printed";
+          setStatus(result);
+          resolve(result);
+        };
+        window.addEventListener("beforeprint", onBefore);
+        window.addEventListener("afterprint", onAfter);
+        try {
+          window.print();
+        } catch {
+          // Some browsers throw if printing is unavailable.
+        }
+        // If afterprint hasn't fired within the deadline, decide based on
+        // whether beforeprint ever fired. Covers blocked dialogs and the
+        // rare case where afterprint never arrives despite a real print.
+        setTimeout(finalize, 5000);
+      }, 100);
+    });
+  }
+
   function handlePrint(mode: "receipt" | "kitchen") {
-    setPrintMode(mode);
-    // Wait for the DOM to update so the right ticket is in the printable layer.
-    setTimeout(() => window.print(), 50);
+    void runPrint(mode);
   }
 
   // Print kitchen ticket first, then receipt — used by auto-print and the manual button.
-  function printBoth() {
-    setPrintMode("kitchen");
-    setTimeout(() => {
-      let receiptPrinted = false;
-      const printReceipt = () => {
-        if (receiptPrinted) return;
-        receiptPrinted = true;
-        window.removeEventListener("afterprint", afterKitchen);
-        setPrintMode("receipt");
-        setTimeout(() => window.print(), 150);
-      };
-      const afterKitchen = () => printReceipt();
-      window.addEventListener("afterprint", afterKitchen);
-      window.print();
-      // Fallback: if `afterprint` never fires (some browsers/printers/dialog cancels),
-      // still proceed to the receipt print so staff aren't left with only the kitchen ticket.
-      // The `receiptPrinted` guard makes this idempotent with the event handler above.
-      setTimeout(printReceipt, 4000);
-    }, 100);
+  async function printBoth() {
+    await runPrint("kitchen");
+    // Small gap so the printable DOM swap settles before the next dialog.
+    await new Promise(r => setTimeout(r, 150));
+    await runPrint("receipt");
   }
+
+  // Reset per-ticket print status whenever a new confirmation comes up so
+  // last order's badges don't bleed into the new one.
+  useEffect(() => {
+    setKitchenStatus("idle");
+    setReceiptStatus("idle");
+  }, [lastReceipt?.id]);
 
   // Auto-print: when a fresh confirmation appears, print whichever document(s)
   // the cashier selected — both, kitchen only, receipt only, or off.
@@ -154,7 +198,7 @@ export default function EventTakerOrder() {
     autoPrintedFor.current = lastReceipt.id;
     // Tiny delay so the confirmation screen has rendered the printable nodes.
     const t = setTimeout(() => {
-      if (autoPrintMode === "both") printBoth();
+      if (autoPrintMode === "both") void printBoth();
       else handlePrint(autoPrintMode); // "kitchen" | "receipt"
     }, 200);
     return () => clearTimeout(t);
@@ -541,6 +585,30 @@ export default function EventTakerOrder() {
             </p>
           </div>
 
+          {/* Per-ticket auto-print status. Shown only after we attempted to
+              print that ticket (status !== "idle"), so manual-print users
+              don't see noise. Failed/canceled rows are tappable to retry. */}
+          {(kitchenStatus !== "idle" || receiptStatus !== "idle") && (
+            <div className="mt-4 space-y-1.5 print:hidden" data-testid="print-status-panel">
+              {kitchenStatus !== "idle" && (
+                <PrintStatusRow
+                  label="Kitchen ticket"
+                  icon={<ChefHat className="w-4 h-4" />}
+                  status={kitchenStatus}
+                  onRetry={() => runPrint("kitchen")}
+                />
+              )}
+              {receiptStatus !== "idle" && (
+                <PrintStatusRow
+                  label="Customer receipt"
+                  icon={<Receipt className="w-4 h-4" />}
+                  status={receiptStatus}
+                  onRetry={() => runPrint("receipt")}
+                />
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-2 mt-4 print:hidden">
             <button
               onClick={() => handlePrint("receipt")}
@@ -813,6 +881,59 @@ export default function EventTakerOrder() {
       )}
     </div>
   );
+}
+
+// ── Print status row ───────────────────────────────────────────────────
+// One row per ticket on the confirmation screen showing whether the
+// auto-print actually fired. Tappable when the print didn't go through so
+// staff can retry without leaving the order.
+function PrintStatusRow({
+  label, icon, status, onRetry,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  status: "idle" | "printing" | "printed" | "canceled" | "blocked";
+  onRetry: () => void;
+}) {
+  const failed = status === "canceled" || status === "blocked";
+  const tone =
+    status === "printed" ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+    : status === "printing" ? "bg-sky-50 text-sky-700 border-sky-200"
+    : "bg-rose-50 text-rose-700 border-rose-200"; // canceled / blocked
+  const message =
+    status === "printed" ? "Sent to printer"
+    : status === "printing" ? "Sending to printer…"
+    : status === "canceled" ? "Print canceled — tap to retry"
+    : "Print failed — tap to retry"; // blocked
+
+  const content = (
+    <div className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs font-medium ${tone}`}>
+      <span className="flex items-center gap-1.5">
+        {icon}
+        <span>{label}</span>
+      </span>
+      <span className="flex items-center gap-1.5">
+        {status === "printed" && <PrinterCheck className="w-4 h-4" />}
+        {status === "printing" && <Loader2 className="w-4 h-4 animate-spin" />}
+        {failed && <AlertTriangle className="w-4 h-4" />}
+        <span>{message}</span>
+      </span>
+    </div>
+  );
+
+  if (failed) {
+    return (
+      <button
+        type="button"
+        onClick={onRetry}
+        className="w-full text-left hover:opacity-90 active:opacity-80"
+        data-testid={`retry-print-${label.toLowerCase().replace(/\s+/g, "-")}`}
+      >
+        {content}
+      </button>
+    );
+  }
+  return content;
 }
 
 // ── Payment confirmation modal ─────────────────────────────────────────
