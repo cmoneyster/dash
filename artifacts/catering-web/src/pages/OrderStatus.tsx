@@ -23,6 +23,7 @@ const STATUS_INFO: Record<string, { label: string; description: string; icon: Re
   preparing: { label: "Being Prepared",    description: "The kitchen is working on your order.",   icon: <ChefHat className="w-8 h-8" />,      color: "text-blue-500"   },
   ready:     { label: "Ready for Pickup!", description: "Your order is ready. Come pick it up!",   icon: <PackageCheck className="w-8 h-8" />, color: "text-emerald-500" },
   done:      { label: "Order Complete",    description: "Thank you! Enjoy your food.",             icon: <CheckCircle2 className="w-8 h-8" />, color: "text-emerald-600" },
+  picked_up: { label: "Picked Up",         description: "Thank you! Enjoy your food.",             icon: <CheckCircle2 className="w-8 h-8" />, color: "text-emerald-600" },
 };
 
 export default function OrderStatus() {
@@ -73,7 +74,7 @@ export default function OrderStatus() {
 
   const info = STATUS_INFO[order.status] ?? STATUS_INFO.pending;
   const currentStep = STATUS_STEPS.indexOf(order.status as typeof STATUS_STEPS[number]);
-  const isDone = order.status === "done";
+  const isDone = order.status === "done" || order.status === "picked_up";
   const isReady = order.status === "ready";
 
   return (

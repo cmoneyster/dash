@@ -9,6 +9,7 @@ import {
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 type SourceFilter = "all" | "guest" | "staff";
+type StatusFilter = "all" | "completed";
 type Preset = "today" | "yesterday" | "week" | "month" | "quarter" | "year" | "custom";
 
 interface ReportItem { name: string; quantity: number; revenue: number }
@@ -69,6 +70,7 @@ export default function SalesReports() {
   const [to, setTo] = useState<string>(initial.to);
   // Default to staff source per spec — most relevant for the new POS reporting workflow.
   const [source, setSource] = useState<SourceFilter>("staff");
+  const [status, setStatus] = useState<StatusFilter>("all");
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -86,7 +88,7 @@ export default function SalesReports() {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({ from, to, source });
+      const params = new URLSearchParams({ from, to, source, status });
       const res = await fetch(`${BASE}/api/admin/sales-reports?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -99,10 +101,10 @@ export default function SalesReports() {
     }
   }
 
-  useEffect(() => { loadReport(); /* eslint-disable-next-line */ }, [from, to, source]);
+  useEffect(() => { loadReport(); /* eslint-disable-next-line */ }, [from, to, source, status]);
 
   async function downloadCsv(type: "orders" | "items") {
-    const params = new URLSearchParams({ from, to, source, type });
+    const params = new URLSearchParams({ from, to, source, status, type });
     const res = await fetch(`${BASE}/api/admin/sales-reports.csv?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -194,6 +196,13 @@ export default function SalesReports() {
               <option value="staff">Staff Order Taker</option>
               <option value="guest">Guest Event Ordering</option>
               <option value="all">All sources</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Status</label>
+            <select value={status} onChange={e => setStatus(e.target.value as StatusFilter)} className="px-3 py-2 border border-border rounded-lg bg-background">
+              <option value="all">All statuses</option>
+              <option value="completed">Completed / Picked Up only</option>
             </select>
           </div>
           <button

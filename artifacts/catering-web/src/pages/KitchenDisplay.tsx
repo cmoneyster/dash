@@ -14,10 +14,12 @@ type EventOrder = {
   tableNumber: string | null;
   phoneNumber: string | null;
   items: OrderItem[];
-  status: "pending" | "preparing" | "ready" | "done";
+  status: "pending" | "preparing" | "ready" | "done" | "picked_up";
   createdAt: string;
   orderSource?: "guest" | "staff" | string;
 };
+
+const COMPLETED_STATUSES = new Set(["done", "picked_up"]);
 
 // localStorage helpers — persist checked item sets across polls
 function loadChecked(): Record<number, number[]> {
@@ -32,6 +34,7 @@ const STATUS_CONFIG = {
   preparing: { label: "Preparing", color: "bg-amber-100 text-amber-700 border-amber-200", ring: "ring-2 ring-amber-300" },
   ready:     { label: "Ready",     color: "bg-emerald-100 text-emerald-700 border-emerald-200", ring: "ring-2 ring-emerald-300" },
   done:      { label: "Done",      color: "bg-secondary text-muted-foreground border-border", ring: "" },
+  picked_up: { label: "Picked Up", color: "bg-secondary text-muted-foreground border-border", ring: "" },
 };
 
 const NEXT_STATUS: Record<string, string> = {
@@ -44,6 +47,16 @@ const NEXT_LABEL: Record<string, string> = {
   preparing: "Mark Ready",
   ready: "Complete",
 };
+
+// For staff (POS) orders, replace the generic "Complete" with explicit pickup tracking.
+function nextStatusFor(order: EventOrder): string | undefined {
+  if (order.status === "ready" && order.orderSource === "staff") return "picked_up";
+  return NEXT_STATUS[order.status];
+}
+function nextLabelFor(order: EventOrder): string | undefined {
+  if (order.status === "ready" && order.orderSource === "staff") return "Mark Picked Up";
+  return NEXT_LABEL[order.status];
+}
 
 function playChime() {
   try {
@@ -310,7 +323,7 @@ export default function KitchenDisplay() {
   }
 
   async function advanceStatus(order: EventOrder) {
-    const next = NEXT_STATUS[order.status];
+    const next = nextStatusFor(order);
     if (!next || !authedPassword) return;
     setUpdating(s => new Set([...s, order.id]));
     setNewOrderIds(s => { const n = new Set(s); n.delete(order.id); return n; });
@@ -396,12 +409,12 @@ export default function KitchenDisplay() {
     );
   }
 
-  const activeOrders = orders.filter(o => o.status !== "done");
-  const doneOrders = orders.filter(o => o.status === "done");
+  const activeOrders = orders.filter(o => !COMPLETED_STATUSES.has(o.status));
+  const doneOrders = orders.filter(o => COMPLETED_STATUSES.has(o.status));
   const displayed = showDone ? orders : activeOrders;
 
   const grouped: Record<string, EventOrder[]> = { pending: [], preparing: [], ready: [] };
-  displayed.filter(o => o.status !== "done").forEach(o => grouped[o.status]?.push(o));
+  displayed.filter(o => !COMPLETED_STATUSES.has(o.status)).forEach(o => grouped[o.status]?.push(o));
 
   return (
     <div className="min-h-screen bg-[#111] text-white">
@@ -674,7 +687,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   const isTrackable = isPending || isPreparing;
   const checkedCount = order.items.filter(i => checkedItemIds.has(i.itemId)).length;
   const allChecked = checkedCount === order.items.length;
-  const nextLabel = NEXT_LABEL[order.status];
+  const nextLabel = nextLabelFor(order);
 
   return (
     <div className={`bg-[#1a1a1a] border rounded-2xl overflow-hidden transition-all ${isNew ? "ring-2 ring-red-400 border-red-400/50" : "border-white/10"}`}>
@@ -829,8 +842,10 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
         </div>
       )}
 
-      {order.status === "done" && (
-        <div className="px-4 pb-3 text-center text-xs text-white/20 font-semibold">Completed</div>
+      {COMPLETED_STATUSES.has(order.status) && (
+        <div className="px-4 pb-3 text-center text-xs text-white/20 font-semibold">
+          {order.status === "picked_up" ? "Picked Up" : "Completed"}
+        </div>
       )}
     </div>
   );

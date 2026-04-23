@@ -270,7 +270,7 @@ router.patch("/event-ordering/orders/:id/status", verifyKitchenPassword, async (
   try {
     const id = parseInt(req.params.id);
     const { status } = req.body as { status: string };
-    const valid = ["pending", "preparing", "ready", "done"];
+    const valid = ["pending", "preparing", "ready", "done", "picked_up"];
     if (!valid.includes(status)) {
       res.status(400).json({ error: "Invalid status" });
       return;

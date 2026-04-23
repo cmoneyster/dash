@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { eventSettingsTable, eventOrdersTable } from "@workspace/db/schema";
-import { eq, and, gte, lt } from "drizzle-orm";
+import { eq, and, gte, lt, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -211,6 +211,8 @@ router.get("/admin/sales-reports", async (req, res) => {
     const from = parseDate(req.query.from, monthAgo);
     const to = parseDate(req.query.to, new Date());
     const source = typeof req.query.source === "string" ? req.query.source : "all"; // 'guest' | 'staff' | 'all'
+    const rawStatus = typeof req.query.status === "string" ? req.query.status : "all";
+    const statusFilter = rawStatus === "completed" ? "completed" : "all"; // whitelist
 
     // Inclusive date range — bump `to` to next-day midnight
     const fromStart = new Date(from); fromStart.setHours(0, 0, 0, 0);
@@ -223,6 +225,9 @@ router.get("/admin/sales-reports", async (req, res) => {
     if (source === "guest" || source === "staff") {
       conditions.push(eq(eventOrdersTable.orderSource, source));
     }
+    if (statusFilter === "completed") {
+      conditions.push(inArray(eventOrdersTable.status, ["done", "picked_up"]));
+    }
     const orders = await db.select().from(eventOrdersTable).where(and(...conditions));
 
     const guestOrders = orders.filter(o => o.orderSource === "guest");
@@ -232,6 +237,7 @@ router.get("/admin/sales-reports", async (req, res) => {
       from: fromStart.toISOString(),
       to: toEnd.toISOString(),
       source,
+      status: statusFilter,
       totals: buildReport(orders),
       bySource: {
         guest: buildReport(guestOrders),
@@ -253,6 +259,8 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
     const from = parseDate(req.query.from, monthAgo);
     const to = parseDate(req.query.to, new Date());
     const source = typeof req.query.source === "string" ? req.query.source : "all";
+    const rawStatus = typeof req.query.status === "string" ? req.query.status : "all";
+    const statusFilter = rawStatus === "completed" ? "completed" : "all";
     const type = (typeof req.query.type === "string" ? req.query.type : "orders") as "orders" | "items";
 
     const fromStart = new Date(from); fromStart.setHours(0, 0, 0, 0);
@@ -264,6 +272,9 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
     ];
     if (source === "guest" || source === "staff") {
       conditions.push(eq(eventOrdersTable.orderSource, source));
+    }
+    if (statusFilter === "completed") {
+      conditions.push(inArray(eventOrdersTable.status, ["done", "picked_up"]));
     }
     const orders = await db.select().from(eventOrdersTable).where(and(...conditions));
 
