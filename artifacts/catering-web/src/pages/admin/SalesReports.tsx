@@ -127,6 +127,17 @@ export default function SalesReports() {
   }
 
   const orders = useMemo(() => report?.totals.orders ?? [], [report]);
+  const [itemSort, setItemSort] = useState<{ col: "name" | "quantity" | "revenue"; dir: "asc" | "desc" }>({ col: "revenue", dir: "desc" });
+  const sortedItems = useMemo(() => {
+    const items = [...(report?.totals.items ?? [])];
+    items.sort((a, b) => {
+      const av = a[itemSort.col];
+      const bv = b[itemSort.col];
+      const cmp = typeof av === "string" ? (av as string).localeCompare(bv as string) : (av as number) - (bv as number);
+      return itemSort.dir === "asc" ? cmp : -cmp;
+    });
+    return items;
+  }, [report, itemSort]);
 
   return (
     <AdminLayout>
@@ -323,7 +334,7 @@ export default function SalesReports() {
           <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-border bg-secondary/30">
               <h2 className="font-display font-bold text-lg">Item Breakdown</h2>
-              <p className="text-xs text-muted-foreground">All items sold in the selected range, ranked by revenue.</p>
+              <p className="text-xs text-muted-foreground">Click any column header to sort.</p>
             </div>
             {report.totals.items.length === 0 ? (
               <div className="px-5 py-12 text-center text-muted-foreground text-sm">No items sold.</div>
@@ -331,13 +342,25 @@ export default function SalesReports() {
               <table className="w-full text-sm">
                 <thead className="border-b border-border bg-secondary/20">
                   <tr className="text-left text-xs text-muted-foreground uppercase tracking-wider">
-                    <th className="px-5 py-2.5 font-semibold">Item</th>
-                    <th className="px-5 py-2.5 font-semibold text-center w-32">Qty</th>
-                    <th className="px-5 py-2.5 font-semibold text-right w-40">Revenue</th>
+                    {(["name", "quantity", "revenue"] as const).map(col => {
+                      const isActive = itemSort.col === col;
+                      const arrow = isActive ? (itemSort.dir === "asc" ? " ▲" : " ▼") : "";
+                      const align = col === "name" ? "text-left" : col === "quantity" ? "text-center w-32" : "text-right w-40";
+                      const label = col === "name" ? "Item" : col === "quantity" ? "Qty" : "Revenue";
+                      return (
+                        <th
+                          key={col}
+                          onClick={() => setItemSort(s => ({ col, dir: s.col === col && s.dir === "desc" ? "asc" : "desc" }))}
+                          className={`px-5 py-2.5 font-semibold cursor-pointer select-none hover:text-foreground ${align} ${isActive ? "text-foreground" : ""}`}
+                        >
+                          {label}{arrow}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {report.totals.items.map(it => (
+                  {sortedItems.map(it => (
                     <tr key={it.name} className="border-b border-border/50 last:border-0">
                       <td className="px-5 py-2.5">{it.name}</td>
                       <td className="px-5 py-2.5 text-center font-medium">{it.quantity}</td>
