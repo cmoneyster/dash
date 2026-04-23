@@ -897,8 +897,13 @@ function PaymentModal({
             <h2 className="font-display font-bold text-xl mt-0.5">{order.guestName}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">{order.items.reduce((s, i) => s + i.quantity, 0)} item(s) · ${total.toFixed(2)}</p>
           </div>
-          <button onClick={onHold} className="p-1.5 hover:bg-secondary rounded-lg" title="Hold for later (close)">
-            <XIcon className="w-5 h-5" />
+          <button
+            onClick={onHold}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-secondary"
+            title="Save this order to the Pending payments queue"
+          >
+            <Clock className="w-3.5 h-3.5" />
+            Hold
           </button>
         </div>
 
