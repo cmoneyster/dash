@@ -5,11 +5,22 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
 const AUTO_PRINT_KEY = "event_taker_auto_print";
 
-function getStoredAutoPrint(): boolean {
-  try { return localStorage.getItem(AUTO_PRINT_KEY) === "1"; } catch { return false; }
+// Auto-print mode: which document(s) print automatically when an order is
+// placed. "off" = no auto-print, "both" = kitchen + receipt, or print just
+// one of them. Persisted in localStorage. Backwards-compatible with the
+// older boolean value: "1" → "both", "0" → "off".
+type AutoPrintMode = "off" | "both" | "kitchen" | "receipt";
+function getStoredAutoPrint(): AutoPrintMode {
+  try {
+    const v = localStorage.getItem(AUTO_PRINT_KEY);
+    if (v === "1") return "both";
+    if (v === "0" || v === null) return "off";
+    if (v === "both" || v === "kitchen" || v === "receipt" || v === "off") return v;
+    return "off";
+  } catch { return "off"; }
 }
-function setStoredAutoPrint(v: boolean) {
-  try { localStorage.setItem(AUTO_PRINT_KEY, v ? "1" : "0"); } catch {}
+function setStoredAutoPrint(v: AutoPrintMode) {
+  try { localStorage.setItem(AUTO_PRINT_KEY, v); } catch {}
 }
 
 interface MenuItem {
@@ -98,15 +109,12 @@ export default function EventTakerOrder() {
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [showPendingPanel, setShowPendingPanel] = useState(false);
   const [printMode, setPrintMode] = useState<"receipt" | "kitchen">("receipt");
-  const [autoPrint, setAutoPrint] = useState<boolean>(getStoredAutoPrint());
+  const [autoPrintMode, setAutoPrintMode] = useState<AutoPrintMode>(getStoredAutoPrint());
   const autoPrintedFor = useRef<string | null>(null);
 
-  function toggleAutoPrint() {
-    setAutoPrint(prev => {
-      const next = !prev;
-      setStoredAutoPrint(next);
-      return next;
-    });
+  function chooseAutoPrintMode(mode: AutoPrintMode) {
+    setAutoPrintMode(mode);
+    setStoredAutoPrint(mode);
   }
 
   function handlePrint(mode: "receipt" | "kitchen") {
@@ -137,16 +145,20 @@ export default function EventTakerOrder() {
     }, 100);
   }
 
-  // Auto-print: when a fresh confirmation appears and the toggle is on, fire both prints.
+  // Auto-print: when a fresh confirmation appears, print whichever document(s)
+  // the cashier selected — both, kitchen only, receipt only, or off.
   useEffect(() => {
-    if (!autoPrint) return;
+    if (autoPrintMode === "off") return;
     if (!confirmation || !lastReceipt) return;
     if (autoPrintedFor.current === lastReceipt.id) return;
     autoPrintedFor.current = lastReceipt.id;
     // Tiny delay so the confirmation screen has rendered the printable nodes.
-    const t = setTimeout(() => printBoth(), 200);
+    const t = setTimeout(() => {
+      if (autoPrintMode === "both") printBoth();
+      else handlePrint(autoPrintMode); // "kitchen" | "receipt"
+    }, 200);
     return () => clearTimeout(t);
-  }, [autoPrint, confirmation, lastReceipt]);
+  }, [autoPrintMode, confirmation, lastReceipt]);
 
   // Public settings (always available)
   useEffect(() => {
@@ -583,20 +595,27 @@ export default function EventTakerOrder() {
               <span className="hidden sm:inline">Pending payments:</span>
               <span className="font-bold">{pendingOrders.length}</span>
             </button>
-            <button
-              onClick={toggleAutoPrint}
-              title={autoPrint ? "Auto-print is ON — orders print kitchen + receipt automatically" : "Auto-print is OFF — print manually after each order"}
-              aria-pressed={autoPrint}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors border ${
-                autoPrint
+            <label
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-semibold transition-colors border cursor-pointer ${
+                autoPrintMode !== "off"
                   ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
                   : "bg-secondary text-muted-foreground border-transparent hover:text-foreground"
               }`}
+              title="Choose what auto-prints when an order is placed"
             >
-              {autoPrint ? <PrinterCheck className="w-4 h-4" /> : <Printer className="w-4 h-4" />}
-              <span className="hidden sm:inline">Auto-print: {autoPrint ? "On" : "Off"}</span>
-              <span className="sm:hidden">{autoPrint ? "On" : "Off"}</span>
-            </button>
+              {autoPrintMode !== "off" ? <PrinterCheck className="w-4 h-4" /> : <Printer className="w-4 h-4" />}
+              <span className="hidden sm:inline">Auto-print:</span>
+              <select
+                value={autoPrintMode}
+                onChange={e => chooseAutoPrintMode(e.target.value as AutoPrintMode)}
+                className="bg-transparent font-semibold focus:outline-none cursor-pointer"
+              >
+                <option value="off">Off</option>
+                <option value="both">Both</option>
+                <option value="kitchen">Kitchen only</option>
+                <option value="receipt">Receipt only</option>
+              </select>
+            </label>
             <button
               onClick={handleLogout}
               className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
