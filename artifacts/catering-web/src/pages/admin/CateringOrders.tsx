@@ -90,7 +90,26 @@ type Inquiry = {
   updatedAt: string;
 };
 
-type AdminMenuItem = { id: number; name: string; category: string; price: number };
+type AdminMenuItemSize = {
+  slot: number;
+  label: string;
+  servings: number | null;
+  price: number;
+};
+type AdminMenuItem = {
+  id: number;
+  name: string;
+  category: string;
+  price: number;
+  pricingTemplate: "per_unit" | "pan_sizes";
+  unit: string | null;
+  servingSize: number | null;
+  sizes: AdminMenuItemSize[]; // populated only for pan_sizes
+  tier2Qty: number | null;
+  tier2Price: number | null;
+  tier3Qty: number | null;
+  tier3Price: number | null;
+};
 
 function emptyForm(): Partial<Inquiry> {
   return {
@@ -197,14 +216,52 @@ function OrderItemsTable({ items, total }: { items: OrderItem[]; total: string |
 
 // ── Quote Editor section ─────────────────────────────────────────────────────
 
-function MenuPicker({ menu, onPick }: { menu: AdminMenuItem[]; onPick: (item: AdminMenuItem) => void }) {
+// Build the descriptor shown under a line item name (admin + public).
+function lineItemDescriptor(li: QuoteLineItem): string | null {
+  if (li.pricingTemplate === "pan_sizes" && li.sizeLabel) {
+    return li.sizeServings != null
+      ? `${li.sizeLabel} · ${li.sizeServings} servings`
+      : li.sizeLabel;
+  }
+  if (li.unit) {
+    return li.servingSize && li.servingSize > 1
+      ? `${li.unit} of ${li.servingSize}`
+      : `per ${li.unit}`;
+  }
+  return null;
+}
+
+// Compute the appropriate per-unit price for a given quantity, picking the
+// best matching tier break. Returns the price + whether a tier was applied.
+function priceForQuantity(m: AdminMenuItem, qty: number): { price: number; tierApplied: boolean } {
+  let price = m.price;
+  let tierApplied = false;
+  if (m.tier2Qty != null && m.tier2Price != null && qty >= m.tier2Qty) {
+    price = m.tier2Price;
+    tierApplied = true;
+  }
+  if (m.tier3Qty != null && m.tier3Price != null && qty >= m.tier3Qty) {
+    price = m.tier3Price;
+    tierApplied = true;
+  }
+  return { price, tierApplied };
+}
+
+function MenuPicker({ menu, onPick }: {
+  menu: AdminMenuItem[];
+  onPick: (item: AdminMenuItem, size?: AdminMenuItemSize) => void;
+}) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [sizingFor, setSizingFor] = useState<AdminMenuItem | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSizingFor(null);
+      }
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
@@ -218,34 +275,89 @@ function MenuPicker({ menu, onPick }: { menu: AdminMenuItem[]; onPick: (item: Ad
     ).slice(0, 12);
   }, [menu, q]);
 
+  function handleClick(m: AdminMenuItem) {
+    if (m.pricingTemplate === "pan_sizes" && m.sizes.length > 0) {
+      setSizingFor(m);
+      return;
+    }
+    onPick(m);
+    setQ(""); setOpen(false); setSizingFor(null);
+  }
+
+  function handleSize(m: AdminMenuItem, s: AdminMenuItemSize) {
+    onPick(m, s);
+    setQ(""); setOpen(false); setSizingFor(null);
+  }
+
   return (
     <div className="relative" ref={ref}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
         <input
           value={q}
-          onFocus={() => setOpen(true)}
-          onChange={e => { setQ(e.target.value); setOpen(true); }}
+          onFocus={() => { setOpen(true); setSizingFor(null); }}
+          onChange={e => { setQ(e.target.value); setOpen(true); setSizingFor(null); }}
           placeholder="Search menu items to add…"
           className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
         />
       </div>
-      {open && filtered.length > 0 && (
-        <div className="absolute z-20 left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-lg max-h-64 overflow-y-auto">
-          {filtered.map(m => (
+      {open && sizingFor && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-lg p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">{sizingFor.name}</p>
             <button
-              key={m.id}
               type="button"
-              onClick={() => { onPick(m); setQ(""); setOpen(false); }}
-              className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-secondary"
+              onClick={() => setSizingFor(null)}
+              className="text-xs text-muted-foreground hover:text-foreground"
             >
-              <div className="min-w-0">
-                <p className="font-medium truncate">{m.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{m.category}</p>
-              </div>
-              <span className="text-xs font-semibold shrink-0">{formatCurrency(m.price)}</span>
+              ← back
             </button>
-          ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Choose a size</p>
+          <div className="grid grid-cols-1 gap-1.5">
+            {sizingFor.sizes.map(s => (
+              <button
+                key={s.slot}
+                type="button"
+                onClick={() => handleSize(sizingFor, s)}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm border border-border rounded-lg hover:bg-secondary"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{s.label}</p>
+                  {s.servings != null && (
+                    <p className="text-xs text-muted-foreground">{s.servings} servings</p>
+                  )}
+                </div>
+                <span className="text-sm font-semibold shrink-0">{formatCurrency(s.price)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {open && !sizingFor && filtered.length > 0 && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-lg max-h-64 overflow-y-auto">
+          {filtered.map(m => {
+            const isPan = m.pricingTemplate === "pan_sizes" && m.sizes.length > 0;
+            const priceLabel = isPan
+              ? `from ${formatCurrency(Math.min(...m.sizes.map(s => s.price)))}`
+              : formatCurrency(m.price);
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => handleClick(m)}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-secondary"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{m.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {m.category}{isPan ? " · pick a size" : m.unit ? ` · per ${m.unit}` : ""}
+                  </p>
+                </div>
+                <span className="text-xs font-semibold shrink-0">{priceLabel}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -275,14 +387,83 @@ function QuoteEditor({
   const numCls = "w-20 px-2 py-1.5 text-sm text-right border border-border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none";
   const txtCls = "w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none";
 
+  // Map of menuItemId -> AdminMenuItem for live size/tier lookups on saved lines.
+  const menuById = useMemo(() => {
+    const map = new Map<number, AdminMenuItem>();
+    for (const m of menu) map.set(m.id, m);
+    return map;
+  }, [menu]);
+
   function addCustom() {
-    onChange({ lineItems: [...lineItems, { id: uid(), menuItemId: null, name: "", quantity: 1, unitPrice: 0, notes: null }] });
+    onChange({ lineItems: [...lineItems, {
+      id: uid(), menuItemId: null, name: "", quantity: 1, unitPrice: 0, notes: null,
+      pricingTemplate: null, sizeSlot: null, sizeLabel: null, sizeServings: null,
+      unit: null, servingSize: null, tierApplied: false,
+    }] });
   }
-  function pickMenu(m: AdminMenuItem) {
-    onChange({ lineItems: [...lineItems, { id: uid(), menuItemId: m.id, name: m.name, quantity: 1, unitPrice: m.price, notes: null }] });
+  function pickMenu(m: AdminMenuItem, size?: AdminMenuItemSize) {
+    if (m.pricingTemplate === "pan_sizes" && size) {
+      onChange({ lineItems: [...lineItems, {
+        id: uid(), menuItemId: m.id,
+        name: m.name,
+        quantity: 1, unitPrice: size.price, notes: null,
+        pricingTemplate: "pan_sizes",
+        sizeSlot: size.slot, sizeLabel: size.label, sizeServings: size.servings,
+        unit: null, servingSize: null, tierApplied: false,
+      }] });
+    } else {
+      const { price, tierApplied } = priceForQuantity(m, 1);
+      onChange({ lineItems: [...lineItems, {
+        id: uid(), menuItemId: m.id, name: m.name,
+        quantity: 1, unitPrice: price, notes: null,
+        pricingTemplate: "per_unit",
+        sizeSlot: null, sizeLabel: null, sizeServings: null,
+        unit: m.unit, servingSize: m.servingSize,
+        tierApplied,
+      }] });
+    }
   }
   function updateItem(id: string, patch: Partial<QuoteLineItem>) {
     onChange({ lineItems: lineItems.map(li => li.id === id ? { ...li, ...patch } : li) });
+  }
+  // Quantity change: re-apply tier price for per_unit menu items, but only
+  // when staff hasn't manually overridden it (tierApplied still true OR the
+  // current price equals the menu base/tier price).
+  function changeQuantity(id: string, qty: number) {
+    const li = lineItems.find(x => x.id === id);
+    if (!li) return;
+    const m = li.menuItemId != null ? menuById.get(li.menuItemId) : undefined;
+    const patch: Partial<QuoteLineItem> = { quantity: qty };
+    if (m && li.pricingTemplate === "per_unit") {
+      // Was the current price one we would have set automatically? If so,
+      // it's safe to recompute. Otherwise leave the manual override alone.
+      const isManaged = li.tierApplied
+        || li.unitPrice === m.price
+        || li.unitPrice === m.tier2Price
+        || li.unitPrice === m.tier3Price;
+      if (isManaged) {
+        const { price, tierApplied } = priceForQuantity(m, qty);
+        patch.unitPrice = price;
+        patch.tierApplied = tierApplied;
+      }
+    }
+    updateItem(id, patch);
+  }
+  function changeUnitPrice(id: string, price: number) {
+    // Manual price override clears the tier auto-flag.
+    updateItem(id, { unitPrice: price, tierApplied: false });
+  }
+  function changeSize(id: string, slot: number) {
+    const li = lineItems.find(x => x.id === id);
+    if (!li || li.menuItemId == null) return;
+    const m = menuById.get(li.menuItemId);
+    if (!m) return;
+    const s = m.sizes.find(x => x.slot === slot);
+    if (!s) return;
+    updateItem(id, {
+      sizeSlot: s.slot, sizeLabel: s.label, sizeServings: s.servings,
+      unitPrice: s.price, tierApplied: false,
+    });
   }
   function removeItem(id: string) {
     onChange({ lineItems: lineItems.filter(li => li.id !== id) });
@@ -336,53 +517,85 @@ function QuoteEditor({
         {lineItems.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4 italic">No line items yet.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {lineItems.map((li, idx) => {
               const lineTotal = (Number(li.quantity) || 0) * (Number(li.unitPrice) || 0);
+              const m = li.menuItemId != null ? menuById.get(li.menuItemId) : undefined;
+              const descriptor = lineItemDescriptor(li);
+              const isPan = li.pricingTemplate === "pan_sizes" && m && m.sizes.length > 0;
               return (
-                <div key={li.id} className="grid grid-cols-[36px_1fr_60px_90px_80px_28px] gap-2 items-center">
-                  <div className="flex flex-col items-center -my-1">
-                    <button
-                      type="button"
-                      onClick={() => moveItem(li.id, -1)}
-                      disabled={idx === 0}
-                      className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
-                      title="Move up"
-                    >
-                      <ArrowUp className="w-3 h-3" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveItem(li.id, 1)}
-                      disabled={idx === lineItems.length - 1}
-                      className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
-                      title="Move down"
-                    >
-                      <ArrowDown className="w-3 h-3" />
+                <div key={li.id} className="space-y-1">
+                  <div className="grid grid-cols-[36px_1fr_60px_90px_80px_28px] gap-2 items-center">
+                    <div className="flex flex-col items-center -my-1">
+                      <button
+                        type="button"
+                        onClick={() => moveItem(li.id, -1)}
+                        disabled={idx === 0}
+                        className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                        title="Move up"
+                      >
+                        <ArrowUp className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveItem(li.id, 1)}
+                        disabled={idx === lineItems.length - 1}
+                        className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                        title="Move down"
+                      >
+                        <ArrowDown className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <input
+                      value={li.name}
+                      onChange={e => updateItem(li.id, { name: e.target.value })}
+                      placeholder="Item name"
+                      className={txtCls}
+                    />
+                    <input
+                      type="number" min={0} step="1" inputMode="numeric"
+                      value={li.quantity}
+                      onChange={e => changeQuantity(li.id, e.target.value === "" ? 0 : Number(e.target.value))}
+                      className={numCls}
+                    />
+                    <input
+                      type="number" min={0} step="0.01" inputMode="decimal"
+                      value={li.unitPrice}
+                      onChange={e => changeUnitPrice(li.id, e.target.value === "" ? 0 : Number(e.target.value))}
+                      className={numCls}
+                    />
+                    <span className="text-right text-sm font-semibold tabular-nums">{formatCurrency(lineTotal)}</span>
+                    <button type="button" onClick={() => removeItem(li.id)} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-destructive" title="Remove">
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <input
-                    value={li.name}
-                    onChange={e => updateItem(li.id, { name: e.target.value })}
-                    placeholder="Item name"
-                    className={txtCls}
-                  />
-                  <input
-                    type="number" min={0} step="1" inputMode="numeric"
-                    value={li.quantity}
-                    onChange={e => updateItem(li.id, { quantity: e.target.value === "" ? 0 : Number(e.target.value) })}
-                    className={numCls}
-                  />
-                  <input
-                    type="number" min={0} step="0.01" inputMode="decimal"
-                    value={li.unitPrice}
-                    onChange={e => updateItem(li.id, { unitPrice: e.target.value === "" ? 0 : Number(e.target.value) })}
-                    className={numCls}
-                  />
-                  <span className="text-right text-sm font-semibold tabular-nums">{formatCurrency(lineTotal)}</span>
-                  <button type="button" onClick={() => removeItem(li.id)} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-destructive" title="Remove">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  {(descriptor || li.tierApplied || isPan) && (
+                    <div className="pl-[44px] flex items-center flex-wrap gap-2 text-xs text-muted-foreground">
+                      {isPan && m ? (
+                        <>
+                          <span>Size:</span>
+                          <select
+                            value={li.sizeSlot ?? ""}
+                            onChange={e => changeSize(li.id, Number(e.target.value))}
+                            className="px-2 py-0.5 text-xs border border-border rounded bg-background"
+                          >
+                            {m.sizes.map(s => (
+                              <option key={s.slot} value={s.slot}>
+                                {s.label}{s.servings != null ? ` · ${s.servings} servings` : ""} ({formatCurrency(s.price)})
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      ) : descriptor ? (
+                        <span>{descriptor}</span>
+                      ) : null}
+                      {li.tierApplied && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-semibold uppercase tracking-wider">
+                          Tier price applied
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1161,13 +1374,57 @@ export default function CateringOrders() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    type RawMenuItem = { id: number; name: string; category: string; price: number | string };
+    type RawMenuItem = {
+      id: number; name: string; category: string; price: number | string;
+      pricingTemplate?: string | null;
+      unit?: string | null;
+      servingSize?: number | null;
+      size1Label?: string | null; size1Servings?: number | null; size1Price?: string | number | null;
+      size2Label?: string | null; size2Servings?: number | null; size2Price?: string | number | null;
+      size3Label?: string | null; size3Servings?: number | null; size3Price?: string | number | null;
+      size4Label?: string | null; size4Servings?: number | null; size4Price?: string | number | null;
+      size5Label?: string | null; size5Servings?: number | null; size5Price?: string | number | null;
+      tier2Qty?: number | null; tier2Price?: string | number | null;
+      tier3Qty?: number | null; tier3Price?: string | number | null;
+    };
+    const num = (v: unknown): number | null => {
+      if (v == null || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
     fetch(`${BASE}/api/admin/menu`, { headers: authHeaders() })
       .then(r => r.ok ? r.json() as Promise<RawMenuItem[]> : [] as RawMenuItem[])
       .then((data) => setMenu(
-        (data ?? []).map((m): AdminMenuItem => ({
-          id: m.id, name: m.name, category: m.category, price: Number(m.price) || 0,
-        })),
+        (data ?? []).map((m): AdminMenuItem => {
+          const tmpl = m.pricingTemplate === "pan_sizes" ? "pan_sizes" : "per_unit";
+          const sizes: AdminMenuItemSize[] = [];
+          if (tmpl === "pan_sizes") {
+            const slots = [
+              { slot: 1, label: m.size1Label, servings: m.size1Servings, price: m.size1Price },
+              { slot: 2, label: m.size2Label, servings: m.size2Servings, price: m.size2Price },
+              { slot: 3, label: m.size3Label, servings: m.size3Servings, price: m.size3Price },
+              { slot: 4, label: m.size4Label, servings: m.size4Servings, price: m.size4Price },
+              { slot: 5, label: m.size5Label, servings: m.size5Servings, price: m.size5Price },
+            ];
+            for (const s of slots) {
+              const price = num(s.price);
+              if (s.label && price != null) {
+                sizes.push({ slot: s.slot, label: s.label, servings: num(s.servings), price });
+              }
+            }
+          }
+          return {
+            id: m.id, name: m.name, category: m.category, price: Number(m.price) || 0,
+            pricingTemplate: tmpl,
+            unit: m.unit ?? null,
+            servingSize: num(m.servingSize),
+            sizes,
+            tier2Qty: num(m.tier2Qty),
+            tier2Price: num(m.tier2Price),
+            tier3Qty: num(m.tier3Qty),
+            tier3Price: num(m.tier3Price),
+          };
+        }),
       ))
       .catch(() => setMenu([]));
   }, []);

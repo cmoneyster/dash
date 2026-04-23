@@ -20,7 +20,26 @@ type LineItem = {
   unitPrice: number;
   notes?: string | null;
   lineTotal: number;
+  pricingTemplate?: "per_unit" | "pan_sizes" | null;
+  sizeLabel?: string | null;
+  sizeServings?: number | null;
+  unit?: string | null;
+  servingSize?: number | null;
 };
+
+function lineDescriptor(li: LineItem): string | null {
+  if (li.pricingTemplate === "pan_sizes" && li.sizeLabel) {
+    return li.sizeServings != null
+      ? `${li.sizeLabel} · ${li.sizeServings} servings`
+      : li.sizeLabel;
+  }
+  if (li.unit) {
+    return li.servingSize && li.servingSize > 1
+      ? `${li.unit} of ${li.servingSize}`
+      : `per ${li.unit}`;
+  }
+  return null;
+}
 
 type Quote = {
   quoteNumber: string | null;
@@ -154,17 +173,21 @@ export default function PublicQuote() {
               {quote.lineItems.length === 0 && (
                 <tr><td colSpan={4} className="py-6 text-center text-muted-foreground italic">No items yet</td></tr>
               )}
-              {quote.lineItems.map((li) => (
+              {quote.lineItems.map((li) => {
+                const desc = lineDescriptor(li);
+                return (
                 <tr key={li.id} className="border-b border-border/40 last:border-0">
                   <td className="py-3">
                     <p className="font-medium">{li.name}</p>
-                    {li.notes && <p className="text-xs text-muted-foreground mt-0.5">{li.notes}</p>}
+                    {desc && <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>}
+                    {li.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{li.notes}</p>}
                   </td>
                   <td className="py-3 text-right">{li.quantity}</td>
                   <td className="py-3 text-right text-muted-foreground">{formatCurrency(li.unitPrice)}</td>
                   <td className="py-3 text-right font-semibold">{formatCurrency(li.lineTotal)}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
 

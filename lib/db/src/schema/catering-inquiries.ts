@@ -14,6 +14,19 @@ export type QuoteLineItem = {
   quantity: number;
   unitPrice: number;
   notes?: string | null;
+  // Optional sizing/pricing detail captured from the source menu item.
+  // All optional + nullable so legacy line items continue to validate.
+  pricingTemplate?: "per_unit" | "pan_sizes" | null;
+  // Pan-size selection (1..5). Null means per_unit.
+  sizeSlot?: number | null;
+  sizeLabel?: string | null;     // e.g. "Medium Pan"
+  sizeServings?: number | null;  // e.g. 30
+  // Per-unit info — used to render "tray of 12" / "12 per tray".
+  unit?: string | null;          // e.g. "tray"
+  servingSize?: number | null;   // e.g. 12
+  // True when the unit price was auto-applied from a tier break (tier2/tier3).
+  // Set to false (or omit) once staff manually overrides the price.
+  tierApplied?: boolean | null;
 };
 
 export type QuoteAdjustment = {

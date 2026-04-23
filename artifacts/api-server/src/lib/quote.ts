@@ -145,16 +145,35 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
       doc.addPage();
       y = 50;
     }
+    // Build a small descriptor below the name from sizing/per-unit info.
+    const descriptorParts: string[] = [];
+    if (li.pricingTemplate === "pan_sizes" && li.sizeLabel) {
+      descriptorParts.push(li.sizeServings != null
+        ? `${li.sizeLabel} · ${li.sizeServings} servings`
+        : li.sizeLabel);
+    } else if (li.unit) {
+      descriptorParts.push(li.servingSize && li.servingSize > 1
+        ? `${li.unit} of ${li.servingSize}`
+        : `per ${li.unit}`);
+    }
+    const descriptor = descriptorParts.join(" · ");
+
     doc.fillColor("#111").text(li.name, colItem, y, { width: 260 });
+    let extra = 0;
+    if (descriptor) {
+      extra += 12;
+      doc.fillColor("#666").fontSize(9).text(descriptor, colItem, y + extra, { width: 260 });
+      doc.fontSize(10);
+    }
     if (li.notes) {
-      y += 12;
-      doc.fillColor("#888").fontSize(9).text(li.notes, colItem, y, { width: 260 });
+      extra += descriptor ? 11 : 12;
+      doc.fillColor("#888").fontSize(9).text(li.notes, colItem, y + extra, { width: 260 });
       doc.fontSize(10);
     }
     doc.fillColor("#111").text(String(li.quantity), colQty, y, { width: 50, align: "right" });
     doc.text(fmtUSD(li.unitPrice), colUnit, y, { width: 80, align: "right" });
     doc.text(fmtUSD(li.lineTotal), colTotal, y, { width: 80, align: "right" });
-    y += li.notes ? 28 : 18;
+    y += extra > 0 ? extra + 16 : 18;
   }
 
   // Totals block

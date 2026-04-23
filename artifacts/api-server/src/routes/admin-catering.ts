@@ -70,14 +70,30 @@ function normalizeLineItems(raw: unknown): QuoteLineItem[] | undefined {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((li): li is Record<string, unknown> => !!li && typeof li === "object")
-    .map((li) => ({
-      id: String(li.id ?? randomUUID()),
-      menuItemId: li.menuItemId == null ? null : Number(li.menuItemId) || null,
-      name: String(li.name ?? "").slice(0, 200),
-      quantity: Number(li.quantity) || 0,
-      unitPrice: Number(li.unitPrice) || 0,
-      notes: li.notes ? String(li.notes).slice(0, 500) : null,
-    }));
+    .map((li) => {
+      const tmpl = li.pricingTemplate;
+      const pricingTemplate: "per_unit" | "pan_sizes" | null =
+        tmpl === "pan_sizes" ? "pan_sizes" : tmpl === "per_unit" ? "per_unit" : null;
+      const sizeSlotN = li.sizeSlot == null ? null : Number(li.sizeSlot);
+      const sizeSlot = sizeSlotN != null && sizeSlotN >= 1 && sizeSlotN <= 5 ? Math.floor(sizeSlotN) : null;
+      const sizeServingsN = li.sizeServings == null ? null : Number(li.sizeServings);
+      const servingSizeN = li.servingSize == null ? null : Number(li.servingSize);
+      return {
+        id: String(li.id ?? randomUUID()),
+        menuItemId: li.menuItemId == null ? null : Number(li.menuItemId) || null,
+        name: String(li.name ?? "").slice(0, 200),
+        quantity: Number(li.quantity) || 0,
+        unitPrice: Number(li.unitPrice) || 0,
+        notes: li.notes ? String(li.notes).slice(0, 500) : null,
+        pricingTemplate,
+        sizeSlot,
+        sizeLabel: li.sizeLabel ? String(li.sizeLabel).slice(0, 60) : null,
+        sizeServings: sizeServingsN != null && Number.isFinite(sizeServingsN) ? sizeServingsN : null,
+        unit: li.unit ? String(li.unit).slice(0, 30) : null,
+        servingSize: servingSizeN != null && Number.isFinite(servingSizeN) ? servingSizeN : null,
+        tierApplied: li.tierApplied === true,
+      };
+    });
 }
 
 function applyTotalsToUpdates(updates: Record<string, unknown>) {
