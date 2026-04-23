@@ -66,7 +66,7 @@ export const ListMenuItemsResponseItem = zod.object({
     .number()
     .nullish()
     .describe(
-      "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+      "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
     ),
   createdAt: zod.date(),
 });
@@ -123,7 +123,7 @@ export const GetMenuItemResponse = zod.object({
     .number()
     .nullish()
     .describe(
-      "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+      "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
     ),
   createdAt: zod.date(),
 });
@@ -175,7 +175,7 @@ export const AdminListMenuItemsResponseItem = zod.object({
     .number()
     .nullish()
     .describe(
-      "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+      "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
     ),
   createdAt: zod.date(),
 });
@@ -279,7 +279,7 @@ export const UpdateMenuItemResponse = zod.object({
     .number()
     .nullish()
     .describe(
-      "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+      "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
     ),
   createdAt: zod.date(),
 });
@@ -390,7 +390,7 @@ export const GetCartResponse = zod.object({
           .number()
           .nullish()
           .describe(
-            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+            "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
         createdAt: zod.date(),
       }),
@@ -465,7 +465,7 @@ export const AddToCartResponse = zod.object({
           .number()
           .nullish()
           .describe(
-            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+            "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
         createdAt: zod.date(),
       }),
@@ -542,7 +542,7 @@ export const UpdateCartItemResponse = zod.object({
           .number()
           .nullish()
           .describe(
-            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+            "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
         createdAt: zod.date(),
       }),
@@ -614,7 +614,7 @@ export const RemoveFromCartResponse = zod.object({
           .number()
           .nullish()
           .describe(
-            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+            "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
         createdAt: zod.date(),
       }),
@@ -684,7 +684,7 @@ export const GetPlanResponse = zod.object({
           .number()
           .nullish()
           .describe(
-            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+            "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
         createdAt: zod.date(),
       }),
@@ -750,7 +750,7 @@ export const AddToPlanResponse = zod.object({
           .number()
           .nullish()
           .describe(
-            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+            "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
         createdAt: zod.date(),
       }),
@@ -817,7 +817,7 @@ export const RemoveFromPlanResponse = zod.object({
           .number()
           .nullish()
           .describe(
-            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+            "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
         createdAt: zod.date(),
       }),
@@ -998,7 +998,7 @@ export const SuggestMenuItemsResponse = zod.object({
           .number()
           .nullish()
           .describe(
-            "Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.",
+            "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
         createdAt: zod.date(),
       }),

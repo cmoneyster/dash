@@ -675,7 +675,7 @@ components:
         eventTakerPrice:
           type: number
           nullable: true
-          description: Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null.
+          description: Separate per-unit price for the staff Event Order Taker page (`/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).
         createdAt:
           type: string
           format: date-time

@@ -41,7 +41,7 @@ export interface MenuItem {
   eventActive?: boolean;
   /** Whether this item is shown on the staff Event Order Taker page (/event-taker) */
   eventTakerVisible?: boolean;
-  /** Optional separate price (per unit) used on the staff Event Order Taker page. Falls back to `price` if null. */
+  /** Separate per-unit price for the staff Event Order Taker page (`/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`). */
   eventTakerPrice?: number | null;
   createdAt: string;
 }

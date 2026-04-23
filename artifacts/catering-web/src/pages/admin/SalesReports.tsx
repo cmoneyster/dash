@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Fragment } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
@@ -263,9 +263,8 @@ export default function SalesReports() {
                     {orders.map(o => {
                       const isOpen = expanded.has(o.id);
                       return (
-                        <>
+                        <Fragment key={o.id}>
                           <tr
-                            key={o.id}
                             className="border-b border-border/50 hover:bg-secondary/30 cursor-pointer"
                             onClick={() => toggleExpanded(o.id)}
                           >
