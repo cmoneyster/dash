@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -17,7 +17,13 @@ type EventOrder = {
   status: "pending" | "preparing" | "ready" | "done" | "picked_up";
   createdAt: string;
   orderSource?: "guest" | "staff" | string;
+  subtotal?: number | null;
+  taxRate?: number | null;
+  taxAmount?: number | null;
+  total?: number | null;
 };
+
+type PrintJob = { order: EventOrder; mode: "receipt" | "kitchen" };
 
 const COMPLETED_STATUSES = new Set(["done", "picked_up"]);
 
@@ -350,6 +356,25 @@ export default function KitchenDisplay() {
     }
   }
 
+  // ── Print receipts / kitchen tickets ─────────────────────────────
+  const [printJob, setPrintJob] = useState<PrintJob | null>(null);
+
+  useEffect(() => {
+    if (!printJob) return;
+    const clear = () => setPrintJob(null);
+    window.addEventListener("afterprint", clear);
+    // Wait one tick so the print region renders before invoking print()
+    const t = setTimeout(() => window.print(), 80);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("afterprint", clear);
+    };
+  }, [printJob]);
+
+  function printOrder(order: EventOrder, mode: "receipt" | "kitchen") {
+    setPrintJob({ order, mode });
+  }
+
   function toggleItemCheck(orderId: number, itemId: number, allItemIds: number[]) {
     setCheckedItems(prev => {
       const current = new Set(prev[orderId] ?? []);
@@ -418,6 +443,23 @@ export default function KitchenDisplay() {
 
   return (
     <div className="min-h-screen bg-[#111] text-white">
+
+      {/* Print stylesheet — when a print job is active, hide everything except #print-region */}
+      <style>{`
+        @media print {
+          @page { size: 80mm auto; margin: 4mm; }
+          html, body { background: #fff !important; }
+          body * { visibility: hidden !important; }
+          #print-region, #print-region * { visibility: visible !important; }
+          #print-region { position: absolute !important; left: 0; top: 0; width: 100%; color: #000 !important; }
+        }
+      `}</style>
+
+      {printJob && (
+        <div id="print-region" className="fixed left-0 top-0 w-full opacity-0 pointer-events-none">
+          <PrintableTicket order={printJob.order} mode={printJob.mode} eventName={eventName} />
+        </div>
+      )}
 
       {/* New session prompt */}
       {sessionPrompt && (
@@ -639,6 +681,7 @@ export default function KitchenDisplay() {
                           onToggleItem={(itemId) => toggleItemCheck(order.id, itemId, order.items.map(i => i.itemId))}
                           onAdvance={() => advanceStatus(order)}
                           onRevert={() => revertStatus(order)}
+                          onPrint={(mode) => printOrder(order, mode)}
                         />
                       ))}
                       {!grouped[status]?.length && (
@@ -654,7 +697,7 @@ export default function KitchenDisplay() {
                 <h3 className="text-white/40 text-sm font-semibold uppercase tracking-wider mb-3">Completed</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {doneOrders.map(order => (
-                    <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} />
+                    <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} onPrint={(mode) => printOrder(order, mode)} />
                   ))}
                 </div>
               </div>
@@ -666,7 +709,7 @@ export default function KitchenDisplay() {
   );
 }
 
-function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance, onRevert }: {
+function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance, onRevert, onPrint }: {
   order: EventOrder;
   isNew: boolean;
   isUpdating: boolean;
@@ -674,6 +717,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   onToggleItem: (itemId: number) => void;
   onAdvance: () => void;
   onRevert: () => void;
+  onPrint: (mode: "receipt" | "kitchen") => void;
 }) {
   const [expandedNotes, setExpandedNotes] = useState<Set<number>>(new Set());
   const toggleNote = (itemId: number) => setExpandedNotes(prev => {
@@ -847,6 +891,113 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
           {order.status === "picked_up" ? "Picked Up" : "Completed"}
         </div>
       )}
+
+      {/* Reprint actions — available for any status */}
+      <div className="px-4 pb-3 grid grid-cols-2 gap-2 border-t border-white/5 pt-3">
+        <button
+          onClick={() => onPrint("kitchen")}
+          className="flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+          title="Print kitchen ticket (no prices)"
+        >
+          <Printer size={12} /> Print ticket
+        </button>
+        <button
+          onClick={() => onPrint("receipt")}
+          className="flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+          title="Print customer receipt (with prices)"
+        >
+          <Receipt size={12} /> Print receipt
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PrintableTicket({ order, mode, eventName }: { order: EventOrder; mode: "receipt" | "kitchen"; eventName: string }) {
+  const placedAt = new Date(order.createdAt).toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit",
+  });
+  // Compute display totals with snapshot fallback for older orders.
+  const computedSubtotal = order.items.reduce((s, l) => s + (Number(l.price) || 0) * l.quantity, 0);
+  const subtotal = order.subtotal != null ? order.subtotal : computedSubtotal;
+  const taxRate = order.taxRate ?? 0;
+  const taxAmount = order.taxAmount ?? 0;
+  const total = order.total != null ? order.total : subtotal + taxAmount;
+  const totalQty = order.items.reduce((s, l) => s + l.quantity, 0);
+
+  if (mode === "kitchen") {
+    return (
+      <div className="font-mono text-base bg-white text-black p-3">
+        <div className="text-center mb-3">
+          <p className="font-bold text-lg uppercase tracking-wider">Kitchen Ticket</p>
+          <p className="text-xs">{eventName || "dash by Hollywood East Cafe"}</p>
+          <p className="text-xs">{placedAt}</p>
+          <p className="text-base font-bold mt-1">Order #{order.id}</p>
+          {order.orderSource && (
+            <p className="text-xs uppercase tracking-wider mt-0.5">{order.orderSource} order</p>
+          )}
+        </div>
+        <div className="border-t border-b border-dashed border-black py-2 mb-2">
+          <p className="font-bold text-lg">{order.guestName}</p>
+          {order.tableNumber && <p className="text-sm">{order.tableNumber}</p>}
+        </div>
+        <table className="w-full mb-2">
+          <tbody>
+            {order.items.map(l => (
+              <tr key={l.itemId}>
+                <td className="py-1 align-top w-10 font-bold text-xl">{l.quantity}×</td>
+                <td className="py-1 align-top font-semibold">
+                  {l.name}
+                  {l.internalNotes && (
+                    <div className="text-xs font-normal italic mt-0.5">↳ {l.internalNotes}</div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-center text-xs border-t border-dashed border-black pt-2 mt-2">
+          {totalQty} item(s) total
+        </p>
+      </div>
+    );
+  }
+
+  // receipt
+  const ratePretty = (taxRate || 0).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+  return (
+    <div className="font-mono text-sm bg-white text-black p-3">
+      <div className="text-center mb-3">
+        <p className="font-bold text-base">{eventName || "dash by Hollywood East Cafe"}</p>
+        <p className="text-xs">{placedAt}</p>
+        <p className="text-xs">Order #{order.id}</p>
+      </div>
+      <div className="border-t border-b border-dashed border-black py-2 mb-2 space-y-0.5">
+        <p>Customer: {order.guestName}</p>
+        {order.tableNumber && <p>Table: {order.tableNumber}</p>}
+        {order.phoneNumber && <p>Phone: {order.phoneNumber}</p>}
+      </div>
+      <table className="w-full text-xs mb-2">
+        <tbody>
+          {order.items.map(l => (
+            <tr key={l.itemId}>
+              <td className="py-0.5">{l.quantity}× {l.name}</td>
+              <td className="py-0.5 text-right">${((Number(l.price) || 0) * l.quantity).toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="border-t border-dashed border-black pt-2 space-y-0.5 text-xs">
+        <div className="flex justify-between"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
+        {taxRate > 0 && (
+          <div className="flex justify-between"><span>Tax ({ratePretty}%)</span><span>${taxAmount.toFixed(2)}</span></div>
+        )}
+        <div className="flex justify-between font-bold text-sm pt-1 border-t border-dashed border-black mt-1">
+          <span>TOTAL</span><span>${total.toFixed(2)}</span>
+        </div>
+      </div>
+      <p className="text-center text-xs mt-3">Thank you!</p>
     </div>
   );
 }
