@@ -46,6 +46,31 @@ function makeAuthMiddleware(resolvePwd: () => Promise<string | null>) {
 const verifyOrderPassword = makeAuthMiddleware(resolveOrderPassword);
 const verifyKitchenPassword = makeAuthMiddleware(resolveKitchenPassword);
 
+// Resolve the live-effective ordering state for one channel. If state is 'paused' but
+// the pausedUntil deadline has passed, treat it as 'accepting' (the timer expired).
+type ChannelState = "accepting" | "paused" | "closed";
+function resolveChannelState(rawState: string | null | undefined, pausedUntil: Date | null | undefined): {
+  state: ChannelState; pausedUntil: string | null; remainingSec: number | null;
+} {
+  const raw = (rawState as ChannelState | null | undefined) ?? "accepting";
+  if (raw === "paused" && pausedUntil) {
+    const ms = pausedUntil.getTime() - Date.now();
+    if (ms > 0) return { state: "paused", pausedUntil: pausedUntil.toISOString(), remainingSec: Math.ceil(ms / 1000) };
+    return { state: "accepting", pausedUntil: null, remainingSec: null };
+  }
+  if (raw === "closed") return { state: "closed", pausedUntil: null, remainingSec: null };
+  return { state: "accepting", pausedUntil: null, remainingSec: null };
+}
+
+// Read both channels in their resolved/effective form for client display + gating.
+export async function getOrderingChannelStates() {
+  const s = await getEventSettings();
+  return {
+    guest: resolveChannelState(s?.guestOrderingState, s?.guestOrderingPausedUntil ?? null),
+    taker: resolveChannelState(s?.takerOrderingState, s?.takerOrderingPausedUntil ?? null),
+  };
+}
+
 router.get("/event-ordering/settings", async (req, res) => {
   try {
     const settings = await getEventSettings();
@@ -57,10 +82,14 @@ router.get("/event-ordering/settings", async (req, res) => {
         .where(eq(eventSessionsTable.id, settings.activeEventSessionId));
       activeSessionName = session?.name ?? null;
     }
+    const guest = resolveChannelState(settings?.guestOrderingState, settings?.guestOrderingPausedUntil ?? null);
     res.json({
       eventName: settings?.eventName ?? "",
       activeSessionId: settings?.activeEventSessionId ?? null,
       activeSessionName,
+      orderingState: guest.state,
+      orderingPausedUntil: guest.pausedUntil,
+      orderingRemainingSec: guest.remainingSec,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching event settings");
@@ -111,6 +140,66 @@ router.post("/event-ordering/verify", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Public read of both channel states for polling on the kitchen + ordering pages.
+router.get("/event-ordering/ordering-state", async (_req, res) => {
+  try {
+    const channels = await getOrderingChannelStates();
+    res.json({ guest: channels.guest, taker: channels.taker });
+  } catch {
+    res.status(500).json({ error: "Failed to load ordering state" });
+  }
+});
+
+// Kitchen-controlled toggle for the two ordering channels (guest + staff taker).
+// Body: { channel: 'guest'|'taker', state: 'accepting'|'paused'|'closed', pauseMinutes?: number }
+router.put("/event-ordering/ordering-state", verifyKitchenPassword, async (req, res) => {
+  try {
+    const { channel, state, pauseMinutes } = req.body as {
+      channel?: "guest" | "taker"; state?: ChannelState; pauseMinutes?: number;
+    };
+    if (channel !== "guest" && channel !== "taker") {
+      res.status(400).json({ error: "channel must be 'guest' or 'taker'" });
+      return;
+    }
+    if (state !== "accepting" && state !== "paused" && state !== "closed") {
+      res.status(400).json({ error: "state must be 'accepting', 'paused', or 'closed'" });
+      return;
+    }
+    let pausedUntil: Date | null = null;
+    if (state === "paused") {
+      const mins = Number(pauseMinutes);
+      if (!Number.isFinite(mins) || mins <= 0 || mins > 24 * 60) {
+        res.status(400).json({ error: "pauseMinutes must be a positive number (max 1440)" });
+        return;
+      }
+      pausedUntil = new Date(Date.now() + mins * 60_000);
+    }
+
+    const stateCol = channel === "guest" ? "guestOrderingState" : "takerOrderingState";
+    const untilCol = channel === "guest" ? "guestOrderingPausedUntil" : "takerOrderingPausedUntil";
+
+    const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    if (existing) {
+      await db.update(eventSettingsTable)
+        .set({ [stateCol]: state, [untilCol]: pausedUntil, updatedAt: new Date() } as any)
+        .where(eq(eventSettingsTable.id, 1));
+    } else {
+      await db.insert(eventSettingsTable).values({
+        id: 1,
+        eventName: "",
+        [stateCol]: state,
+        [untilCol]: pausedUntil,
+      } as any);
+    }
+
+    const channels = await getOrderingChannelStates();
+    res.json({ guest: channels.guest, taker: channels.taker });
+  } catch (err) {
+    req.log.error({ err }, "Error updating ordering state");
+    res.status(500).json({ error: "Failed to update ordering state" });
+  }
+});
+
 router.get("/event-ordering/menu", async (req, res) => {
   try {
     const items = await db
@@ -137,9 +226,33 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
       return;
     }
 
+    // Gate: kitchen may have paused or stopped guest ordering.
+    const channels = await getOrderingChannelStates();
+    if (channels.guest.state !== "accepting") {
+      res.status(423).json({
+        error: channels.guest.state === "paused"
+          ? "Ordering is paused — please try again shortly."
+          : "We're not accepting orders right now.",
+        state: channels.guest.state,
+        pausedUntil: channels.guest.pausedUntil,
+        remainingSec: channels.guest.remainingSec,
+      });
+      return;
+    }
+
     type OrderItem = { itemId: number; name: string; quantity: number; price: number };
 
     const order = await db.transaction(async (tx) => {
+      // Re-check the kitchen toggle inside the transaction to close the small
+      // window between the gate above and committing the row.
+      const [s] = await tx.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1)).for("update");
+      const live = resolveChannelState(s?.guestOrderingState, s?.guestOrderingPausedUntil ?? null);
+      if (live.state !== "accepting") {
+        throw Object.assign(new Error(live.state === "paused"
+          ? "Ordering is paused — please try again shortly."
+          : "We're not accepting orders right now."),
+          { status: 423, channelState: live });
+      }
       for (const item of items as OrderItem[]) {
         const [row] = await tx
           .select({ id: menuItemsTable.id, name: menuItemsTable.name, eventStock: menuItemsTable.eventStock })
@@ -196,6 +309,15 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
   } catch (err: any) {
     if (err?.status === 409) {
       res.status(409).json({ error: err.message, remaining: err.remaining, itemId: err.itemId });
+      return;
+    }
+    if (err?.status === 423 && err?.channelState) {
+      res.status(423).json({
+        error: err.message,
+        state: err.channelState.state,
+        pausedUntil: err.channelState.pausedUntil,
+        remainingSec: err.channelState.remainingSec,
+      });
       return;
     }
     req.log.error({ err }, "Error creating event order");

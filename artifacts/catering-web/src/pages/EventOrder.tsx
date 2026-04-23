@@ -6,6 +6,17 @@ import { useCategories } from "@/lib/categories";
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+function formatBannerTime(pausedUntil: string | null, now: number): string {
+  if (!pausedUntil) return "a moment";
+  const ms = new Date(pausedUntil).getTime() - now;
+  if (ms <= 0) return "a moment";
+  const sec = Math.ceil(ms / 1000);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
+}
+
 type MenuItem = {
   id: number;
   name: string;
@@ -35,12 +46,47 @@ export default function EventOrder() {
   const [submittedOrderId, setSubmittedOrderId] = useState<number | null>(null);
   const { data: categoriesData } = useCategories();
 
+  type ChState = { state: "accepting" | "paused" | "closed"; pausedUntil: string | null; remainingSec: number | null };
+  const [orderingState, setOrderingState] = useState<ChState | null>(null);
+  const [tickNow, setTickNow] = useState(Date.now());
+
   useEffect(() => {
-    fetch(`${BASE}/api/event-ordering/settings`)
-      .then(r => r.json())
-      .then(data => setEventName(data.eventName ?? ""))
-      .catch(() => {});
+    function load() {
+      fetch(`${BASE}/api/event-ordering/settings`)
+        .then(r => r.json())
+        .then(data => {
+          setEventName(data.eventName ?? "");
+          if (data.orderingState) {
+            setOrderingState({
+              state: data.orderingState,
+              pausedUntil: data.orderingPausedUntil ?? null,
+              remainingSec: data.orderingRemainingSec ?? null,
+            });
+          }
+        })
+        .catch(() => {});
+    }
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
   }, []);
+
+  // Tick once a second so the paused countdown banner animates between polls.
+  useEffect(() => {
+    if (orderingState?.state !== "paused") return;
+    const id = setInterval(() => setTickNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [orderingState?.state]);
+
+  // When the local countdown hits zero, optimistically flip to accepting so the
+  // submit button isn't false-disabled until the next 30s settings poll. The
+  // server has already auto-resumed via resolveChannelState.
+  useEffect(() => {
+    if (orderingState?.state === "paused" && orderingState.pausedUntil
+        && new Date(orderingState.pausedUntil).getTime() <= tickNow) {
+      setOrderingState({ state: "accepting", pausedUntil: null, remainingSec: null });
+    }
+  }, [tickNow, orderingState]);
 
   useEffect(() => {
     if (!authedPassword) return;
@@ -122,6 +168,14 @@ export default function EventOrder() {
           .then(r => r.json())
           .then(data => setMenu(data))
           .catch(() => {});
+      } else if (res.status === 423) {
+        const data = await res.json().catch(() => ({}));
+        setOrderingState({
+          state: data.state ?? "paused",
+          pausedUntil: data.pausedUntil ?? null,
+          remainingSec: data.remainingSec ?? null,
+        });
+        alert(data.error ?? "Ordering is paused right now. Please try again shortly.");
       } else {
         alert("Error placing order. Please try again.");
       }
@@ -252,6 +306,20 @@ export default function EventOrder() {
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6">
+        {orderingState && orderingState.state !== "accepting" && (
+          <div className={`mb-5 rounded-2xl border p-4 ${orderingState.state === "paused" ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-rose-50 border-rose-200 text-rose-900"}`}>
+            <p className="font-bold text-sm">
+              {orderingState.state === "paused"
+                ? `Ordering is paused — back in ${formatBannerTime(orderingState.pausedUntil, tickNow)}`
+                : "We're not accepting new orders right now."}
+            </p>
+            <p className="text-xs mt-1 opacity-80">
+              {orderingState.state === "paused"
+                ? "The kitchen is catching up. You can build your order, but submission is disabled until ordering resumes."
+                : "Please check back later or ask a staff member."}
+            </p>
+          </div>
+        )}
         {!menu ? (
           <div className="text-center py-20 text-muted-foreground animate-pulse">Loading menu…</div>
         ) : menu.length === 0 ? (
@@ -360,10 +428,16 @@ export default function EventOrder() {
 
               <button
                 type="submit"
-                disabled={submitting || !orderItems.length || !guestName.trim()}
+                disabled={submitting || !orderItems.length || !guestName.trim() || (orderingState != null && orderingState.state !== "accepting")}
                 className="w-full py-3.5 bg-foreground text-background font-bold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {submitting ? "Placing Order…" : orderItems.length ? "Place Order" : "Select items to order"}
+                {submitting
+                  ? "Placing Order…"
+                  : orderingState?.state === "paused"
+                    ? "Ordering paused — try again soon"
+                    : orderingState?.state === "closed"
+                      ? "Not accepting orders"
+                      : orderItems.length ? "Place Order" : "Select items to order"}
               </button>
             </div>
           </form>

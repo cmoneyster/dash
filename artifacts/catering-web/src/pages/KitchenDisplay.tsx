@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer, Pause, Play, Ban, ShoppingBag, Users } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -170,6 +170,80 @@ export default function KitchenDisplay() {
   function dismissSessionPrompt() {
     localStorage.setItem("kitchen_known_event_name", eventName);
     setSessionPrompt(null);
+  }
+
+  // Kitchen-controlled ordering toggles. Two independent channels: guest + staff taker.
+  type ChState = { state: "accepting" | "paused" | "closed"; pausedUntil: string | null; remainingSec: number | null };
+  const [channels, setChannels] = useState<{ guest: ChState; taker: ChState } | null>(null);
+  const [tickNow, setTickNow] = useState(Date.now());
+  const [chBusy, setChBusy] = useState<"guest" | "taker" | null>(null);
+  const [chError, setChError] = useState("");
+  const [pauseModal, setPauseModal] = useState<"guest" | "taker" | null>(null);
+
+  const fetchChannels = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/ordering-state`);
+      if (res.ok) setChannels(await res.json());
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => {
+    if (!authedPassword) return;
+    fetchChannels();
+    const id = setInterval(fetchChannels, 10000);
+    return () => clearInterval(id);
+  }, [authedPassword, fetchChannels]);
+
+  // Tick once a second so paused countdowns visually decrement between polls.
+  useEffect(() => {
+    const id = setInterval(() => setTickNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // When a paused timer expires locally, flip the channel to accepting in state
+  // immediately (server already auto-resumes via resolveChannelState). Avoids a
+  // false-disabled gap until the next 10s poll. Re-fetch to confirm.
+  useEffect(() => {
+    if (!channels) return;
+    let didFlip = false;
+    const next = (["guest", "taker"] as const).reduce((acc, k) => {
+      const c = channels[k];
+      if (c.state === "paused" && c.pausedUntil && new Date(c.pausedUntil).getTime() <= tickNow) {
+        didFlip = true;
+        acc[k] = { state: "accepting", pausedUntil: null, remainingSec: null };
+      } else {
+        acc[k] = c;
+      }
+      return acc;
+    }, {} as { guest: ChState; taker: ChState });
+    if (didFlip) {
+      setChannels(next);
+      fetchChannels();
+    }
+  }, [tickNow, channels, fetchChannels]);
+
+  async function setChannelState(channel: "guest" | "taker", state: "accepting" | "paused" | "closed", pauseMinutes?: number) {
+    if (!authedPassword) return;
+    setChBusy(channel);
+    setChError("");
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/ordering-state`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
+        body: JSON.stringify({ channel, state, pauseMinutes }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setChError(data.error ?? "Could not update ordering state");
+      } else {
+        setChannels(await res.json());
+        setPauseModal(null);
+      }
+    } catch {
+      setChError("Network error");
+    } finally {
+      setChBusy(null);
+    }
   }
 
   const [view, setView] = useState<"orders" | "stock">("orders");
@@ -464,6 +538,14 @@ export default function KitchenDisplay() {
         </>
       )}
 
+      {pauseModal && (
+        <PauseDurationModal
+          channel={pauseModal}
+          onCancel={() => setPauseModal(null)}
+          onConfirm={(m) => setChannelState(pauseModal, "paused", m)}
+        />
+      )}
+
       {/* New session prompt */}
       {sessionPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
@@ -659,6 +741,17 @@ export default function KitchenDisplay() {
         )}
         {view === "orders" && (
           <>
+            {channels && (
+              <OrderingTogglePanel
+                channels={channels}
+                tickNow={tickNow}
+                busy={chBusy}
+                error={chError}
+                onAccept={(c) => setChannelState(c, "accepting")}
+                onClose={(c) => setChannelState(c, "closed")}
+                onPause={(c) => setPauseModal(c)}
+              />
+            )}
             {orders.length === 0 ? (
               <div className="text-center py-24 text-white/30">
                 <ChefHat className="w-12 h-12 mx-auto mb-4 opacity-30" />
@@ -1015,6 +1108,188 @@ function PrintableTicket({ order, mode, eventName }: { order: EventOrder; mode: 
         </div>
       </div>
       <p className="text-center text-xs mt-3">Thank you!</p>
+    </div>
+  );
+}
+
+type ChannelState = { state: "accepting" | "paused" | "closed"; pausedUntil: string | null; remainingSec: number | null };
+
+function formatRemaining(pausedUntil: string | null, tickNow: number): string {
+  if (!pausedUntil) return "";
+  const ms = new Date(pausedUntil).getTime() - tickNow;
+  if (ms <= 0) return "resuming…";
+  const sec = Math.ceil(ms / 1000);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
+}
+
+function ChannelCard({
+  title, icon, channel, state, tickNow, busy, onAccept, onClose, onPause,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  channel: "guest" | "taker";
+  state: ChannelState;
+  tickNow: number;
+  busy: boolean;
+  onAccept: (c: "guest" | "taker") => void;
+  onClose: (c: "guest" | "taker") => void;
+  onPause: (c: "guest" | "taker") => void;
+}) {
+  const pillByState = {
+    accepting: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+    paused: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+    closed: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  } as const;
+  const labelByState = {
+    accepting: "Accepting orders",
+    paused: `Paused · ${formatRemaining(state.pausedUntil, tickNow)}`,
+    closed: "Not accepting",
+  } as const;
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex-1 min-w-[280px]">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 text-white/80 font-semibold">
+          {icon}
+          <span>{title}</span>
+        </div>
+        <span className={`text-[11px] font-bold px-2 py-1 rounded-full border ${pillByState[state.state]}`}>
+          {labelByState[state.state]}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <button
+          onClick={() => onAccept(channel)}
+          disabled={busy || state.state === "accepting"}
+          className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold transition-colors ${state.state === "accepting" ? "bg-emerald-500 text-white" : "bg-white/10 text-white/70 hover:bg-emerald-500/30 hover:text-white"} disabled:opacity-50`}
+        >
+          {state.state === "paused" ? <Play className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+          {state.state === "paused" ? "Resume" : "Accepting"}
+        </button>
+        <button
+          onClick={() => onPause(channel)}
+          disabled={busy}
+          className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold transition-colors ${state.state === "paused" ? "bg-amber-500 text-white" : "bg-white/10 text-white/70 hover:bg-amber-500/30 hover:text-white"} disabled:opacity-50`}
+        >
+          <Pause className="w-3.5 h-3.5" /> Pause
+        </button>
+        <button
+          onClick={() => onClose(channel)}
+          disabled={busy || state.state === "closed"}
+          className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold transition-colors ${state.state === "closed" ? "bg-rose-500 text-white" : "bg-white/10 text-white/70 hover:bg-rose-500/30 hover:text-white"} disabled:opacity-50`}
+        >
+          <Ban className="w-3.5 h-3.5" /> Stop
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OrderingTogglePanel({
+  channels, tickNow, busy, error, onAccept, onClose, onPause,
+}: {
+  channels: { guest: ChannelState; taker: ChannelState };
+  tickNow: number;
+  busy: "guest" | "taker" | null;
+  error: string;
+  onAccept: (c: "guest" | "taker") => void;
+  onClose: (c: "guest" | "taker") => void;
+  onPause: (c: "guest" | "taker") => void;
+}) {
+  return (
+    <div className="mb-6">
+      <div className="flex flex-col md:flex-row gap-3">
+        <ChannelCard
+          title="Guest Ordering"
+          icon={<ShoppingBag className="w-4 h-4" />}
+          channel="guest"
+          state={channels.guest}
+          tickNow={tickNow}
+          busy={busy === "guest"}
+          onAccept={onAccept}
+          onClose={onClose}
+          onPause={onPause}
+        />
+        <ChannelCard
+          title="Staff Order Taker"
+          icon={<Users className="w-4 h-4" />}
+          channel="taker"
+          state={channels.taker}
+          tickNow={tickNow}
+          busy={busy === "taker"}
+          onAccept={onAccept}
+          onClose={onClose}
+          onPause={onPause}
+        />
+      </div>
+      {error && <p className="text-rose-400 text-xs mt-2">{error}</p>}
+    </div>
+  );
+}
+
+export function PauseDurationModal({
+  channel, onCancel, onConfirm,
+}: {
+  channel: "guest" | "taker";
+  onCancel: () => void;
+  onConfirm: (minutes: number) => void;
+}) {
+  const [custom, setCustom] = useState("");
+  const presets = [5, 10, 15, 30];
+  const title = channel === "guest" ? "Pause Guest Ordering" : "Pause Staff Order Taker";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+            <Pause className="w-5 h-5 text-amber-400" />
+          </div>
+          <div>
+            <h2 className="font-bold text-base">{title}</h2>
+            <p className="text-xs text-white/50">Auto-resumes when the timer ends</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-2 mb-4">
+          {presets.map(m => (
+            <button
+              key={m}
+              onClick={() => onConfirm(m)}
+              className="py-2.5 rounded-xl bg-white/10 hover:bg-amber-500/30 text-white font-semibold text-sm transition-colors"
+            >
+              {m}m
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 mb-5">
+          <input
+            type="number"
+            min={1}
+            max={1440}
+            value={custom}
+            onChange={e => setCustom(e.target.value)}
+            placeholder="Custom minutes"
+            className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-amber-400"
+          />
+          <button
+            onClick={() => {
+              const n = Number(custom);
+              if (Number.isFinite(n) && n > 0) onConfirm(n);
+            }}
+            disabled={!custom || Number(custom) <= 0}
+            className="px-4 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold disabled:opacity-40"
+          >
+            Pause
+          </button>
+        </div>
+        <button
+          onClick={onCancel}
+          className="w-full px-4 py-2.5 rounded-xl border border-white/10 text-white/60 hover:bg-white/5 hover:text-white transition-colors text-sm font-medium"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

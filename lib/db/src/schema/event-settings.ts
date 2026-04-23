@@ -14,6 +14,12 @@ export const eventSettingsTable = pgTable("event_settings", {
   // Venmo display info shown on the POS payment screen
   venmoHandle: text("venmo_handle"),
   venmoQrImageUrl: text("venmo_qr_image_url"),
+  // Kitchen-controlled ordering toggles. State is one of: 'accepting' | 'paused' | 'closed'.
+  // When state='paused', pausedUntil holds the auto-resume timestamp.
+  guestOrderingState: text("guest_ordering_state").notNull().default("accepting"),
+  guestOrderingPausedUntil: timestamp("guest_ordering_paused_until"),
+  takerOrderingState: text("taker_ordering_state").notNull().default("accepting"),
+  takerOrderingPausedUntil: timestamp("taker_ordering_paused_until"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

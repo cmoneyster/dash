@@ -51,6 +51,20 @@ interface TakerSettings {
   taxRate: number | null;
   venmoHandle: string | null;
   venmoQrImageUrl: string | null;
+  orderingState?: "accepting" | "paused" | "closed";
+  orderingPausedUntil?: string | null;
+  orderingRemainingSec?: number | null;
+}
+
+function formatTakerBannerTime(pausedUntil: string | null | undefined, now: number): string {
+  if (!pausedUntil) return "a moment";
+  const ms = new Date(pausedUntil).getTime() - now;
+  if (ms <= 0) return "a moment";
+  const sec = Math.ceil(ms / 1000);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
 type PaymentMethod = "cash" | "card" | "venmo";
@@ -214,13 +228,35 @@ export default function EventTakerOrder() {
     return () => clearTimeout(t);
   }, [autoPrintMode, confirmation, lastReceipt]);
 
-  // Public settings (always available)
+  // Public settings — re-polled so the kitchen pause/stop state stays current.
   useEffect(() => {
-    fetch(`${BASE}/api/event-taker/settings`)
-      .then(r => r.json())
-      .then(setSettings)
-      .catch(() => {});
+    function load() {
+      fetch(`${BASE}/api/event-taker/settings`)
+        .then(r => r.json())
+        .then(setSettings)
+        .catch(() => {});
+    }
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
   }, []);
+
+  // Tick once a second so the paused-countdown banner animates between polls.
+  const [tickNow, setTickNow] = useState(Date.now());
+  useEffect(() => {
+    if (settings?.orderingState !== "paused") return;
+    const id = setInterval(() => setTickNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [settings?.orderingState]);
+
+  // When the local countdown hits zero, optimistically flip to accepting so the
+  // Charge button isn't false-disabled until the next 30s settings poll.
+  useEffect(() => {
+    if (settings?.orderingState === "paused" && settings.orderingPausedUntil
+        && new Date(settings.orderingPausedUntil).getTime() <= tickNow) {
+      setSettings(s => s ? { ...s, orderingState: "accepting", orderingPausedUntil: null, orderingRemainingSec: null } : s);
+    }
+  }, [tickNow, settings?.orderingState, settings?.orderingPausedUntil]);
 
   async function loadMenu(token: string) {
     setMenuError("");
@@ -373,6 +409,10 @@ export default function EventTakerOrder() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        if (res.status === 423) {
+          // Refresh public settings so the banner picks up the new state immediately.
+          fetch(`${BASE}/api/event-taker/settings`).then(r => r.json()).then(setSettings).catch(() => {});
+        }
         setSubmitError(err.error ?? "Failed to place order");
         return;
       }
@@ -885,16 +925,30 @@ export default function EventTakerOrder() {
                 placeholder="Phone (optional — for SMS)"
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm"
               />
+              {settings?.orderingState && settings.orderingState !== "accepting" && (
+                <div className={`rounded-xl border p-3 text-sm ${settings.orderingState === "paused" ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-rose-50 border-rose-200 text-rose-900"}`}>
+                  <p className="font-bold">
+                    {settings.orderingState === "paused"
+                      ? `Kitchen paused order taking — back in ${formatTakerBannerTime(settings.orderingPausedUntil ?? null, tickNow)}`
+                      : "Kitchen has stopped order taking."}
+                  </p>
+                  <p className="text-xs mt-0.5 opacity-80">New orders cannot be charged until this clears.</p>
+                </div>
+              )}
               {submitError && (
                 <p className="text-sm text-destructive flex items-start gap-1.5"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{submitError}</p>
               )}
               <button
                 type="submit"
-                disabled={submitting || !guestName.trim()}
+                disabled={submitting || !guestName.trim() || (settings?.orderingState != null && settings.orderingState !== "accepting")}
                 className="w-full px-5 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
-                Charge ${total.toFixed(2)}
+                {settings?.orderingState === "paused"
+                  ? "Order taking paused"
+                  : settings?.orderingState === "closed"
+                    ? "Order taking stopped"
+                    : `Charge $${total.toFixed(2)}`}
               </button>
             </form>
           )}

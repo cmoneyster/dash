@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { menuItemsTable, eventOrdersTable, eventSettingsTable } from "@workspace/db/schema";
 import { eq, sql, inArray, and, desc } from "drizzle-orm";
 import { sendOrderConfirmation } from "../lib/sms";
+import { getOrderingChannelStates } from "./event-ordering";
 
 const router: IRouter = Router();
 
@@ -50,6 +51,7 @@ router.get("/event-taker/settings", async (req, res) => {
   try {
     const s = await getSettings();
     const resolved = await resolveTakerPassword();
+    const channels = await getOrderingChannelStates();
     res.json({
       eventName: s?.eventName ?? "",
       taxEnabled: s?.eventTakerTaxEnabled ?? false,
@@ -57,6 +59,9 @@ router.get("/event-taker/settings", async (req, res) => {
       hasPassword: !!resolved,
       venmoHandle: s?.venmoHandle ?? null,
       venmoQrImageUrl: s?.venmoQrImageUrl ?? null,
+      orderingState: channels.taker.state,
+      orderingPausedUntil: channels.taker.pausedUntil,
+      orderingRemainingSec: channels.taker.remainingSec,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching taker settings");
@@ -131,6 +136,20 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
       return;
     }
 
+    // Gate: kitchen may have paused or stopped staff order taking.
+    const channels = await getOrderingChannelStates();
+    if (channels.taker.state !== "accepting") {
+      res.status(423).json({
+        error: channels.taker.state === "paused"
+          ? "Order taking is paused — try again shortly."
+          : "Order taking is currently stopped.",
+        state: channels.taker.state,
+        pausedUntil: channels.taker.pausedUntil,
+        remainingSec: channels.taker.remainingSec,
+      });
+      return;
+    }
+
     // Validate quantities and aggregate duplicate item lines up-front.
     const aggregated = new Map<number, number>();
     for (const i of items) {
@@ -152,6 +171,28 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
     const taxRate = settings?.eventTakerTaxRate != null ? parseFloat(settings.eventTakerTaxRate) : 0;
 
     const order = await db.transaction(async (tx) => {
+      // Re-check the kitchen toggle inside the transaction to avoid a race
+      // between the gate above and the row commit.
+      const [s] = await tx.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1)).for("update");
+      // Recompute the effective channel state from the row we just locked, so a
+      // concurrent toggle write blocks behind us instead of slipping orders through.
+      const liveTaker = (function () {
+        const raw = (s?.takerOrderingState ?? "accepting") as "accepting" | "paused" | "closed";
+        const pu = s?.takerOrderingPausedUntil ?? null;
+        if (raw === "paused" && pu) {
+          const ms = pu.getTime() - Date.now();
+          if (ms > 0) return { state: "paused" as const, pausedUntil: pu.toISOString(), remainingSec: Math.ceil(ms / 1000) };
+          return { state: "accepting" as const, pausedUntil: null, remainingSec: null };
+        }
+        if (raw === "closed") return { state: "closed" as const, pausedUntil: null, remainingSec: null };
+        return { state: "accepting" as const, pausedUntil: null, remainingSec: null };
+      })();
+      if (liveTaker.state !== "accepting") {
+        throw Object.assign(new Error(liveTaker.state === "paused"
+          ? "Order taking is paused — try again shortly."
+          : "Order taking is currently stopped."),
+          { status: 423, channelState: liveTaker });
+      }
       const itemIds = Array.from(aggregated.keys());
       const rows = await tx
         .select()
@@ -247,6 +288,15 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
     }
     if (err?.status === 400 || err?.status === 404) {
       res.status(err.status).json({ error: err.message });
+      return;
+    }
+    if (err?.status === 423 && err?.channelState) {
+      res.status(423).json({
+        error: err.message,
+        state: err.channelState.state,
+        pausedUntil: err.channelState.pausedUntil,
+        remainingSec: err.channelState.remainingSec,
+      });
       return;
     }
     req.log.error({ err }, "Error creating taker order");
