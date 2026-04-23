@@ -225,6 +225,10 @@ router.post("/admin/catering", async (req, res) => {
       clientName,
       source: "form",
       eventDate: asString(body.eventDate)?.trim() || null,
+      guestCount: typeof body.guestCount === "number" ? body.guestCount : null,
+      total: inquiry.quoteTotal ? `$${Number(inquiry.quoteTotal).toFixed(2)}` : null,
+      clientPhone: asString(body.clientPhone)?.trim() || null,
+      link: `${publicBaseUrl(req)}/admin/catering?inquiry=${inquiry.id}`,
     }).catch(() => {});
 
     res.status(201).json(inquiry);

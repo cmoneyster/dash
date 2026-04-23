@@ -52,6 +52,10 @@ export async function sendNewInquiryAlert(opts: {
   clientName: string;
   source: "form" | "cart";
   eventDate?: string | null;
+  guestCount?: number | null;
+  total?: string | null;       // pre-formatted, e.g. "$123.45"
+  clientPhone?: string | null;
+  link?: string | null;        // deep link to admin inquiry editor
 }): Promise<void> {
   const ownerPhone = process.env.OWNER_PHONE;
   if (!ownerPhone) {
@@ -59,7 +63,15 @@ export async function sendNewInquiryAlert(opts: {
     return;
   }
   const sourceLabel = opts.source === "cart" ? "cart order" : "form inquiry";
-  const datePart = opts.eventDate ? ` — Event: ${opts.eventDate}` : "";
-  const body = `New catering inquiry from ${opts.clientName} (${sourceLabel})${datePart}. Check admin for details.`;
-  await sendSms(ownerPhone, body);
+  const lines: string[] = [
+    `New catering ${sourceLabel} from ${opts.clientName}`,
+  ];
+  const detail: string[] = [];
+  if (opts.eventDate)   detail.push(`Event: ${opts.eventDate}`);
+  if (opts.guestCount)  detail.push(`${opts.guestCount} guests`);
+  if (detail.length)    lines.push(detail.join(" · "));
+  if (opts.total)       lines.push(`Total: ${opts.total}`);
+  if (opts.clientPhone) lines.push(`Phone: ${opts.clientPhone}`);
+  if (opts.link)        lines.push(`View: ${opts.link}`);
+  await sendSms(ownerPhone, lines.join("\n"));
 }

@@ -81,7 +81,7 @@ router.post("/orders", async (req, res) => {
       }));
       const orderTotalStr = `$${total.toFixed(2)}`;
 
-      await db.insert(cateringInquiriesTable).values({
+      const [inquiryRow] = await db.insert(cateringInquiriesTable).values({
         clientName: customerName,
         clientEmail: customerEmail ?? null,
         clientPhone: customerPhone ?? null,
@@ -92,13 +92,24 @@ router.post("/orders", async (req, res) => {
         orderItems: orderItemsForInquiry,
         orderTotal: orderTotalStr,
         status: "inquiry",
-      });
+      }).returning();
+
+      // Build a deep link to the admin inquiry editor for the SMS alert.
+      const envBase = process.env.PUBLIC_BASE_URL?.trim().replace(/\/$/, "");
+      const fwd = req.headers["x-forwarded-proto"];
+      const proto = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(",")[0] || req.protocol || "https";
+      const baseUrl = envBase || `${proto}://${req.get("host")}`;
+      const link = `${baseUrl}/admin/catering?inquiry=${inquiryRow.id}`;
 
       // Fire-and-forget SMS alert
       sendNewInquiryAlert({
         clientName: customerName,
         source: "cart",
         eventDate: eventDate ?? null,
+        guestCount: guestCount ?? null,
+        total: orderTotalStr,
+        clientPhone: customerPhone ?? null,
+        link,
       }).catch(() => {});
     } catch (inquiryErr) {
       req.log.error({ err: inquiryErr }, "Failed to create catering inquiry from cart order — order was still created");
