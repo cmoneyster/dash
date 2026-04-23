@@ -149,12 +149,32 @@ type SnapshotItem = {
   lineTotal?: number;
 };
 
+// Bucket an order by its payment method for the cash-drawer reconcile view.
+// 'override' is a payment status (sent to kitchen unpaid), not a method, but
+// the owner still wants it broken out alongside cash/card/venmo. 'other'
+// catches anything that doesn't fit (mostly guest orders that never went
+// through the POS payment flow).
+type PaymentBucket = "cash" | "card" | "venmo" | "override" | "other";
+function paymentBucket(o: typeof eventOrdersTable.$inferSelect): PaymentBucket {
+  if (o.paymentStatus === "override") return "override";
+  const m = o.paymentMethod;
+  if (m === "cash" || m === "card" || m === "venmo") return m;
+  return "other";
+}
+
 function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
   let revenue = 0;
   let subtotal = 0;
   let tax = 0;
   let itemCount = 0;
   const itemBreakdown: Record<string, { name: string; quantity: number; revenue: number }> = {};
+  const paymentBuckets: Record<PaymentBucket, { orderCount: number; revenue: number }> = {
+    cash: { orderCount: 0, revenue: 0 },
+    card: { orderCount: 0, revenue: 0 },
+    venmo: { orderCount: 0, revenue: 0 },
+    override: { orderCount: 0, revenue: 0 },
+    other: { orderCount: 0, revenue: 0 },
+  };
   const orderRows: Array<{
     id: number;
     createdAt: string;
@@ -162,6 +182,7 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
     guestName: string;
     phoneNumber: string | null;
     status: string;
+    paymentMethod: PaymentBucket;
     items: Array<{ itemId: number; name: string; quantity: number; unitPrice: number; lineTotal: number }>;
     subtotal: number;
     taxRate: number | null;
@@ -183,6 +204,9 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
     revenue += orderTotal;
     subtotal += orderSubtotal;
     tax += orderTax;
+    const bucket = paymentBucket(o);
+    paymentBuckets[bucket].orderCount += 1;
+    paymentBuckets[bucket].revenue += orderTotal;
     for (const i of lineSnapshots) {
       itemCount += i.quantity;
       const key = `${i.itemId}::${i.name}`;
@@ -197,6 +221,7 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
       guestName: o.guestName,
       phoneNumber: o.phoneNumber ?? null,
       status: o.status,
+      paymentMethod: bucket,
       items: lineSnapshots,
       subtotal: round2(orderSubtotal),
       taxRate: o.taxRate != null ? parseFloat(o.taxRate) : null,
@@ -216,6 +241,8 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
       .map(i => ({ ...i, revenue: round2(i.revenue) }))
       .sort((a, b) => b.revenue - a.revenue),
     orders: orderRows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    byPaymentMethod: (Object.entries(paymentBuckets) as Array<[PaymentBucket, { orderCount: number; revenue: number }]>)
+      .map(([method, t]) => ({ method, orderCount: t.orderCount, revenue: round2(t.revenue) })),
   };
 }
 
@@ -328,7 +355,7 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
       }
     } else {
       // Order-level CSV — one row per order
-      rows.push(["Order ID", "Created", "Source", "Guest Name", "Phone", "Status", "Items", "Subtotal", "Tax Rate (%)", "Tax", "Total"].join(","));
+      rows.push(["Order ID", "Created", "Source", "Guest Name", "Phone", "Status", "payment_method", "Items", "Subtotal", "Tax Rate (%)", "Tax", "Total"].join(","));
       for (const o of orders) {
         const items = (o.items ?? []) as SnapshotItem[];
         const itemsStr = items.map(i => `${i.quantity}× ${i.name}`).join("; ");
@@ -344,6 +371,7 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
           o.guestName,
           o.phoneNumber ?? "",
           o.status,
+          paymentBucket(o),
           itemsStr,
           subtotal.toFixed(2),
           o.taxRate != null ? parseFloat(o.taxRate).toFixed(2) : "",

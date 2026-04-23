@@ -3,7 +3,7 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
   Loader2, Download, BarChart3, Users, ShoppingBag, DollarSign,
-  Receipt, Package, ChevronDown, ChevronRight,
+  Receipt, Package, ChevronDown, ChevronRight, Wallet,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -14,14 +14,17 @@ type Preset = "today" | "yesterday" | "week" | "month" | "quarter" | "year" | "c
 
 interface ReportItem { name: string; quantity: number; revenue: number }
 interface ReportOrderLine { itemId: number; name: string; quantity: number; unitPrice: number; lineTotal: number }
+type PaymentMethod = "cash" | "card" | "venmo" | "override" | "other";
 interface ReportOrder {
   id: number; createdAt: string; source: string; guestName: string;
-  phoneNumber: string | null; status: string;
+  phoneNumber: string | null; status: string; paymentMethod: PaymentMethod;
   items: ReportOrderLine[]; subtotal: number; taxRate: number | null; tax: number; total: number;
 }
+interface PaymentMethodTotal { method: PaymentMethod; orderCount: number; revenue: number }
 interface ReportTotals {
   orderCount: number; itemCount: number; subtotal: number; tax: number;
   revenue: number; avgOrderValue: number; items: ReportItem[]; orders: ReportOrder[];
+  byPaymentMethod: PaymentMethodTotal[];
 }
 interface Report {
   from: string; to: string; source: SourceFilter;
@@ -253,6 +256,9 @@ export default function SalesReports() {
             </div>
           )}
 
+          <PaymentMethodBreakdown totals={report.totals} />
+
+
           {/* Order-level table with expandable line details */}
           <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden mb-6">
             <div className="px-5 py-4 border-b border-border bg-secondary/30 flex items-center justify-between">
@@ -274,6 +280,7 @@ export default function SalesReports() {
                       <th className="px-3 py-2.5 font-semibold">When</th>
                       <th className="px-3 py-2.5 font-semibold">Source</th>
                       <th className="px-3 py-2.5 font-semibold">Customer</th>
+                      <th className="px-3 py-2.5 font-semibold">Payment</th>
                       <th className="px-3 py-2.5 font-semibold text-right">Subtotal</th>
                       <th className="px-3 py-2.5 font-semibold text-right">Tax</th>
                       <th className="px-3 py-2.5 font-semibold text-right">Total</th>
@@ -301,13 +308,14 @@ export default function SalesReports() {
                               }`}>{o.source}</span>
                             </td>
                             <td className="px-3 py-2.5">{o.guestName}</td>
+                            <td className="px-3 py-2.5"><PaymentBadge method={o.paymentMethod} /></td>
                             <td className="px-3 py-2.5 text-right">{fmt(o.subtotal)}</td>
                             <td className="px-3 py-2.5 text-right text-muted-foreground">{fmt(o.tax)}</td>
                             <td className="px-3 py-2.5 text-right font-semibold">{fmt(o.total)}</td>
                           </tr>
                           {isOpen && (
                             <tr key={`${o.id}-d`} className="border-b border-border/50 bg-secondary/20">
-                              <td colSpan={8} className="px-12 py-3">
+                              <td colSpan={9} className="px-12 py-3">
                                 <table className="w-full text-xs">
                                   <thead>
                                     <tr className="text-left text-muted-foreground">
@@ -396,6 +404,64 @@ function Kpi({ label, value, icon, accent }: { label: string; value: string; ico
       <div className={`inline-flex items-center justify-center w-9 h-9 rounded-xl mb-2 ${accent}`}>{icon}</div>
       <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
       <p className="text-2xl font-bold mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+  cash: "Cash",
+  card: "Card",
+  venmo: "Venmo",
+  override: "Override",
+  other: "Other",
+};
+const PAYMENT_STYLES: Record<PaymentMethod, string> = {
+  cash: "bg-emerald-100 text-emerald-700",
+  card: "bg-sky-100 text-sky-700",
+  venmo: "bg-violet-100 text-violet-700",
+  override: "bg-amber-100 text-amber-800",
+  other: "bg-secondary text-muted-foreground",
+};
+
+function PaymentBadge({ method }: { method: PaymentMethod }) {
+  return (
+    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${PAYMENT_STYLES[method]}`}>
+      {PAYMENT_LABELS[method]}
+    </span>
+  );
+}
+
+function PaymentMethodBreakdown({ totals }: { totals: ReportTotals }) {
+  // Hide buckets that have no orders so the layout stays focused on what was
+  // actually rung up — but always show cash/card/venmo so the owner can see
+  // a $0 reconciliation when nothing was taken in that method.
+  const ALWAYS: PaymentMethod[] = ["cash", "card", "venmo"];
+  const buckets = totals.byPaymentMethod.filter(
+    b => ALWAYS.includes(b.method) || b.orderCount > 0
+  );
+  if (buckets.length === 0) return null;
+  return (
+    <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden mb-6">
+      <div className="px-5 py-4 border-b border-border bg-secondary/30 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Wallet className="w-5 h-5 text-indigo-600" />
+          <div>
+            <h2 className="font-display font-bold text-lg">Payment Method Breakdown</h2>
+            <p className="text-xs text-muted-foreground">Use this to reconcile the cash drawer at end of day.</p>
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px bg-border">
+        {buckets.map(b => (
+          <div key={b.method} className="bg-card p-4">
+            <div className="flex items-center justify-between mb-1">
+              <PaymentBadge method={b.method} />
+              <span className="text-xs text-muted-foreground">{b.orderCount} {b.orderCount === 1 ? "order" : "orders"}</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{fmt(b.revenue)}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
