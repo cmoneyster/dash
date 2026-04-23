@@ -377,7 +377,7 @@ function SessionOrders({ sessionId, onOrdersDeleted }: { sessionId: number; onCl
                               {isStaff ? `$${tax.toFixed(2)}` : <span className="text-muted-foreground/50">—</span>}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                              {isStaff ? `$${tot.toFixed(2)}` : formatCurrency(lineSum)}
+                              {isStaff ? `$${tot.toFixed(2)}` : <span className="text-muted-foreground/50">—</span>}
                             </td>
                           </tr>
                         );

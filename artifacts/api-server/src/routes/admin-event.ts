@@ -272,23 +272,22 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
     const filenameBase = `sales-report_${type}_${fromStart.toISOString().slice(0, 10)}_to_${toEnd.toISOString().slice(0, 10)}`;
 
     if (type === "items") {
-      // Itemized CSV — one row per (order, line item)
-      rows.push(["Order ID", "Created", "Source", "Item", "Qty", "Unit Price", "Line Total"].join(","));
+      // Aggregated per-item CSV — one row per item across all orders in range
+      const agg = new Map<string, { quantity: number; revenue: number }>();
       for (const o of orders) {
         const items = (o.items ?? []) as SnapshotItem[];
         for (const i of items) {
           const unit = i.unitPrice != null ? Number(i.unitPrice) : Number(i.price) || 0;
           const line = i.lineTotal != null ? Number(i.lineTotal) : round2(unit * i.quantity);
-          rows.push([
-            o.id,
-            o.createdAt.toISOString(),
-            o.orderSource,
-            i.name,
-            i.quantity,
-            unit.toFixed(2),
-            line.toFixed(2),
-          ].map(escape).join(","));
+          const cur = agg.get(i.name) ?? { quantity: 0, revenue: 0 };
+          cur.quantity += i.quantity;
+          cur.revenue += line;
+          agg.set(i.name, cur);
         }
+      }
+      rows.push(["Item", "Quantity Sold", "Revenue"].join(","));
+      for (const [name, totals] of [...agg.entries()].sort((a, b) => b[1].quantity - a[1].quantity)) {
+        rows.push([name, totals.quantity, totals.revenue.toFixed(2)].map(escape).join(","));
       }
     } else {
       // Order-level CSV — one row per order

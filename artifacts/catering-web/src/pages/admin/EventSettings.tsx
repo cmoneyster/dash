@@ -31,6 +31,8 @@ function PasswordField({
   placeholder,
   value,
   onChange,
+  cleared,
+  onClear,
 }: {
   label: string;
   sublabel: string;
@@ -39,15 +41,22 @@ function PasswordField({
   placeholder: string;
   value: string;
   onChange: (v: string) => void;
+  cleared?: boolean;
+  onClear?: (next: boolean) => void;
 }) {
   const [show, setShow] = useState(false);
   return (
     <div>
       <label className="block text-sm font-semibold mb-1.5">
         {label}
-        {hasExisting && (
+        {hasExisting && !cleared && (
           <span className="ml-2 text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
             {existingLabel}
+          </span>
+        )}
+        {cleared && (
+          <span className="ml-2 text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+            Will be removed on save
           </span>
         )}
       </label>
@@ -55,9 +64,10 @@ function PasswordField({
         <input
           type={show ? "text" : "password"}
           value={value}
-          onChange={e => onChange(e.target.value)}
+          onChange={e => { onChange(e.target.value); if (e.target.value && onClear) onClear(false); }}
           placeholder={placeholder}
-          className="w-full pl-4 pr-10 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+          disabled={cleared}
+          className="w-full pl-4 pr-10 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all disabled:bg-secondary/30 disabled:text-muted-foreground"
         />
         <button
           type="button"
@@ -67,7 +77,18 @@ function PasswordField({
           {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
         </button>
       </div>
-      <p className="text-xs text-muted-foreground mt-1.5">{sublabel}</p>
+      <div className="flex items-center justify-between mt-1.5 gap-2">
+        <p className="text-xs text-muted-foreground flex-1">{sublabel}</p>
+        {hasExisting && onClear && (
+          <button
+            type="button"
+            onClick={() => onClear(!cleared)}
+            className="text-xs font-medium text-destructive hover:underline shrink-0"
+          >
+            {cleared ? "Undo" : "Remove password"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -77,6 +98,9 @@ export default function EventSettings() {
   const [orderPassword, setOrderPassword] = useState("");
   const [kitchenPassword, setKitchenPassword] = useState("");
   const [eventTakerPassword, setEventTakerPassword] = useState("");
+  const [clearOrderPassword, setClearOrderPassword] = useState(false);
+  const [clearKitchenPassword, setClearKitchenPassword] = useState(false);
+  const [clearEventTakerPassword, setClearEventTakerPassword] = useState(false);
   const [eventTakerTaxEnabled, setEventTakerTaxEnabled] = useState(false);
   const [eventTakerTaxRate, setEventTakerTaxRate] = useState<string>("");
   const [hasOrderPassword, setHasOrderPassword] = useState(false);
@@ -123,9 +147,12 @@ export default function EventSettings() {
         eventTakerTaxEnabled,
         eventTakerTaxRate: eventTakerTaxRate.trim() === "" ? null : Number(eventTakerTaxRate),
       };
-      if (orderPassword) body.orderPassword = orderPassword;
-      if (kitchenPassword) body.kitchenPassword = kitchenPassword;
-      if (eventTakerPassword) body.eventTakerPassword = eventTakerPassword;
+      if (clearOrderPassword) body.orderPassword = null;
+      else if (orderPassword) body.orderPassword = orderPassword;
+      if (clearKitchenPassword) body.kitchenPassword = null;
+      else if (kitchenPassword) body.kitchenPassword = kitchenPassword;
+      if (clearEventTakerPassword) body.eventTakerPassword = null;
+      else if (eventTakerPassword) body.eventTakerPassword = eventTakerPassword;
 
       const res = await fetch(`${BASE}/api/admin/event-settings`, {
         method: "PUT",
@@ -144,6 +171,9 @@ export default function EventSettings() {
       setOrderPassword("");
       setKitchenPassword("");
       setEventTakerPassword("");
+      setClearOrderPassword(false);
+      setClearKitchenPassword(false);
+      setClearEventTakerPassword(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
@@ -193,6 +223,8 @@ export default function EventSettings() {
                 placeholder={hasOrderPassword ? "Enter a new password to change it" : "Set a password for guests"}
                 value={orderPassword}
                 onChange={setOrderPassword}
+                cleared={clearOrderPassword}
+                onClear={setClearOrderPassword}
               />
             </div>
 
@@ -205,7 +237,7 @@ export default function EventSettings() {
                 label=""
                 sublabel={
                   hasEventTakerPassword
-                    ? "Leave blank to keep the existing password. Clear the field and save to remove it (falls back to guest password)."
+                    ? "Leave blank to keep the existing password. Use Remove password to clear it (falls back to guest password)."
                     : "If left blank, the guest ordering password is used for the staff order taker too."
                 }
                 hasExisting={hasEventTakerPassword}
@@ -213,6 +245,8 @@ export default function EventSettings() {
                 placeholder={hasEventTakerPassword ? "Enter a new password to change it" : "Same as guest password (leave blank)"}
                 value={eventTakerPassword}
                 onChange={setEventTakerPassword}
+                cleared={clearEventTakerPassword}
+                onClear={setClearEventTakerPassword}
               />
               <div className="space-y-3 pt-2">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
