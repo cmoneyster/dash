@@ -4,9 +4,10 @@ import { getAdminToken } from "@/components/AdminGuard";
 import {
   ClipboardList, Search, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink,
   ChevronRight, X, Loader2, Save, Trash2, Users, Calendar, Clock,
-  StickyNote, Package, RefreshCw, Hash, Copy, Check,
+  StickyNote, Package, RefreshCw, Hash, Copy, Check, Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocation } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -185,6 +186,31 @@ function DetailPanel({
   const [adminNotes, setAdminNotes] = useState(plan.adminNotes ?? "");
   const [dirty, setDirty] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const [converting, setConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
+  const [, navigate] = useLocation();
+
+  const convertToInquiry = async () => {
+    setConverting(true);
+    setConvertError(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/from-plan/${plan.shareToken}`, {
+        method: "POST",
+        headers: authHeaders() as HeadersInit,
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setConvertError(data.error ?? "Failed to convert plan");
+        return;
+      }
+      onClose();
+      navigate(`/admin/catering?inquiry=${data.id}`);
+    } catch {
+      setConvertError("Failed to convert plan");
+    } finally {
+      setConverting(false);
+    }
+  };
 
   useEffect(() => {
     setLoading(true);

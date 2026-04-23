@@ -50,6 +50,7 @@ function Router() {
       <Route path="/plan/share/:token" component={SharedPlan} />
       <Route path="/confirmation" component={Confirmation} />
       <Route path="/event" component={EventOrder} />
+      <Route path="/quote/:token" component={PublicQuote} />
       <Route path="/event-taker" component={EventTakerOrder} />
       <Route path="/event/order/:id" component={OrderStatus} />
       <Route path="/kitchen" component={KitchenDisplay} />

@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
   Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
-  Search, ShoppingCart,
+  Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
@@ -30,6 +30,22 @@ function getStatusMeta(key: string) {
 
 type OrderItem = { name: string; quantity: number; price: number };
 
+type QuoteLineItem = {
+  id: string;
+  menuItemId: number | null;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  notes?: string | null;
+};
+
+type QuoteAdjustment = {
+  id: string;
+  label: string;
+  kind: "fixed" | "percent";
+  amount: number;
+};
+
 type Inquiry = {
   id: number;
   clientName: string;
@@ -45,15 +61,33 @@ type Inquiry = {
   source: string;
   orderItems: OrderItem[] | null;
   orderTotal: string | null;
+  lineItems: QuoteLineItem[] | null;
+  fees: QuoteAdjustment[] | null;
+  discounts: QuoteAdjustment[] | null;
+  subtotal: string | null;
+  feesTotal: string | null;
+  discountsTotal: string | null;
+  total: string | null;
+  quoteNumber: string | null;
+  quoteToken: string | null;
+  quoteIssuedAt: string | null;
+  quoteExpiresAt: string | null;
+  quoteLastEmailedAt: string | null;
+  quoteLastTextedAt: string | null;
+  quoteNotes: string | null;
   createdAt: string;
   updatedAt: string;
 };
+
+type AdminMenuItem = { id: number; name: string; category: string; price: number };
 
 function emptyForm(): Partial<Inquiry> {
   return {
     clientName: "", clientEmail: "", clientPhone: "", organization: "",
     eventDate: "", guestCount: undefined, venueAddress: "", menuNotes: "", adminNotes: "", status: "inquiry",
     source: "form", orderItems: null, orderTotal: null,
+    lineItems: [], fees: [], discounts: [],
+    quoteNotes: "", quoteExpiresAt: null,
   };
 }
 
@@ -64,6 +98,40 @@ function formatDate(d: string | null | undefined) {
     if (isNaN(date.getTime())) return d;
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   } catch { return d; }
+}
+
+function formatDateTime(d: string | null | undefined) {
+  if (!d) return null;
+  try {
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return d;
+    return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  } catch { return d; }
+}
+
+function uid() {
+  // Browsers support crypto.randomUUID in modern envs.
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function round2(n: number) { return Math.round(n * 100) / 100; }
+
+function computeTotalsClient(items: QuoteLineItem[], fees: QuoteAdjustment[], discounts: QuoteAdjustment[]) {
+  const subtotal = round2(items.reduce((s, li) => s + (Number(li.quantity) || 0) * (Number(li.unitPrice) || 0), 0));
+  const feesArr = fees.map(f => ({
+    ...f,
+    computed: f.kind === "percent" ? round2(subtotal * (Number(f.amount) || 0) / 100) : round2(Number(f.amount) || 0),
+  }));
+  const feesTotal = round2(feesArr.reduce((s, f) => s + f.computed, 0));
+  const baseAfterFees = subtotal + feesTotal;
+  const discArr = discounts.map(d => ({
+    ...d,
+    computed: d.kind === "percent" ? round2(baseAfterFees * (Number(d.amount) || 0) / 100) : round2(Number(d.amount) || 0),
+  }));
+  const discountsTotal = round2(discArr.reduce((s, d) => s + d.computed, 0));
+  const total = round2(Math.max(0, subtotal + feesTotal - discountsTotal));
+  return { subtotal, feesTotal, discountsTotal, total, feesArr, discArr };
 }
 
 function Field({ icon: Icon, label, children }: { icon: any; label: string; children: React.ReactNode }) {
@@ -116,18 +184,465 @@ function OrderItemsTable({ items, total }: { items: OrderItem[]; total: string |
   );
 }
 
+// ── Quote Editor section ─────────────────────────────────────────────────────
+
+function MenuPicker({ menu, onPick }: { menu: AdminMenuItem[]; onPick: (item: AdminMenuItem) => void }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return menu.slice(0, 8);
+    return menu.filter(m =>
+      m.name.toLowerCase().includes(needle) || (m.category ?? "").toLowerCase().includes(needle),
+    ).slice(0, 12);
+  }, [menu, q]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <input
+          value={q}
+          onFocus={() => setOpen(true)}
+          onChange={e => { setQ(e.target.value); setOpen(true); }}
+          placeholder="Search menu items to add…"
+          className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+        />
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-lg max-h-64 overflow-y-auto">
+          {filtered.map(m => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => { onPick(m); setQ(""); setOpen(false); }}
+              className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-secondary"
+            >
+              <div className="min-w-0">
+                <p className="font-medium truncate">{m.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{m.category}</p>
+              </div>
+              <span className="text-xs font-semibold shrink-0">{formatCurrency(m.price)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuoteEditor({
+  lineItems, fees, discounts, quoteNotes, quoteExpiresAt,
+  onChange, menu,
+}: {
+  lineItems: QuoteLineItem[];
+  fees: QuoteAdjustment[];
+  discounts: QuoteAdjustment[];
+  quoteNotes: string;
+  quoteExpiresAt: string | null;
+  onChange: (patch: {
+    lineItems?: QuoteLineItem[];
+    fees?: QuoteAdjustment[];
+    discounts?: QuoteAdjustment[];
+    quoteNotes?: string;
+    quoteExpiresAt?: string | null;
+  }) => void;
+  menu: AdminMenuItem[];
+}) {
+  const totals = useMemo(() => computeTotalsClient(lineItems, fees, discounts), [lineItems, fees, discounts]);
+
+  const numCls = "w-20 px-2 py-1.5 text-sm text-right border border-border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none";
+  const txtCls = "w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none";
+
+  function addCustom() {
+    onChange({ lineItems: [...lineItems, { id: uid(), menuItemId: null, name: "", quantity: 1, unitPrice: 0, notes: null }] });
+  }
+  function pickMenu(m: AdminMenuItem) {
+    onChange({ lineItems: [...lineItems, { id: uid(), menuItemId: m.id, name: m.name, quantity: 1, unitPrice: m.price, notes: null }] });
+  }
+  function updateItem(id: string, patch: Partial<QuoteLineItem>) {
+    onChange({ lineItems: lineItems.map(li => li.id === id ? { ...li, ...patch } : li) });
+  }
+  function removeItem(id: string) {
+    onChange({ lineItems: lineItems.filter(li => li.id !== id) });
+  }
+  function addAdj(kind: "fee" | "discount") {
+    const newRow: QuoteAdjustment = { id: uid(), label: kind === "fee" ? "Fee" : "Discount", kind: "fixed", amount: 0 };
+    if (kind === "fee") onChange({ fees: [...fees, newRow] });
+    else onChange({ discounts: [...discounts, newRow] });
+  }
+  function updateAdj(arr: QuoteAdjustment[], id: string, patch: Partial<QuoteAdjustment>, target: "fee" | "discount") {
+    const next = arr.map(a => a.id === id ? { ...a, ...patch } : a);
+    if (target === "fee") onChange({ fees: next });
+    else onChange({ discounts: next });
+  }
+  function removeAdj(arr: QuoteAdjustment[], id: string, target: "fee" | "discount") {
+    const next = arr.filter(a => a.id !== id);
+    if (target === "fee") onChange({ fees: next });
+    else onChange({ discounts: next });
+  }
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      <div className="bg-secondary/40 px-4 py-2 border-b border-border flex items-center gap-2">
+        <Receipt className="w-3.5 h-3.5 text-primary" />
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quote Builder</span>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Picker */}
+        <div className="space-y-2">
+          <MenuPicker menu={menu} onPick={pickMenu} />
+          <button
+            type="button"
+            onClick={addCustom}
+            className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-1"
+          >
+            <Plus className="w-3 h-3" /> Add custom line
+          </button>
+        </div>
+
+        {/* Line items */}
+        {lineItems.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4 italic">No line items yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {lineItems.map(li => {
+              const lineTotal = (Number(li.quantity) || 0) * (Number(li.unitPrice) || 0);
+              return (
+                <div key={li.id} className="grid grid-cols-[1fr_60px_90px_80px_28px] gap-2 items-center">
+                  <input
+                    value={li.name}
+                    onChange={e => updateItem(li.id, { name: e.target.value })}
+                    placeholder="Item name"
+                    className={txtCls}
+                  />
+                  <input
+                    type="number" min={0} step="1" inputMode="numeric"
+                    value={li.quantity}
+                    onChange={e => updateItem(li.id, { quantity: e.target.value === "" ? 0 : Number(e.target.value) })}
+                    className={numCls}
+                  />
+                  <input
+                    type="number" min={0} step="0.01" inputMode="decimal"
+                    value={li.unitPrice}
+                    onChange={e => updateItem(li.id, { unitPrice: e.target.value === "" ? 0 : Number(e.target.value) })}
+                    className={numCls}
+                  />
+                  <span className="text-right text-sm font-semibold tabular-nums">{formatCurrency(lineTotal)}</span>
+                  <button type="button" onClick={() => removeItem(li.id)} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-destructive" title="Remove">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Fees */}
+        <AdjustmentList kind="fee" rows={fees}
+          onAdd={() => addAdj("fee")}
+          onUpdate={(id, patch) => updateAdj(fees, id, patch, "fee")}
+          onRemove={(id) => removeAdj(fees, id, "fee")}
+        />
+
+        {/* Discounts */}
+        <AdjustmentList kind="discount" rows={discounts}
+          onAdd={() => addAdj("discount")}
+          onUpdate={(id, patch) => updateAdj(discounts, id, patch, "discount")}
+          onRemove={(id) => removeAdj(discounts, id, "discount")}
+        />
+
+        {/* Totals card */}
+        <div className="border-t border-border pt-3 ml-auto max-w-xs space-y-1 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span className="font-medium tabular-nums">{formatCurrency(totals.subtotal)}</span>
+          </div>
+          {totals.feesArr.map(f => (
+            <div key={f.id} className="flex justify-between text-xs">
+              <span className="text-muted-foreground truncate pr-2">{f.label}{f.kind === "percent" ? ` (${f.amount}%)` : ""}</span>
+              <span className="tabular-nums">{formatCurrency(f.computed)}</span>
+            </div>
+          ))}
+          {totals.discArr.map(d => (
+            <div key={d.id} className="flex justify-between text-xs text-emerald-700">
+              <span className="truncate pr-2">{d.label}{d.kind === "percent" ? ` (${d.amount}%)` : ""}</span>
+              <span className="tabular-nums">-{formatCurrency(d.computed)}</span>
+            </div>
+          ))}
+          <div className="flex justify-between pt-2 border-t border-border font-bold">
+            <span>Total</span>
+            <span className="text-primary tabular-nums">{formatCurrency(totals.total)}</span>
+          </div>
+        </div>
+
+        {/* Quote-level fields */}
+        <div className="grid grid-cols-2 gap-3 pt-2">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Valid Until</label>
+            <input
+              type="date"
+              value={quoteExpiresAt ? quoteExpiresAt.slice(0, 10) : ""}
+              onChange={e => onChange({ quoteExpiresAt: e.target.value || null })}
+              className="w-full px-3 py-2 border border-border rounded-xl bg-background text-sm"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Quote Notes (visible to client)</label>
+          <textarea
+            value={quoteNotes}
+            onChange={e => onChange({ quoteNotes: e.target.value })}
+            rows={2}
+            placeholder="Setup time, deposit instructions, payment terms…"
+            className="w-full px-3 py-2 border border-border rounded-xl bg-background text-sm resize-none"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdjustmentList({
+  kind, rows, onAdd, onUpdate, onRemove,
+}: {
+  kind: "fee" | "discount";
+  rows: QuoteAdjustment[];
+  onAdd: () => void;
+  onUpdate: (id: string, patch: Partial<QuoteAdjustment>) => void;
+  onRemove: (id: string) => void;
+}) {
+  const numCls = "w-20 px-2 py-1.5 text-sm text-right border border-border rounded-lg bg-background outline-none";
+  const txtCls = "w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-background outline-none";
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {kind === "fee" ? "Fees" : "Discounts"}
+        </span>
+        <button type="button" onClick={onAdd} className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-1">
+          <Plus className="w-3 h-3" /> Add
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">None</p>
+      ) : (
+        <div className="space-y-1.5">
+          {rows.map(r => (
+            <div key={r.id} className="grid grid-cols-[1fr_70px_90px_28px] gap-2 items-center">
+              <input value={r.label} onChange={e => onUpdate(r.id, { label: e.target.value })} placeholder="Label" className={txtCls} />
+              <select
+                value={r.kind}
+                onChange={e => onUpdate(r.id, { kind: e.target.value as "fixed" | "percent" })}
+                className="px-2 py-1.5 text-sm border border-border rounded-lg bg-background"
+              >
+                <option value="fixed">$</option>
+                <option value="percent">%</option>
+              </select>
+              <input
+                type="number" min={0} step="0.01" inputMode="decimal"
+                value={r.amount}
+                onChange={e => onUpdate(r.id, { amount: e.target.value === "" ? 0 : Number(e.target.value) })}
+                className={numCls}
+              />
+              <button type="button" onClick={() => onRemove(r.id)} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-destructive">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Quote Actions panel ──────────────────────────────────────────────────────
+
+function QuoteActions({
+  inquiry, onUpdated,
+}: {
+  inquiry: Inquiry;
+  onUpdated: (i: Inquiry) => void;
+}) {
+  const [busy, setBusy] = useState<null | "gen" | "email" | "sms">(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const viewUrl = inquiry.quoteToken
+    ? `${window.location.origin}${BASE}/quote/${inquiry.quoteToken}`
+    : null;
+  const pdfUrl = `${BASE}/api/admin/catering/${inquiry.id}/quote.pdf`;
+  const issued = !!inquiry.quoteIssuedAt;
+
+  async function generate() {
+    setBusy("gen"); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/quote`, { method: "POST", headers: authHeaders() });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to generate"); return; }
+      onUpdated(data.inquiry);
+      setMsg(issued ? "Quote refreshed." : "Quote generated.");
+    } catch { setMsg("Failed to generate."); }
+    finally { setBusy(null); }
+  }
+
+  async function emailQuote() {
+    if (!inquiry.clientEmail) { setMsg("No client email on file."); return; }
+    setBusy("email"); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/quote/email`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to email"); return; }
+      onUpdated(data.inquiry);
+      setMsg(`Emailed to ${data.sentTo}.`);
+    } catch { setMsg("Failed to email."); }
+    finally { setBusy(null); }
+  }
+
+  async function smsQuote() {
+    if (!inquiry.clientPhone) { setMsg("No client phone on file."); return; }
+    setBusy("sms"); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/quote/sms`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to text"); return; }
+      onUpdated(data.inquiry);
+      setMsg(`Texted to ${data.sentTo}.`);
+    } catch { setMsg("Failed to text."); }
+    finally { setBusy(null); }
+  }
+
+  function copyLink() {
+    if (!viewUrl) return;
+    navigator.clipboard.writeText(viewUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      <div className="bg-violet-50 px-4 py-2 border-b border-border flex items-center gap-2">
+        <Send className="w-3.5 h-3.5 text-violet-700" />
+        <span className="text-xs font-bold uppercase tracking-wider text-violet-700">Quote Actions</span>
+      </div>
+      <div className="p-4 space-y-3 text-sm">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Quote #</p>
+            <p className="font-mono font-semibold">{inquiry.quoteNumber ?? <span className="text-muted-foreground italic">— not generated</span>}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Issued</p>
+            <p>{formatDateTime(inquiry.quoteIssuedAt) ?? <span className="text-muted-foreground italic">—</span>}</p>
+          </div>
+        </div>
+
+        {viewUrl && (
+          <div className="flex items-center gap-2 p-2 bg-secondary/40 rounded-lg border border-border text-xs">
+            <LinkIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="font-mono truncate flex-1">{viewUrl}</span>
+            <button type="button" onClick={copyLink} className="p-1 rounded hover:bg-secondary" title="Copy link">
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+            <a href={viewUrl} target="_blank" rel="noreferrer" className="p-1 rounded hover:bg-secondary" title="Open">
+              <ChevronRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={generate}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors disabled:opacity-50"
+          >
+            {busy === "gen" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />}
+            {issued ? "Refresh Quote" : "Generate Quote"}
+          </button>
+          <a
+            href={pdfUrl + (getAdminToken() ? `?_t=${encodeURIComponent(getAdminToken()!)}` : "")}
+            onClick={async (e) => {
+              // The PDF route is auth-protected. We can't pass headers from <a>, so fetch + download.
+              e.preventDefault();
+              const r = await fetch(pdfUrl, { headers: authHeaders() });
+              if (!r.ok) { setMsg("Could not download PDF."); return; }
+              const blob = await r.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = `${inquiry.quoteNumber ?? `quote-${inquiry.id}`}.pdf`;
+              document.body.appendChild(a); a.click(); a.remove();
+              URL.revokeObjectURL(url);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-secondary text-foreground text-sm font-semibold rounded-xl hover:bg-border transition-colors"
+          >
+            <Download className="w-4 h-4" /> Download PDF
+          </a>
+          <button
+            type="button"
+            onClick={emailQuote}
+            disabled={busy !== null || !issued || !inquiry.clientEmail}
+            title={!inquiry.clientEmail ? "No client email on file" : !issued ? "Generate the quote first" : ""}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-secondary text-foreground text-sm font-semibold rounded-xl hover:bg-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {busy === "email" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+            Email PDF
+          </button>
+          <button
+            type="button"
+            onClick={smsQuote}
+            disabled={busy !== null || !issued || !inquiry.clientPhone}
+            title={!inquiry.clientPhone ? "No client phone on file" : !issued ? "Generate the quote first" : ""}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-secondary text-foreground text-sm font-semibold rounded-xl hover:bg-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {busy === "sms" ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+            Text Link
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {inquiry.quoteLastEmailedAt && <span>Emailed {formatDateTime(inquiry.quoteLastEmailedAt)}</span>}
+          {inquiry.quoteLastTextedAt && <span>Texted {formatDateTime(inquiry.quoteLastTextedAt)}</span>}
+        </div>
+
+        {msg && <p className="text-xs text-muted-foreground border-t border-border pt-2">{msg}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ── Detail Panel ─────────────────────────────────────────────────────────────
+
 function DetailPanel({
   inquiry,
   onClose,
   onSaved,
   onDeleted,
   isNew,
+  menu,
 }: {
   inquiry: Partial<Inquiry>;
   onClose: () => void;
   onSaved: (saved: Inquiry) => void;
   onDeleted?: () => void;
   isNew: boolean;
+  menu: AdminMenuItem[];
 }) {
   const [form, setForm] = useState<Partial<Inquiry>>(inquiry);
   const [saving, setSaving] = useState(false);
@@ -139,6 +654,10 @@ function DetailPanel({
 
   function set(key: keyof Inquiry, value: any) {
     setForm(p => ({ ...p, [key]: value }));
+    setSaved(false);
+  }
+  function patch(p: Partial<Inquiry>) {
+    setForm(prev => ({ ...prev, ...p }));
     setSaved(false);
   }
 
@@ -153,6 +672,7 @@ function DetailPanel({
       const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(form) });
       if (!res.ok) throw new Error();
       const savedData = await res.json();
+      setForm(savedData);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       onSaved(savedData);
@@ -180,6 +700,9 @@ function DetailPanel({
   const textareaCls = `${inputCls} resize-none`;
   const isCartOrder = form.source === "cart";
   const hasItems = isCartOrder && Array.isArray(form.orderItems) && form.orderItems.length > 0;
+  const lineItems: QuoteLineItem[] = (form.lineItems as QuoteLineItem[] | null | undefined) ?? [];
+  const fees: QuoteAdjustment[] = (form.fees as QuoteAdjustment[] | null | undefined) ?? [];
+  const discounts: QuoteAdjustment[] = (form.discounts as QuoteAdjustment[] | null | undefined) ?? [];
 
   return (
     <div className="flex flex-col h-full">
@@ -199,7 +722,7 @@ function DetailPanel({
 
       <form onSubmit={handleSave} className="flex-1 overflow-y-auto">
         <div className="p-6 space-y-4">
-          {/* Cart items table */}
+          {/* Cart items table (read-only) */}
           {hasItems && (
             <OrderItemsTable items={form.orderItems!} total={form.orderTotal ?? null} />
           )}
@@ -285,6 +808,31 @@ function DetailPanel({
             </Field>
           </div>
 
+          {!isNew && (
+            <>
+              <QuoteEditor
+                lineItems={lineItems}
+                fees={fees}
+                discounts={discounts}
+                quoteNotes={form.quoteNotes ?? ""}
+                quoteExpiresAt={form.quoteExpiresAt ?? null}
+                onChange={(p) => patch(p as Partial<Inquiry>)}
+                menu={menu}
+              />
+
+              <p className="text-xs text-muted-foreground italic">
+                Save changes to lock in totals before generating or sending the quote.
+              </p>
+
+              {form.id !== undefined && (
+                <QuoteActions
+                  inquiry={form as Inquiry}
+                  onUpdated={(i) => { setForm(i); onSaved(i); }}
+                />
+              )}
+            </>
+          )}
+
           {error && <p className="text-destructive text-sm">{error}</p>}
         </div>
       </form>
@@ -321,6 +869,7 @@ export default function CateringOrders() {
   const [isNew, setIsNew] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [menu, setMenu] = useState<AdminMenuItem[]>([]);
 
   const load = useCallback(() => {
     fetch(`${BASE}/api/admin/catering`, { headers: authHeaders() })
@@ -330,6 +879,33 @@ export default function CateringOrders() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/admin/menu`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: any[]) => setMenu(
+        (data ?? []).map(m => ({ id: m.id, name: m.name, category: m.category, price: Number(m.price) || 0 })),
+      ))
+      .catch(() => setMenu([]));
+  }, []);
+
+  // Auto-open inquiry from URL hash (?inquiry=ID) — used by Convert-to-inquiry from CateringPlans.
+  useEffect(() => {
+    if (!inquiries.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const wantId = params.get("inquiry");
+    if (wantId) {
+      const match = inquiries.find(i => String(i.id) === wantId);
+      if (match) {
+        setSelected(match);
+        setIsNew(false);
+        // Clear the param so refresh doesn't re-trigger.
+        const next = new URL(window.location.href);
+        next.searchParams.delete("inquiry");
+        window.history.replaceState({}, "", next.toString());
+      }
+    }
+  }, [inquiries]);
 
   function openNew() {
     setSelected(emptyForm());
@@ -466,12 +1042,21 @@ export default function CateringOrders() {
                               <ShoppingCart className="w-2.5 h-2.5" /> Cart
                             </span>
                           )}
+                          {inquiry.quoteNumber && (
+                            <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded-full">
+                              {inquiry.quoteNumber}
+                            </span>
+                          )}
                         </div>
                         {inquiry.organization && <p className="text-xs text-muted-foreground truncate">{inquiry.organization}</p>}
                         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                           {inquiry.eventDate && <span>{formatDate(inquiry.eventDate)}</span>}
                           {inquiry.guestCount && <span>{inquiry.guestCount} guests</span>}
-                          {isCart && inquiry.orderTotal && <span className="font-semibold text-foreground/70">{inquiry.orderTotal}</span>}
+                          {(inquiry.total ?? inquiry.orderTotal) && (
+                            <span className="font-semibold text-foreground/70">
+                              {inquiry.total ? formatCurrency(Number(inquiry.total)) : inquiry.orderTotal}
+                            </span>
+                          )}
                           {!inquiry.eventDate && !inquiry.guestCount && <span>Added {formatDate(inquiry.createdAt)}</span>}
                         </div>
                       </div>
@@ -493,6 +1078,7 @@ export default function CateringOrders() {
               onSaved={handleSaved}
               onDeleted={handleDeleted}
               isNew={isNew}
+              menu={menu}
             />
           </div>
         ) : (
