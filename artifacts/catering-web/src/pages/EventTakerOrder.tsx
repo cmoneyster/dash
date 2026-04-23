@@ -923,16 +923,27 @@ function PaymentModal({
                 <span className="font-bold text-lg">Credit Card</span>
                 <span className="ml-auto text-xs text-muted-foreground">Process on terminal</span>
               </button>
-              {(venmoHandle || venmoQrImageUrl) && (
-                <button
-                  onClick={() => { setStep("venmo"); setError(""); }}
-                  className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-sky-400 hover:bg-sky-50 transition-colors"
-                >
-                  <Smartphone className="w-6 h-6 text-sky-600" />
-                  <span className="font-bold text-lg">Venmo</span>
-                  <span className="ml-auto text-xs text-muted-foreground">Show QR / handle</span>
-                </button>
-              )}
+              {(() => {
+                const venmoConfigured = !!(venmoHandle || venmoQrImageUrl);
+                return (
+                  <button
+                    onClick={() => venmoConfigured && (setStep("venmo"), setError(""))}
+                    disabled={!venmoConfigured}
+                    title={venmoConfigured ? undefined : "Set the Venmo handle / QR in Admin → Event Settings"}
+                    className={`flex items-center gap-3 px-4 py-4 border border-border rounded-2xl transition-colors ${
+                      venmoConfigured
+                        ? "hover:border-sky-400 hover:bg-sky-50"
+                        : "opacity-50 cursor-not-allowed"
+                    }`}
+                  >
+                    <Smartphone className="w-6 h-6 text-sky-600" />
+                    <span className="font-bold text-lg">Venmo</span>
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {venmoConfigured ? "Show QR / handle" : "Not configured"}
+                    </span>
+                  </button>
+                );
+              })()}
             </div>
 
             <div className="pt-4 mt-2 border-t border-border space-y-2.5">
