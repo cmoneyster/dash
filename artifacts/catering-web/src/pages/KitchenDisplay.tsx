@@ -17,6 +17,7 @@ type EventOrder = {
   status: "pending" | "preparing" | "ready" | "done" | "picked_up";
   createdAt: string;
   orderSource?: "guest" | "staff" | string;
+  paymentStatus?: "paid" | "unpaid" | "override" | string;
   subtotal?: number | null;
   taxRate?: number | null;
   taxAmount?: number | null;
@@ -736,11 +737,15 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   const nextLabel = nextLabelFor(order);
 
   return (
-    <div className={`bg-[#1a1a1a] border rounded-2xl overflow-hidden transition-all ${isNew ? "ring-2 ring-red-400 border-red-400/50" : "border-white/10"}`}>
+    <div className={`bg-[#1a1a1a] border rounded-2xl overflow-hidden transition-all ${
+      order.orderSource === "staff" && order.paymentStatus !== "paid"
+        ? "ring-2 ring-red-500 border-red-500/60 animate-pulse"
+        : isNew ? "ring-2 ring-red-400 border-red-400/50" : "border-white/10"
+    }`}>
       {/* Header */}
       <div className="px-4 py-3 border-b border-white/10 flex justify-between items-start">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <p className="font-bold">{order.guestName}</p>
             {order.orderSource === "staff" ? (
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
@@ -749,6 +754,11 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
             ) : (
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
                 Guest
+              </span>
+            )}
+            {order.orderSource === "staff" && order.paymentStatus !== "paid" && (
+              <span className="text-xs font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-md bg-red-600 text-white border border-red-300 shadow-lg shadow-red-900/50 animate-pulse">
+                ⚠ Unpaid
               </span>
             )}
           </div>
@@ -938,6 +948,11 @@ function PrintableTicket({ order, mode, eventName }: { order: EventOrder; mode: 
           <p className="text-base font-bold mt-1">Order #{order.id}</p>
           {order.orderSource && (
             <p className="text-xs uppercase tracking-wider mt-0.5">{order.orderSource} order</p>
+          )}
+          {order.orderSource === "staff" && order.paymentStatus !== "paid" && (
+            <p className="text-base font-extrabold uppercase tracking-widest mt-1 border-2 border-black px-2 py-0.5 inline-block">
+              ** UNPAID **
+            </p>
           )}
         </div>
         <div className="border-t border-b border-dashed border-black py-2 mb-2">
