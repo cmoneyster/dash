@@ -124,7 +124,7 @@ artifacts-monorepo/
 - `messages` — Chat message history
 - `event_settings` — Singleton: event name, guest/kitchen passwords, Twilio from number, active event session ID
 - `event_sessions` — Named event sessions for order tracking (name, date, status: active/archived)
-- `event_orders` — On-site event orders linked to an event session
+- `event_orders` — On-site event orders linked to an event session. Staff (POS) orders go through a payment-confirmation gate: created with `payment_status='unpaid'` (held off the kitchen feed, no SMS) and promoted via `PATCH /event-taker/orders/:id/payment` (cash/card/venmo) or `/override`. Atomic conditional updates prevent multi-device double-processing.
 - `catering_inquiries` — Advance catering bookings (client info, event date, status pipeline, notes)
 - `images` — Uploaded image library
 

@@ -333,11 +333,26 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       updates.changeDue = String(change.toFixed(2));
     }
 
-    const [updated] = await db
+    // Atomic transition: only succeeds if the row is still 'unpaid'. This
+    // prevents a race where two cashiers on different devices both PATCH the
+    // same order and double-fire SMS / overwrite each other's payment data.
+    const updatedRows = await db
       .update(eventOrdersTable)
       .set(updates)
-      .where(eq(eventOrdersTable.id, id))
+      .where(and(
+        eq(eventOrdersTable.id, id),
+        eq(eventOrdersTable.orderSource, "staff"),
+        eq(eventOrdersTable.paymentStatus, "unpaid"),
+      ))
       .returning();
+    if (updatedRows.length === 0) {
+      // Lost the race — another device already finalized this order.
+      // Idempotent: return the current state without re-sending SMS.
+      const [current] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id));
+      res.json(serializeOrder(current ?? existing));
+      return;
+    }
+    const updated = updatedRows[0];
 
     // Fire SMS confirmation now that payment is recorded — same shape as the
     // original POST flow, but only after the customer has actually paid.
@@ -386,7 +401,10 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
       return;
     }
 
-    const [updated] = await db
+    // Atomic transition (see /payment for rationale): only flip 'unpaid' →
+    // 'override'. If the row was already finalized by another device, return
+    // the current state without re-sending SMS.
+    const updatedRows = await db
       .update(eventOrdersTable)
       .set({
         paymentStatus: "override",
@@ -394,8 +412,18 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
         paymentRecordedAt: new Date(),
         paymentOverrideReason: reason?.trim() ? reason.trim().slice(0, 500) : null,
       })
-      .where(eq(eventOrdersTable.id, id))
+      .where(and(
+        eq(eventOrdersTable.id, id),
+        eq(eventOrdersTable.orderSource, "staff"),
+        eq(eventOrdersTable.paymentStatus, "unpaid"),
+      ))
       .returning();
+    if (updatedRows.length === 0) {
+      const [current] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id));
+      res.json(serializeOrder(current ?? existing));
+      return;
+    }
+    const updated = updatedRows[0];
 
     if (updated.phoneNumber) {
       const settings = await getSettings();
