@@ -351,6 +351,34 @@ export default function EventTakerOrder() {
     if (password) loadPending(password);
   }
 
+  // Override directly from the pending panel — same effect as the modal's
+  // override button: sends to kitchen unpaid, fires SMS, shows + prints receipt.
+  async function handleOverrideFromPanel(order: PendingOrder, reason: string) {
+    if (!password) return;
+    try {
+      const res = await fetch(`${BASE}/api/event-taker/orders/${order.id}/override`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
+        body: JSON.stringify({
+          reason: reason.trim() || null,
+          statusUrlBase: window.location.origin + BASE,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "Failed to override");
+        return;
+      }
+      const data = await res.json();
+      // Close the panel and reuse the standard completion flow so the
+      // receipt screen + auto-print fire just like a modal payment.
+      setShowPendingPanel(false);
+      handlePaymentComplete({ ...order, ...data });
+    } catch {
+      alert("Could not reach the server");
+    }
+  }
+
   async function handleCancelOrder(orderId: number) {
     if (!password) return;
     if (!confirm("Cancel this order? Stock will be restored.")) return;
@@ -761,6 +789,7 @@ export default function EventTakerOrder() {
           onClose={() => setShowPendingPanel(false)}
           onResume={(o) => { setShowPendingPanel(false); setPaymentOrder(o); }}
           onCancel={(id) => handleCancelOrder(id)}
+          onOverride={(o, reason) => handleOverrideFromPanel(o, reason)}
         />
       )}
     </div>
@@ -1093,13 +1122,17 @@ function PaymentModal({
 
 // ── Pending payments side panel ────────────────────────────────────────
 function PendingPanel({
-  orders, onClose, onResume, onCancel,
+  orders, onClose, onResume, onCancel, onOverride,
 }: {
   orders: PendingOrder[];
   onClose: () => void;
   onResume: (o: PendingOrder) => void;
   onCancel: (id: number) => void;
+  onOverride: (o: PendingOrder, reason: string) => void;
 }) {
+  // Per-row reason capture for the inline Override-and-send action.
+  const [overrideForId, setOverrideForId] = useState<number | null>(null);
+  const [overrideReason, setOverrideReason] = useState("");
   return (
     <div className="fixed inset-0 z-[65] flex justify-end bg-foreground/30 backdrop-blur-sm print:hidden" onClick={onClose}>
       <div
@@ -1144,6 +1177,20 @@ function PendingPanel({
                     Resume
                   </button>
                   <button
+                    onClick={() => {
+                      setOverrideForId(overrideForId === o.id ? null : o.id);
+                      setOverrideReason("");
+                    }}
+                    className={`px-3 py-2 text-sm font-semibold rounded-lg border ${
+                      overrideForId === o.id
+                        ? "bg-amber-100 border-amber-300 text-amber-800"
+                        : "border-amber-300 text-amber-700 hover:bg-amber-50"
+                    }`}
+                    title="Send to kitchen unpaid"
+                  >
+                    <AlertTriangle className="w-4 h-4" />
+                  </button>
+                  <button
                     onClick={() => onCancel(o.id)}
                     className="px-3 py-2 text-sm font-semibold text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/10"
                     title="Cancel & restore stock"
@@ -1151,6 +1198,39 @@ function PendingPanel({
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
+                {overrideForId === o.id && (
+                  <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5 space-y-2">
+                    <div className="flex items-start gap-1.5 text-amber-800 text-xs">
+                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <p>Send to kitchen <strong>without</strong> recording payment.</p>
+                    </div>
+                    <input
+                      value={overrideReason}
+                      onChange={e => setOverrideReason(e.target.value)}
+                      placeholder="Reason (optional)"
+                      className="w-full px-2.5 py-1.5 text-xs border border-amber-300 rounded bg-white"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setOverrideForId(null); setOverrideReason(""); }}
+                        className="flex-1 px-2.5 py-1.5 text-xs font-semibold border border-border rounded hover:bg-white"
+                      >
+                        Back
+                      </button>
+                      <button
+                        onClick={() => {
+                          const reason = overrideReason;
+                          setOverrideForId(null);
+                          setOverrideReason("");
+                          onOverride(o, reason);
+                        }}
+                        className="flex-1 px-2.5 py-1.5 text-xs font-bold bg-amber-600 text-white rounded hover:bg-amber-700"
+                      >
+                        Send unpaid
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
