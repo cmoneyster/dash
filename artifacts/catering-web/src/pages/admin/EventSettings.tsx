@@ -196,6 +196,8 @@ export default function EventSettings() {
       setHasEventTakerPassword(data.hasEventTakerPassword ?? false);
       setEventTakerTaxEnabled(data.eventTakerTaxEnabled ?? false);
       setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
+      setVenmoHandle(data.venmoHandle ?? "");
+      setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
       setTwilioConfigured(data.twilioConfigured ?? false);
       setOrderPassword("");
       setKitchenPassword("");

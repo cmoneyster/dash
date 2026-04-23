@@ -818,6 +818,9 @@ function PaymentModal({
   const [error, setError] = useState("");
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  // Shortcut: jump back to the method picker and immediately reveal the
+  // override form. Exposed on every method step to match the spec.
+  function gotoOverride() { setStep("method"); setOverrideOpen(true); setError(""); }
 
   const total = order.total ?? 0;
   const cashNum = Number(cashStr);
@@ -1044,6 +1047,9 @@ function PaymentModal({
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               Confirm cash payment
             </button>
+            <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
+              Override — send to kitchen unpaid
+            </button>
           </div>
         )}
 
@@ -1078,6 +1084,9 @@ function PaymentModal({
                 Approved
               </button>
             </div>
+            <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
+              Override — send to kitchen unpaid
+            </button>
           </div>
         )}
 
@@ -1112,6 +1121,9 @@ function PaymentModal({
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               Mark Venmo received
+            </button>
+            <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
+              Override — send to kitchen unpaid
             </button>
           </div>
         )}
