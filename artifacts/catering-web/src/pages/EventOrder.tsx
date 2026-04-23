@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { ShoppingBag, CheckCircle2, Minus, Plus, Lock, Utensils, Phone, ExternalLink } from "lucide-react";
 import { ImageLightbox } from "@/components/ImageLightbox";
+import { useCategories } from "@/lib/categories";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -32,6 +33,7 @@ export default function EventOrder() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submittedOrderId, setSubmittedOrderId] = useState<number | null>(null);
+  const { data: categoriesData } = useCategories();
 
   useEffect(() => {
     fetch(`${BASE}/api/event-ordering/settings`)
@@ -221,7 +223,15 @@ export default function EventOrder() {
     );
   }
 
-  const categories = menu ? Array.from(new Set(menu.map(i => i.category))) : [];
+  // The /api/event-ordering/menu endpoint already filters out items in hidden categories.
+  // Only show category headings for categories that are visible AND have items present.
+  // If the categories API failed/returned empty, fall back to deriving headings from
+  // the menu payload itself so items still render.
+  const presentCats = menu ? new Set(menu.map(i => i.category)) : new Set<string>();
+  const orderedFromApi = (categoriesData ?? []).filter(c => presentCats.has(c.name)).map(c => c.name);
+  const categories = orderedFromApi.length > 0
+    ? [...orderedFromApi, ...Array.from(presentCats).filter(c => !orderedFromApi.includes(c))]
+    : Array.from(presentCats);
 
   return (
     <div className="min-h-screen bg-background">

@@ -12,6 +12,7 @@ import { formatCurrency } from "@/lib/utils";
 import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { getAdminToken } from "@/components/AdminGuard";
+import { useAdminCategories } from "@/lib/categories";
 
 interface ImageRecord {
   id: number;
@@ -147,9 +148,11 @@ export default function MenuManager() {
     });
   }
 
-  const existingCategories = Array.from(
-    new Set((items ?? []).map((item: any) => item.category as string))
-  ).sort();
+  const { data: adminCategories } = useAdminCategories();
+  const itemCategorySet = new Set((items ?? []).map((it: any) => it.category as string));
+  const orderedFromApi = (adminCategories ?? []).map((c) => c.name);
+  const extraFromItems = Array.from(itemCategorySet).filter((c) => !orderedFromApi.includes(c)).sort();
+  const existingCategories = [...orderedFromApi, ...extraFromItems];
 
   const createMut = useCreateMenuItem({
     mutation: {

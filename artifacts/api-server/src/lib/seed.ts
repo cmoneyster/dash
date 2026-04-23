@@ -1,5 +1,5 @@
-import { db, menuItemsTable } from "@workspace/db";
-import { count, isNull, eq, and, sql } from "drizzle-orm";
+import { db, menuItemsTable, menuCategoriesTable } from "@workspace/db";
+import { count, isNull, eq, and, sql, ne } from "drizzle-orm";
 import { logger } from "./logger";
 
 const DIM_SUM_IMG    = "https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800&q=80";
@@ -82,6 +82,7 @@ export async function seedIfEmpty(): Promise<void> {
       logger.info("Menu items table is empty — seeding now");
       await db.insert(menuItemsTable).values(MENU_SEED);
       logger.info({ count: MENU_SEED.length }, "Seeded menu items successfully");
+      await backfillCategories();
       return;
     }
 
@@ -179,7 +180,90 @@ export async function seedIfEmpty(): Promise<void> {
       });
       logger.info("Inserted Fried Jalapeño Garlic Shrimp | 椒盐虾 successfully");
     }
+    await backfillCategories();
   } catch (err) {
     logger.error({ err }, "Failed to seed/patch menu items");
+  }
+}
+
+const CATEGORY_DEFAULTS: Record<string, { plannerGroup: string; sortOrder: number }> = {
+  "Small Bites - Savory":     { plannerGroup: "savory", sortOrder: 0 },
+  "Small Bites - Sweet":      { plannerGroup: "sweet",  sortOrder: 1 },
+  "Entrées - Meat":           { plannerGroup: "entree", sortOrder: 2 },
+  "Entrées - Seafood":        { plannerGroup: "entree", sortOrder: 3 },
+  "Entrées - Noodles & Rice": { plannerGroup: "entree", sortOrder: 4 },
+};
+
+function inferPlannerGroup(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.startsWith("entrée") || lower.startsWith("entree")) return "entree";
+  return "other";
+}
+
+async function backfillCategories(): Promise<void> {
+  // Create the table if missing (production migration)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS menu_categories (
+      id serial PRIMARY KEY,
+      name text NOT NULL UNIQUE,
+      sort_order integer NOT NULL DEFAULT 0,
+      visible boolean NOT NULL DEFAULT true,
+      planner_group text NOT NULL DEFAULT 'other',
+      created_at timestamp NOT NULL DEFAULT now()
+    )
+  `);
+
+  const [catCount] = await db.select({ count: count() }).from(menuCategoriesTable);
+  const distinctRows = await db
+    .selectDistinct({ category: menuItemsTable.category })
+    .from(menuItemsTable)
+    .where(and(sql`${menuItemsTable.category} IS NOT NULL`, ne(menuItemsTable.category, "")));
+  const distinctCats = distinctRows
+    .map(r => r.category)
+    .filter((c): c is string => typeof c === "string" && c.length > 0);
+
+  if (!catCount || catCount.count === 0) {
+    if (distinctCats.length === 0) return;
+    const known = distinctCats.filter((c: string) => c in CATEGORY_DEFAULTS);
+    const others = distinctCats
+      .filter((c: string) => !(c in CATEGORY_DEFAULTS))
+      .sort((a: string, b: string) => a.localeCompare(b));
+    let nextSort = 5;
+    const rows = [
+      ...known.map((name: string) => ({
+        name,
+        sortOrder: CATEGORY_DEFAULTS[name].sortOrder,
+        plannerGroup: CATEGORY_DEFAULTS[name].plannerGroup,
+        visible: true,
+      })),
+      ...others.map((name: string) => ({
+        name,
+        sortOrder: nextSort++,
+        plannerGroup: inferPlannerGroup(name),
+        visible: true,
+      })),
+    ];
+    logger.info({ count: rows.length }, "Backfilling menu_categories from existing menu_items");
+    await db.insert(menuCategoriesTable).values(rows);
+    return;
+  }
+
+  // Auto-add categories that exist in menu_items but are missing from menu_categories
+  const existing = await db.select({ name: menuCategoriesTable.name }).from(menuCategoriesTable);
+  const existingSet = new Set(existing.map((r) => r.name));
+  const missing = distinctCats.filter((c: string) => !existingSet.has(c));
+  if (missing.length > 0) {
+    const [maxRow] = await db
+      .select({ max: sql<number>`COALESCE(MAX(${menuCategoriesTable.sortOrder}), -1)` })
+      .from(menuCategoriesTable);
+    let nextSort = (maxRow?.max ?? -1) + 1;
+    const rows = missing.map((name: string) => ({
+      name,
+      sortOrder: nextSort++,
+      plannerGroup: inferPlannerGroup(name),
+      visible: true,
+    }));
+    logger.info({ added: missing }, "Adding new menu categories from menu_items");
+    await db.insert(menuCategoriesTable).values(rows);
   }
 }

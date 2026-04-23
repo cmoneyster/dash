@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken } from "@/components/AdminGuard";
 
@@ -30,6 +30,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     <>
       <AdminNavLink href="/admin" icon={LayoutDashboard} onClick={onNavigate}>Dashboard</AdminNavLink>
       <AdminNavLink href="/admin/menu" icon={MenuIcon} onClick={onNavigate}>Menu Manager</AdminNavLink>
+      <AdminNavLink href="/admin/categories" icon={Tags} onClick={onNavigate}>Categories</AdminNavLink>
       <AdminNavLink href="/admin/calendar" icon={CalendarDays} onClick={onNavigate}>Availability</AdminNavLink>
       <AdminNavLink href="/admin/images" icon={Images} onClick={onNavigate}>Image Library</AdminNavLink>
       <div className="pt-2 pb-1">

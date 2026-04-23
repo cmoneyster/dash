@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { menuItemsTable, eventOrdersTable, eventSettingsTable, eventSessionsTable } from "@workspace/db/schema";
+import { menuItemsTable, eventOrdersTable, eventSettingsTable, eventSessionsTable, menuCategoriesTable } from "@workspace/db/schema";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { sendOrderConfirmation, sendOrderReady } from "../lib/sms";
 
@@ -117,8 +117,11 @@ router.get("/event-ordering/menu", async (req, res) => {
       .select()
       .from(menuItemsTable)
       .where(eq(menuItemsTable.eventActive, true));
+    const cats = await db.select().from(menuCategoriesTable);
+    const hidden = new Set(cats.filter((c) => !c.visible).map((c) => c.name));
+    const visibleItems = hidden.size > 0 ? items.filter((i) => !hidden.has(i.category)) : items;
     // Strip staff-only fields before sending to guests
-    const safe = items.map(({ internalNotes: _notes, ...item }) => item);
+    const safe = visibleItems.map(({ internalNotes: _notes, ...item }) => item);
     res.json(safe);
   } catch (err) {
     req.log.error({ err }, "Error fetching event menu");

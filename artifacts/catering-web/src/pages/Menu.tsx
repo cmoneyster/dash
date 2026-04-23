@@ -17,6 +17,7 @@ import { Loader2, Search } from "lucide-react";
 import type { MenuItem } from "@workspace/api-client-react";
 import { isPanSizesItem, type PanSizeMenuItem } from "@/lib/menu-types";
 import type { PanSizeSelection } from "@/components/PanSizePicker";
+import { useCategories } from "@/lib/categories";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -111,13 +112,10 @@ export default function Menu() {
     }
   };
 
+  const { data: categoryData } = useCategories();
   const categories = [
     { value: "", label: "All Items" },
-    { value: "Small Bites - Savory", label: "Small Bites - Savory" },
-    { value: "Small Bites - Sweet", label: "Small Bites - Sweet" },
-    { value: "Entrées - Meat", label: "Entrées - Meat" },
-    { value: "Entrées - Seafood", label: "Entrées - Seafood" },
-    { value: "Entrées - Noodles & Rice", label: "Noodles & Rice" },
+    ...(categoryData ?? []).map((c) => ({ value: c.name, label: c.name })),
   ];
 
   return (

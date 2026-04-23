@@ -19,6 +19,8 @@ import adminEventSessionsRouter from "./admin-event-sessions";
 import adminCateringRouter from "./admin-catering";
 import adminPlansRouter from "./admin-plans";
 import verifyRouter from "./verify";
+import categoriesRouter from "./categories";
+import adminCategoriesRouter from "./admin-categories";
 
 const router: IRouter = Router();
 
@@ -29,6 +31,7 @@ router.use(planRouter);
 router.use(ordersRouter);
 router.use(chatRouter);
 router.use(eventsRouter);
+router.use(categoriesRouter);
 router.use(storageRouter);
 router.use(eventOrderingRouter);
 router.use(eventTakerRouter);
@@ -46,8 +49,10 @@ router.use("/admin/sales-reports.csv", requireAdminAuth);
 router.use("/admin/event-sessions", requireAdminAuth);
 router.use("/admin/catering", requireAdminAuth);
 router.use("/admin/plans", requireAdminAuth);
+router.use("/admin/categories", requireAdminAuth);
 
 router.use(adminMenuRouter);
+router.use(adminCategoriesRouter);
 router.use(adminStatsRouter);
 router.use(adminImagesRouter);
 router.use(adminEventRouter);

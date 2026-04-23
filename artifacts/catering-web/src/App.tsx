@@ -19,6 +19,7 @@ import SharedPlan from "@/pages/SharedPlan";
 import AdminLogin from "@/pages/admin/Login";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import MenuManager from "@/pages/admin/MenuManager";
+import CategoryManager from "@/pages/admin/CategoryManager";
 import OrderManager from "@/pages/admin/OrderManager";
 import CalendarManager from "@/pages/admin/CalendarManager";
 import ImageLibrary from "@/pages/admin/ImageLibrary";
@@ -59,6 +60,9 @@ function Router() {
       </Route>
       <Route path="/admin/menu">
         {() => <AdminGuard><MenuManager /></AdminGuard>}
+      </Route>
+      <Route path="/admin/categories">
+        {() => <AdminGuard><CategoryManager /></AdminGuard>}
       </Route>
       <Route path="/admin/orders">
         {() => <AdminGuard><OrderManager /></AdminGuard>}

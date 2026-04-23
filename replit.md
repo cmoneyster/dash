@@ -68,6 +68,14 @@ artifacts-monorepo/
 - `PUT /api/admin/menu/:id` — Update item
 - `DELETE /api/admin/menu/:id` — Delete item
 
+### Categories
+- `GET /api/categories` — Public list of visible categories (ordered)
+- `GET /api/admin/categories` — All categories with item counts
+- `POST /api/admin/categories` — Create `{name, plannerGroup?, visible?}`
+- `PATCH /api/admin/categories/:id` — Partial update; renames cascade to `menu_items.category` transactionally
+- `DELETE /api/admin/categories/:id` — 409 if any items still use the category
+- `POST /api/admin/categories/reorder` — Bulk `{items:[{id,sortOrder}]}`
+
 ### Events/Availability
 - `GET /api/events/availability?startDate=&endDate=` — Check date availability
 - `GET /api/admin/blackout-dates` — List blackout dates
@@ -105,6 +113,7 @@ artifacts-monorepo/
 ## Database Tables
 
 - `menu_items` — Menu items with price tiers, serving size, allergens, images, event stock
+- `menu_categories` — First-class menu categories (id, name unique, sort_order, visible, planner_group: savory|sweet|entree|other). Joined to `menu_items` by name. Renames cascade transactionally. Backfilled from existing `menu_items.category` on startup.
 - `blackout_dates` — Unavailable dates for events
 - `cart_items` — Session-based shopping cart
 - `plan_items` — Session-based event planning wishlist

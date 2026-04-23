@@ -1,9 +1,34 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { menuItemsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { menuItemsTable, menuCategoriesTable } from "@workspace/db/schema";
+import { eq, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
+
+async function ensureCategoryExists(name: string | undefined | null) {
+  if (!name) return;
+  const trimmed = String(name).trim();
+  if (!trimmed) return;
+  const [existing] = await db
+    .select()
+    .from(menuCategoriesTable)
+    .where(eq(menuCategoriesTable.name, trimmed));
+  if (existing) return;
+  const [maxRow] = await db
+    .select({ max: sql<number>`COALESCE(MAX(${menuCategoriesTable.sortOrder}), -1)` })
+    .from(menuCategoriesTable);
+  const sortOrder = Number(maxRow?.max ?? -1) + 1;
+  // Heuristic planner_group default for newly seen names.
+  const lower = trimmed.toLowerCase();
+  let plannerGroup = "other";
+  if (lower.includes("savory")) plannerGroup = "savory";
+  else if (lower.includes("sweet") || lower.includes("dessert")) plannerGroup = "sweet";
+  else if (lower.startsWith("entrée") || lower.startsWith("entree") || lower.includes(" entrée") || lower.includes(" entree")) plannerGroup = "entree";
+  await db
+    .insert(menuCategoriesTable)
+    .values({ name: trimmed, plannerGroup, visible: true, sortOrder })
+    .onConflictDoNothing();
+}
 
 function formatItem(item: typeof menuItemsTable.$inferSelect) {
   return {
@@ -86,6 +111,7 @@ router.post("/admin/menu", async (req, res) => {
       size5Price: size5Price != null ? String(size5Price) : null,
       internalNotes: internalNotes ? String(internalNotes).trim() || null : null,
     }).returning();
+    await ensureCategoryExists(category);
     res.status(201).json(formatItem(item));
   } catch (err) {
     req.log.error({ err }, "Error creating menu item");
@@ -151,6 +177,7 @@ router.put("/admin/menu/:id", async (req, res) => {
 
     const [item] = await db.update(menuItemsTable).set(updates).where(eq(menuItemsTable.id, id)).returning();
     if (!item) return res.status(404).json({ error: "Menu item not found" });
+    if (category !== undefined) await ensureCategoryExists(category);
     res.json(formatItem(item));
   } catch (err) {
     req.log.error({ err }, "Error updating menu item");

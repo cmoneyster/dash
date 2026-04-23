@@ -1,4 +1,5 @@
 export * from "./menu-items";
+export * from "./menu-categories";
 export * from "./blackout-dates";
 export * from "./carts";
 export * from "./plans";

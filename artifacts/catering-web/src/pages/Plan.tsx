@@ -17,23 +17,29 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
+import { useCategories, type Category } from "@/lib/categories";
 
-// ── Category constants ───────────────────────────────────────────────────────
+// ── Category helpers (derived from API) ──────────────────────────────────────
 
-const SAVORY_CAT = "Small Bites - Savory";
-const SWEET_CAT  = "Small Bites - Sweet";
-const ENTREE_CATS = new Set(["Entrées - Meat", "Entrées - Seafood", "Entrées - Noodles & Rice"]);
+interface CategoryMaps {
+  savory: Set<string>;
+  sweet: Set<string>;
+  entree: Set<string>;
+  other: Set<string>;
+  order: string[];
+}
 
-const CAT_ORDER = [
-  SAVORY_CAT,
-  SWEET_CAT,
-  "Entrées - Meat",
-  "Entrées - Seafood",
-  "Entrées - Noodles & Rice",
-];
-
-function isSmallBite(cat: string) { return cat === SAVORY_CAT || cat === SWEET_CAT; }
-function isEntree(cat: string)    { return ENTREE_CATS.has(cat); }
+function buildCategoryMaps(categories: Category[] | undefined): CategoryMaps {
+  const maps: CategoryMaps = { savory: new Set(), sweet: new Set(), entree: new Set(), other: new Set(), order: [] };
+  (categories ?? []).forEach((c) => {
+    if (c.plannerGroup === "savory") maps.savory.add(c.name);
+    else if (c.plannerGroup === "sweet") maps.sweet.add(c.name);
+    else if (c.plannerGroup === "entree") maps.entree.add(c.name);
+    else maps.other.add(c.name);
+    maps.order.push(c.name);
+  });
+  return maps;
+}
 
 const PLANNER_STORAGE_KEY = "dash_plan_planner_v1";
 
@@ -197,6 +203,16 @@ export default function Plan() {
   const [, navigate] = useLocation();
   const [addingAll, setAddingAll] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
+
+  // ── Categories from API ──
+  // Plan needs every category (incl. hidden) so existing items in a hidden
+  // category still classify into their planner_group instead of "Other items".
+  const { data: categoryData } = useCategories({ includeHidden: true });
+  const catMaps = useMemo(() => buildCategoryMaps(categoryData), [categoryData]);
+  const isSavory    = (c: string) => catMaps.savory.has(c);
+  const isSweet     = (c: string) => catMaps.sweet.has(c);
+  const isSmallBite = (c: string) => catMaps.savory.has(c) || catMaps.sweet.has(c);
+  const isEntree    = (c: string) => catMaps.entree.has(c);
 
   // ── Share modal ──
   const [shareOpen,    setShareOpen]    = useState(false);
@@ -505,7 +521,8 @@ export default function Plan() {
       return next;
     });
 
-  // Auto-seed maps at minimumOrderQty for each new item — returns same ref if nothing changed
+  // Auto-seed maps at minimumOrderQty for each new item — returns same ref if nothing changed.
+  // Depends on catMaps so seeding re-runs once categories load (in case they arrive after plan).
   useEffect(() => {
     if (!plan?.items) return;
     setPiecesMap(prev => {
@@ -548,16 +565,16 @@ export default function Plan() {
       });
       return seeded ? next : prev;
     });
-  }, [plan?.items]);
+  }, [plan?.items, catMaps]);
 
   // ── Computed totals ──
   const smallBiteItems = useMemo(
     () => plan?.items.filter(i => isSmallBite(i.menuItem.category)) ?? [],
-    [plan],
+    [plan, catMaps],
   );
   const entreeItems = useMemo(
     () => plan?.items.filter(i => isEntree(i.menuItem.category)) ?? [],
-    [plan],
+    [plan, catMaps],
   );
 
   const needSavory  = guests * savoryPPG;
@@ -566,7 +583,7 @@ export default function Plan() {
   const needEntrees = guests * servingsPPG;
 
   const haveSavory = useMemo(
-    () => smallBiteItems.filter(i => i.menuItem.category === SAVORY_CAT)
+    () => smallBiteItems.filter(i => isSavory(i.menuItem.category))
       .reduce((s, i) => {
         if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
           const slots = panQtys[i.id] ?? {};
@@ -580,7 +597,7 @@ export default function Plan() {
     [smallBiteItems, piecesMap, panQtys],
   );
   const haveSweet = useMemo(
-    () => smallBiteItems.filter(i => i.menuItem.category === SWEET_CAT)
+    () => smallBiteItems.filter(i => isSweet(i.menuItem.category))
       .reduce((s, i) => {
         if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
           const slots = panQtys[i.id] ?? {};
@@ -619,16 +636,32 @@ export default function Plan() {
   const haveEntreesTotal = Object.values(entreeServingsBycat).reduce((s, v) => s + v, 0);
 
   // ── Grouped items for display ──
+  // Special label used for the consolidated "Other items" section. All categories
+  // whose plannerGroup is "other" (or unknown) are grouped together since they
+  // do not contribute to savory/sweet/entrée targets.
+  const OTHER_GROUP_LABEL = "Other items";
   const groupedItems = useMemo(() => {
     if (!plan?.items) return [] as [string, typeof plan.items][];
     const map = new Map<string, typeof plan.items>();
-    CAT_ORDER.forEach(cat => map.set(cat, []));
+    // Seed only savory/sweet/entree categories in their configured order to keep
+    // their grouping intact.
+    catMaps.order.forEach(cat => {
+      if (catMaps.savory.has(cat) || catMaps.sweet.has(cat) || catMaps.entree.has(cat)) {
+        map.set(cat, []);
+      }
+    });
+    map.set(OTHER_GROUP_LABEL, []);
     plan.items.forEach(item => {
-      if (!map.has(item.menuItem.category)) map.set(item.menuItem.category, []);
-      map.get(item.menuItem.category)!.push(item);
+      const cat = item.menuItem.category;
+      if (catMaps.savory.has(cat) || catMaps.sweet.has(cat) || catMaps.entree.has(cat)) {
+        if (!map.has(cat)) map.set(cat, []);
+        map.get(cat)!.push(item);
+      } else {
+        map.get(OTHER_GROUP_LABEL)!.push(item);
+      }
     });
     return Array.from(map.entries()).filter(([, items]) => items.length > 0);
-  }, [plan?.items]);
+  }, [plan?.items, catMaps]);
 
   const hasSmallBites = smallBiteItems.length > 0;
   const hasEntrees    = entreeItems.length > 0;
@@ -976,12 +1009,14 @@ export default function Plan() {
 
                         {Object.keys(entreeServingsBycat).length > 0 && (
                           <div className="flex flex-wrap gap-2">
-                            {Object.entries(entreeServingsBycat).map(([cat, srv]) => (
-                              <span key={cat} className="text-xs bg-secondary rounded-full px-3 py-1 text-muted-foreground">
-                                {cat.replace("Entrées - ", "")}:{" "}
-                                <span className="font-bold text-foreground">{srv} srv</span>
-                              </span>
-                            ))}
+                            {catMaps.order
+                              .filter(cat => catMaps.entree.has(cat) && entreeServingsBycat[cat] != null)
+                              .map(cat => (
+                                <span key={cat} className="text-xs bg-secondary rounded-full px-3 py-1 text-muted-foreground">
+                                  {cat.replace("Entrées - ", "")}:{" "}
+                                  <span className="font-bold text-foreground">{entreeServingsBycat[cat]} srv</span>
+                                </span>
+                              ))}
                           </div>
                         )}
 

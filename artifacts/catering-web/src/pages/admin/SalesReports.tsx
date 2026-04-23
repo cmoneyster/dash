@@ -322,7 +322,7 @@ export default function SalesReports() {
                               </td>
                             </tr>
                           )}
-                        </>
+                        </Fragment>
                       );
                     })}
                   </tbody>
