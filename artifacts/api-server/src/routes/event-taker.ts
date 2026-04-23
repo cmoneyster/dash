@@ -37,10 +37,12 @@ const verifyTakerPassword = async function (req: Request, res: Response, next: N
 router.get("/event-taker/settings", async (req, res) => {
   try {
     const s = await getSettings();
+    const resolved = await resolveTakerPassword();
     res.json({
       eventName: s?.eventName ?? "",
       taxEnabled: s?.eventTakerTaxEnabled ?? false,
       taxRate: s?.eventTakerTaxRate != null ? parseFloat(s.eventTakerTaxRate) : null,
+      hasPassword: !!resolved,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching taker settings");
@@ -82,17 +84,19 @@ router.get("/event-taker/menu", verifyTakerPassword, async (req, res) => {
       .where(eq(menuItemsTable.eventTakerVisible, true))
       .orderBy(menuItemsTable.category, menuItemsTable.name);
 
-    const formatted = items.map(item => {
-      const taker = item.eventTakerPrice != null ? parseFloat(item.eventTakerPrice) : null;
-      const base = parseFloat(item.price);
-      return {
-        ...item,
-        price: base,
-        eventTakerPrice: taker,
-        // The actual unit price the taker charges = eventTakerPrice ?? price
-        effectivePrice: taker ?? base,
-      };
-    });
+    // Strict: only items with an explicit event_taker_price are sellable on the POS.
+    const formatted = items
+      .filter(item => item.eventTakerPrice != null)
+      .map(item => {
+        const taker = parseFloat(item.eventTakerPrice as string);
+        const base = parseFloat(item.price);
+        return {
+          ...item,
+          price: base,
+          eventTakerPrice: taker,
+          effectivePrice: taker,
+        };
+      });
     res.json(formatted);
   } catch (err) {
     req.log.error({ err }, "Error fetching taker menu");
@@ -142,13 +146,29 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
         .for("update");
       const byId = new Map(rows.map(r => [r.id, r]));
 
-      const orderItems: { itemId: number; name: string; quantity: number; price: number }[] = [];
+      const orderItems: {
+        itemId: number;
+        name: string;
+        quantity: number;
+        price: number;
+        unitPrice: number;
+        lineTotal: number;
+      }[] = [];
       let subtotal = 0;
+
+      const round2 = (n: number) => Math.round(n * 100) / 100;
 
       for (const [itemId, qty] of aggregated) {
         const row = byId.get(itemId);
         if (!row) throw Object.assign(new Error(`Item ${itemId} not found`), { status: 404 });
         if (!row.eventTakerVisible) throw Object.assign(new Error(`Item "${row.name}" is not available on the order taker`), { status: 400 });
+        // Strict: an item without an event_taker_price cannot be sold on the POS.
+        if (row.eventTakerPrice == null) {
+          throw Object.assign(
+            new Error(`Item "${row.name}" has no Order Taker price set`),
+            { status: 400 }
+          );
+        }
         // Stock enforcement against the aggregated quantity.
         if (row.eventStock !== null) {
           if (row.eventStock < qty) {
@@ -162,14 +182,19 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
             .set({ eventStock: sql`event_stock - ${qty}` })
             .where(eq(menuItemsTable.id, row.id));
         }
-        const unitPrice = row.eventTakerPrice != null
-          ? parseFloat(row.eventTakerPrice)
-          : parseFloat(row.price);
-        subtotal += unitPrice * qty;
-        orderItems.push({ itemId: row.id, name: row.name, quantity: qty, price: unitPrice });
+        const unitPrice = parseFloat(row.eventTakerPrice);
+        const lineTotal = round2(unitPrice * qty);
+        subtotal += lineTotal;
+        orderItems.push({
+          itemId: row.id,
+          name: row.name,
+          quantity: qty,
+          price: unitPrice,
+          unitPrice,
+          lineTotal,
+        });
       }
 
-      const round2 = (n: number) => Math.round(n * 100) / 100;
       subtotal = round2(subtotal);
       const taxAmount = taxEnabled && taxRate > 0 ? round2(subtotal * (taxRate / 100)) : 0;
       const total = round2(subtotal + taxAmount);

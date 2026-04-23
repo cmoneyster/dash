@@ -56,10 +56,14 @@ type Order = {
   id: number;
   guestName: string;
   phoneNumber: string | null;
-  items: Array<{ name: string; quantity: number; price: number }>;
+  items: Array<{ name: string; quantity: number; price: number; unitPrice?: number; lineTotal?: number }>;
   status: string;
   createdAt: string;
   orderSource?: "guest" | "staff" | string;
+  subtotal?: number | string | null;
+  taxRate?: number | string | null;
+  taxAmount?: number | string | null;
+  total?: number | string | null;
 };
 
 function NewSessionModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
@@ -157,7 +161,8 @@ function NewSessionModal({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
-function SessionOrders({ sessionId, onClose, onOrdersDeleted }: { sessionId: number; onClose: () => void; onOrdersDeleted: () => void }) {
+function SessionOrders({ sessionId, onOrdersDeleted }: { sessionId: number; onClose: () => void; onOrdersDeleted: () => void }) {
+  const [sourceFilter, setSourceFilter] = useState<"all" | "guest" | "staff">("all");
   const [data, setData] = useState<{ session: Session; orders: Order[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
@@ -186,7 +191,10 @@ function SessionOrders({ sessionId, onClose, onOrdersDeleted }: { sessionId: num
     }
   }
 
-  const orders = data?.orders ?? [];
+  const allOrders = data?.orders ?? [];
+  const orders = sourceFilter === "all"
+    ? allOrders
+    : allOrders.filter(o => (o.orderSource ?? "guest") === sourceFilter);
   const totalRevenue = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.quantity, 0), 0);
 
   // Item breakdown
@@ -197,6 +205,13 @@ function SessionOrders({ sessionId, onClose, onOrdersDeleted }: { sessionId: num
     breakdown[i.name].revenue += i.price * i.quantity;
   }));
 
+  const staffOrdersInView = orders.filter(o => o.orderSource === "staff");
+  const showStaffTotals = staffOrdersInView.length > 0;
+  const num = (v: unknown) => v == null ? 0 : Number(v);
+  const staffSubtotal = staffOrdersInView.reduce((s, o) => s + num(o.subtotal), 0);
+  const staffTax = staffOrdersInView.reduce((s, o) => s + num(o.taxAmount), 0);
+  const staffTotal = staffOrdersInView.reduce((s, o) => s + num(o.total), 0);
+
   return (
     <div className="mt-4 bg-secondary/40 border border-border rounded-2xl overflow-hidden">
       {loading ? (
@@ -205,6 +220,27 @@ function SessionOrders({ sessionId, onClose, onOrdersDeleted }: { sessionId: num
         </div>
       ) : (
         <div className="p-5 space-y-5">
+          {/* Source filter */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-1">Source:</span>
+            {(["all", "guest", "staff"] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setSourceFilter(s)}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-semibold capitalize transition",
+                  sourceFilter === s ? "bg-indigo-600 text-white" : "bg-secondary text-foreground hover:bg-secondary/70",
+                )}
+              >
+                {s === "all" ? "All" : s}
+              </button>
+            ))}
+            <span className="ml-auto text-xs text-muted-foreground">
+              Guest: {allOrders.filter(o => (o.orderSource ?? "guest") === "guest").length} ·
+              Staff: {allOrders.filter(o => o.orderSource === "staff").length}
+            </span>
+          </div>
+
           {/* Summary */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-card border border-border rounded-xl p-3 text-center">
@@ -222,6 +258,29 @@ function SessionOrders({ sessionId, onClose, onOrdersDeleted }: { sessionId: num
               <p className="text-xs text-muted-foreground mt-0.5">Items Sold</p>
             </div>
           </div>
+
+          {/* Staff totals (with persisted subtotal/tax/total from POS orders) */}
+          {showStaffTotals && (
+            <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 mb-2">
+                Staff Order Taker totals ({staffOrdersInView.length} orders)
+              </p>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <p className="text-xs text-muted-foreground">Subtotal</p>
+                  <p className="text-lg font-bold">${staffSubtotal.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Tax</p>
+                  <p className="text-lg font-bold">${staffTax.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Total</p>
+                  <p className="text-lg font-bold">${staffTotal.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {orders.length > 0 && (
             <div className="flex justify-end">

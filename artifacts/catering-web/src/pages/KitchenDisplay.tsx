@@ -683,9 +683,13 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
         <div>
           <div className="flex items-center gap-2">
             <p className="font-bold">{order.guestName}</p>
-            {order.orderSource === "staff" && (
+            {order.orderSource === "staff" ? (
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
                 Staff
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                Guest
               </span>
             )}
           </div>

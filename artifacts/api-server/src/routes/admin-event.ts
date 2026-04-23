@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { eventSettingsTable, eventOrdersTable, menuItemsTable } from "@workspace/db/schema";
+import { eventSettingsTable, eventOrdersTable } from "@workspace/db/schema";
 import { eq, and, gte, lt } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -114,28 +114,69 @@ function parseDate(v: unknown, fallback: Date): Date {
   return Number.isNaN(d.getTime()) ? fallback : d;
 }
 
+type SnapshotItem = {
+  itemId: number;
+  name: string;
+  quantity: number;
+  price: number;
+  unitPrice?: number;
+  lineTotal?: number;
+};
+
 function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
   let revenue = 0;
   let subtotal = 0;
   let tax = 0;
   let itemCount = 0;
   const itemBreakdown: Record<string, { name: string; quantity: number; revenue: number }> = {};
+  const orderRows: Array<{
+    id: number;
+    createdAt: string;
+    source: string;
+    guestName: string;
+    phoneNumber: string | null;
+    status: string;
+    items: Array<{ itemId: number; name: string; quantity: number; unitPrice: number; lineTotal: number }>;
+    subtotal: number;
+    taxRate: number | null;
+    tax: number;
+    total: number;
+  }> = [];
 
   for (const o of orders) {
-    const items = (o.items ?? []) as { itemId: number; name: string; quantity: number; price: number }[];
-    const orderSubtotal = items.reduce((s, i) => s + (Number(i.price) || 0) * i.quantity, 0);
-    const orderTotal = o.total != null ? parseFloat(o.total) : orderSubtotal;
+    const items = (o.items ?? []) as SnapshotItem[];
+    const lineSnapshots = items.map(i => {
+      const unit = i.unitPrice != null ? Number(i.unitPrice) : Number(i.price) || 0;
+      const line = i.lineTotal != null ? Number(i.lineTotal) : round2(unit * i.quantity);
+      return { itemId: i.itemId, name: i.name, quantity: i.quantity, unitPrice: unit, lineTotal: line };
+    });
+    const computedSubtotal = lineSnapshots.reduce((s, i) => s + i.lineTotal, 0);
+    const orderSubtotal = o.subtotal != null ? parseFloat(o.subtotal) : computedSubtotal;
     const orderTax = o.taxAmount != null ? parseFloat(o.taxAmount) : 0;
+    const orderTotal = o.total != null ? parseFloat(o.total) : orderSubtotal + orderTax;
     revenue += orderTotal;
-    subtotal += o.subtotal != null ? parseFloat(o.subtotal) : orderSubtotal;
+    subtotal += orderSubtotal;
     tax += orderTax;
-    for (const i of items) {
+    for (const i of lineSnapshots) {
       itemCount += i.quantity;
       const key = `${i.itemId}::${i.name}`;
       if (!itemBreakdown[key]) itemBreakdown[key] = { name: i.name, quantity: 0, revenue: 0 };
       itemBreakdown[key].quantity += i.quantity;
-      itemBreakdown[key].revenue += (Number(i.price) || 0) * i.quantity;
+      itemBreakdown[key].revenue += i.lineTotal;
     }
+    orderRows.push({
+      id: o.id,
+      createdAt: o.createdAt.toISOString(),
+      source: o.orderSource ?? "guest",
+      guestName: o.guestName,
+      phoneNumber: o.phoneNumber ?? null,
+      status: o.status,
+      items: lineSnapshots,
+      subtotal: round2(orderSubtotal),
+      taxRate: o.taxRate != null ? parseFloat(o.taxRate) : null,
+      tax: round2(orderTax),
+      total: round2(orderTotal),
+    });
   }
 
   return {
@@ -145,7 +186,10 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
     tax: round2(tax),
     revenue: round2(revenue),
     avgOrderValue: orders.length ? round2(revenue / orders.length) : 0,
-    items: Object.values(itemBreakdown).sort((a, b) => b.revenue - a.revenue),
+    items: Object.values(itemBreakdown)
+      .map(i => ({ ...i, revenue: round2(i.revenue) }))
+      .sort((a, b) => b.revenue - a.revenue),
+    orders: orderRows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
   };
 }
 
@@ -205,6 +249,7 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
     const from = parseDate(req.query.from, monthAgo);
     const to = parseDate(req.query.to, new Date());
     const source = typeof req.query.source === "string" ? req.query.source : "all";
+    const type = (typeof req.query.type === "string" ? req.query.type : "orders") as "orders" | "items";
 
     const fromStart = new Date(from); fromStart.setHours(0, 0, 0, 0);
     const toEnd = new Date(to); toEnd.setHours(0, 0, 0, 0); toEnd.setDate(toEnd.getDate() + 1);
@@ -223,39 +268,62 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
 
-    const rows: string[] = [
-      ["Order ID", "Created", "Source", "Guest Name", "Phone", "Status", "Items", "Subtotal", "Tax Rate (%)", "Tax", "Total"].join(","),
-    ];
-    for (const o of orders) {
-      const items = (o.items ?? []) as { name: string; quantity: number; price: number }[];
-      const itemsStr = items.map(i => `${i.quantity}× ${i.name}`).join("; ");
-      const subtotal = o.subtotal != null ? parseFloat(o.subtotal) : items.reduce((s, i) => s + (Number(i.price) || 0) * i.quantity, 0);
-      const total = o.total != null ? parseFloat(o.total) : subtotal;
-      rows.push([
-        o.id,
-        o.createdAt.toISOString(),
-        o.orderSource,
-        o.guestName,
-        o.phoneNumber ?? "",
-        o.status,
-        itemsStr,
-        subtotal.toFixed(2),
-        o.taxRate != null ? parseFloat(o.taxRate).toFixed(2) : "",
-        o.taxAmount != null ? parseFloat(o.taxAmount).toFixed(2) : "0.00",
-        total.toFixed(2),
-      ].map(escape).join(","));
+    const rows: string[] = [];
+    const filenameBase = `sales-report_${type}_${fromStart.toISOString().slice(0, 10)}_to_${toEnd.toISOString().slice(0, 10)}`;
+
+    if (type === "items") {
+      // Itemized CSV — one row per (order, line item)
+      rows.push(["Order ID", "Created", "Source", "Item", "Qty", "Unit Price", "Line Total"].join(","));
+      for (const o of orders) {
+        const items = (o.items ?? []) as SnapshotItem[];
+        for (const i of items) {
+          const unit = i.unitPrice != null ? Number(i.unitPrice) : Number(i.price) || 0;
+          const line = i.lineTotal != null ? Number(i.lineTotal) : round2(unit * i.quantity);
+          rows.push([
+            o.id,
+            o.createdAt.toISOString(),
+            o.orderSource,
+            i.name,
+            i.quantity,
+            unit.toFixed(2),
+            line.toFixed(2),
+          ].map(escape).join(","));
+        }
+      }
+    } else {
+      // Order-level CSV — one row per order
+      rows.push(["Order ID", "Created", "Source", "Guest Name", "Phone", "Status", "Items", "Subtotal", "Tax Rate (%)", "Tax", "Total"].join(","));
+      for (const o of orders) {
+        const items = (o.items ?? []) as SnapshotItem[];
+        const itemsStr = items.map(i => `${i.quantity}× ${i.name}`).join("; ");
+        const subtotal = o.subtotal != null ? parseFloat(o.subtotal) : items.reduce((s, i) => {
+          const unit = i.unitPrice != null ? Number(i.unitPrice) : Number(i.price) || 0;
+          return s + unit * i.quantity;
+        }, 0);
+        const total = o.total != null ? parseFloat(o.total) : subtotal;
+        rows.push([
+          o.id,
+          o.createdAt.toISOString(),
+          o.orderSource,
+          o.guestName,
+          o.phoneNumber ?? "",
+          o.status,
+          itemsStr,
+          subtotal.toFixed(2),
+          o.taxRate != null ? parseFloat(o.taxRate).toFixed(2) : "",
+          o.taxAmount != null ? parseFloat(o.taxAmount).toFixed(2) : "0.00",
+          total.toFixed(2),
+        ].map(escape).join(","));
+      }
     }
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="sales-report_${fromStart.toISOString().slice(0, 10)}_to_${toEnd.toISOString().slice(0, 10)}.csv"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}.csv"`);
     res.send(rows.join("\n"));
   } catch (err) {
     req.log.error({ err }, "Error generating sales report CSV");
     res.status(500).json({ error: "Failed to generate sales report CSV" });
   }
 });
-
-// Avoid unused imports warning
-void menuItemsTable;
 
 export default router;

@@ -308,7 +308,7 @@ export default function EventSettings() {
               <div>
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <ShoppingBag className="w-3.5 h-3.5 text-muted-foreground" />
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Guest Ordering Page</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Guest Event Ordering</p>
                 </div>
                 <div className="flex items-center gap-2 bg-secondary rounded-xl px-4 py-2.5">
                   <span className="flex-1 text-sm font-mono truncate">{eventUrl}</span>
