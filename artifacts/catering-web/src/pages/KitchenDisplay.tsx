@@ -444,21 +444,23 @@ export default function KitchenDisplay() {
   return (
     <div className="min-h-screen bg-[#111] text-white">
 
-      {/* Print stylesheet — when a print job is active, hide everything except #print-region */}
-      <style>{`
-        @media print {
-          @page { size: 80mm auto; margin: 4mm; }
-          html, body { background: #fff !important; }
-          body * { visibility: hidden !important; }
-          #print-region, #print-region * { visibility: visible !important; opacity: 1 !important; }
-          #print-region { position: absolute !important; left: 0; top: 0; width: 100%; color: #000 !important; }
-        }
-      `}</style>
-
+      {/* Print stylesheet — only mounted while a print job is active so a manual
+          Cmd/Ctrl+P (with no job) prints the dashboard normally instead of blank. */}
       {printJob && (
-        <div id="print-region" className="fixed left-0 top-0 w-full opacity-0 pointer-events-none">
-          <PrintableTicket order={printJob.order} mode={printJob.mode} eventName={eventName} />
-        </div>
+        <>
+          <style>{`
+            @media print {
+              @page { size: 80mm auto; margin: 4mm; }
+              html, body { background: #fff !important; }
+              body * { visibility: hidden !important; }
+              #print-region, #print-region * { visibility: visible !important; opacity: 1 !important; }
+              #print-region { position: absolute !important; left: 0; top: 0; width: 100%; color: #000 !important; }
+            }
+          `}</style>
+          <div id="print-region" className="fixed left-0 top-0 w-full opacity-0 pointer-events-none">
+            <PrintableTicket order={printJob.order} mode={printJob.mode} eventName={eventName} />
+          </div>
+        </>
       )}
 
       {/* New session prompt */}
