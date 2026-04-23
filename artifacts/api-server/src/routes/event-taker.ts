@@ -258,13 +258,19 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
 // Returns staff orders awaiting payment (held off the kitchen feed).
 router.get("/event-taker/orders/pending", verifyTakerPassword, async (req, res) => {
   try {
+    // Scope to the active event session so stale unpaid orders from prior
+    // events don't leak into the current POS queue.
+    const settings = await getSettings();
+    const activeId = settings?.activeEventSessionId ?? null;
+    const conditions = [
+      eq(eventOrdersTable.orderSource, "staff"),
+      eq(eventOrdersTable.paymentStatus, "unpaid"),
+    ];
+    if (activeId != null) conditions.push(eq(eventOrdersTable.eventSessionId, activeId));
     const rows = await db
       .select()
       .from(eventOrdersTable)
-      .where(and(
-        eq(eventOrdersTable.orderSource, "staff"),
-        eq(eventOrdersTable.paymentStatus, "unpaid"),
-      ))
+      .where(and(...conditions))
       .orderBy(desc(eventOrdersTable.createdAt));
     res.json(rows.map(serializeOrder));
   } catch (err) {
@@ -346,10 +352,15 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       ))
       .returning();
     if (updatedRows.length === 0) {
-      // Lost the race — another device already finalized this order.
-      // Idempotent: return the current state without re-sending SMS.
+      // Lost the race. If the row still exists and is already finalized,
+      // return it idempotently (no extra SMS). If it's gone (e.g. canceled
+      // concurrently), surface a 409 so the client doesn't print a receipt.
       const [current] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id));
-      res.json(serializeOrder(current ?? existing));
+      if (!current) {
+        res.status(409).json({ error: "Order no longer exists (was it canceled?)" });
+        return;
+      }
+      res.json(serializeOrder(current));
       return;
     }
     const updated = updatedRows[0];
@@ -420,7 +431,11 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
       .returning();
     if (updatedRows.length === 0) {
       const [current] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id));
-      res.json(serializeOrder(current ?? existing));
+      if (!current) {
+        res.status(409).json({ error: "Order no longer exists (was it canceled?)" });
+        return;
+      }
+      res.json(serializeOrder(current));
       return;
     }
     const updated = updatedRows[0];
