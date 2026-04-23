@@ -11,6 +11,9 @@ export const eventSettingsTable = pgTable("event_settings", {
   eventTakerPassword: text("event_taker_password"),
   eventTakerTaxEnabled: boolean("event_taker_tax_enabled").notNull().default(false),
   eventTakerTaxRate: numeric("event_taker_tax_rate", { precision: 6, scale: 3 }),
+  // Venmo display info shown on the POS payment screen
+  venmoHandle: text("venmo_handle"),
+  venmoQrImageUrl: text("venmo_qr_image_url"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

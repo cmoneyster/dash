@@ -22,6 +22,17 @@ export const eventOrdersTable = pgTable("event_orders", {
   taxRate: numeric("tax_rate", { precision: 6, scale: 3 }),
   taxAmount: numeric("tax_amount", { precision: 10, scale: 2 }),
   total: numeric("total", { precision: 10, scale: 2 }),
+  // Payment gating for staff (POS) orders. Guest orders default to 'paid'.
+  // 'unpaid'   = staff order awaiting payment, hidden from kitchen
+  // 'paid'     = payment recorded (cash/card/venmo)
+  // 'override' = staff sent unpaid order to kitchen anyway
+  paymentStatus: text("payment_status").notNull().default("paid"),
+  // 'cash' | 'card' | 'venmo' | null
+  paymentMethod: text("payment_method"),
+  cashReceived: numeric("cash_received", { precision: 10, scale: 2 }),
+  changeDue: numeric("change_due", { precision: 10, scale: 2 }),
+  paymentRecordedAt: timestamp("payment_recorded_at"),
+  paymentOverrideReason: text("payment_override_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

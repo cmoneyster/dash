@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck } from "lucide-react";
+import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
@@ -38,6 +38,30 @@ interface TakerSettings {
   eventName: string;
   taxEnabled: boolean;
   taxRate: number | null;
+  venmoHandle: string | null;
+  venmoQrImageUrl: string | null;
+}
+
+type PaymentMethod = "cash" | "card" | "venmo";
+
+interface PendingOrderItem {
+  itemId: number;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+interface PendingOrder {
+  id: number;
+  guestName: string;
+  phoneNumber: string | null;
+  items: PendingOrderItem[];
+  subtotal: number | null;
+  taxRate: number | null;
+  taxAmount: number | null;
+  total: number | null;
+  createdAt: string;
 }
 
 function getStoredPassword(): string | null {
@@ -66,6 +90,13 @@ export default function EventTakerOrder() {
     id: string; guestName: string; phone: string; items: CartLine[];
     subtotal: number; taxRate: number; taxAmount: number; total: number; placedAt: string;
   }>(null);
+
+  // ── Payment-gating state ──────────────────────────────────────────
+  // `paymentOrder` is the unpaid order currently being charged in the modal.
+  // While this is non-null, the cart is hidden and the payment modal is shown.
+  const [paymentOrder, setPaymentOrder] = useState<PendingOrder | null>(null);
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
+  const [showPendingPanel, setShowPendingPanel] = useState(false);
   const [printMode, setPrintMode] = useState<"receipt" | "kitchen">("receipt");
   const [autoPrint, setAutoPrint] = useState<boolean>(getStoredAutoPrint());
   const autoPrintedFor = useRef<string | null>(null);
@@ -209,6 +240,47 @@ export default function EventTakerOrder() {
     return Array.from(cats).sort();
   }, [menu]);
 
+  async function loadPending(token: string) {
+    try {
+      const res = await fetch(`${BASE}/api/event-taker/orders/pending`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setPendingOrders(Array.isArray(data) ? data : []);
+    } catch {}
+  }
+
+  // Poll the pending queue periodically so multiple devices stay in sync.
+  useEffect(() => {
+    if (!password) return;
+    loadPending(password);
+    const t = setInterval(() => loadPending(password), 8000);
+    return () => clearInterval(t);
+  }, [password]);
+
+  // Build the receipt-screen payload from a server order row, used after
+  // a successful payment / override so we can show + auto-print the receipt.
+  function receiptFromOrder(o: PendingOrder, paidAt = new Date()): typeof lastReceipt {
+    const sub = o.subtotal ?? o.items.reduce((s, i) => s + i.lineTotal, 0);
+    const tx = o.taxAmount ?? 0;
+    const tot = o.total ?? (sub + tx);
+    return {
+      id: String(o.id),
+      guestName: o.guestName,
+      phone: o.phoneNumber ?? "",
+      items: o.items.map(i => ({ itemId: i.itemId, name: i.name, unitPrice: i.unitPrice, quantity: i.quantity })),
+      subtotal: sub,
+      taxRate: o.taxRate ?? 0,
+      taxAmount: tx,
+      total: tot,
+      placedAt: paidAt.toLocaleString(),
+    };
+  }
+
+  // Step 1 of the gated flow: create the order as 'unpaid' and open the
+  // payment modal. The cart is cleared so the cashier can immediately start
+  // the next order if they hit "Hold for later".
   async function submitOrder(e: React.FormEvent) {
     e.preventDefault();
     if (!guestName.trim() || cart.length === 0 || !password) return;
@@ -234,24 +306,69 @@ export default function EventTakerOrder() {
         return;
       }
       const data = await res.json();
-      setLastReceipt({
-        id: String(data.id),
+      // Open payment modal with a synthesized PendingOrder shape so the modal
+      // and the eventual receipt screen can share one data type.
+      const order: PendingOrder = {
+        id: data.id,
         guestName: guestName.trim(),
-        phone: phone.trim(),
-        items: cart,
-        subtotal, taxRate, taxAmount, total,
-        placedAt: new Date().toLocaleString(),
-      });
-      setConfirmation({ id: data.id, total: data.total ?? total, phoneSent: !!phone.trim() });
+        phoneNumber: phone.trim() || null,
+        items: cart.map(l => ({
+          itemId: l.itemId, name: l.name, quantity: l.quantity,
+          unitPrice: l.unitPrice, lineTotal: Math.round(l.unitPrice * l.quantity * 100) / 100,
+        })),
+        subtotal: data.subtotal ?? subtotal,
+        taxRate: data.taxRate ?? (taxRate || null),
+        taxAmount: data.taxAmount ?? taxAmount,
+        total: data.total ?? total,
+        createdAt: data.createdAt ?? new Date().toISOString(),
+      };
+      setPaymentOrder(order);
+      // Clear the cart now so the cashier can start a new order while the
+      // current one waits for payment ("Hold for later").
       setCart([]);
       setGuestName("");
       setPhone("");
-      // Refresh menu so new stock counts are visible
+      // Refresh menu (stock changed) and the pending queue.
       loadMenu(password);
+      loadPending(password);
     } catch {
       setSubmitError("Could not reach the server");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // Step 2: payment confirmed. Promotes the order to "paid" or "override",
+  // then shows the receipt screen which triggers auto-print as before.
+  async function handlePaymentComplete(updated: PendingOrder) {
+    setPaymentOrder(null);
+    setLastReceipt(receiptFromOrder(updated));
+    setConfirmation({
+      id: String(updated.id),
+      total: updated.total ?? 0,
+      phoneSent: !!updated.phoneNumber,
+    });
+    if (password) loadPending(password);
+  }
+
+  async function handleCancelOrder(orderId: number) {
+    if (!password) return;
+    if (!confirm("Cancel this order? Stock will be restored.")) return;
+    try {
+      const res = await fetch(`${BASE}/api/event-taker/orders/${orderId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${password}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "Failed to cancel order");
+        return;
+      }
+      if (paymentOrder?.id === orderId) setPaymentOrder(null);
+      loadPending(password);
+      loadMenu(password);
+    } catch {
+      alert("Could not reach the server");
     }
   }
 
@@ -424,6 +541,20 @@ export default function EventTakerOrder() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowPendingPanel(true)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                pendingOrders.length > 0
+                  ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                  : "bg-secondary text-muted-foreground border-transparent hover:text-foreground"
+              }`}
+              title="Orders awaiting payment"
+            >
+              <Clock className="w-4 h-4" />
+              <span className="hidden sm:inline">Pending payments:</span>
+              <span className="font-bold">{pendingOrders.length}</span>
+            </button>
             <button
               onClick={toggleAutoPrint}
               title={autoPrint ? "Auto-print is ON — orders print kitchen + receipt automatically" : "Auto-print is OFF — print manually after each order"}
@@ -604,12 +735,426 @@ export default function EventTakerOrder() {
                 disabled={submitting || !guestName.trim()}
                 className="w-full px-5 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                Place Order ${total.toFixed(2)}
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
+                Charge ${total.toFixed(2)}
               </button>
             </form>
           )}
         </aside>
+      </div>
+
+      {paymentOrder && password && (
+        <PaymentModal
+          order={paymentOrder}
+          password={password}
+          venmoHandle={settings?.venmoHandle ?? null}
+          venmoQrImageUrl={settings?.venmoQrImageUrl ?? null}
+          onHold={() => { setPaymentOrder(null); if (password) loadPending(password); }}
+          onCancel={() => handleCancelOrder(paymentOrder.id)}
+          onComplete={handlePaymentComplete}
+        />
+      )}
+
+      {showPendingPanel && (
+        <PendingPanel
+          orders={pendingOrders}
+          onClose={() => setShowPendingPanel(false)}
+          onResume={(o) => { setShowPendingPanel(false); setPaymentOrder(o); }}
+          onCancel={(id) => handleCancelOrder(id)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Payment confirmation modal ─────────────────────────────────────────
+// Renders the method picker (cash/card/venmo) and the per-method screen.
+// Each per-method screen has Back to method picker, plus the method's
+// confirm action. "Hold for later" leaves the order in the pending queue.
+function PaymentModal({
+  order, password, venmoHandle, venmoQrImageUrl,
+  onHold, onCancel, onComplete,
+}: {
+  order: PendingOrder;
+  password: string;
+  venmoHandle: string | null;
+  venmoQrImageUrl: string | null;
+  onHold: () => void;
+  onCancel: () => void;
+  onComplete: (updated: PendingOrder) => void;
+}) {
+  const [step, setStep] = useState<"method" | "cash" | "card" | "venmo">("method");
+  const [cashStr, setCashStr] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
+
+  const total = order.total ?? 0;
+  const cashNum = Number(cashStr);
+  const change = Number.isFinite(cashNum) ? Math.round((cashNum - total) * 100) / 100 : 0;
+  const cashOk = Number.isFinite(cashNum) && cashNum >= total;
+
+  async function confirm(method: PaymentMethod) {
+    setSubmitting(true);
+    setError("");
+    try {
+      const body: Record<string, unknown> = { method, statusUrlBase: window.location.origin + BASE };
+      if (method === "cash") body.cashReceived = cashNum;
+      const res = await fetch(`${BASE}/api/event-taker/orders/${order.id}/payment`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setError(err.error ?? "Failed to record payment");
+        return;
+      }
+      const data = await res.json();
+      onComplete({ ...order, ...data });
+    } catch {
+      setError("Could not reach the server");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function sendOverride() {
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch(`${BASE}/api/event-taker/orders/${order.id}/override`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
+        body: JSON.stringify({
+          reason: overrideReason.trim() || null,
+          statusUrlBase: window.location.origin + BASE,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setError(err.error ?? "Failed to override");
+        return;
+      }
+      const data = await res.json();
+      onComplete({ ...order, ...data });
+    } catch {
+      setError("Could not reach the server");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Quick-cash buttons rounded up from the total
+  const quickCash = useMemo(() => {
+    const t = Math.max(0, total);
+    const exact = Math.round(t * 100) / 100;
+    const next5 = Math.ceil(t / 5) * 5;
+    const next10 = Math.ceil(t / 10) * 10;
+    const next20 = Math.ceil(t / 20) * 20;
+    return Array.from(new Set([exact, next5, next10, next20])).slice(0, 4);
+  }, [total]);
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm print:hidden">
+      <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-secondary/30 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Order #{order.id}</p>
+            <h2 className="font-display font-bold text-xl mt-0.5">{order.guestName}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{order.items.reduce((s, i) => s + i.quantity, 0)} item(s) · ${total.toFixed(2)}</p>
+          </div>
+          <button onClick={onHold} className="p-1.5 hover:bg-secondary rounded-lg" title="Hold for later (close)">
+            <XIcon className="w-5 h-5" />
+          </button>
+        </div>
+
+        {step === "method" && (
+          <div className="p-6 space-y-3">
+            <p className="text-center text-3xl font-display font-bold">${total.toFixed(2)}</p>
+            <p className="text-center text-sm text-muted-foreground">Choose payment method</p>
+            <div className="grid gap-2.5 mt-4">
+              <button
+                onClick={() => { setStep("cash"); setCashStr(total.toFixed(2)); setError(""); }}
+                className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
+              >
+                <DollarSign className="w-6 h-6 text-emerald-600" />
+                <span className="font-bold text-lg">Cash</span>
+                <span className="ml-auto text-xs text-muted-foreground">Calculate change</span>
+              </button>
+              <button
+                onClick={() => { setStep("card"); setError(""); }}
+                className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-indigo-400 hover:bg-indigo-50 transition-colors"
+              >
+                <CreditCard className="w-6 h-6 text-indigo-600" />
+                <span className="font-bold text-lg">Credit Card</span>
+                <span className="ml-auto text-xs text-muted-foreground">Process on terminal</span>
+              </button>
+              {(venmoHandle || venmoQrImageUrl) && (
+                <button
+                  onClick={() => { setStep("venmo"); setError(""); }}
+                  className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-sky-400 hover:bg-sky-50 transition-colors"
+                >
+                  <Smartphone className="w-6 h-6 text-sky-600" />
+                  <span className="font-bold text-lg">Venmo</span>
+                  <span className="ml-auto text-xs text-muted-foreground">Show QR / handle</span>
+                </button>
+              )}
+            </div>
+
+            <div className="pt-4 mt-2 border-t border-border space-y-2.5">
+              <button
+                onClick={onHold}
+                className="w-full px-4 py-2.5 text-sm font-semibold border border-border rounded-xl hover:bg-secondary"
+              >
+                Hold for later
+              </button>
+              {!overrideOpen ? (
+                <button
+                  onClick={() => setOverrideOpen(true)}
+                  className="w-full text-xs text-muted-foreground hover:text-amber-700 underline"
+                >
+                  Override — send to kitchen unpaid
+                </button>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-start gap-2 text-amber-800">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <p className="text-xs">This will send the order to the kitchen <strong>without</strong> recording payment. Use only when you've verified payment by other means.</p>
+                  </div>
+                  <input
+                    value={overrideReason}
+                    onChange={e => setOverrideReason(e.target.value)}
+                    placeholder="Reason (optional)"
+                    className="w-full px-3 py-2 text-sm border border-amber-300 rounded-lg bg-white"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setOverrideOpen(false); setOverrideReason(""); }}
+                      className="flex-1 px-3 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-white"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={sendOverride}
+                      disabled={submitting}
+                      className="flex-1 px-3 py-2 text-sm font-bold bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    >
+                      {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      Send unpaid
+                    </button>
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={onCancel}
+                className="w-full text-xs text-destructive hover:underline"
+              >
+                Cancel order (restore stock)
+              </button>
+            </div>
+
+            {error && <p className="text-sm text-destructive flex items-center gap-1.5"><AlertCircle className="w-4 h-4" />{error}</p>}
+          </div>
+        )}
+
+        {step === "cash" && (
+          <div className="p-6 space-y-4">
+            <button onClick={() => { setStep("method"); setError(""); }} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <div className="text-center">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Total Due</p>
+              <p className="text-3xl font-display font-bold text-emerald-600">${total.toFixed(2)}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-1.5">Cash received</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg text-muted-foreground">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  value={cashStr}
+                  onChange={e => setCashStr(e.target.value)}
+                  autoFocus
+                  className="w-full pl-8 pr-4 py-3 text-2xl font-bold border border-border rounded-xl bg-background focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {quickCash.map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setCashStr(v.toFixed(2))}
+                    className="px-3 py-1.5 text-sm font-semibold border border-border rounded-lg hover:bg-secondary"
+                  >
+                    ${v.toFixed(2)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="bg-secondary/40 rounded-xl p-3 text-sm">
+              <div className="flex justify-between"><span>Change due</span>
+                <span className={`font-bold text-lg ${cashOk ? "text-emerald-600" : "text-muted-foreground"}`}>
+                  ${cashOk ? change.toFixed(2) : "—"}
+                </span>
+              </div>
+              {!cashOk && cashStr !== "" && (
+                <p className="text-xs text-amber-700 mt-1">Need at least ${total.toFixed(2)}</p>
+              )}
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <button
+              onClick={() => confirm("cash")}
+              disabled={!cashOk || submitting}
+              className="w-full px-5 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Confirm cash payment
+            </button>
+          </div>
+        )}
+
+        {step === "card" && (
+          <div className="p-6 space-y-4">
+            <button onClick={() => { setStep("method"); setError(""); }} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <div className="text-center">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Charge on terminal</p>
+              <p className="text-3xl font-display font-bold text-indigo-600">${total.toFixed(2)}</p>
+            </div>
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm text-indigo-900 space-y-1">
+              <p className="font-semibold">Process this amount on your card terminal.</p>
+              <p>When the terminal confirms approval, tap <strong>Approved</strong> below to send the order to the kitchen. If the card is declined, tap <strong>Declined</strong> to return.</p>
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => { setStep("method"); setError(""); }}
+                disabled={submitting}
+                className="px-4 py-3 font-bold border border-border rounded-xl hover:bg-secondary"
+              >
+                Declined
+              </button>
+              <button
+                onClick={() => confirm("card")}
+                disabled={submitting}
+                className="px-4 py-3 font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Approved
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "venmo" && (
+          <div className="p-6 space-y-4">
+            <button onClick={() => { setStep("method"); setError(""); }} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <div className="text-center">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Pay via Venmo</p>
+              <p className="text-3xl font-display font-bold text-sky-600">${total.toFixed(2)}</p>
+            </div>
+            {venmoQrImageUrl && (
+              <div className="flex justify-center">
+                <div className="w-56 h-56 rounded-2xl border border-border overflow-hidden bg-secondary">
+                  <img src={venmoQrImageUrl} alt="Venmo QR" className="w-full h-full object-contain bg-white" />
+                </div>
+              </div>
+            )}
+            {venmoHandle && (
+              <div className="text-center bg-sky-50 border border-sky-200 rounded-xl p-3">
+                <p className="text-xs uppercase tracking-wider text-sky-700 font-semibold">Venmo handle</p>
+                <p className="font-mono text-xl font-bold text-sky-900 mt-0.5">@{venmoHandle}</p>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground text-center">Wait for the customer to send the payment, then tap below.</p>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <button
+              onClick={() => confirm("venmo")}
+              disabled={submitting}
+              className="w-full px-5 py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Mark Venmo received
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Pending payments side panel ────────────────────────────────────────
+function PendingPanel({
+  orders, onClose, onResume, onCancel,
+}: {
+  orders: PendingOrder[];
+  onClose: () => void;
+  onResume: (o: PendingOrder) => void;
+  onCancel: (id: number) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[65] flex justify-end bg-foreground/30 backdrop-blur-sm print:hidden" onClick={onClose}>
+      <div
+        className="bg-card w-full max-w-md h-full shadow-2xl flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+          <Clock className="w-5 h-5 text-amber-600" />
+          <h2 className="font-display font-bold text-lg">Pending payments</h2>
+          <span className="ml-auto text-sm text-muted-foreground">{orders.length}</span>
+          <button onClick={onClose} className="p-1.5 hover:bg-secondary rounded-lg ml-2">
+            <XIcon className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {orders.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-12">No orders waiting for payment.</p>
+          )}
+          {orders.map(o => {
+            const total = o.total ?? 0;
+            const ageMin = Math.max(0, Math.round((Date.now() - new Date(o.createdAt).getTime()) / 60000));
+            return (
+              <div key={o.id} className="border border-border rounded-2xl p-3 bg-secondary/20">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm truncate">{o.guestName}</p>
+                    <p className="text-xs text-muted-foreground">#{o.id} · {ageMin}m ago{o.phoneNumber ? ` · ${o.phoneNumber}` : ""}</p>
+                  </div>
+                  <p className="font-bold text-base text-amber-700 shrink-0">${total.toFixed(2)}</p>
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-0.5 mb-3">
+                  {o.items.slice(0, 4).map(i => (
+                    <li key={i.itemId}>{i.quantity}× {i.name}</li>
+                  ))}
+                  {o.items.length > 4 && <li>+ {o.items.length - 4} more…</li>}
+                </ul>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onResume(o)}
+                    className="flex-1 px-3 py-2 text-sm font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                  >
+                    Resume
+                  </button>
+                  <button
+                    onClick={() => onCancel(o.id)}
+                    className="px-3 py-2 text-sm font-semibold text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/10"
+                    title="Cancel & restore stock"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

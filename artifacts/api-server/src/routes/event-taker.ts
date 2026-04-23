@@ -1,10 +1,22 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { menuItemsTable, eventOrdersTable, eventSettingsTable } from "@workspace/db/schema";
-import { eq, sql, inArray } from "drizzle-orm";
+import { eq, sql, inArray, and, desc } from "drizzle-orm";
 import { sendOrderConfirmation } from "../lib/sms";
 
 const router: IRouter = Router();
+
+function serializeOrder(o: typeof eventOrdersTable.$inferSelect) {
+  return {
+    ...o,
+    subtotal: o.subtotal != null ? parseFloat(o.subtotal) : null,
+    taxRate: o.taxRate != null ? parseFloat(o.taxRate) : null,
+    taxAmount: o.taxAmount != null ? parseFloat(o.taxAmount) : null,
+    total: o.total != null ? parseFloat(o.total) : null,
+    cashReceived: o.cashReceived != null ? parseFloat(o.cashReceived) : null,
+    changeDue: o.changeDue != null ? parseFloat(o.changeDue) : null,
+  };
+}
 
 async function getSettings() {
   const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
@@ -43,6 +55,8 @@ router.get("/event-taker/settings", async (req, res) => {
       taxEnabled: s?.eventTakerTaxEnabled ?? false,
       taxRate: s?.eventTakerTaxRate != null ? parseFloat(s.eventTakerTaxRate) : null,
       hasPassword: !!resolved,
+      venmoHandle: s?.venmoHandle ?? null,
+      venmoQrImageUrl: s?.venmoQrImageUrl ?? null,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching taker settings");
@@ -214,32 +228,18 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
           taxRate: taxEnabled && taxRate > 0 ? String(taxRate) : null,
           taxAmount: String(taxAmount),
           total: String(total),
+          // Staff orders start unpaid — kitchen feed filters these out until
+          // payment is confirmed or staff explicitly overrides.
+          paymentStatus: "unpaid",
         })
         .returning();
       return created;
     });
 
-    if (order.phoneNumber) {
-      const eventName = settings?.eventName ?? "";
-      const orderStatusUrl = statusUrlBase
-        ? `${statusUrlBase}/event/order/${order.id}`
-        : `${req.protocol}://${req.get("host")}/event/order/${order.id}`;
-      sendOrderConfirmation({
-        guestName: order.guestName,
-        orderId: order.id,
-        phoneNumber: order.phoneNumber,
-        eventName,
-        orderStatusUrl,
-      }).catch(() => {});
-    }
+    // Intentionally do NOT send the SMS confirmation here — it fires once
+    // payment is recorded (or override is invoked).
 
-    res.status(201).json({
-      ...order,
-      subtotal: order.subtotal != null ? parseFloat(order.subtotal) : null,
-      taxRate: order.taxRate != null ? parseFloat(order.taxRate) : null,
-      taxAmount: order.taxAmount != null ? parseFloat(order.taxAmount) : null,
-      total: order.total != null ? parseFloat(order.total) : null,
-    });
+    res.status(201).json(serializeOrder(order));
   } catch (err: any) {
     if (err?.status === 409) {
       res.status(409).json({ error: err.message, remaining: err.remaining, itemId: err.itemId });
@@ -251,6 +251,225 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
     }
     req.log.error({ err }, "Error creating taker order");
     res.status(500).json({ error: "Failed to create order" });
+  }
+});
+
+// ── Pending payments queue ─────────────────────────────────────────────
+// Returns staff orders awaiting payment (held off the kitchen feed).
+router.get("/event-taker/orders/pending", verifyTakerPassword, async (req, res) => {
+  try {
+    const rows = await db
+      .select()
+      .from(eventOrdersTable)
+      .where(and(
+        eq(eventOrdersTable.orderSource, "staff"),
+        eq(eventOrdersTable.paymentStatus, "unpaid"),
+      ))
+      .orderBy(desc(eventOrdersTable.createdAt));
+    res.json(rows.map(serializeOrder));
+  } catch (err) {
+    req.log.error({ err }, "Error listing pending payments");
+    res.status(500).json({ error: "Failed to load pending payments" });
+  }
+});
+
+// Confirm payment for a previously-created unpaid order.
+// On success: marks paid, fires SMS confirmation (if phone present),
+// and returns the updated order so the POS can print/receipt it.
+router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid order id" });
+      return;
+    }
+    const { method, cashReceived, statusUrlBase } = req.body as {
+      method?: "cash" | "card" | "venmo";
+      cashReceived?: number | string | null;
+      statusUrlBase?: string;
+    };
+    if (method !== "cash" && method !== "card" && method !== "venmo") {
+      res.status(400).json({ error: "Invalid payment method" });
+      return;
+    }
+
+    const [existing] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id));
+    if (!existing) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    if (existing.orderSource !== "staff") {
+      res.status(400).json({ error: "Only staff (POS) orders accept payment recording" });
+      return;
+    }
+    if (existing.paymentStatus === "paid") {
+      // Idempotent — already recorded; just return current state.
+      res.json(serializeOrder(existing));
+      return;
+    }
+
+    const total = existing.total != null ? parseFloat(existing.total) : 0;
+    const updates: Record<string, unknown> = {
+      paymentStatus: "paid",
+      paymentMethod: method,
+      paymentRecordedAt: new Date(),
+      cashReceived: null,
+      changeDue: null,
+      paymentOverrideReason: null,
+    };
+
+    if (method === "cash") {
+      const received = Number(cashReceived);
+      if (!Number.isFinite(received)) {
+        res.status(400).json({ error: "cashReceived is required for cash payments" });
+        return;
+      }
+      if (received < total) {
+        res.status(400).json({ error: `Cash received ($${received.toFixed(2)}) is less than total ($${total.toFixed(2)})` });
+        return;
+      }
+      const change = Math.round((received - total) * 100) / 100;
+      updates.cashReceived = String(received.toFixed(2));
+      updates.changeDue = String(change.toFixed(2));
+    }
+
+    const [updated] = await db
+      .update(eventOrdersTable)
+      .set(updates)
+      .where(eq(eventOrdersTable.id, id))
+      .returning();
+
+    // Fire SMS confirmation now that payment is recorded — same shape as the
+    // original POST flow, but only after the customer has actually paid.
+    if (updated.phoneNumber) {
+      const settings = await getSettings();
+      const orderStatusUrl = statusUrlBase
+        ? `${statusUrlBase}/event/order/${updated.id}`
+        : `${req.protocol}://${req.get("host")}/event/order/${updated.id}`;
+      sendOrderConfirmation({
+        guestName: updated.guestName,
+        orderId: updated.id,
+        phoneNumber: updated.phoneNumber,
+        eventName: settings?.eventName ?? "",
+        orderStatusUrl,
+      }).catch(() => {});
+    }
+
+    res.json(serializeOrder(updated));
+  } catch (err) {
+    req.log.error({ err }, "Error recording payment");
+    res.status(500).json({ error: "Failed to record payment" });
+  }
+});
+
+// Override — send an unpaid order to the kitchen anyway.
+router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid order id" });
+      return;
+    }
+    const { reason, statusUrlBase } = req.body as { reason?: string; statusUrlBase?: string };
+
+    const [existing] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id));
+    if (!existing) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    if (existing.orderSource !== "staff") {
+      res.status(400).json({ error: "Only staff (POS) orders can be overridden" });
+      return;
+    }
+    if (existing.paymentStatus !== "unpaid") {
+      res.json(serializeOrder(existing));
+      return;
+    }
+
+    const [updated] = await db
+      .update(eventOrdersTable)
+      .set({
+        paymentStatus: "override",
+        paymentMethod: null,
+        paymentRecordedAt: new Date(),
+        paymentOverrideReason: reason?.trim() ? reason.trim().slice(0, 500) : null,
+      })
+      .where(eq(eventOrdersTable.id, id))
+      .returning();
+
+    if (updated.phoneNumber) {
+      const settings = await getSettings();
+      const orderStatusUrl = statusUrlBase
+        ? `${statusUrlBase}/event/order/${updated.id}`
+        : `${req.protocol}://${req.get("host")}/event/order/${updated.id}`;
+      sendOrderConfirmation({
+        guestName: updated.guestName,
+        orderId: updated.id,
+        phoneNumber: updated.phoneNumber,
+        eventName: settings?.eventName ?? "",
+        orderStatusUrl,
+      }).catch(() => {});
+    }
+
+    res.json(serializeOrder(updated));
+  } catch (err) {
+    req.log.error({ err }, "Error overriding payment gate");
+    res.status(500).json({ error: "Failed to override payment" });
+  }
+});
+
+// Cancel an unpaid order — restores stock and removes from queue.
+// Refuses to cancel orders that are already paid or have been overridden
+// to the kitchen, since those are no longer "pending".
+router.delete("/event-taker/orders/:id", verifyTakerPassword, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid order id" });
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id)).for("update");
+      if (!existing) throw Object.assign(new Error("Order not found"), { status: 404 });
+      if (existing.orderSource !== "staff") {
+        throw Object.assign(new Error("Only staff orders can be cancelled here"), { status: 400 });
+      }
+      if (existing.paymentStatus !== "unpaid") {
+        throw Object.assign(new Error("Order has already been sent to the kitchen and cannot be cancelled here"), { status: 409 });
+      }
+
+      // Restore stock for items that have a stock cap.
+      const items = (existing.items ?? []) as { itemId: number; quantity: number }[];
+      const itemIds = items.map(i => i.itemId);
+      if (itemIds.length > 0) {
+        const rows = await tx
+          .select({ id: menuItemsTable.id, eventStock: menuItemsTable.eventStock })
+          .from(menuItemsTable)
+          .where(inArray(menuItemsTable.id, itemIds))
+          .for("update");
+        const stockMap = new Map(rows.map(r => [r.id, r.eventStock]));
+        for (const line of items) {
+          if (stockMap.get(line.itemId) !== null && stockMap.get(line.itemId) !== undefined) {
+            await tx
+              .update(menuItemsTable)
+              .set({ eventStock: sql`event_stock + ${line.quantity}` })
+              .where(eq(menuItemsTable.id, line.itemId));
+          }
+        }
+      }
+
+      await tx.delete(eventOrdersTable).where(eq(eventOrdersTable.id, id));
+    });
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    if (err?.status === 404 || err?.status === 400 || err?.status === 409) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    req.log.error({ err }, "Error cancelling unpaid order");
+    res.status(500).json({ error: "Failed to cancel order" });
   }
 });
 

@@ -205,9 +205,13 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
 
 router.get("/event-ordering/orders", verifyKitchenPassword, async (req, res) => {
   try {
+    // Hide staff (POS) orders that are still awaiting payment.
+    // Guests are 'paid' by default, and staff orders flip from 'unpaid' →
+    // 'paid' / 'override' once the cashier confirms or overrides at the POS.
     const orders = await db
       .select()
       .from(eventOrdersTable)
+      .where(sql`NOT (${eventOrdersTable.orderSource} = 'staff' AND ${eventOrdersTable.paymentStatus} = 'unpaid')`)
       .orderBy(desc(eventOrdersTable.createdAt));
 
     // Collect all unique itemIds across all orders

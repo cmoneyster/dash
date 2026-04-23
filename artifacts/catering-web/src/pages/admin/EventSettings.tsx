@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare, ShoppingBag, ChefHat, Receipt, Users } from "lucide-react";
+import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -103,6 +103,10 @@ export default function EventSettings() {
   const [clearEventTakerPassword, setClearEventTakerPassword] = useState(false);
   const [eventTakerTaxEnabled, setEventTakerTaxEnabled] = useState(false);
   const [eventTakerTaxRate, setEventTakerTaxRate] = useState<string>("");
+  const [venmoHandle, setVenmoHandle] = useState("");
+  const [venmoQrImageUrl, setVenmoQrImageUrl] = useState<string | null>(null);
+  const [venmoUploading, setVenmoUploading] = useState(false);
+  const [venmoUploadError, setVenmoUploadError] = useState("");
   const [hasOrderPassword, setHasOrderPassword] = useState(false);
   const [hasKitchenPassword, setHasKitchenPassword] = useState(false);
   const [hasEventTakerPassword, setHasEventTakerPassword] = useState(false);
@@ -131,11 +135,34 @@ export default function EventSettings() {
         setHasEventTakerPassword(data.hasEventTakerPassword ?? false);
         setEventTakerTaxEnabled(data.eventTakerTaxEnabled ?? false);
         setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
+        setVenmoHandle(data.venmoHandle ?? "");
+        setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
         setTwilioConfigured(data.twilioConfigured ?? false);
       })
       .catch(() => setError("Failed to load event settings"))
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleVenmoQrUpload(file: File) {
+    setVenmoUploadError("");
+    setVenmoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch(`${BASE}/api/admin/event-settings/venmo-qr`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setVenmoQrImageUrl(data.url);
+    } catch {
+      setVenmoUploadError("Failed to upload QR image. Try a smaller image.");
+    } finally {
+      setVenmoUploading(false);
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -146,6 +173,8 @@ export default function EventSettings() {
         eventName,
         eventTakerTaxEnabled,
         eventTakerTaxRate: eventTakerTaxRate.trim() === "" ? null : Number(eventTakerTaxRate),
+        venmoHandle: venmoHandle.trim() === "" ? null : venmoHandle.trim(),
+        venmoQrImageUrl: venmoQrImageUrl ?? null,
       };
       if (clearOrderPassword) body.orderPassword = null;
       else if (orderPassword) body.orderPassword = orderPassword;
@@ -276,6 +305,72 @@ export default function EventSettings() {
                     <p className="text-xs text-muted-foreground mt-1">Applied as a percentage of subtotal.</p>
                   </div>
                 )}
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-5 space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <CreditCard className="w-4 h-4" />
+                <span className="font-semibold text-foreground">Venmo Payment</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Shown on the staff Order Taker payment screen when the cashier picks Venmo.
+                Leave blank to hide the Venmo option.
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Venmo handle</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
+                  <input
+                    value={venmoHandle}
+                    onChange={e => setVenmoHandle(e.target.value.replace(/^@/, ""))}
+                    placeholder="your-business-handle"
+                    className="w-full pl-8 pr-4 py-2 border border-border rounded-xl bg-background"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Venmo QR code image</label>
+                {venmoQrImageUrl ? (
+                  <div className="flex items-start gap-3">
+                    <div className="w-32 h-32 rounded-xl border border-border overflow-hidden bg-secondary">
+                      <img src={venmoQrImageUrl} alt="Venmo QR" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-border rounded-lg cursor-pointer hover:bg-secondary">
+                        <Upload className="w-3.5 h-3.5" /> Replace
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) handleVenmoQrUpload(f); }}
+                          disabled={venmoUploading}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setVenmoQrImageUrl(null)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/10"
+                      >
+                        <XIcon className="w-3.5 h-3.5" /> Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="inline-flex items-center gap-2 px-4 py-2 border border-dashed border-border rounded-xl cursor-pointer hover:bg-secondary text-sm">
+                    {venmoUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    {venmoUploading ? "Uploading…" : "Upload QR image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleVenmoQrUpload(f); }}
+                      disabled={venmoUploading}
+                    />
+                  </label>
+                )}
+                {venmoUploadError && <p className="text-xs text-destructive mt-1.5">{venmoUploadError}</p>}
+                <p className="text-xs text-muted-foreground mt-1.5">Square images work best. Click Save Settings below to confirm changes.</p>
               </div>
             </div>
 

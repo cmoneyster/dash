@@ -1,7 +1,10 @@
 import { Router, type IRouter } from "express";
+import multer from "multer";
+import sharp from "sharp";
 import { db } from "@workspace/db";
 import { eventSettingsTable, eventOrdersTable } from "@workspace/db/schema";
 import { eq, and, gte, lt, inArray } from "drizzle-orm";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router: IRouter = Router();
 
@@ -35,6 +38,8 @@ router.get("/admin/event-settings", async (req, res) => {
       hasEventTakerPassword: !!(settings?.eventTakerPassword),
       eventTakerTaxEnabled: settings?.eventTakerTaxEnabled ?? false,
       eventTakerTaxRate: settings?.eventTakerTaxRate != null ? parseFloat(settings.eventTakerTaxRate) : null,
+      venmoHandle: settings?.venmoHandle ?? "",
+      venmoQrImageUrl: settings?.venmoQrImageUrl ?? null,
       twilioConfigured,
     });
   } catch (err) {
@@ -48,6 +53,7 @@ router.put("/admin/event-settings", async (req, res) => {
     const {
       eventName, orderPassword, kitchenPassword,
       eventTakerPassword, eventTakerTaxEnabled, eventTakerTaxRate,
+      venmoHandle, venmoQrImageUrl,
     } = req.body as {
       eventName?: string;
       orderPassword?: string;
@@ -55,6 +61,8 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerPassword?: string;
       eventTakerTaxEnabled?: boolean;
       eventTakerTaxRate?: number | string | null;
+      venmoHandle?: string | null;
+      venmoQrImageUrl?: string | null;
     };
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     const twilioConfigured = await isTwilioConfigured();
@@ -66,6 +74,8 @@ router.put("/admin/event-settings", async (req, res) => {
       hasEventTakerPassword: !!s.eventTakerPassword,
       eventTakerTaxEnabled: s.eventTakerTaxEnabled,
       eventTakerTaxRate: s.eventTakerTaxRate != null ? parseFloat(s.eventTakerTaxRate) : null,
+      venmoHandle: s.venmoHandle ?? "",
+      venmoQrImageUrl: s.venmoQrImageUrl ?? null,
       twilioConfigured,
     });
 
@@ -89,6 +99,16 @@ router.put("/admin/event-settings", async (req, res) => {
           ? null
           : String(Number(eventTakerTaxRate));
       }
+      if (venmoHandle !== undefined) {
+        updates.venmoHandle = venmoHandle == null
+          ? null
+          : (venmoHandle.trim().replace(/^@/, "") || null);
+      }
+      if (venmoQrImageUrl !== undefined) {
+        updates.venmoQrImageUrl = venmoQrImageUrl == null || venmoQrImageUrl === ""
+          ? null
+          : venmoQrImageUrl;
+      }
       const [updated] = await db.update(eventSettingsTable).set(updates).where(eq(eventSettingsTable.id, 1)).returning();
       res.json(buildResponse(updated));
     } else {
@@ -100,6 +120,8 @@ router.put("/admin/event-settings", async (req, res) => {
         eventTakerPassword: eventTakerPassword?.trim() || null,
         eventTakerTaxEnabled: !!eventTakerTaxEnabled,
         eventTakerTaxRate: (eventTakerTaxRate === undefined || eventTakerTaxRate === null || eventTakerTaxRate === "") ? null : String(Number(eventTakerTaxRate)),
+        venmoHandle: venmoHandle == null ? null : (venmoHandle.trim().replace(/^@/, "") || null),
+        venmoQrImageUrl: venmoQrImageUrl == null || venmoQrImageUrl === "" ? null : venmoQrImageUrl,
       }).returning();
       res.json(buildResponse(created));
     }
@@ -337,6 +359,49 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Error generating sales report CSV");
     res.status(500).json({ error: "Failed to generate sales report CSV" });
+  }
+});
+
+// ── Venmo QR upload ────────────────────────────────────────────────────
+// Accepts a single image, normalizes it to a square JPEG, uploads it to
+// object storage and returns the public serving URL. The caller is then
+// expected to PUT /admin/event-settings with `venmoQrImageUrl` to persist it.
+const venmoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed"));
+  },
+});
+
+const venmoObjectStorage = new ObjectStorageService();
+
+router.post("/admin/event-settings/venmo-qr", venmoUpload.single("image"), async (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: "No image file provided" });
+    return;
+  }
+  try {
+    const processed = await sharp(req.file.buffer)
+      .resize(600, 600, { fit: "cover", position: "centre" })
+      .jpeg({ quality: 92, progressive: true })
+      .toBuffer();
+
+    const uploadUrl = await venmoObjectStorage.getObjectEntityUploadURL();
+    const uploadRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "image/jpeg" },
+      body: processed,
+    });
+    if (!uploadRes.ok) throw new Error(`GCS upload failed: ${uploadRes.status}`);
+
+    const objectPath = venmoObjectStorage.normalizeObjectEntityPath(uploadUrl);
+    const servingUrl = `/api/storage${objectPath}`;
+    res.status(201).json({ url: servingUrl });
+  } catch (err) {
+    req.log.error({ err }, "Error uploading Venmo QR");
+    res.status(500).json({ error: "Failed to upload Venmo QR" });
   }
 });
 
