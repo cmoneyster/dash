@@ -18,6 +18,7 @@ import adminEventRouter from "./admin-event";
 import adminEventSessionsRouter from "./admin-event-sessions";
 import adminCateringRouter from "./admin-catering";
 import adminPlansRouter from "./admin-plans";
+import quotePublicRouter from "./quote-public";
 import verifyRouter from "./verify";
 import categoriesRouter from "./categories";
 import adminCategoriesRouter from "./admin-categories";
@@ -36,6 +37,7 @@ router.use(storageRouter);
 router.use(eventOrderingRouter);
 router.use(eventTakerRouter);
 router.use(verifyRouter);
+router.use(quotePublicRouter);
 
 router.use(adminAuthRouter);
 

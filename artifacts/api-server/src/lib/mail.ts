@@ -22,6 +22,38 @@ function getTransport() {
   });
 }
 
+export type MailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+};
+
+export async function sendMail(opts: {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+  attachments?: MailAttachment[];
+  replyTo?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const transport = getTransport();
+  if (!transport) return { ok: false, error: "SMTP not configured" };
+  try {
+    await transport.sendMail({
+      from: `"dash by Hollywood East Cafe" <${ALERT_FROM}>`,
+      to: opts.to,
+      replyTo: opts.replyTo ?? ALERT_TO,
+      subject: opts.subject,
+      text: opts.text,
+      html: opts.html,
+      attachments: opts.attachments,
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function sendSmsAlert(context: {
   to: string;
   error: unknown;

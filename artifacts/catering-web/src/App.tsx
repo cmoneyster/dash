@@ -11,6 +11,7 @@ import Plan from "@/pages/Plan";
 import Confirmation from "@/pages/Confirmation";
 import NotFound from "@/pages/not-found";
 import EventOrder from "@/pages/EventOrder";
+import PublicQuote from "@/pages/PublicQuote";
 import EventTakerOrder from "@/pages/EventTakerOrder";
 import KitchenDisplay from "@/pages/KitchenDisplay";
 import OrderStatus from "@/pages/OrderStatus";
