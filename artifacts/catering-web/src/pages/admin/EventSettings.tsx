@@ -217,14 +217,12 @@ export default function EventSettings() {
               </div>
               <PasswordField
                 label=""
-                sublabel={hasOrderPassword ? "Leave blank to keep the existing password." : "Guests enter this to access the ordering page."}
+                sublabel={hasOrderPassword ? "Leave blank to keep the existing password. Required — cannot be removed." : "Guests enter this to access the ordering page."}
                 hasExisting={hasOrderPassword}
                 existingLabel="Password set"
                 placeholder={hasOrderPassword ? "Enter a new password to change it" : "Set a password for guests"}
                 value={orderPassword}
                 onChange={setOrderPassword}
-                cleared={clearOrderPassword}
-                onClear={setClearOrderPassword}
               />
             </div>
 

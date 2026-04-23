@@ -776,6 +776,14 @@ export default function MenuManager() {
                       className="w-full pl-7 pr-4 py-2 border rounded-xl"
                     />
                   </div>
+                  {watch("eventTakerVisible") && !String(watch("eventTakerPrice") ?? "").trim() && (
+                    <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                      <span className="font-bold leading-none mt-0.5">⚠</span>
+                      <span>
+                        <strong>Staff Order Taker is enabled but no price is set.</strong> This item will not appear on the POS until you set an Event Order Taker Price above.
+                      </span>
+                    </div>
+                  )}
                 </div>
               </form>
             </div>

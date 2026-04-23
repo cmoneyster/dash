@@ -72,7 +72,11 @@ router.put("/admin/event-settings", async (req, res) => {
     if (existing) {
       const updates: Record<string, any> = { updatedAt: new Date() };
       if (eventName !== undefined) updates.eventName = eventName.trim();
-      if (orderPassword !== undefined && orderPassword !== "") updates.eventPassword = orderPassword;
+      // Guest event password is required (notNull); only update when a non-empty value is supplied.
+      // Null or empty string is treated as "no change" rather than clearing.
+      if (orderPassword !== undefined && orderPassword !== null && orderPassword !== "") {
+        updates.eventPassword = orderPassword;
+      }
       if (kitchenPassword !== undefined) {
         updates.kitchenPassword = kitchenPassword.trim() || null;
       }
