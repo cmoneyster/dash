@@ -78,10 +78,10 @@ router.put("/admin/event-settings", async (req, res) => {
         updates.eventPassword = orderPassword;
       }
       if (kitchenPassword !== undefined) {
-        updates.kitchenPassword = kitchenPassword.trim() || null;
+        updates.kitchenPassword = kitchenPassword == null ? null : (kitchenPassword.trim() || null);
       }
       if (eventTakerPassword !== undefined) {
-        updates.eventTakerPassword = eventTakerPassword.trim() || null;
+        updates.eventTakerPassword = eventTakerPassword == null ? null : (eventTakerPassword.trim() || null);
       }
       if (eventTakerTaxEnabled !== undefined) updates.eventTakerTaxEnabled = !!eventTakerTaxEnabled;
       if (eventTakerTaxRate !== undefined) {
