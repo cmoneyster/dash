@@ -487,6 +487,25 @@ function DetailPanel({
             Open Full Plan Editor
           </a>
 
+          {/* Convert to inquiry */}
+          <div className="border border-violet-200 rounded-xl p-4 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-violet-700">Quote &amp; Inquiry</p>
+            <p className="text-sm text-muted-foreground">
+              Turn this customer plan into an admin catering inquiry so you can build a quote, send a PDF, and track status.
+            </p>
+            <button
+              type="button"
+              onClick={convertToInquiry}
+              disabled={converting || loading || !detail || (detail?.items.length ?? 0) === 0}
+              className="inline-flex items-center gap-2 px-3 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50"
+              title={(detail?.items.length ?? 0) === 0 ? "Plan has no items to convert" : ""}
+            >
+              {converting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />}
+              Convert to inquiry
+            </button>
+            {convertError && <p className="text-xs text-destructive">{convertError}</p>}
+          </div>
+
           {/* Danger zone */}
           <div className="border border-red-200 rounded-xl p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-red-500">Danger Zone</p>

@@ -5,6 +5,7 @@ import {
   Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
+  ArrowUp, ArrowDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
@@ -276,6 +277,15 @@ function QuoteEditor({
   function removeItem(id: string) {
     onChange({ lineItems: lineItems.filter(li => li.id !== id) });
   }
+  function moveItem(id: string, dir: -1 | 1) {
+    const idx = lineItems.findIndex(li => li.id === id);
+    if (idx < 0) return;
+    const next = idx + dir;
+    if (next < 0 || next >= lineItems.length) return;
+    const arr = lineItems.slice();
+    [arr[idx], arr[next]] = [arr[next], arr[idx]];
+    onChange({ lineItems: arr });
+  }
   function addAdj(kind: "fee" | "discount") {
     const newRow: QuoteAdjustment = { id: uid(), label: kind === "fee" ? "Fee" : "Discount", kind: "fixed", amount: 0 };
     if (kind === "fee") onChange({ fees: [...fees, newRow] });
@@ -317,10 +327,30 @@ function QuoteEditor({
           <p className="text-sm text-muted-foreground text-center py-4 italic">No line items yet.</p>
         ) : (
           <div className="space-y-2">
-            {lineItems.map(li => {
+            {lineItems.map((li, idx) => {
               const lineTotal = (Number(li.quantity) || 0) * (Number(li.unitPrice) || 0);
               return (
-                <div key={li.id} className="grid grid-cols-[1fr_60px_90px_80px_28px] gap-2 items-center">
+                <div key={li.id} className="grid grid-cols-[36px_1fr_60px_90px_80px_28px] gap-2 items-center">
+                  <div className="flex flex-col items-center -my-1">
+                    <button
+                      type="button"
+                      onClick={() => moveItem(li.id, -1)}
+                      disabled={idx === 0}
+                      className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                      title="Move up"
+                    >
+                      <ArrowUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveItem(li.id, 1)}
+                      disabled={idx === lineItems.length - 1}
+                      className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                      title="Move down"
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                    </button>
+                  </div>
                   <input
                     value={li.name}
                     onChange={e => updateItem(li.id, { name: e.target.value })}
@@ -650,7 +680,29 @@ function DetailPanel({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => { setForm(inquiry); setSaved(false); setError(""); }, [inquiry]);
+  useEffect(() => {
+    // Legacy migration: if a cart-source inquiry has orderItems but no lineItems
+    // yet, prefill the quote editor from the cart so admins can edit/send.
+    let next: Partial<Inquiry> = inquiry;
+    const hasNoLines = !Array.isArray(inquiry.lineItems) || (inquiry.lineItems?.length ?? 0) === 0;
+    const cartItems = Array.isArray(inquiry.orderItems) ? inquiry.orderItems : null;
+    if (hasNoLines && cartItems && cartItems.length > 0) {
+      next = {
+        ...inquiry,
+        lineItems: cartItems.map(c => ({
+          id: uid(),
+          menuItemId: null,
+          name: c.name,
+          quantity: Number(c.quantity) || 0,
+          unitPrice: Number(c.price) || 0,
+          notes: null,
+        })),
+      };
+    }
+    setForm(next);
+    setSaved(false);
+    setError("");
+  }, [inquiry]);
 
   function set(key: keyof Inquiry, value: any) {
     setForm(p => ({ ...p, [key]: value }));
