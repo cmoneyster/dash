@@ -304,6 +304,14 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       res.status(404).json({ error: "Order not found" });
       return;
     }
+    // Refuse to mutate orders from a different (older) event session — keeps
+    // POS actions consistent with the session-scoped pending queue.
+    const settings = await getSettings();
+    const activeId = settings?.activeEventSessionId ?? null;
+    if (activeId != null && existing.eventSessionId !== activeId) {
+      res.status(409).json({ error: "Order belongs to a different event session" });
+      return;
+    }
     if (existing.orderSource !== "staff") {
       res.status(400).json({ error: "Only staff (POS) orders accept payment recording" });
       return;
@@ -403,6 +411,12 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
       res.status(404).json({ error: "Order not found" });
       return;
     }
+    const settings = await getSettings();
+    const activeId = settings?.activeEventSessionId ?? null;
+    if (activeId != null && existing.eventSessionId !== activeId) {
+      res.status(409).json({ error: "Order belongs to a different event session" });
+      return;
+    }
     if (existing.orderSource !== "staff") {
       res.status(400).json({ error: "Only staff (POS) orders can be overridden" });
       return;
@@ -472,9 +486,14 @@ router.delete("/event-taker/orders/:id", verifyTakerPassword, async (req, res) =
       return;
     }
 
+    const settings = await getSettings();
+    const activeId = settings?.activeEventSessionId ?? null;
     await db.transaction(async (tx) => {
       const [existing] = await tx.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id)).for("update");
       if (!existing) throw Object.assign(new Error("Order not found"), { status: 404 });
+      if (activeId != null && existing.eventSessionId !== activeId) {
+        throw Object.assign(new Error("Order belongs to a different event session"), { status: 409 });
+      }
       if (existing.orderSource !== "staff") {
         throw Object.assign(new Error("Only staff orders can be cancelled here"), { status: 400 });
       }
