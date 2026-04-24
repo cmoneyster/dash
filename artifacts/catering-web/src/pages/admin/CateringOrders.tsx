@@ -1511,26 +1511,68 @@ function DetailPanel({
             );
           })()}
 
-          {/* Status pipeline */}
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">Status</label>
-            <div className="flex flex-wrap gap-2">
-              {STATUSES.map(s => (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => set("status", s.key)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                    form.status === s.key
-                      ? `${s.color} ring-2 ring-offset-1 ring-current`
-                      : "bg-secondary text-muted-foreground hover:bg-secondary/80"
-                  )}
-                >
-                  {s.label}
-                </button>
-              ))}
+          {/* Status pipeline + service-mode toggle */}
+          <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-start">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">Status</label>
+              <div className="flex flex-wrap gap-2">
+                {STATUSES.map(s => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => set("status", s.key)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                      form.status === s.key
+                        ? `${s.color} ring-2 ring-offset-1 ring-current`
+                        : "bg-secondary text-muted-foreground hover:bg-secondary/80"
+                    )}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
             </div>
+            {!isNew && (
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">Service Mode</label>
+                <div className="inline-flex rounded-lg border border-border overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => set("serviceMode", "drop_off")}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors",
+                      form.serviceMode === "drop_off"
+                        ? "bg-foreground text-background"
+                        : "bg-background text-muted-foreground hover:bg-secondary",
+                    )}
+                    title="Standard Drop-Off catering"
+                  >
+                    <Truck className="w-3.5 h-3.5" /> Drop-Off
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => set("serviceMode", "on_the_dash")}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border-l border-border transition-colors",
+                      form.serviceMode === "on_the_dash"
+                        ? "bg-orange-600 text-white"
+                        : "bg-background text-muted-foreground hover:bg-secondary",
+                    )}
+                    title="On the Dash Experience — food trailer cooking on-site"
+                  >
+                    <Flame className="w-3.5 h-3.5" /> On the Dash
+                  </button>
+                </div>
+                {form.serviceMode !== inquiry.serviceMode && (
+                  <p className="mt-1.5 text-[11px] text-amber-700 max-w-[16rem]">
+                    {form.serviceMode === "on_the_dash"
+                      ? "Save to snapshot OTD pricing from current event settings."
+                      : "Save to clear the OTD pricing snapshot."}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="border-t border-border pt-4 grid gap-4">

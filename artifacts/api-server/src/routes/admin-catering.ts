@@ -5,6 +5,7 @@ import {
   sharedPlansTable,
   planItemsTable,
   menuItemsTable,
+  eventSettingsTable,
 } from "@workspace/db/schema";
 import type {
   CateringInquiry,
@@ -31,6 +32,17 @@ import { randomUUID } from "crypto";
 const router: IRouter = Router();
 
 const VALID_STATUSES = ["inquiry", "quoted", "confirmed", "completed", "cancelled"];
+
+// Hard fallbacks if the event_settings row is somehow missing — keeps the
+// admin OTD switch functional even on a fresh database. Mirror orders.ts
+// and the schema defaults.
+const OTD_DEFAULTS = {
+  setupFee: 500,
+  feeWaiverThreshold: 2000,
+  includedHours: 2,
+  additionalHourRate: 100,
+  maxAdditionalHours: 3,
+};
 
 type Body = Record<string, unknown>;
 
@@ -299,19 +311,97 @@ router.put("/admin/catering/:id", async (req, res): Promise<void> => {
     if (body.quoteExpiresAt !== undefined)
       updates.quoteExpiresAt = body.quoteExpiresAt ? new Date(String(body.quoteExpiresAt)) : null;
 
+    // Validate serviceMode up-front so we never partially apply OTD changes.
+    let nextServiceMode: "drop_off" | "on_the_dash" | undefined;
+    if (body.serviceMode !== undefined) {
+      const sm = body.serviceMode;
+      if (sm !== "drop_off" && sm !== "on_the_dash") {
+        res.status(400).json({ error: "serviceMode must be 'drop_off' or 'on_the_dash'" });
+        return;
+      }
+      nextServiceMode = sm;
+    }
+
     const lineItems = normalizeLineItems(body.lineItems);
     const fees = normalizeAdjustments(body.fees);
     const discounts = normalizeAdjustments(body.discounts);
-    if (lineItems !== undefined || fees !== undefined || discounts !== undefined) {
-      const [current] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
+
+    // Fetch current row whenever we need to diff against it (totals
+    // recompute, service-mode transition, or audit notes).
+    let current: typeof cateringInquiriesTable.$inferSelect | undefined;
+    if (
+      lineItems !== undefined ||
+      fees !== undefined ||
+      discounts !== undefined ||
+      nextServiceMode !== undefined
+    ) {
+      [current] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
       if (!current) {
         res.status(404).json({ error: "Inquiry not found" });
         return;
       }
-      updates.lineItems = lineItems ?? current.lineItems ?? [];
-      updates.fees = fees ?? current.fees ?? [];
-      updates.discounts = discounts ?? current.discounts ?? [];
+    }
+
+    if (lineItems !== undefined || fees !== undefined || discounts !== undefined) {
+      updates.lineItems = lineItems ?? current!.lineItems ?? [];
+      updates.fees = fees ?? current!.fees ?? [];
+      updates.discounts = discounts ?? current!.discounts ?? [];
       applyTotalsToUpdates(updates);
+    }
+
+    // Service-mode toggle: re-snapshot live OTD pricing config from
+    // event_settings when switching to OTD; clear the snapshot when
+    // switching back to Drop-Off. Mirrors the snapshot logic in
+    // routes/orders.ts so admin-driven mode flips behave like a
+    // re-submission for pricing-config purposes.
+    if (nextServiceMode !== undefined && current && nextServiceMode !== current.serviceMode) {
+      updates.serviceMode = nextServiceMode;
+      if (nextServiceMode === "on_the_dash") {
+        const [eventSettings] = await db
+          .select()
+          .from(eventSettingsTable)
+          .where(eq(eventSettingsTable.id, 1));
+        const cfg = {
+          setupFee: eventSettings?.otdSetupFee != null
+            ? parseFloat(eventSettings.otdSetupFee)
+            : OTD_DEFAULTS.setupFee,
+          feeWaiverThreshold: eventSettings?.otdFeeWaiverThreshold != null
+            ? parseFloat(eventSettings.otdFeeWaiverThreshold)
+            : OTD_DEFAULTS.feeWaiverThreshold,
+          includedHours: eventSettings?.otdIncludedHours != null
+            ? parseFloat(eventSettings.otdIncludedHours)
+            : OTD_DEFAULTS.includedHours,
+          additionalHourRate: eventSettings?.otdAdditionalHourRate != null
+            ? parseFloat(eventSettings.otdAdditionalHourRate)
+            : OTD_DEFAULTS.additionalHourRate,
+          maxAdditionalHours: eventSettings?.otdMaxAdditionalHours ?? OTD_DEFAULTS.maxAdditionalHours,
+        };
+        updates.otdSetupFee = cfg.setupFee.toFixed(2);
+        updates.otdFeeWaiverThreshold = cfg.feeWaiverThreshold.toFixed(2);
+        updates.otdIncludedHours = cfg.includedHours.toFixed(2);
+        updates.otdAdditionalHourRate = cfg.additionalHourRate.toFixed(2);
+        updates.otdMaxAdditionalHours = cfg.maxAdditionalHours;
+      } else {
+        updates.otdSetupFee = null;
+        updates.otdFeeWaiverThreshold = null;
+        updates.otdIncludedHours = null;
+        updates.otdAdditionalHourRate = null;
+        updates.otdMaxAdditionalHours = null;
+      }
+
+      // Audit trail: append a single line to admin notes recording the
+      // switch and when it happened. We use the version of admin notes
+      // already queued in this request (if the client also edited them)
+      // so we don't clobber a concurrent note edit.
+      const ts = new Date().toISOString().replace("T", " ").slice(0, 16) + " UTC";
+      const fromLabel = current.serviceMode === "on_the_dash" ? "On the Dash" : "Drop-Off";
+      const toLabel = nextServiceMode === "on_the_dash" ? "On the Dash" : "Drop-Off";
+      const auditLine = `[${ts}] Service mode switched: ${fromLabel} → ${toLabel}`;
+      const baseNotes =
+        updates.adminNotes !== undefined
+          ? (updates.adminNotes as string | null)
+          : current.adminNotes;
+      updates.adminNotes = baseNotes ? `${baseNotes}\n${auditLine}` : auditLine;
     }
 
     const [updated] = await db
