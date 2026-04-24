@@ -1238,7 +1238,11 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   // Auto-collapse Fire totals once all are checked, but let the cook expand
   // again with one tap. Resets implicitly via local state when checks change.
   const [fireExpanded, setFireExpanded] = useState(false);
-  const fireCollapsed = isTrackable && hasPlating && allChecked && !fireExpanded && order.items.length > 0;
+  // Auto-collapse the Fire-totals list once every line is checked so the
+  // cook's eye snaps to whatever's left (plate cards on plated orders,
+  // or a clean "all fired" header on non-plated tickets). Tap the
+  // collapsed header to expand again.
+  const fireCollapsed = isTrackable && allChecked && !fireExpanded && order.items.length > 0;
 
   return (
     <div className={`bg-[#1a1a1a] border rounded-2xl overflow-hidden transition-all ${
@@ -1300,12 +1304,12 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
           ) : (
             <button
               type="button"
-              onClick={() => hasPlating && allChecked && setFireExpanded(false)}
-              className={`w-full text-left text-xs text-white/30 font-semibold uppercase tracking-wider pb-1.5 ${hasPlating && allChecked ? "cursor-pointer hover:text-white/50" : "cursor-default"}`}
+              onClick={() => allChecked && setFireExpanded(false)}
+              className={`w-full text-left text-xs text-white/30 font-semibold uppercase tracking-wider pb-1.5 ${allChecked ? "cursor-pointer hover:text-white/50" : "cursor-default"}`}
             >
               {hasPlating ? "Fire totals · " : ""}
               Tap each item to mark · {checkedCount}/{order.items.length}
-              {hasPlating && allChecked && <span className="ml-2 text-[10px] text-white/30 normal-case">(tap to collapse)</span>}
+              {allChecked && <span className="ml-2 text-[10px] text-white/30 normal-case">(tap to collapse)</span>}
             </button>
           )
         )}
@@ -1394,7 +1398,11 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
             </p>
             <div className="grid gap-2">
               {order.plateGroups.map((plate, idx) => {
-                const allDone = isTrackable && plateAllPacked(progress, idx);
+                // Derive packed/done visuals from kitchenProgress *regardless* of
+                // isTrackable so a Ready / Done card visually freezes its packed
+                // state instead of reverting to "nothing checked" once it leaves
+                // the active queue. Interactivity (taps) is still gated.
+                const allDone = plateAllPacked(progress, idx);
                 const packedCount = progress?.plates[idx]?.items.filter(l => l.packed >= l.quantity).length ?? 0;
                 const totalLines = plate.items.length;
                 return (
@@ -1422,13 +1430,18 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
                         </span>
                       </button>
                     ) : (
-                      <p className="text-xs font-bold text-violet-200 uppercase tracking-wider mb-1">
-                        {plate.label || `Plate ${idx + 1}`}
-                      </p>
+                      <div className={`flex items-center justify-between text-xs font-bold uppercase tracking-wider mb-1 ${allDone ? "text-emerald-300" : "text-violet-200"}`}>
+                        <span>{plate.label || `Plate ${idx + 1}`}</span>
+                        {progress && (
+                          <span className="text-[10px] font-semibold normal-case opacity-80">
+                            {packedCount}/{totalLines} {allDone ? "✓" : ""}
+                          </span>
+                        )}
+                      </div>
                     )}
                     <ul className="text-sm text-white/85 space-y-0.5">
                       {plate.items.map(ln => {
-                        const packed = isTrackable && plateLinePacked(progress, idx, ln.itemId);
+                        const packed = plateLinePacked(progress, idx, ln.itemId);
                         const label = (
                           <>
                             <span className="font-bold tabular-nums">{ln.quantity}×</span>{" "}
@@ -1436,7 +1449,25 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
                           </>
                         );
                         if (!isTrackable) {
-                          return <li key={ln.itemId}>{label}</li>;
+                          // Frozen presentation: same packed styling as the
+                          // active version, just non-interactive.
+                          return (
+                            <li
+                              key={ln.itemId}
+                              className={`flex items-center justify-between rounded-md px-2 py-1.5 ${
+                                packed
+                                  ? "bg-emerald-500/15 text-emerald-300 line-through decoration-emerald-500/60"
+                                  : "text-white/85"
+                              }`}
+                            >
+                              <span>{label}</span>
+                              {packed && (
+                                <span className="w-5 h-5 shrink-0 rounded-full flex items-center justify-center bg-emerald-500 text-black">
+                                  <Check className="w-3 h-3" strokeWidth={3} />
+                                </span>
+                              )}
+                            </li>
+                          );
                         }
                         return (
                           <li key={ln.itemId}>
@@ -1465,7 +1496,9 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
                 );
               })}
               {unassigned.length > 0 && (() => {
-                const allDone = isTrackable && unassigned.every(ln => plateLinePacked(progress, "unassigned", ln.itemId));
+                // Same freeze rule as plates above: packed visuals come from
+                // kitchenProgress, taps are gated on isTrackable.
+                const allDone = unassigned.every(ln => plateLinePacked(progress, "unassigned", ln.itemId));
                 return (
                   <div className={`rounded-xl border px-3 py-2 transition-colors ${
                     allDone ? "border-emerald-400/40 bg-emerald-500/10" : "border-amber-400/30 bg-amber-500/10"
@@ -1475,13 +1508,31 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
                     </p>
                     <ul className="text-sm text-white/85 space-y-0.5">
                       {unassigned.map(ln => {
-                        const packed = isTrackable && plateLinePacked(progress, "unassigned", ln.itemId);
+                        const packed = plateLinePacked(progress, "unassigned", ln.itemId);
                         const label = (
                           <>
                             <span className="font-bold tabular-nums">{ln.quantity}×</span> {ln.name}
                           </>
                         );
-                        if (!isTrackable) return <li key={ln.itemId}>{label}</li>;
+                        if (!isTrackable) {
+                          return (
+                            <li
+                              key={ln.itemId}
+                              className={`flex items-center justify-between rounded-md px-2 py-1.5 ${
+                                packed
+                                  ? "bg-emerald-500/15 text-emerald-300 line-through decoration-emerald-500/60"
+                                  : "text-white/85"
+                              }`}
+                            >
+                              <span>{label}</span>
+                              {packed && (
+                                <span className="w-5 h-5 shrink-0 rounded-full flex items-center justify-center bg-emerald-500 text-black">
+                                  <Check className="w-3 h-3" strokeWidth={3} />
+                                </span>
+                              )}
+                            </li>
+                          );
+                        }
                         return (
                           <li key={ln.itemId}>
                             <button
