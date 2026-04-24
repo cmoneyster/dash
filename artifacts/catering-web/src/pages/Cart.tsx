@@ -317,7 +317,7 @@ export default function Cart() {
     if (!cart?.items.length) return [] as { id: number; name: string }[];
     return cart.items
       .filter((i: any) => !i.menuItem?.otdEligible)
-      .map((i: any) => ({ id: i.id, name: i.menuItem?.name ?? "Unknown item" }));
+      .map((i: any) => ({ id: i.id as number, name: i.menuItem?.name ?? "Unknown item" }));
   }, [cart?.items]);
   const hasIneligible = ineligibleItems.length > 0;
   const otdBlocked = serviceMode === "on_the_dash" && hasIneligible;
@@ -738,19 +738,41 @@ export default function Cart() {
 
                     {/* Ineligibility warning (shown only when OTD selected and cart contains drop-off-only items) */}
                     {serviceMode === "on_the_dash" && hasIneligible && (
-                      <div className="mt-3 p-4 rounded-xl border border-destructive/40 bg-destructive/5 space-y-2">
+                      <div className="mt-3 p-4 rounded-xl border border-destructive/40 bg-destructive/5 space-y-3">
                         <div className="flex items-start gap-2 text-sm font-semibold text-destructive">
                           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                          <span>These items aren't On the Dash–eligible:</span>
+                          <span>These items aren't On the Dash–eligible and can't be cooked on-site:</span>
                         </div>
-                        <ul className="list-disc list-inside text-sm text-destructive/90 space-y-0.5">
+                        <ul className="space-y-1.5">
                           {ineligibleItems.map(it => (
-                            <li key={it.id}>{it.name}</li>
+                            <li key={it.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-white rounded-lg border border-destructive/20">
+                              <span className="text-sm font-medium text-destructive/90 truncate">{it.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeItem.mutate({ itemId: it.id })}
+                                disabled={removeItem.isPending}
+                                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-destructive border border-destructive/40 rounded-lg hover:bg-destructive hover:text-white disabled:opacity-50 transition-colors"
+                                title="Remove this item from your order"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Remove
+                              </button>
+                            </li>
                           ))}
                         </ul>
-                        <p className="text-xs text-muted-foreground">
-                          Switch to Standard Drop-Off above, or remove these items from your order to continue with On the Dash.
-                        </p>
+                        <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setServiceMode("drop_off")}
+                            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground text-sm font-semibold rounded-xl hover:bg-primary/90 transition-colors"
+                          >
+                            <Truck className="w-4 h-4" />
+                            Switch to Standard Drop-Off
+                          </button>
+                          <p className="flex-1 text-xs text-muted-foreground self-center sm:px-2">
+                            …or remove the flagged items above to keep On the Dash.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>

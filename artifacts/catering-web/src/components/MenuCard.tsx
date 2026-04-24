@@ -10,6 +10,7 @@ interface MenuCardProps {
   onAddToCart: (item: MenuItem) => void;
   onTogglePlan: (item: MenuItem) => void;
   isInPlan?: boolean;
+  serviceMode?: "drop_off" | "on_the_dash";
 }
 
 function TierRow({ label, price, isBase }: { label: string; price: number; isBase?: boolean }) {
@@ -21,13 +22,15 @@ function TierRow({ label, price, isBase }: { label: string; price: number; isBas
   );
 }
 
-export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCardProps) {
+export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan, serviceMode = "drop_off" }: MenuCardProps) {
   const hasTiers = !!(item.tier2Qty && item.tier2Price);
   const minQty = item.minimumOrderQty ?? 1;
   const isPanSizes = isPanSizesItem(item);
   const panFromPrice = isPanSizes ? getPanSizesFromPrice(item) : null;
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
+  const blockedByOtd = serviceMode === "on_the_dash" && !item.otdEligible;
+  const addDisabled = !item.available || blockedByOtd;
 
   return (
     <>
@@ -131,20 +134,30 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCard
             </div>
           )}
 
+          {blockedByOtd && (
+            <div
+              className="mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800 flex items-center gap-1.5"
+              title="The food trailer can't cook this on-site. Switch to Standard Drop-Off Catering to order it."
+            >
+              <Flame className="w-3 h-3 shrink-0" />
+              Only available with Standard Drop-Off
+            </div>
+          )}
           <button
             onClick={() => onAddToCart(item)}
-            disabled={!item.available}
-            className="w-full py-3.5 px-4 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground disabled:opacity-50 disabled:hover:bg-foreground disabled:hover:text-background transition-colors flex items-center justify-center gap-2 group/btn mt-auto"
+            disabled={addDisabled}
+            title={blockedByOtd ? "Switch to Standard Drop-Off Catering to add this item" : undefined}
+            className="w-full py-3.5 px-4 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground disabled:opacity-50 disabled:hover:bg-foreground disabled:hover:text-background disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 group/btn mt-auto"
           >
             {isPanSizes ? (
               <>
                 <ChevronRight className="w-5 h-5" />
-                {item.available ? "Select Size" : "Unavailable"}
+                {!item.available ? "Unavailable" : blockedByOtd ? "Drop-Off only" : "Select Size"}
               </>
             ) : (
               <>
                 <Plus className="w-5 h-5 group-hover/btn:rotate-90 transition-transform duration-300" />
-                {item.available ? "Add to Order" : "Unavailable"}
+                {!item.available ? "Unavailable" : blockedByOtd ? "Drop-Off only" : "Add to Order"}
               </>
             )}
           </button>
@@ -154,12 +167,14 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCard
   );
 }
 
-export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCardProps) {
+export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan, serviceMode = "drop_off" }: MenuCardProps) {
   const minQty = item.minimumOrderQty ?? 1;
   const isPanSizes = isPanSizesItem(item);
   const panFromPrice = isPanSizes ? getPanSizesFromPrice(item) : null;
   const hasTiers = !!(item.tier2Qty && item.tier2Price);
   const [descExpanded, setDescExpanded] = useState(false);
+  const blockedByOtd = serviceMode === "on_the_dash" && !item.otdEligible;
+  const addDisabled = !item.available || blockedByOtd;
 
   return (
     <div className="bg-card border border-border/50 rounded-2xl px-5 py-4 flex items-center gap-4 hover:border-primary/20 hover:shadow-md hover:shadow-black/5 transition-all duration-200 group">
@@ -238,10 +253,16 @@ export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan }: M
 
         <button
           onClick={() => onAddToCart(item)}
-          disabled={!item.available}
+          disabled={addDisabled}
+          title={blockedByOtd ? "Switch to Standard Drop-Off Catering to add this item" : undefined}
           className="flex items-center gap-1.5 px-4 py-2 bg-foreground text-background text-sm font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {isPanSizes ? (
+          {blockedByOtd ? (
+            <>
+              <Flame className="w-4 h-4" />
+              Drop-Off only
+            </>
+          ) : isPanSizes ? (
             <>
               <ChevronRight className="w-4 h-4" />
               Select Size

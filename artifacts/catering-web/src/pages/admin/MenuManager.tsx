@@ -237,6 +237,7 @@ export default function MenuManager() {
     setEditingItem(null);
     reset({
       available: true, servingSize: 1, unit: "tray", price: 0, imageUrl: "", minimumOrderQty: 1,
+      otdEligible: false,
       pricingTemplate: "per_unit",
       size1Label: "Small Pan",  size1Servings: 15, size1Price: "",
       size2Label: "Medium Pan", size2Servings: 30, size2Price: "",
@@ -790,6 +791,19 @@ export default function MenuManager() {
                       </span>
                     </label>
                   </div>
+                </div>
+
+                <div className="space-y-3 p-4 bg-orange-50 rounded-xl border border-orange-200">
+                  <label className="block text-sm font-semibold text-orange-900">On the Dash Experience</label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input {...register("otdEligible")} type="checkbox" className="w-4 h-4 mt-0.5 accent-orange-600" />
+                    <span className="text-sm">
+                      <span className="font-medium text-orange-900">Cookable on-site from the food trailer</span>
+                      <span className="text-orange-800/80 block text-xs mt-0.5">
+                        When checked, this item shows the orange "On the Dash" badge on the menu and customers can order it as part of an On the Dash Experience.
+                      </span>
+                    </span>
+                  </label>
                 </div>
 
                 <div>

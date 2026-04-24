@@ -5,7 +5,7 @@ import {
   Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
-  ArrowUp, ArrowDown, CreditCard, RefreshCw, ExternalLink, Ban, Lock,
+  ArrowUp, ArrowDown, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
@@ -76,6 +76,12 @@ type Inquiry = {
   adminNotes: string | null;
   status: string;
   source: string;
+  serviceMode: string | null;
+  otdSetupFee: string | null;
+  otdFeeWaiverThreshold: string | null;
+  otdIncludedHours: string | null;
+  otdAdditionalHourRate: string | null;
+  otdMaxAdditionalHours: number | null;
   orderItems: OrderItem[] | null;
   orderTotal: string | null;
   lineItems: QuoteLineItem[] | null;
@@ -1376,6 +1382,57 @@ function DetailPanel({
             <OrderItemsTable items={form.orderItems!} total={form.orderTotal ?? null} />
           )}
 
+          {/* On the Dash snapshot — shown when this inquiry was placed as OTD */}
+          {form.serviceMode === "on_the_dash" && (() => {
+            const setupFee = form.otdSetupFee != null ? Number(form.otdSetupFee) : null;
+            const waiver   = form.otdFeeWaiverThreshold != null ? Number(form.otdFeeWaiverThreshold) : null;
+            const incHrs   = form.otdIncludedHours != null ? Number(form.otdIncludedHours) : null;
+            const addRate  = form.otdAdditionalHourRate != null ? Number(form.otdAdditionalHourRate) : null;
+            const maxAdd   = form.otdMaxAdditionalHours ?? null;
+            const subtotalNum = form.subtotal != null ? Number(form.subtotal) : (form.orderTotal != null ? Number(form.orderTotal) : null);
+            const waivedHere = setupFee != null && waiver != null && subtotalNum != null && subtotalNum >= waiver;
+            return (
+              <div className="border border-orange-200 bg-orange-50/60 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 border-b border-orange-200 bg-orange-100/60 flex items-center gap-2">
+                  <Flame className="w-3.5 h-3.5 text-orange-700" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-orange-900">
+                    On the Dash Experience
+                  </span>
+                  {waivedHere && (
+                    <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
+                      Setup fee waived
+                    </span>
+                  )}
+                </div>
+                <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Setup fee</div>
+                    <div className="font-bold text-orange-900">{setupFee != null ? formatCurrency(setupFee) : "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Waived at</div>
+                    <div className="font-bold text-orange-900">{waiver != null ? formatCurrency(waiver) : "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Included hours</div>
+                    <div className="font-bold text-orange-900">{incHrs != null ? `${incHrs} hr` : "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Extra hour rate</div>
+                    <div className="font-bold text-orange-900">{addRate != null ? `${formatCurrency(addRate)}/hr` : "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Max extra hours</div>
+                    <div className="font-bold text-orange-900">{maxAdd != null ? `${maxAdd} hr` : "—"}</div>
+                  </div>
+                </div>
+                <p className="px-4 pb-3 text-[11px] text-orange-900/70 italic">
+                  These terms were snapshotted when the customer submitted this inquiry, so they remain accurate even if event settings change later.
+                </p>
+              </div>
+            );
+          })()}
+
           {/* Status pipeline */}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">Status</label>
@@ -1742,6 +1799,14 @@ export default function CateringOrders() {
                           {isCart && (
                             <span className="shrink-0 flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded-full font-semibold">
                               <ShoppingCart className="w-2.5 h-2.5" /> Cart
+                            </span>
+                          )}
+                          {inquiry.serviceMode === "on_the_dash" && (
+                            <span
+                              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-full font-bold uppercase tracking-wider"
+                              title="On the Dash Experience — food trailer cooking on-site"
+                            >
+                              <Flame className="w-2.5 h-2.5" /> On the Dash
                             </span>
                           )}
                           {inquiry.quoteNumber && (

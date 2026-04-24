@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
   Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
-  Share2, Copy, CheckCheck, X, Loader2, Utensils,
+  Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
@@ -674,6 +674,17 @@ export default function Plan() {
   const hasSmallBites = smallBiteItems.length > 0;
   const hasEntrees    = entreeItems.length > 0;
 
+  // Plan items not eligible for the on-site food trailer. Surfaced as a
+  // warning when the customer has selected On the Dash so they can either
+  // switch modes or remove the flagged items before sending to cart.
+  const ineligiblePlanItems = useMemo(() => {
+    if (!plan?.items?.length) return [] as { id: number; name: string; menuItemId: number }[];
+    return plan.items
+      .filter(i => !(i.menuItem as any).otdEligible)
+      .map(i => ({ id: i.id, name: i.menuItem.name, menuItemId: i.menuItemId }));
+  }, [plan?.items]);
+  const planHasIneligible = ineligiblePlanItems.length > 0;
+
   // ── Collapsed planner summaries ──
   const sbSummary  = `${guests} guests · ${needSbTotal} pcs needed · ${haveSbTotal} tracked`;
   const entSummary = `${guests} guests · ${needEntrees} srv needed · ${haveEntreesTotal} tracked`;
@@ -792,6 +803,50 @@ export default function Plan() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
 
         <ServiceModeBanner mode={serviceMode} onChange={setServiceMode} />
+
+        {/* ── On the Dash ineligibility warning ── */}
+        {serviceMode === "on_the_dash" && planHasIneligible && (
+          <div className="mb-6 p-5 rounded-2xl border border-amber-300 bg-amber-50 space-y-3">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0 text-amber-700" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-amber-900">
+                  Some saved items can't be cooked on-site
+                </p>
+                <p className="text-xs text-amber-800/90 mt-0.5">
+                  You're set to <strong>On the Dash Experience</strong>, but our food trailer can't prepare these items live. Switch to Standard Drop-Off Catering to keep them, or remove them from your plan.
+                </p>
+              </div>
+            </div>
+            <ul className="space-y-1.5">
+              {ineligiblePlanItems.map(it => (
+                <li
+                  key={it.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2 bg-white rounded-lg border border-amber-200"
+                >
+                  <span className="text-sm font-medium text-amber-900 truncate">{it.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removePlanItem(it.id)}
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-amber-900 border border-amber-400 rounded-lg hover:bg-amber-600 hover:text-white hover:border-amber-600 transition-colors"
+                    title="Remove from plan"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => setServiceMode("drop_off")}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-700 text-white text-sm font-semibold rounded-xl hover:bg-amber-800 transition-colors"
+            >
+              <Truck className="w-4 h-4" />
+              Switch to Standard Drop-Off
+            </button>
+          </div>
+        )}
 
         {/* ── Page header ── */}
         <div className="flex items-center gap-4 mb-10">

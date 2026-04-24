@@ -180,6 +180,7 @@ export default function Menu() {
             onAddToCart: handleAddToCart,
             onTogglePlan: handleTogglePlan,
             isInPlan: planItemIds.has(item.id),
+            serviceMode,
           });
           return (
             <div className="space-y-10">
