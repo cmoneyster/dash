@@ -10,6 +10,7 @@ import {
 import { getSessionId } from "@/lib/session";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
+import { TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import {
   Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
   Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck,
@@ -1449,7 +1450,7 @@ export default function Plan() {
                       <p className="font-display font-bold text-base leading-tight">
                         {plan.items.length} item{plan.items.length !== 1 ? "s" : ""} ready to order
                       </p>
-                      <p className="text-sm opacity-70">{formatCurrency(total)} estimated</p>
+                      <p className="text-sm opacity-70">{formatCurrency(total)} estimated · {TAX_DISCLOSURE_SHORT}</p>
                     </div>
                     <button
                       onClick={handleAddAllToCart}

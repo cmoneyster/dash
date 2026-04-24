@@ -18,6 +18,7 @@ import { sendNewInquiryAlert } from "../lib/sms";
 import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
 import { sendMail } from "../lib/mail";
 import { computeQuoteTotals, renderQuotePdf, fmtUSD } from "../lib/quote";
+import { TAX_DISCLOSURE } from "../lib/tax";
 import { objectStorageClient } from "../lib/objectStorage";
 import {
   isSquareConfigured,
@@ -568,6 +569,7 @@ router.post("/admin/catering/:id/quote/email", async (req, res): Promise<void> =
       `Hi ${inquiry.clientName},`,
       ``,
       `Attached is your catering quote (${inquiry.quoteNumber ?? "draft"}) for a total of ${fmtUSD(totals.total)}.`,
+      TAX_DISCLOSURE,
       ``,
       `You can also view it online: ${link}`,
       ...(payUrl && payLabel ? [``, `${payLabel} securely with Square: ${payUrl}`] : []),
@@ -579,7 +581,8 @@ router.post("/admin/catering/:id/quote/email", async (req, res): Promise<void> =
     const html = `
       <p>Hi ${inquiry.clientName},</p>
       <p>Attached is your catering quote <strong>${inquiry.quoteNumber ?? "(draft)"}</strong>
-         for a total of <strong>${fmtUSD(totals.total)}</strong>.</p>
+         for a total of <strong>${fmtUSD(totals.total)}</strong>.<br/>
+         <span style="color:#888;font-size:12px">${TAX_DISCLOSURE}</span></p>
       <p><a href="${link}">View this quote online</a></p>
       ${payUrl && payLabel
         ? `<p><a href="${payUrl}" style="display:inline-block;padding:10px 18px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">${payLabel}</a></p>`

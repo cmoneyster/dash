@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import type { CateringInquiry, QuoteAdjustment, QuoteLineItem } from "@workspace/db/schema";
+import { TAX_DISCLOSURE } from "./tax";
 
 // Resolve the bundled CJK font path. In production (and `pnpm run dev`, which
 // does `build && start`), the bundle runs from `dist/index.mjs` with the font
@@ -187,7 +188,8 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   // Totals block is ~22pt header gap + ~16pt per row (subtotal + fees + discounts + 1 divider + TOTAL),
   // notes block is ~30pt if present, footer sits at y=740. Cap line-item area at y=700 minus that.
   const totalsRows = 1 + totals.fees.length + totals.discounts.length + 1; // subtotal + adj + TOTAL
-  const totalsHeight = 22 + totalsRows * 16 + 12;
+  // 12pt extra reserves room for the tax-disclosure line below TOTAL.
+  const totalsHeight = 22 + totalsRows * 16 + 12 + 12;
   const notesHeight = inquiry.quoteNotes?.trim() ? 36 : 0;
   const lineItemMaxY = 740 - totalsHeight - notesHeight - 8;
 
@@ -276,6 +278,13 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   doc.moveTo(320, y).lineTo(560, y).strokeColor("#111").stroke();
   y += 6;
   totalRow("TOTAL", fmtUSD(totals.total), { bold: true });
+
+  // Tax disclosure — Square adds sales tax on the invoice itself.
+  doc
+    .fillColor("#888")
+    .fontSize(8.5)
+    .text(TAX_DISCLOSURE, 320, y, { width: 230, align: "right" });
+  y += 12;
 
   // Notes
   if (inquiry.quoteNotes?.trim()) {

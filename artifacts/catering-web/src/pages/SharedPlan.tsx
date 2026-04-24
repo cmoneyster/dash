@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { formatCurrency } from "@/lib/utils";
+import { TAX_DISCLOSURE } from "@/lib/tax";
 import { getSessionId } from "@/lib/session";
 import {
   Trash2, Heart, Users, AlertTriangle, Copy, CheckCheck, Loader2,
@@ -985,6 +986,10 @@ export default function SharedPlan() {
                 );
               })}
             </div>
+            {/* Tax disclosure for the per-category subtotals shown above. */}
+            <p className="text-xs text-muted-foreground text-center pt-1">
+              {TAX_DISCLOSURE}
+            </p>
           </div>
         )}
 

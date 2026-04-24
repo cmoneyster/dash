@@ -16,6 +16,7 @@ import {
 import { getSessionId } from "@/lib/session";
 import { computeEffectivePriceDetail } from "@workspace/pricing";
 import { formatCurrency } from "@/lib/utils";
+import { TAX_DISCLOSURE } from "@/lib/tax";
 import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw, CalendarDays, X as XIcon, Truck, Flame, AlertTriangle } from "lucide-react";
 import {
   SERVICE_MODE_KEY,
@@ -804,10 +805,11 @@ export default function Cart() {
                         </div>
                       )}
                     </div>
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex justify-between items-center mb-1">
                       <span className="text-lg font-semibold text-muted-foreground">Estimated Total</span>
                       <span className="font-display font-bold text-3xl text-foreground">{formatCurrency(previewedTotal)}</span>
                     </div>
+                    <p className="text-xs text-muted-foreground mb-6">{TAX_DISCLOSURE}</p>
 
                     <button
                       type="submit"

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
 import { Loader2, Download, AlertCircle, CalendarDays, MapPin, Users, CreditCard, CheckCircle2, MessageSquare, Check, X } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { TAX_DISCLOSURE, TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -258,6 +259,7 @@ export default function PublicQuote() {
               <span>Total</span>
               <span className="text-primary">{formatCurrency(quote.total)}</span>
             </div>
+            <p className="text-xs text-muted-foreground text-right pt-1">{TAX_DISCLOSURE}</p>
           </div>
         </div>
 
@@ -288,6 +290,7 @@ export default function PublicQuote() {
                   ) : (
                     <p className="text-muted-foreground">
                       Balance due: <strong className="text-foreground">{formatCurrency(quote.square.balanceDue || quote.total)}</strong>
+                      <span className="ml-2 text-xs">({TAX_DISCLOSURE_SHORT})</span>
                     </p>
                   )}
                 </div>

@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
 import { computeEffectivePriceDetail } from "@workspace/pricing";
+import { TAX_DISCLOSURE } from "@/lib/tax";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -235,6 +236,9 @@ function OrderItemsTable({ items, total }: { items: OrderItem[]; total: string |
             <tr className="border-t-2 border-border bg-secondary/20">
               <td colSpan={3} className="px-4 py-2.5 text-sm font-bold text-right">Total</td>
               <td className="px-4 py-2.5 text-right font-bold text-primary">{total}</td>
+            </tr>
+            <tr>
+              <td colSpan={4} className="px-4 pb-2 text-xs text-muted-foreground text-right">{TAX_DISCLOSURE}</td>
             </tr>
           </tfoot>
         )}
@@ -771,6 +775,7 @@ function QuoteEditor({
             <span>Total</span>
             <span className="text-primary tabular-nums">{formatCurrency(totals.total)}</span>
           </div>
+          <p className="text-xs text-muted-foreground">{TAX_DISCLOSURE}</p>
         </div>
 
         {/* Quote-level fields */}

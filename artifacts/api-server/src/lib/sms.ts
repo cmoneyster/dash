@@ -70,7 +70,7 @@ export async function sendNewInquiryAlert(opts: {
   if (opts.eventDate)   detail.push(`Event: ${opts.eventDate}`);
   if (opts.guestCount)  detail.push(`${opts.guestCount} guests`);
   if (detail.length)    lines.push(detail.join(" · "));
-  if (opts.total)       lines.push(`Total: ${opts.total}`);
+  if (opts.total)       lines.push(`Total: ${opts.total} (excl. tax)`);
   if (opts.clientPhone) lines.push(`Phone: ${opts.clientPhone}`);
   if (opts.link)        lines.push(`View: ${opts.link}`);
   await sendSms(ownerPhone, lines.join("\n"));
