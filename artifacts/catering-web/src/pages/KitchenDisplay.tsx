@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer, Pause, Play, Ban, ShoppingBag, Users } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer, Pause, Play, Ban, ShoppingBag, Users, X } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -179,6 +179,7 @@ export default function KitchenDisplay() {
   const [chBusy, setChBusy] = useState<"guest" | "taker" | null>(null);
   const [chError, setChError] = useState("");
   const [pauseModal, setPauseModal] = useState<"guest" | "taker" | null>(null);
+  const [controlsModal, setControlsModal] = useState<"guest" | "taker" | null>(null);
 
   const fetchChannels = useCallback(async () => {
     try {
@@ -238,6 +239,7 @@ export default function KitchenDisplay() {
       } else {
         setChannels(await res.json());
         setPauseModal(null);
+        setControlsModal(null);
       }
     } catch {
       setChError("Network error");
@@ -538,6 +540,19 @@ export default function KitchenDisplay() {
         </>
       )}
 
+      {controlsModal && channels && (
+        <ChannelControlsModal
+          channel={controlsModal}
+          state={channels[controlsModal]}
+          tickNow={tickNow}
+          busy={chBusy === controlsModal}
+          error={chError}
+          onCancel={() => { setChError(""); setControlsModal(null); }}
+          onAccept={() => setChannelState(controlsModal, "accepting")}
+          onPause={() => { setControlsModal(null); setPauseModal(controlsModal); }}
+          onStop={() => setChannelState(controlsModal, "closed")}
+        />
+      )}
       {pauseModal && (
         <PauseDurationModal
           channel={pauseModal}
@@ -611,7 +626,25 @@ export default function KitchenDisplay() {
                 {newOrderIds.size} new
               </div>
             )}
-            <div className="flex items-center gap-2 text-sm text-white/50">
+            {channels && (
+              <div className="flex items-center gap-2">
+                <ChannelStatusPill
+                  label="Guest"
+                  icon={<ShoppingBag className="w-3.5 h-3.5" />}
+                  state={channels.guest}
+                  tickNow={tickNow}
+                  onClick={() => { setChError(""); setControlsModal("guest"); }}
+                />
+                <ChannelStatusPill
+                  label="Staff"
+                  icon={<Users className="w-3.5 h-3.5" />}
+                  state={channels.taker}
+                  tickNow={tickNow}
+                  onClick={() => { setChError(""); setControlsModal("taker"); }}
+                />
+              </div>
+            )}
+            <div className="hidden md:flex items-center gap-2 text-sm text-white/50">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               Live · {activeOrders.length} active
             </div>
@@ -742,17 +775,6 @@ export default function KitchenDisplay() {
         )}
         {view === "orders" && (
           <>
-            {channels && (
-              <OrderingTogglePanel
-                channels={channels}
-                tickNow={tickNow}
-                busy={chBusy}
-                error={chError}
-                onAccept={(c) => setChannelState(c, "accepting")}
-                onClose={(c) => setChannelState(c, "closed")}
-                onPause={(c) => setPauseModal(c)}
-              />
-            )}
             {orders.length === 0 ? (
               <div className="text-center py-24 text-white/30">
                 <ChefHat className="w-12 h-12 mx-auto mb-4 opacity-30" />
@@ -1126,106 +1148,131 @@ function formatRemaining(pausedUntil: string | null, tickNow: number): string {
   return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
-function ChannelCard({
-  title, icon, channel, state, tickNow, busy, onAccept, onClose, onPause,
+function ChannelStatusPill({
+  label, icon, state, tickNow, onClick,
 }: {
-  title: string;
+  label: string;
   icon: React.ReactNode;
+  state: ChannelState;
+  tickNow: number;
+  onClick: () => void;
+}) {
+  const styleByState = {
+    accepting: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25",
+    paused: "bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25",
+    closed: "bg-rose-500/15 text-rose-300 border-rose-500/30 hover:bg-rose-500/25",
+  } as const;
+  const dotByState = {
+    accepting: "bg-emerald-400 animate-pulse",
+    paused: "bg-amber-400",
+    closed: "bg-rose-400",
+  } as const;
+  const titleByState = {
+    accepting: `${label} ordering: accepting orders. Tap to change.`,
+    paused: `${label} ordering: paused. Tap to resume or change.`,
+    closed: `${label} ordering: not accepting. Tap to change.`,
+  } as const;
+  return (
+    <button
+      onClick={onClick}
+      title={titleByState[state.state]}
+      aria-label={titleByState[state.state]}
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-semibold transition-colors ${styleByState[state.state]}`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotByState[state.state]}`} />
+      <span className="shrink-0">{icon}</span>
+      <span className="hidden sm:inline">{label}</span>
+      {state.state === "paused" && (
+        <span className="hidden md:inline tabular-nums">· {formatRemaining(state.pausedUntil, tickNow)}</span>
+      )}
+    </button>
+  );
+}
+
+function ChannelControlsModal({
+  channel, state, tickNow, busy, error, onCancel, onAccept, onPause, onStop,
+}: {
   channel: "guest" | "taker";
   state: ChannelState;
   tickNow: number;
   busy: boolean;
-  onAccept: (c: "guest" | "taker") => void;
-  onClose: (c: "guest" | "taker") => void;
-  onPause: (c: "guest" | "taker") => void;
-}) {
-  const pillByState = {
-    accepting: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-    paused: "bg-amber-500/15 text-amber-300 border-amber-500/30",
-    closed: "bg-rose-500/15 text-rose-300 border-rose-500/30",
-  } as const;
-  const labelByState = {
-    accepting: "Accepting orders",
-    paused: `Paused · ${formatRemaining(state.pausedUntil, tickNow)}`,
-    closed: "Not accepting",
-  } as const;
-  return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex-1 min-w-[280px]">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2 text-white/80 font-semibold">
-          {icon}
-          <span>{title}</span>
-        </div>
-        <span className={`text-[11px] font-bold px-2 py-1 rounded-full border ${pillByState[state.state]}`}>
-          {labelByState[state.state]}
-        </span>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <button
-          onClick={() => onAccept(channel)}
-          disabled={busy || state.state === "accepting"}
-          className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold transition-colors ${state.state === "accepting" ? "bg-emerald-500 text-white" : "bg-white/10 text-white/70 hover:bg-emerald-500/30 hover:text-white"} disabled:opacity-50`}
-        >
-          {state.state === "paused" ? <Play className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-          {state.state === "paused" ? "Resume" : "Accepting"}
-        </button>
-        <button
-          onClick={() => onPause(channel)}
-          disabled={busy}
-          className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold transition-colors ${state.state === "paused" ? "bg-amber-500 text-white" : "bg-white/10 text-white/70 hover:bg-amber-500/30 hover:text-white"} disabled:opacity-50`}
-        >
-          <Pause className="w-3.5 h-3.5" /> Pause
-        </button>
-        <button
-          onClick={() => onClose(channel)}
-          disabled={busy || state.state === "closed"}
-          className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold transition-colors ${state.state === "closed" ? "bg-rose-500 text-white" : "bg-white/10 text-white/70 hover:bg-rose-500/30 hover:text-white"} disabled:opacity-50`}
-        >
-          <Ban className="w-3.5 h-3.5" /> Stop
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function OrderingTogglePanel({
-  channels, tickNow, busy, error, onAccept, onClose, onPause,
-}: {
-  channels: { guest: ChannelState; taker: ChannelState };
-  tickNow: number;
-  busy: "guest" | "taker" | null;
   error: string;
-  onAccept: (c: "guest" | "taker") => void;
-  onClose: (c: "guest" | "taker") => void;
-  onPause: (c: "guest" | "taker") => void;
+  onCancel: () => void;
+  onAccept: () => void;
+  onPause: () => void;
+  onStop: () => void;
 }) {
+  const Icon = channel === "guest" ? ShoppingBag : Users;
+  const title = channel === "guest" ? "Guest Ordering" : "Staff Order Taker";
+  const accentByState = {
+    accepting: { ring: "bg-emerald-500/20", icon: "text-emerald-400", label: "Currently accepting orders" },
+    paused: { ring: "bg-amber-500/20", icon: "text-amber-400", label: `Paused · ${formatRemaining(state.pausedUntil, tickNow)}` },
+    closed: { ring: "bg-rose-500/20", icon: "text-rose-400", label: "Currently not accepting orders" },
+  } as const;
+  const accent = accentByState[state.state];
+  const titleId = `channel-controls-title-${channel}`;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onCancel(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onCancel, busy]);
   return (
-    <div className="mb-6">
-      <div className="flex flex-col md:flex-row gap-3">
-        <ChannelCard
-          title="Guest Ordering"
-          icon={<ShoppingBag className="w-4 h-4" />}
-          channel="guest"
-          state={channels.guest}
-          tickNow={tickNow}
-          busy={busy === "guest"}
-          onAccept={onAccept}
-          onClose={onClose}
-          onPause={onPause}
-        />
-        <ChannelCard
-          title="Staff Order Taker"
-          icon={<Users className="w-4 h-4" />}
-          channel="taker"
-          state={channels.taker}
-          tickNow={tickNow}
-          busy={busy === "taker"}
-          onAccept={onAccept}
-          onClose={onClose}
-          onPause={onPause}
-        />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => { if (!busy) onCancel(); }}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="bg-[#1e1e1e] border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 mb-5">
+          <div className={`w-10 h-10 rounded-xl ${accent.ring} flex items-center justify-center shrink-0`}>
+            <Icon className={`w-5 h-5 ${accent.icon}`} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 id={titleId} className="font-bold text-base">{title}</h2>
+            <p className="text-xs text-white/60 mt-0.5">{accent.label}</p>
+          </div>
+          <button
+            onClick={onCancel}
+            aria-label="Close"
+            className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <button
+            onClick={onAccept}
+            disabled={busy || state.state === "accepting"}
+            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-xl text-xs font-semibold transition-colors ${state.state === "accepting" ? "bg-emerald-500 text-white" : "bg-white/10 text-white/80 hover:bg-emerald-500/30 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {state.state === "paused" ? <Play className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+            {state.state === "paused" ? "Resume" : "Accept"}
+          </button>
+          <button
+            onClick={onPause}
+            disabled={busy}
+            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-xl text-xs font-semibold transition-colors ${state.state === "paused" ? "bg-amber-500 text-white" : "bg-white/10 text-white/80 hover:bg-amber-500/30 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            <Pause className="w-4 h-4" /> Pause
+          </button>
+          <button
+            onClick={onStop}
+            disabled={busy || state.state === "closed"}
+            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-xl text-xs font-semibold transition-colors ${state.state === "closed" ? "bg-rose-500 text-white" : "bg-white/10 text-white/80 hover:bg-rose-500/30 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            <Ban className="w-4 h-4" /> Stop
+          </button>
+        </div>
+        {error && <p className="text-rose-400 text-xs mb-3">{error}</p>}
+        {busy && (
+          <div className="flex items-center justify-center gap-2 text-xs text-white/50 py-1">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Updating…
+          </div>
+        )}
       </div>
-      {error && <p className="text-rose-400 text-xs mt-2">{error}</p>}
     </div>
   );
 }
