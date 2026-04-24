@@ -80,12 +80,12 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   doc
     .fontSize(20)
     .fillColor("#111111")
-    .text("Hollywood East Cafe — Catering Quote", { align: "left" });
+    .text("dash Catering", { align: "left" });
   doc
     .moveDown(0.2)
     .fontSize(10)
     .fillColor("#666666")
-    .text("dash by Hollywood East Cafe");
+    .text("by Hollywood East Cafe");
 
   // Quote meta box (top right)
   const metaTop = 50;

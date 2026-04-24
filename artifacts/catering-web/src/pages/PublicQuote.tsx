@@ -173,8 +173,8 @@ export default function PublicQuote() {
         <div className="px-8 py-6 border-b border-border flex items-start justify-between gap-4 bg-gradient-to-br from-primary/5 to-transparent">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Catering Quote</p>
-            <h1 className="font-display text-2xl font-bold mt-1">Hollywood East Cafe</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">dash by Hollywood East Cafe</p>
+            <h1 className="font-display text-2xl font-bold mt-1">dash Catering</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">by Hollywood East Cafe</p>
           </div>
           <div className="text-right text-sm">
             <p className="font-mono font-bold text-primary">{quote.quoteNumber ?? "DRAFT"}</p>
