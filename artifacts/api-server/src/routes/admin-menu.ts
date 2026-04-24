@@ -177,7 +177,7 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
     if (size5Servings !== undefined)    updates.size5Servings = size5Servings != null ? parseInt(String(size5Servings)) : null;
     if (size5Price !== undefined)       updates.size5Price = size5Price === null ? null : String(size5Price);
     if (internalNotes !== undefined)    updates.internalNotes = internalNotes ? String(internalNotes).trim() || null : null;
-    if (otdEligible !== undefined)      updates.otdEligible = !!otdEligible;
+    if (otdEligible !== undefined)      updates.otdEligible = otdEligible === true || otdEligible === "true";
 
     const [item] = await db.update(menuItemsTable).set(updates).where(eq(menuItemsTable.id, id)).returning();
     if (!item) {
