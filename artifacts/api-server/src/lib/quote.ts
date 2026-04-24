@@ -238,6 +238,21 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
  */
 export function publicQuoteFromInquiry(inquiry: CateringInquiry) {
   const totals = computeQuoteTotals(inquiry.lineItems, inquiry.fees, inquiry.discounts);
+  // Strip internal-only fields (tierApplied, priceMode, sizeSlot, menuItemId)
+  // so they never leak to clients via the public JSON payload.
+  const publicLineItems = totals.lineItems.map((li) => ({
+    id: li.id,
+    name: li.name,
+    quantity: li.quantity,
+    unitPrice: li.unitPrice,
+    notes: li.notes ?? null,
+    pricingTemplate: li.pricingTemplate ?? null,
+    sizeLabel: li.sizeLabel ?? null,
+    sizeServings: li.sizeServings ?? null,
+    unit: li.unit ?? null,
+    servingSize: li.servingSize ?? null,
+    lineTotal: li.lineTotal,
+  }));
   return {
     quoteNumber: inquiry.quoteNumber,
     quoteIssuedAt: inquiry.quoteIssuedAt,
@@ -252,7 +267,13 @@ export function publicQuoteFromInquiry(inquiry: CateringInquiry) {
       guestCount: inquiry.guestCount,
       venueAddress: inquiry.venueAddress,
     },
-    ...totals,
+    lineItems: publicLineItems,
+    subtotal: totals.subtotal,
+    fees: totals.fees,
+    feesTotal: totals.feesTotal,
+    discounts: totals.discounts,
+    discountsTotal: totals.discountsTotal,
+    total: totals.total,
     // Square — exposed only when an invoice has been issued, so the public
     // quote page can render a "Pay deposit / Pay balance" CTA.
     square: inquiry.squareInvoiceId
