@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { TAX_DISCLOSURE } from "@/lib/tax";
+import { TAX_DISCLOSURE, TAX_INCLUDED_NOTE } from "@/lib/tax";
 import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1071,7 +1071,7 @@ export default function EventTakerOrder() {
                   <div className="flex justify-between"><span className="text-muted-foreground">Tax ({taxRate.toFixed(2)}%)</span><span className="font-semibold">${taxAmount.toFixed(2)}</span></div>
                 )}
                 <div className="flex justify-between text-base pt-1 border-t border-border/60 mt-1.5"><span className="font-bold">Total</span><span className="font-bold text-indigo-600">${total.toFixed(2)}</span></div>
-                <p className="text-xs text-muted-foreground">{TAX_DISCLOSURE}</p>
+                <p className="text-xs text-muted-foreground">{taxRate > 0 ? TAX_INCLUDED_NOTE : TAX_DISCLOSURE}</p>
               </div>
               <input
                 value={guestName}
@@ -1457,7 +1457,7 @@ function PaymentModal({
             <div className="text-center">
               <p className="text-xs uppercase tracking-wider text-muted-foreground">Total Due</p>
               <p className="text-3xl font-display font-bold text-emerald-600">${total.toFixed(2)}</p>
-              <p className="text-xs text-muted-foreground mt-1">{TAX_DISCLOSURE}</p>
+              <p className="text-xs text-muted-foreground mt-1">{(order.taxRate ?? 0) > 0 ? TAX_INCLUDED_NOTE : TAX_DISCLOSURE}</p>
             </div>
             <div>
               <label className="block text-sm font-semibold mb-1.5">Cash received</label>
