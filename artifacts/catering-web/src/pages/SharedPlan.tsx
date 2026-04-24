@@ -5,7 +5,7 @@ import { formatCurrency } from "@/lib/utils";
 import { getSessionId } from "@/lib/session";
 import {
   Trash2, Heart, Users, AlertTriangle, Copy, CheckCheck, Loader2,
-  Calculator, Utensils, ChevronDown, ChevronUp,
+  Calculator, Utensils, ChevronDown, ChevronUp, Truck,
 } from "lucide-react";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +42,7 @@ type MenuItemData = {
   servingSize?: number;
   unit?: string;
   minimumOrderQty?: number;
+  otdEligible?: boolean;
 };
 
 type PlanItem = {
@@ -442,6 +443,16 @@ export default function SharedPlan() {
     }
   };
 
+  const handleRemoveFromShared = async (itemId: number) => {
+    try {
+      const res = await fetch(`/api/plan/share/${token}/items/${itemId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setPlan(await res.json());
+    } catch {
+      toast({ title: "Error", description: "Could not remove item.", variant: "destructive" });
+    }
+  };
+
   const handleCopyToMyPlan = async () => {
     if (!plan || copying) return;
     setCopying(true);
@@ -516,6 +527,48 @@ export default function SharedPlan() {
             updatePlanner(prev => ({ ...prev, serviceMode: m }));
           }}
         />
+
+        {(plannerState.serviceMode ?? "drop_off") === "on_the_dash" && (() => {
+          const ineligible = plan.items.filter(it => !it.menuItem.otdEligible);
+          if (ineligible.length === 0) return null;
+          return (
+            <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-5">
+              <div className="flex items-start gap-3 mb-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-amber-900">
+                    Some items aren't available with the On the Dash Experience
+                  </p>
+                  <p className="text-sm text-amber-800 mt-1">
+                    Our mobile trailer can't prepare these on-site. Remove them or switch to Standard Drop-Off.
+                  </p>
+                </div>
+              </div>
+              <ul className="space-y-2 mb-4">
+                {ineligible.map(it => (
+                  <li key={it.id} className="flex items-center justify-between gap-3 bg-white/60 rounded-lg px-3 py-2">
+                    <span className="text-sm text-amber-900 truncate">{it.menuItem.name}</span>
+                    <button
+                      onClick={() => handleRemoveFromShared(it.id)}
+                      className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => {
+                  saveServiceMode("drop_off");
+                  updatePlanner(prev => ({ ...prev, serviceMode: "drop_off" }));
+                }}
+                className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors"
+              >
+                <Truck className="w-4 h-4" /> Switch to Standard Drop-Off
+              </button>
+            </div>
+          );
+        })()}
 
         {/* ── Header ── */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">

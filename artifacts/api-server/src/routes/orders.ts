@@ -17,8 +17,10 @@ const OTD_DEFAULTS = {
 };
 
 type ServiceMode = "drop_off" | "on_the_dash";
-function parseServiceMode(v: unknown): ServiceMode {
-  return v === "on_the_dash" ? "on_the_dash" : "drop_off";
+function parseServiceMode(v: unknown): ServiceMode | null {
+  if (v === undefined || v === null) return "drop_off";
+  if (v === "on_the_dash" || v === "drop_off") return v;
+  return null;
 }
 
 async function getOrderWithItems(orderId: number) {
@@ -46,6 +48,10 @@ router.post("/orders", async (req, res): Promise<void> => {
     }
 
     const serviceMode = parseServiceMode(rawServiceMode);
+    if (serviceMode === null) {
+      res.status(400).json({ error: "serviceMode must be 'drop_off' or 'on_the_dash'" });
+      return;
+    }
 
     // Get cart items
     const cartItems = await db
