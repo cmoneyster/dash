@@ -133,6 +133,20 @@ export default function EventTakerOrder() {
   const [paymentOrder, setPaymentOrder] = useState<PendingOrder | null>(null);
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [showPendingPanel, setShowPendingPanel] = useState(false);
+  // Transient warning shown when staff tries to add more than the remaining
+  // event stock (or tap a sold-out item). Auto-clears after a few seconds.
+  const [stockWarning, setStockWarning] = useState<string>("");
+  const stockWarnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function flashStockWarning(msg: string) {
+    setStockWarning(msg);
+    if (stockWarnTimer.current) clearTimeout(stockWarnTimer.current);
+    stockWarnTimer.current = setTimeout(() => setStockWarning(""), 3500);
+  }
+  // Belt-and-suspenders: clear any pending warning timer if the component
+  // unmounts (e.g. cashier signs out) so we don't update state on a dead tree.
+  useEffect(() => () => {
+    if (stockWarnTimer.current) clearTimeout(stockWarnTimer.current);
+  }, []);
   const [printMode, setPrintMode] = useState<"receipt" | "kitchen">("receipt");
   const [autoPrintMode, setAutoPrintMode] = useState<AutoPrintMode>(getStoredAutoPrint());
   const autoPrintedFor = useRef<string | null>(null);
@@ -309,6 +323,18 @@ export default function EventTakerOrder() {
   }
 
   function addToCart(item: MenuItem) {
+    // Sold-out and "would exceed remaining stock" cases are surfaced in the
+    // UI as a transient warning rather than silently no-op'ing, so staff get
+    // an immediate explanation when a tap doesn't take.
+    if (item.eventStock !== null && item.eventStock <= 0) {
+      flashStockWarning(`${item.name} is sold out.`);
+      return;
+    }
+    const currentQty = cart.find(l => l.itemId === item.id)?.quantity ?? 0;
+    if (item.eventStock !== null && currentQty + 1 > item.eventStock) {
+      flashStockWarning(`Only ${item.eventStock} of ${item.name} left — already in cart.`);
+      return;
+    }
     setCart(prev => {
       const existing = prev.find(l => l.itemId === item.id);
       if (existing) {
@@ -319,6 +345,16 @@ export default function EventTakerOrder() {
   }
 
   function changeQty(itemId: number, delta: number) {
+    if (delta > 0 && menu) {
+      // Block increments past the remaining event stock so staff don't
+      // overshoot a limited item; -1 / removal stays unrestricted.
+      const item = menu.find(m => m.id === itemId);
+      const currentQty = cart.find(l => l.itemId === itemId)?.quantity ?? 0;
+      if (item?.eventStock !== null && item?.eventStock !== undefined && currentQty + delta > item.eventStock) {
+        flashStockWarning(`Only ${item.eventStock} of ${item.name} left.`);
+        return;
+      }
+    }
     setCart(prev => prev
       .map(l => l.itemId === itemId ? { ...l, quantity: l.quantity + delta } : l)
       .filter(l => l.quantity > 0));
@@ -801,14 +837,25 @@ export default function EventTakerOrder() {
               <h2 className="font-display font-bold text-lg mb-2 px-1">{cat}</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {menu.filter(m => m.category === cat).map(item => {
-                  const outOfStock = item.eventStock !== null && item.eventStock <= 0;
+                  const stock = item.eventStock;
+                  const outOfStock = stock !== null && stock <= 0;
+                  // Mirror the Guest Event page's "low stock" treatment so
+                  // staff get the same amber-warning at-a-glance signal when
+                  // an item is close to running out.
+                  const lowStock = stock !== null && stock > 0 && stock <= 5;
                   const inCart = cart.find(l => l.itemId === item.id);
+                  const cartQty = inCart?.quantity ?? 0;
+                  // True once the cart already holds every remaining unit —
+                  // taps and the +/- "+" should stop adding (server would 409
+                  // otherwise, but blocking client-side gives instant feedback).
+                  const atMax = stock !== null && cartQty >= stock;
                   return (
                     <button
                       key={item.id}
                       type="button"
                       disabled={outOfStock}
                       onClick={() => addToCart(item)}
+                      data-testid={`taker-item-${item.id}`}
                       className={`relative bg-card border rounded-2xl overflow-hidden text-left transition-all ${
                         outOfStock
                           ? "opacity-50 cursor-not-allowed border-border"
@@ -824,12 +871,28 @@ export default function EventTakerOrder() {
                       )}
                       <div className="p-3">
                         <p className="font-semibold text-sm leading-tight">{item.name}</p>
-                        <div className="flex items-end justify-between mt-1.5">
+                        <div className="flex items-end justify-between mt-1.5 gap-2">
                           <span className="font-bold text-base text-indigo-600">${item.effectivePrice.toFixed(2)}</span>
-                          {item.eventStock !== null && (
-                            <span className={`text-[10px] font-semibold uppercase tracking-wider ${outOfStock ? "text-destructive" : "text-muted-foreground"}`}>
-                              {outOfStock ? "Out" : `${item.eventStock} left`}
-                            </span>
+                          {stock !== null && (
+                            outOfStock ? (
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-destructive">
+                                Out
+                              </span>
+                            ) : lowStock ? (
+                              <span
+                                className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full uppercase tracking-wider"
+                                data-testid={`stock-badge-${item.id}`}
+                              >
+                                {stock} left
+                              </span>
+                            ) : (
+                              <span
+                                className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                                data-testid={`stock-badge-${item.id}`}
+                              >
+                                {stock} left
+                              </span>
+                            )
                           )}
                         </div>
                       </div>
@@ -855,8 +918,18 @@ export default function EventTakerOrder() {
                           <span
                             role="button"
                             tabIndex={0}
-                            onClick={e => { e.stopPropagation(); changeQty(item.id, 1); }}
-                            className="w-6 h-6 rounded-full hover:bg-indigo-700 flex items-center justify-center cursor-pointer"
+                            aria-disabled={atMax}
+                            onClick={e => {
+                              e.stopPropagation();
+                              if (atMax) {
+                                flashStockWarning(`Only ${stock} of ${item.name} left.`);
+                                return;
+                              }
+                              changeQty(item.id, 1);
+                            }}
+                            className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                              atMax ? "opacity-40 cursor-not-allowed" : "hover:bg-indigo-700 cursor-pointer"
+                            }`}
                           >
                             <Plus className="w-3 h-3" />
                           </span>
@@ -883,24 +956,49 @@ export default function EventTakerOrder() {
             <span className="ml-auto text-xs text-muted-foreground">{cart.reduce((s, l) => s + l.quantity, 0)} item(s)</span>
           </div>
 
+          {stockWarning && (
+            <div
+              className="mx-5 mt-3 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs flex items-start gap-1.5"
+              data-testid="taker-stock-warning"
+              role="status"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>{stockWarning}</span>
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
             {cart.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-10">Tap items on the left to start an order.</p>
             )}
-            {cart.map(line => (
-              <div key={line.itemId} className="flex items-center gap-2 py-2 border-b border-border/40 last:border-0">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{line.name}</p>
-                  <p className="text-xs text-muted-foreground">${line.unitPrice.toFixed(2)} × {line.quantity} = ${(line.unitPrice * line.quantity).toFixed(2)}</p>
+            {cart.map(line => {
+              const stock = menu?.find(m => m.id === line.itemId)?.eventStock ?? null;
+              const atMax = stock !== null && line.quantity >= stock;
+              return (
+                <div key={line.itemId} className="flex items-center gap-2 py-2 border-b border-border/40 last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate">{line.name}</p>
+                    <p className="text-xs text-muted-foreground">${line.unitPrice.toFixed(2)} × {line.quantity} = ${(line.unitPrice * line.quantity).toFixed(2)}</p>
+                    {atMax && (
+                      <p className="text-[11px] text-amber-700 font-semibold mt-0.5">All {stock} remaining in cart</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => changeQty(line.itemId, -1)} className="w-7 h-7 rounded-md bg-secondary hover:bg-secondary/70 flex items-center justify-center"><Minus className="w-3.5 h-3.5" /></button>
+                    <span className="w-6 text-center font-semibold text-sm">{line.quantity}</span>
+                    <button
+                      onClick={() => changeQty(line.itemId, 1)}
+                      disabled={atMax}
+                      title={atMax ? `Only ${stock} left in stock` : undefined}
+                      className="w-7 h-7 rounded-md bg-secondary hover:bg-secondary/70 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-secondary"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => removeLine(line.itemId)} className="w-7 h-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center ml-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => changeQty(line.itemId, -1)} className="w-7 h-7 rounded-md bg-secondary hover:bg-secondary/70 flex items-center justify-center"><Minus className="w-3.5 h-3.5" /></button>
-                  <span className="w-6 text-center font-semibold text-sm">{line.quantity}</span>
-                  <button onClick={() => changeQty(line.itemId, 1)} className="w-7 h-7 rounded-md bg-secondary hover:bg-secondary/70 flex items-center justify-center"><Plus className="w-3.5 h-3.5" /></button>
-                  <button onClick={() => removeLine(line.itemId)} className="w-7 h-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center ml-1"><Trash2 className="w-3.5 h-3.5" /></button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {cart.length > 0 && (
