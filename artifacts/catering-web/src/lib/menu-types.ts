@@ -24,16 +24,16 @@ export function isPanSizesItem(item: MenuItem): item is PanSizeMenuItem {
 }
 
 export function getPanSizesFromPrice(item: MenuItem): number | null {
-  const anyItem = item as Record<string, unknown>;
+  const sized = item as Partial<PanSizeMenuItem>;
   const prices = [
-    anyItem.size1Price,
-    anyItem.size2Price,
-    anyItem.size3Price,
-    anyItem.size4Price,
-    anyItem.size5Price,
+    sized.size1Price,
+    sized.size2Price,
+    sized.size3Price,
+    sized.size4Price,
+    sized.size5Price,
   ]
     .map((p) => {
-      if (p === null || p === undefined || p === "") return null;
+      if (p === null || p === undefined) return null;
       const n = Number(p);
       return isFinite(n) ? n : null;
     })

@@ -641,8 +641,9 @@ export default function Plan() {
   // do not contribute to savory/sweet/entrée targets.
   const OTHER_GROUP_LABEL = "Other items";
   const groupedItems = useMemo(() => {
-    if (!plan?.items) return [] as [string, typeof plan.items][];
-    const map = new Map<string, typeof plan.items>();
+    type PlanItems = NonNullable<NonNullable<typeof plan>["items"]>;
+    if (!plan || !plan.items) return [] as [string, PlanItems][];
+    const map = new Map<string, PlanItems>();
     // Seed only savory/sweet/entree categories in their configured order to keep
     // their grouping intact.
     catMaps.order.forEach(cat => {

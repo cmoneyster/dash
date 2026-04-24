@@ -38,6 +38,7 @@ type MenuItemData = {
   imageUrl: string | null;
   allergens: string[];
   servingSize?: number;
+  unit?: string;
   minimumOrderQty?: number;
 };
 

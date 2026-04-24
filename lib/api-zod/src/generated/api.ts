@@ -68,6 +68,12 @@ export const ListMenuItemsResponseItem = zod.object({
     .describe(
       "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
     ),
+  eventStock: zod
+    .number()
+    .nullish()
+    .describe(
+      "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+    ),
   createdAt: zod.date(),
 });
 export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
@@ -125,6 +131,12 @@ export const GetMenuItemResponse = zod.object({
     .describe(
       "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
     ),
+  eventStock: zod
+    .number()
+    .nullish()
+    .describe(
+      "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+    ),
   createdAt: zod.date(),
 });
 
@@ -177,6 +189,12 @@ export const AdminListMenuItemsResponseItem = zod.object({
     .describe(
       "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
     ),
+  eventStock: zod
+    .number()
+    .nullish()
+    .describe(
+      "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+    ),
   createdAt: zod.date(),
 });
 export const AdminListMenuItemsResponse = zod.array(
@@ -205,6 +223,7 @@ export const CreateMenuItemBody = zod.object({
   eventActive: zod.boolean().optional(),
   eventTakerVisible: zod.boolean().optional(),
   eventTakerPrice: zod.number().nullish(),
+  eventStock: zod.number().nullish(),
 });
 
 /**
@@ -233,6 +252,7 @@ export const UpdateMenuItemBody = zod.object({
   eventActive: zod.boolean().optional(),
   eventTakerVisible: zod.boolean().optional(),
   eventTakerPrice: zod.number().nullish(),
+  eventStock: zod.number().nullish(),
 });
 
 export const updateMenuItemResponseMinimumOrderQtyDefault = 1;
@@ -280,6 +300,12 @@ export const UpdateMenuItemResponse = zod.object({
     .nullish()
     .describe(
       "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
+    ),
+  eventStock: zod
+    .number()
+    .nullish()
+    .describe(
+      "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
     ),
   createdAt: zod.date(),
 });
@@ -392,6 +418,12 @@ export const GetCartResponse = zod.object({
           .describe(
             "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
+        eventStock: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+          ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -466,6 +498,12 @@ export const AddToCartResponse = zod.object({
           .nullish()
           .describe(
             "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
+          ),
+        eventStock: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
           ),
         createdAt: zod.date(),
       }),
@@ -544,6 +582,12 @@ export const UpdateCartItemResponse = zod.object({
           .describe(
             "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
+        eventStock: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+          ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -616,6 +660,12 @@ export const RemoveFromCartResponse = zod.object({
           .describe(
             "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
+        eventStock: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+          ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -686,6 +736,12 @@ export const GetPlanResponse = zod.object({
           .describe(
             "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
           ),
+        eventStock: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+          ),
         createdAt: zod.date(),
       }),
     }),
@@ -751,6 +807,12 @@ export const AddToPlanResponse = zod.object({
           .nullish()
           .describe(
             "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
+          ),
+        eventStock: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
           ),
         createdAt: zod.date(),
       }),
@@ -818,6 +880,12 @@ export const RemoveFromPlanResponse = zod.object({
           .nullish()
           .describe(
             "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
+          ),
+        eventStock: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
           ),
         createdAt: zod.date(),
       }),
@@ -999,6 +1067,12 @@ export const SuggestMenuItemsResponse = zod.object({
           .nullish()
           .describe(
             "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
+          ),
+        eventStock: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
           ),
         createdAt: zod.date(),
       }),

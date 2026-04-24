@@ -676,6 +676,10 @@ components:
           type: number
           nullable: true
           description: Separate per-unit price for the staff Event Order Taker page (`/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).
+        eventStock:
+          type: integer
+          nullable: true
+          description: Optional inventory cap for event ordering. Decremented on each event/POS order; null means unlimited.
         createdAt:
           type: string
           format: date-time
@@ -740,6 +744,9 @@ components:
         eventTakerPrice:
           type: number
           nullable: true
+        eventStock:
+          type: integer
+          nullable: true
       required:
         - name
         - description
@@ -797,6 +804,9 @@ components:
           type: boolean
         eventTakerPrice:
           type: number
+          nullable: true
+        eventStock:
+          type: integer
           nullable: true
 
     BlackoutDate:

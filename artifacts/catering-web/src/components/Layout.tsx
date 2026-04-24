@@ -1,7 +1,7 @@
 import { Link, useRoute } from "wouter";
 import { ShoppingBag, Heart } from "lucide-react";
 import { ChatWidget } from "./ChatWidget";
-import { useGetCart } from "@workspace/api-client-react";
+import { useGetCart, getGetCartQueryKey } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +27,10 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const sessionId = getSessionId();
-  const { data: cart } = useGetCart({ sessionId }, { query: { staleTime: 1000 } });
+  const { data: cart } = useGetCart(
+    { sessionId },
+    { query: { queryKey: getGetCartQueryKey({ sessionId }), staleTime: 1000 } },
+  );
 
   const cartItemsCount = cart?.items?.reduce((acc, item) => acc + item.quantity, 0) || 0;
 

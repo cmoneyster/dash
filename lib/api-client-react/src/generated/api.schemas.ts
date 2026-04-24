@@ -43,6 +43,8 @@ export interface MenuItem {
   eventTakerVisible?: boolean;
   /** Separate per-unit price for the staff Event Order Taker page (`/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`). */
   eventTakerPrice?: number | null;
+  /** Optional inventory cap for event ordering. Decremented on each event/POS order; null means unlimited. */
+  eventStock?: number | null;
   createdAt: string;
 }
 
@@ -65,6 +67,7 @@ export interface CreateMenuItemBody {
   eventActive?: boolean;
   eventTakerVisible?: boolean;
   eventTakerPrice?: number | null;
+  eventStock?: number | null;
 }
 
 export interface UpdateMenuItemBody {
@@ -86,6 +89,7 @@ export interface UpdateMenuItemBody {
   eventActive?: boolean;
   eventTakerVisible?: boolean;
   eventTakerPrice?: number | null;
+  eventStock?: number | null;
 }
 
 export interface BlackoutDate {

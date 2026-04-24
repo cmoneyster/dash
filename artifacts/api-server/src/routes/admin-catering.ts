@@ -729,21 +729,26 @@ function parseDepositSpec(raw: unknown): DepositSpec {
   return { kind: "none" };
 }
 
-router.post("/admin/catering/:id/square/invoice", async (req, res) => {
+router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     if (!isSquareConfigured()) {
-      return res.status(503).json({
+      res.status(503).json({
         error: "Square is not configured. Add SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID.",
       });
+      return;
     }
     const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-    if (!inquiry) return res.status(404).json({ error: "Inquiry not found" });
+    if (!inquiry) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
 
     if (inquiry.squareInvoiceId) {
-      return res.status(409).json({
+      res.status(409).json({
         error: "An invoice already exists. Cancel it first to issue a new one.",
       });
+      return;
     }
 
     const body = (req.body ?? {}) as Body;
@@ -779,7 +784,8 @@ router.post("/admin/catering/:id/square/invoice", async (req, res) => {
   } catch (err) {
     if (err instanceof SquareApiError) {
       req.log.error({ status: err.status, errors: err.errors }, "Square invoice create failed");
-      return res.status(502).json({ error: err.message });
+      res.status(502).json({ error: err.message });
+      return;
     }
     req.log.error({ err }, "Error creating Square invoice");
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create invoice" });
@@ -788,19 +794,25 @@ router.post("/admin/catering/:id/square/invoice", async (req, res) => {
 
 // ── Square: cancel ────────────────────────────────────────────────────────────
 
-router.post("/admin/catering/:id/square/cancel", async (req, res) => {
+router.post("/admin/catering/:id/square/cancel", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     if (!isSquareConfigured()) {
-      return res.status(503).json({ error: "Square is not configured" });
+      res.status(503).json({ error: "Square is not configured" });
+      return;
     }
     const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-    if (!inquiry) return res.status(404).json({ error: "Inquiry not found" });
+    if (!inquiry) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
     if (!inquiry.squareInvoiceId || inquiry.squareInvoiceVersion == null) {
-      return res.status(400).json({ error: "No Square invoice to cancel" });
+      res.status(400).json({ error: "No Square invoice to cancel" });
+      return;
     }
     if (inquiry.squareInvoiceStatus === "PAID" || inquiry.squarePaidInFullAt) {
-      return res.status(400).json({ error: "Cannot cancel a paid invoice" });
+      res.status(400).json({ error: "Cannot cancel a paid invoice" });
+      return;
     }
 
     await cancelInvoice(inquiry.squareInvoiceId, inquiry.squareInvoiceVersion);
@@ -829,7 +841,8 @@ router.post("/admin/catering/:id/square/cancel", async (req, res) => {
   } catch (err) {
     if (err instanceof SquareApiError) {
       req.log.error({ status: err.status, errors: err.errors }, "Square invoice cancel failed");
-      return res.status(502).json({ error: err.message });
+      res.status(502).json({ error: err.message });
+      return;
     }
     req.log.error({ err }, "Error cancelling Square invoice");
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to cancel invoice" });
@@ -838,15 +851,22 @@ router.post("/admin/catering/:id/square/cancel", async (req, res) => {
 
 // ── Square: refresh (manual re-pull) ──────────────────────────────────────────
 
-router.post("/admin/catering/:id/square/refresh", async (req, res) => {
+router.post("/admin/catering/:id/square/refresh", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     if (!isSquareConfigured()) {
-      return res.status(503).json({ error: "Square is not configured" });
+      res.status(503).json({ error: "Square is not configured" });
+      return;
     }
     const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-    if (!inquiry) return res.status(404).json({ error: "Inquiry not found" });
-    if (!inquiry.squareInvoiceId) return res.status(400).json({ error: "No Square invoice on file" });
+    if (!inquiry) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
+    if (!inquiry.squareInvoiceId) {
+      res.status(400).json({ error: "No Square invoice on file" });
+      return;
+    }
 
     const snap = await getInvoiceSnapshot(inquiry.squareInvoiceId);
     const updates: Record<string, unknown> = {
@@ -875,7 +895,8 @@ router.post("/admin/catering/:id/square/refresh", async (req, res) => {
   } catch (err) {
     if (err instanceof SquareApiError) {
       req.log.error({ status: err.status, errors: err.errors }, "Square invoice refresh failed");
-      return res.status(502).json({ error: err.message });
+      res.status(502).json({ error: err.message });
+      return;
     }
     req.log.error({ err }, "Error refreshing Square invoice");
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to refresh invoice" });

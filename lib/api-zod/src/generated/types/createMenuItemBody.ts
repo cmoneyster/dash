@@ -25,4 +25,5 @@ export interface CreateMenuItemBody {
   eventActive?: boolean;
   eventTakerVisible?: boolean;
   eventTakerPrice?: number | null;
+  eventStock?: number | null;
 }
