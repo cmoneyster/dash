@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { menuItemsTable, eventOrdersTable, eventSettingsTable, eventSessionsTable, menuCategoriesTable } from "@workspace/db/schema";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, or, sql, inArray } from "drizzle-orm";
 import { sendOrderConfirmation, sendOrderReady } from "../lib/sms";
 
 const router: IRouter = Router();
@@ -467,7 +467,9 @@ router.patch("/event-ordering/orders/:id/status", verifyKitchenPassword, async (
   }
 });
 
-// Stock management — kitchen password required
+// Stock management — kitchen password required.
+// Lists items visible on EITHER event channel (Guest Event page or Staff
+// Order Taker), since both decrement the same shared event_stock counter.
 router.get("/event-ordering/stock", verifyKitchenPassword, async (req, res) => {
   try {
     const items = await db
@@ -477,9 +479,11 @@ router.get("/event-ordering/stock", verifyKitchenPassword, async (req, res) => {
         category: menuItemsTable.category,
         eventStock: menuItemsTable.eventStock,
         imageUrl: menuItemsTable.imageUrl,
+        eventActive: menuItemsTable.eventActive,
+        eventTakerVisible: menuItemsTable.eventTakerVisible,
       })
       .from(menuItemsTable)
-      .where(eq(menuItemsTable.eventActive, true))
+      .where(or(eq(menuItemsTable.eventActive, true), eq(menuItemsTable.eventTakerVisible, true)))
       .orderBy(menuItemsTable.category, menuItemsTable.name);
     res.json(items);
   } catch (err) {
@@ -493,13 +497,23 @@ router.patch("/event-ordering/stock/:itemId", verifyKitchenPassword, async (req,
     const itemId = parseInt(String(req.params.itemId));
     const { eventStock } = req.body as { eventStock: number | null };
     const stock = eventStock === null ? null : Math.max(0, parseInt(String(eventStock)));
+    // Mirror the GET filter: allow stock edits for items visible on either channel.
     const [item] = await db
       .update(menuItemsTable)
       .set({ eventStock: stock })
-      .where(and(eq(menuItemsTable.id, itemId), eq(menuItemsTable.eventActive, true)))
-      .returning({ id: menuItemsTable.id, name: menuItemsTable.name, eventStock: menuItemsTable.eventStock });
+      .where(and(
+        eq(menuItemsTable.id, itemId),
+        or(eq(menuItemsTable.eventActive, true), eq(menuItemsTable.eventTakerVisible, true)),
+      ))
+      .returning({
+        id: menuItemsTable.id,
+        name: menuItemsTable.name,
+        eventStock: menuItemsTable.eventStock,
+        eventActive: menuItemsTable.eventActive,
+        eventTakerVisible: menuItemsTable.eventTakerVisible,
+      });
     if (!item) {
-      res.status(404).json({ error: "Item not found or not event-active" });
+      res.status(404).json({ error: "Item not found or not enabled for event ordering" });
       return;
     }
     res.json(item);

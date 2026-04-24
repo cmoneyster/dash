@@ -7,7 +7,15 @@ const POLL_INTERVAL = 6000;
 const LS_KEY = "kitchen_item_checks";
 
 type OrderItem = { itemId: number; name: string; quantity: number; price: number; internalNotes?: string | null };
-type StockItem = { id: number; name: string; category: string; eventStock: number | null; imageUrl: string | null };
+type StockItem = {
+  id: number;
+  name: string;
+  category: string;
+  eventStock: number | null;
+  imageUrl: string | null;
+  eventActive?: boolean;
+  eventTakerVisible?: boolean;
+};
 type EventOrder = {
   id: number;
   guestName: string;
@@ -707,8 +715,8 @@ export default function KitchenDisplay() {
             {stockItems.length === 0 ? (
               <div className="text-center py-16 text-white/30">
                 <Package className="w-10 h-10 mx-auto mb-3 opacity-40" />
-                <p className="font-semibold">No event-active items</p>
-                <p className="text-xs mt-1">Enable items for event ordering in the admin menu</p>
+                <p className="font-semibold">No items enabled for event ordering</p>
+                <p className="text-xs mt-1">Enable items for the Guest Event page or Staff Order Taker in the admin menu</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -726,7 +734,19 @@ export default function KitchenDisplay() {
                             <img src={item.imageUrl} alt={item.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white truncate">{item.name}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-sm font-semibold text-white truncate flex-1 min-w-0">{item.name}</p>
+                              {item.eventActive && (
+                                <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300" title="Sold on the Guest Event ordering page">
+                                  Guest
+                                </span>
+                              )}
+                              {item.eventTakerVisible && (
+                                <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300" title="Sold on the Staff Order Taker">
+                                  Staff
+                                </span>
+                              )}
+                            </div>
                             <p className={`text-xs font-medium mt-0.5 ${isSoldOut ? "text-red-400" : isUnlimited ? "text-emerald-400" : item.eventStock! <= 5 ? "text-amber-400" : "text-white/40"}`}>
                               {isSoldOut ? "Sold out" : isUnlimited ? "Unlimited" : `${item.eventStock} remaining`}
                             </p>
