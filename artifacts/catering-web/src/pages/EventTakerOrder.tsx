@@ -287,8 +287,59 @@ export default function EventTakerOrder() {
     }
   }
 
+  // Lightweight stock-only refresh used by the cross-device sync poll. Re-fetches
+  // the taker menu but merges only `eventStock` into existing items so cashiers
+  // on other devices see sold-out / dwindling counts within a few seconds — without
+  // re-rendering the entire menu (which would scroll-jump, re-layout images, etc.).
+  // Falls back to a full replace only when the item set itself has changed
+  // server-side (added/removed item) so new items still appear.
+  async function refreshStock(token: string) {
+    try {
+      const res = await fetch(`${BASE}/api/event-taker/menu`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const fresh: MenuItem[] = await res.json();
+      const stockById = new Map(fresh.map(m => [m.id, m.eventStock] as const));
+      setMenu(prev => {
+        if (!prev) return fresh;
+        const sameSet = prev.length === fresh.length && prev.every(p => stockById.has(p.id));
+        if (!sameSet) return fresh;
+        let changed = false;
+        const next = prev.map(p => {
+          const newStock = stockById.get(p.id) ?? null;
+          if (newStock === p.eventStock) return p;
+          changed = true;
+          return { ...p, eventStock: newStock };
+        });
+        return changed ? next : prev;
+      });
+    } catch {}
+  }
+
   useEffect(() => {
     if (password) loadMenu(password);
+  }, [password]);
+
+  // Cross-device stock sync: poll the menu every few seconds and merge in only
+  // the latest stock counts. Without this, two cashiers ringing in parallel can
+  // each see "5 left" and only discover the conflict when the server rejects
+  // the charge. We pause polling while the tab is hidden to avoid background
+  // chatter, and immediately refresh when the tab comes back into focus.
+  useEffect(() => {
+    if (!password) return;
+    const id = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      refreshStock(password);
+    }, 5000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") refreshStock(password);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [password]);
 
   async function handleVerify(e: React.FormEvent) {
