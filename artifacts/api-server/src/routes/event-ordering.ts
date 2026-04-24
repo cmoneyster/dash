@@ -3,6 +3,12 @@ import { db } from "@workspace/db";
 import { menuItemsTable, eventOrdersTable, eventSettingsTable, eventSessionsTable, menuCategoriesTable } from "@workspace/db/schema";
 import { eq, desc, and, or, sql, inArray } from "drizzle-orm";
 import { sendOrderConfirmation, sendOrderReady } from "../lib/sms";
+import {
+  detectAndMarkLowStockCrossings,
+  maybeResetLowStockFlag,
+  fireLowStockAlertIfAny,
+  DEFAULT_LOW_STOCK_THRESHOLD,
+} from "../lib/lowStockAlerts";
 
 const router: IRouter = Router();
 
@@ -270,7 +276,7 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
 
     type OrderItem = { itemId: number; name: string; quantity: number; price: number };
 
-    const order = await db.transaction(async (tx) => {
+    const { order, lowStockCrossings, lowStockSettings } = await db.transaction(async (tx) => {
       // Re-check the kitchen toggle inside the transaction to close the small
       // window between the gate above and committing the row.
       const [s] = await tx.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1)).for("update");
@@ -281,6 +287,9 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
           : "We're not accepting orders right now."),
           { status: 423, channelState: live });
       }
+      // Track newly-decremented stock per item so we can run one batched
+      // low-stock crossing check after all updates land.
+      const stockChanges: Array<{ itemId: number; name: string; newStock: number }> = [];
       for (const item of items as OrderItem[]) {
         const [row] = await tx
           .select({ id: menuItemsTable.id, name: menuItemsTable.name, eventStock: menuItemsTable.eventStock })
@@ -299,6 +308,7 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
             .update(menuItemsTable)
             .set({ eventStock: sql`event_stock - ${item.quantity}` })
             .where(eq(menuItemsTable.id, item.itemId));
+          stockChanges.push({ itemId: row.id, name: row.name, newStock: row.eventStock - item.quantity });
         }
       }
 
@@ -315,7 +325,18 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
           eventSessionId: activeEventSessionId,
         })
         .returning();
-      return created;
+
+      // Atomically flag any items that just crossed the low-stock threshold
+      // so concurrent orders don't double-fire the SMS. The actual SMS is
+      // sent after commit (rollback ⇒ no phantom alert).
+      const threshold = s?.lowStockAlertThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
+      const crossings = await detectAndMarkLowStockCrossings(tx, stockChanges, threshold);
+
+      return {
+        order: created,
+        lowStockCrossings: crossings,
+        lowStockSettings: { phone: s?.lowStockAlertPhone ?? null, eventName: s?.eventName ?? "", threshold },
+      };
     });
 
     if (order.phoneNumber) {
@@ -332,6 +353,8 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
         orderStatusUrl,
       }).catch(() => {});
     }
+
+    fireLowStockAlertIfAny(req, lowStockCrossings, lowStockSettings);
 
     res.status(201).json(order);
   } catch (err: any) {
@@ -516,6 +539,15 @@ router.patch("/event-ordering/stock/:itemId", verifyKitchenPassword, async (req,
       res.status(404).json({ error: "Item not found or not enabled for event ordering" });
       return;
     }
+
+    // Re-arm the low-stock SMS for this item if the new stock no longer
+    // qualifies as "low" (set to unlimited, fully sold out, or restocked
+    // above the threshold). Without this, a future dip below threshold would
+    // be silent because lowStockAlertSent would still be true.
+    const settings = await getEventSettings();
+    const threshold = settings?.lowStockAlertThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
+    await maybeResetLowStockFlag(db, item.id, item.eventStock, threshold);
+
     res.json(item);
   } catch (err) {
     req.log.error({ err }, "Error updating event stock");

@@ -4,6 +4,7 @@ import { menuItemsTable, eventOrdersTable, eventSettingsTable } from "@workspace
 import { eq, sql, inArray, and, desc } from "drizzle-orm";
 import { sendOrderConfirmation } from "../lib/sms";
 import { getOrderingChannelStates } from "./event-ordering";
+import { detectAndMarkLowStockCrossings, fireLowStockAlertIfAny, DEFAULT_LOW_STOCK_THRESHOLD } from "../lib/lowStockAlerts";
 
 const router: IRouter = Router();
 
@@ -171,7 +172,7 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
     const taxEnabled = !!settings?.eventTakerTaxEnabled;
     const taxRate = settings?.eventTakerTaxRate != null ? parseFloat(settings.eventTakerTaxRate) : 0;
 
-    const order = await db.transaction(async (tx) => {
+    const { order, lowStockCrossings, lowStockSettings } = await db.transaction(async (tx) => {
       // Re-check the kitchen toggle inside the transaction to avoid a race
       // between the gate above and the row commit.
       const [s] = await tx.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1)).for("update");
@@ -211,6 +212,9 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
         lineTotal: number;
       }[] = [];
       let subtotal = 0;
+      // Track post-decrement stock per item so we can run one batched
+      // low-stock crossing check after all updates land.
+      const stockChanges: Array<{ itemId: number; name: string; newStock: number }> = [];
 
       const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -237,6 +241,7 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
             .update(menuItemsTable)
             .set({ eventStock: sql`event_stock - ${qty}` })
             .where(eq(menuItemsTable.id, row.id));
+          stockChanges.push({ itemId: row.id, name: row.name, newStock: row.eventStock - qty });
         }
         const unitPrice = parseFloat(row.eventTakerPrice);
         const lineTotal = round2(unitPrice * qty);
@@ -275,11 +280,24 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
           paymentStatus: "unpaid",
         })
         .returning();
-      return created;
+
+      // Atomically flag any items that just crossed the low-stock threshold
+      // so concurrent orders don't double-fire the SMS. SMS is sent after
+      // commit (rollback ⇒ no phantom alert).
+      const threshold = s?.lowStockAlertThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
+      const crossings = await detectAndMarkLowStockCrossings(tx, stockChanges, threshold);
+
+      return {
+        order: created,
+        lowStockCrossings: crossings,
+        lowStockSettings: { phone: s?.lowStockAlertPhone ?? null, eventName: s?.eventName ?? "", threshold },
+      };
     });
 
-    // Intentionally do NOT send the SMS confirmation here — it fires once
-    // payment is recorded (or override is invoked).
+    // Intentionally do NOT send the order confirmation SMS here — it fires
+    // once payment is recorded (or override is invoked). The low-stock alert
+    // does fire now, since the stock has actually been decremented.
+    fireLowStockAlertIfAny(req, lowStockCrossings, lowStockSettings);
 
     res.status(201).json(serializeOrder(order));
   } catch (err: any) {
@@ -555,6 +573,9 @@ router.delete("/event-taker/orders/:id", verifyTakerPassword, async (req, res) =
       // Restore stock for items that have a stock cap.
       const items = (existing.items ?? []) as { itemId: number; quantity: number }[];
       const itemIds = items.map(i => i.itemId);
+      // Threshold for re-arming the low-stock SMS once stock climbs back up.
+      const [s] = await tx.select({ t: eventSettingsTable.lowStockAlertThreshold }).from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+      const threshold = s?.t ?? DEFAULT_LOW_STOCK_THRESHOLD;
       if (itemIds.length > 0) {
         const rows = await tx
           .select({ id: menuItemsTable.id, eventStock: menuItemsTable.eventStock })
@@ -563,11 +584,21 @@ router.delete("/event-taker/orders/:id", verifyTakerPassword, async (req, res) =
           .for("update");
         const stockMap = new Map(rows.map(r => [r.id, r.eventStock]));
         for (const line of items) {
-          if (stockMap.get(line.itemId) !== null && stockMap.get(line.itemId) !== undefined) {
+          const prev = stockMap.get(line.itemId);
+          if (prev !== null && prev !== undefined) {
             await tx
               .update(menuItemsTable)
               .set({ eventStock: sql`event_stock + ${line.quantity}` })
               .where(eq(menuItemsTable.id, line.itemId));
+            // Re-arm the low-stock alert if the restored stock now exceeds
+            // the threshold (so a future dip will alert again).
+            const restored = prev + line.quantity;
+            if (restored > threshold) {
+              await tx
+                .update(menuItemsTable)
+                .set({ lowStockAlertSent: false })
+                .where(eq(menuItemsTable.id, line.itemId));
+            }
           }
         }
       }

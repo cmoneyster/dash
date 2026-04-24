@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon } from "lucide-react";
+import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon, AlertTriangle } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -107,6 +107,8 @@ export default function EventSettings() {
   const [venmoQrImageUrl, setVenmoQrImageUrl] = useState<string | null>(null);
   const [venmoUploading, setVenmoUploading] = useState(false);
   const [venmoUploadError, setVenmoUploadError] = useState("");
+  const [lowStockAlertPhone, setLowStockAlertPhone] = useState("");
+  const [lowStockAlertThreshold, setLowStockAlertThreshold] = useState<string>("");
   const [hasOrderPassword, setHasOrderPassword] = useState(false);
   const [hasKitchenPassword, setHasKitchenPassword] = useState(false);
   const [hasEventTakerPassword, setHasEventTakerPassword] = useState(false);
@@ -137,6 +139,8 @@ export default function EventSettings() {
         setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
         setVenmoHandle(data.venmoHandle ?? "");
         setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
+        setLowStockAlertPhone(data.lowStockAlertPhone ?? "");
+        setLowStockAlertThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
         setTwilioConfigured(data.twilioConfigured ?? false);
       })
       .catch(() => setError("Failed to load event settings"))
@@ -175,6 +179,8 @@ export default function EventSettings() {
         eventTakerTaxRate: eventTakerTaxRate.trim() === "" ? null : Number(eventTakerTaxRate),
         venmoHandle: venmoHandle.trim() === "" ? null : venmoHandle.trim(),
         venmoQrImageUrl: venmoQrImageUrl ?? null,
+        lowStockAlertPhone: lowStockAlertPhone.trim() === "" ? null : lowStockAlertPhone.trim(),
+        lowStockAlertThreshold: lowStockAlertThreshold.trim() === "" ? null : Number(lowStockAlertThreshold),
       };
       if (clearOrderPassword) body.orderPassword = null;
       else if (orderPassword) body.orderPassword = orderPassword;
@@ -188,8 +194,13 @@ export default function EventSettings() {
         headers,
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error("Save failed");
-      const data = await res.json();
+      if (!res.ok) {
+        // Surface server-provided validation messages (e.g. invalid alert
+        // phone or threshold) instead of a generic "Save failed".
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Save failed");
+      }
+      const data = await res.json() as any;
       setEventName(data.eventName);
       setHasOrderPassword(data.hasOrderPassword ?? false);
       setHasKitchenPassword(data.hasKitchenPassword ?? false);
@@ -198,6 +209,8 @@ export default function EventSettings() {
       setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
       setVenmoHandle(data.venmoHandle ?? "");
       setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
+      setLowStockAlertPhone(data.lowStockAlertPhone ?? "");
+      setLowStockAlertThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
       setTwilioConfigured(data.twilioConfigured ?? false);
       setOrderPassword("");
       setKitchenPassword("");
@@ -207,8 +220,8 @@ export default function EventSettings() {
       setClearEventTakerPassword(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setError("Failed to save settings. Please try again.");
+    } catch (e: any) {
+      setError(e?.message || "Failed to save settings. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -407,6 +420,52 @@ export default function EventSettings() {
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
               {saving ? "Saving…" : saved ? "Saved!" : "Save Settings"}
+            </button>
+          </form>
+
+          <form onSubmit={handleSave} className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+              <h2 className="font-display font-bold text-lg">Low-Stock Alerts</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Send a text message to the kitchen the first time an item drops to or below the threshold during an event.
+              The alert fires once per crossing — restocking the item resets it so the next dip will alert again.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Kitchen phone number</label>
+                <input
+                  type="tel"
+                  value={lowStockAlertPhone}
+                  onChange={e => setLowStockAlertPhone(e.target.value)}
+                  placeholder="+1 555 123 4567"
+                  className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Leave blank to disable low-stock SMS.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Threshold (units remaining)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  step={1}
+                  value={lowStockAlertThreshold}
+                  onChange={e => setLowStockAlertThreshold(e.target.value)}
+                  placeholder="5"
+                  className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Defaults to 5 if left blank.</p>
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? "Saving…" : "Save Alert Settings"}
             </button>
           </form>
 

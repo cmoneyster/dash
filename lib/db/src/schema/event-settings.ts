@@ -22,6 +22,12 @@ export const eventSettingsTable = pgTable("event_settings", {
   takerOrderingState: text("taker_ordering_state").notNull().default("accepting"),
   takerOrderingPausedUntil: timestamp("taker_ordering_paused_until"),
   takerOrderingPausedMessage: text("taker_ordering_paused_message"),
+  // Server-side low-stock SMS alerts. When an item with limited event_stock
+  // crosses the threshold (greater-than → less-than-or-equal), an SMS is sent
+  // to lowStockAlertPhone so the kitchen lead is notified even if the Kitchen
+  // Display tablet is asleep / locked. Threshold defaults to 5 if null.
+  lowStockAlertPhone: text("low_stock_alert_phone"),
+  lowStockAlertThreshold: integer("low_stock_alert_threshold"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

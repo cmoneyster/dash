@@ -76,6 +76,28 @@ export async function sendNewInquiryAlert(opts: {
   await sendSms(ownerPhone, lines.join("\n"));
 }
 
+export async function sendLowStockAlert(opts: {
+  phoneNumber: string;
+  eventName: string;
+  items: Array<{ name: string; eventStock: number }>;
+  threshold: number;
+}): Promise<void> {
+  const { phoneNumber, eventName, items, threshold } = opts;
+  if (!phoneNumber || items.length === 0) return;
+  const event = eventName?.trim() || "dash by Hollywood East Cafe";
+  // Cap the number of itemized lines so a sudden batch of crossings doesn't
+  // produce a multi-segment SMS that gets truncated by the gateway.
+  const MAX_LINES = 8;
+  const lines = items.slice(0, MAX_LINES).map(i => `• ${i.name}: ${i.eventStock} left`);
+  const overflow = items.length - MAX_LINES;
+  if (overflow > 0) lines.push(`…and ${overflow} more`);
+  const head = items.length === 1
+    ? `Low stock at ${event}: "${items[0].name}" is down to ${items[0].eventStock} (threshold ${threshold}).`
+    : `Low stock at ${event} (threshold ${threshold}):`;
+  const body = items.length === 1 ? head : `${head}\n${lines.join("\n")}`;
+  await sendSms(phoneNumber, body);
+}
+
 export async function sendQuoteResponseSms(opts: {
   kind: "accepted" | "change_request";
   clientName: string;

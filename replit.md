@@ -54,7 +54,7 @@ artifacts-monorepo/
 - `/admin/orders` — Catering order management (update status)
 - `/admin/calendar` — Blackout date calendar
 - `/admin/images` — Image library
-- `/admin/event-settings` — Event passwords, Twilio SMS, shareable links
+- `/admin/event-settings` — Event passwords, Twilio SMS, shareable links, low-stock SMS alerts (recipient phone + threshold)
 - `/admin/event-history` — Event session log: create sessions, set active, view per-event order breakdowns, archive/delete
 - `/admin/catering` — Advance catering inquiry management (client info, status pipeline, admin notes)
 
@@ -122,9 +122,10 @@ artifacts-monorepo/
 - `order_items` — Individual items within an order
 - `conversations` — OpenAI chat conversations
 - `messages` — Chat message history
-- `event_settings` — Singleton: event name, guest/kitchen passwords, Twilio from number, active event session ID
+- `event_settings` — Singleton: event name, guest/kitchen passwords, Twilio from number, active event session ID, low-stock SMS alert phone + threshold
 - `event_sessions` — Named event sessions for order tracking (name, date, status: active/archived)
 - `event_orders` — On-site event orders linked to an event session. Staff (POS) orders go through a payment-confirmation gate: created with `payment_status='unpaid'` (held off the kitchen feed, no SMS) and promoted via `PATCH /event-taker/orders/:id/payment` (cash/card/venmo) or `/override`. Atomic conditional updates prevent multi-device double-processing.
+- `menu_items.low_stock_alert_sent` — Per-item flag tracking whether the kitchen has already been SMS-notified for the current low-stock crossing. Flipped to `true` atomically inside the order-placement transaction when `event_stock` first crosses to `<= event_settings.low_stock_alert_threshold`; reset to `false` when stock is restocked above the threshold (or set to null/unlimited / 0). One alert per crossing prevents SMS spam. SMS routed via the existing ejointech gateway in `artifacts/api-server/src/lib/sms.ts`.
 - `catering_inquiries` — Advance catering bookings (client info, event date, status pipeline, notes)
 - `images` — Uploaded image library
 

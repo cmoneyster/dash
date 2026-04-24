@@ -45,6 +45,11 @@ export const menuItemsTable = pgTable("menu_items", {
   size5Servings: integer("size5_servings"),
   size5Price: numeric("size5_price", { precision: 10, scale: 2 }),
   internalNotes: text("internal_notes"),
+  // Tracks whether a low-stock SMS alert has already been fired for the
+  // current crossing of the kitchen alert threshold. Reset to false when
+  // stock is restocked above the threshold (or set to unlimited / 0) so
+  // a future dip will re-fire. See artifacts/api-server/src/lib/lowStockAlerts.ts.
+  lowStockAlertSent: boolean("low_stock_alert_sent").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

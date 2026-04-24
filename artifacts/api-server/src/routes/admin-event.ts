@@ -40,6 +40,8 @@ router.get("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate: settings?.eventTakerTaxRate != null ? parseFloat(settings.eventTakerTaxRate) : null,
       venmoHandle: settings?.venmoHandle ?? "",
       venmoQrImageUrl: settings?.venmoQrImageUrl ?? null,
+      lowStockAlertPhone: settings?.lowStockAlertPhone ?? "",
+      lowStockAlertThreshold: settings?.lowStockAlertThreshold ?? null,
       twilioConfigured,
     });
   } catch (err) {
@@ -54,6 +56,7 @@ router.put("/admin/event-settings", async (req, res) => {
       eventName, orderPassword, kitchenPassword,
       eventTakerPassword, eventTakerTaxEnabled, eventTakerTaxRate,
       venmoHandle, venmoQrImageUrl,
+      lowStockAlertPhone, lowStockAlertThreshold,
     } = req.body as {
       eventName?: string;
       orderPassword?: string;
@@ -63,6 +66,8 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate?: number | string | null;
       venmoHandle?: string | null;
       venmoQrImageUrl?: string | null;
+      lowStockAlertPhone?: string | null;
+      lowStockAlertThreshold?: number | string | null;
     };
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     const twilioConfigured = await isTwilioConfigured();
@@ -76,8 +81,32 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate: s.eventTakerTaxRate != null ? parseFloat(s.eventTakerTaxRate) : null,
       venmoHandle: s.venmoHandle ?? "",
       venmoQrImageUrl: s.venmoQrImageUrl ?? null,
+      lowStockAlertPhone: s.lowStockAlertPhone ?? "",
+      lowStockAlertThreshold: s.lowStockAlertThreshold ?? null,
       twilioConfigured,
     });
+
+    // Phone validation: keep digits, "+" and spaces; reject obviously bad
+    // input rather than persisting garbage that the SMS gateway will silently
+    // drop. Stored as the raw user-entered string; the gateway normalizes.
+    function normalizeAlertPhone(v: string | null | undefined): string | null {
+      if (v == null) return null;
+      const trimmed = String(v).trim();
+      if (trimmed === "") return null;
+      const digits = trimmed.replace(/\D/g, "");
+      if (digits.length < 7) {
+        throw Object.assign(new Error("lowStockAlertPhone must contain at least 7 digits"), { status: 400 });
+      }
+      return trimmed.slice(0, 32);
+    }
+    function normalizeAlertThreshold(v: number | string | null | undefined): number | null {
+      if (v === null || v === undefined || v === "") return null;
+      const n = Number(v);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 1000) {
+        throw Object.assign(new Error("lowStockAlertThreshold must be an integer between 1 and 1000"), { status: 400 });
+      }
+      return n;
+    }
 
     if (existing) {
       const updates: Record<string, any> = { updatedAt: new Date() };
@@ -109,6 +138,12 @@ router.put("/admin/event-settings", async (req, res) => {
           ? null
           : venmoQrImageUrl;
       }
+      if (lowStockAlertPhone !== undefined) {
+        updates.lowStockAlertPhone = normalizeAlertPhone(lowStockAlertPhone);
+      }
+      if (lowStockAlertThreshold !== undefined) {
+        updates.lowStockAlertThreshold = normalizeAlertThreshold(lowStockAlertThreshold);
+      }
       const [updated] = await db.update(eventSettingsTable).set(updates).where(eq(eventSettingsTable.id, 1)).returning();
       res.json(buildResponse(updated));
     } else {
@@ -122,10 +157,16 @@ router.put("/admin/event-settings", async (req, res) => {
         eventTakerTaxRate: (eventTakerTaxRate === undefined || eventTakerTaxRate === null || eventTakerTaxRate === "") ? null : String(Number(eventTakerTaxRate)),
         venmoHandle: venmoHandle == null ? null : (venmoHandle.trim().replace(/^@/, "") || null),
         venmoQrImageUrl: venmoQrImageUrl == null || venmoQrImageUrl === "" ? null : venmoQrImageUrl,
+        lowStockAlertPhone: normalizeAlertPhone(lowStockAlertPhone),
+        lowStockAlertThreshold: normalizeAlertThreshold(lowStockAlertThreshold),
       }).returning();
       res.json(buildResponse(created));
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.status === 400) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
     req.log.error({ err }, "Error updating event settings");
     res.status(500).json({ error: "Failed to update event settings" });
   }
