@@ -248,6 +248,14 @@ async function runStandaloneMigrations(): Promise<void> {
     ALTER TABLE event_orders
       ADD COLUMN IF NOT EXISTS plate_groups jsonb
   `);
+  // Per-plate / per-line packing progress for plated orders. Populated
+  // lazily the first time the cook taps a line on the kitchen ticket and
+  // cleared when the order moves backward to "preparing" or "pending".
+  // Safe to re-run.
+  await db.execute(sql`
+    ALTER TABLE event_orders
+      ADD COLUMN IF NOT EXISTS kitchen_progress jsonb
+  `);
 }
 
 async function backfillCategories(): Promise<void> {

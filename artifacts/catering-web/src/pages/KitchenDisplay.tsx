@@ -38,6 +38,12 @@ type StockItem = {
 // the kitchen renders one ticket with "Fire totals" + per-plate cards.
 type PlateGroup = { label: string; items: { itemId: number; quantity: number }[] };
 
+type KitchenProgressLine = { itemId: number; quantity: number; packed: number };
+type KitchenProgress = {
+  plates: { items: KitchenProgressLine[] }[];
+  unassigned: KitchenProgressLine[];
+};
+
 type EventOrder = {
   id: number;
   guestName: string;
@@ -53,7 +59,44 @@ type EventOrder = {
   taxAmount?: number | null;
   total?: number | null;
   plateGroups?: PlateGroup[] | null;
+  kitchenProgress?: KitchenProgress | null;
 };
+
+// Local mirror of the server's buildEmptyKitchenProgress — used to derive
+// per-plate / per-line packed state when the server hasn't materialized
+// kitchen_progress yet (e.g. cook hasn't tapped anything). Keeps the UI
+// consistent before the first PATCH round-trip.
+function deriveKitchenProgress(order: EventOrder): KitchenProgress | null {
+  if (!order.plateGroups || order.plateGroups.length === 0) return null;
+  if (order.kitchenProgress) return order.kitchenProgress;
+  const plates = order.plateGroups.map(p => ({
+    items: p.items.map(i => ({ itemId: i.itemId, quantity: i.quantity, packed: 0 })),
+  }));
+  const allocByItem = new Map<number, number>();
+  for (const p of order.plateGroups) {
+    for (const ln of p.items) allocByItem.set(ln.itemId, (allocByItem.get(ln.itemId) ?? 0) + ln.quantity);
+  }
+  const unassigned: KitchenProgressLine[] = [];
+  for (const ci of order.items) {
+    const left = ci.quantity - (allocByItem.get(ci.itemId) ?? 0);
+    if (left > 0) unassigned.push({ itemId: ci.itemId, quantity: left, packed: 0 });
+  }
+  return { plates, unassigned };
+}
+
+function plateLinePacked(progress: KitchenProgress | null, plateIdx: number | "unassigned", itemId: number): boolean {
+  if (!progress) return false;
+  const lines = plateIdx === "unassigned" ? progress.unassigned : progress.plates[plateIdx]?.items;
+  const line = lines?.find(l => l.itemId === itemId);
+  return !!line && line.quantity > 0 && line.packed >= line.quantity;
+}
+
+function plateAllPacked(progress: KitchenProgress | null, plateIdx: number): boolean {
+  if (!progress) return false;
+  const plate = progress.plates[plateIdx];
+  if (!plate || plate.items.length === 0) return false;
+  return plate.items.every(l => l.packed >= l.quantity);
+}
 
 // Build a per-itemId lookup for displaying names in plate cards. Item names
 // live on `items[]` (cart) — plate entries only carry `{itemId, quantity}`.
@@ -609,22 +652,76 @@ export default function KitchenDisplay() {
   }
 
   async function revertStatus(order: EventOrder) {
-    if (order.status !== "preparing" || !authedPassword) return;
+    // Allowed transitions:
+    //   preparing → pending  (Undo on Preparing card; clears Fire totals)
+    //   ready → preparing    (Undo on plated Ready card; clears packing)
+    if (!authedPassword) return;
+    let next: "pending" | "preparing";
+    if (order.status === "preparing") next = "pending";
+    else if (order.status === "ready" && order.plateGroups && order.plateGroups.length > 0) next = "preparing";
+    else return;
     setUpdating(s => new Set([...s, order.id]));
     try {
       const res = await fetch(`${BASE}/api/event-ordering/orders/${order.id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
-        body: JSON.stringify({ status: "pending" }),
+        body: JSON.stringify({ status: next }),
       });
       if (res.ok) {
         const updated: EventOrder = await res.json();
         setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
-        // Reset item checks so staff can re-mark from scratch
+        // Reset Fire-totals checks so staff can re-mark from scratch
+        // (server already wiped kitchen_progress in the same transaction)
         setCheckedItems(prev => ({ ...prev, [order.id]: new Set() }));
       }
     } finally {
       setUpdating(s => { const n = new Set(s); n.delete(order.id); return n; });
+    }
+  }
+
+  // Per-plate / per-line tap. Optimistic update + rollback. Server is the
+  // source of truth for auto-advancing preparing→ready once everything is
+  // packed (so two devices can't race-double-advance).
+  async function patchKitchenProgress(
+    order: EventOrder,
+    body: { plateIdx: number | "unassigned"; itemId: number; packed: boolean } | { plateIdx: number; allPacked: boolean },
+  ) {
+    if (!authedPassword) return;
+    if (order.status !== "preparing" && order.status !== "pending") return;
+    const prevSnapshot = order;
+    // Optimistic: apply the same mutation locally so the tap feels instant.
+    const optimistic = (() => {
+      const progress = deriveKitchenProgress(order);
+      if (!progress) return order;
+      const cloned: KitchenProgress = {
+        plates: progress.plates.map(p => ({ items: p.items.map(l => ({ ...l })) })),
+        unassigned: progress.unassigned.map(l => ({ ...l })),
+      };
+      if ("allPacked" in body) {
+        const plate = cloned.plates[body.plateIdx];
+        if (plate) plate.items = plate.items.map(l => ({ ...l, packed: body.allPacked ? l.quantity : 0 }));
+      } else {
+        const lines = body.plateIdx === "unassigned" ? cloned.unassigned : cloned.plates[body.plateIdx]?.items;
+        const line = lines?.find(l => l.itemId === body.itemId);
+        if (line) line.packed = body.packed ? line.quantity : 0;
+      }
+      return { ...order, kitchenProgress: cloned };
+    })();
+    setOrders(prev => prev.map(o => o.id === order.id ? optimistic : o));
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/orders/${order.id}/kitchen-progress`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        setOrders(prev => prev.map(o => o.id === order.id ? prevSnapshot : o));
+        return;
+      }
+      const updated: EventOrder = await res.json();
+      setOrders(prev => prev.map(o => o.id === updated.id ? { ...o, ...updated } : o));
+    } catch {
+      setOrders(prev => prev.map(o => o.id === order.id ? prevSnapshot : o));
     }
   }
 
@@ -1082,6 +1179,8 @@ export default function KitchenDisplay() {
                           onAdvance={() => advanceStatus(order)}
                           onRevert={() => revertStatus(order)}
                           onPrint={(mode) => printOrder(order, mode)}
+                          onTogglePlateLine={(plateIdx, itemId, packed) => patchKitchenProgress(order, { plateIdx, itemId, packed })}
+                          onTogglePlate={(plateIdx, allPacked) => patchKitchenProgress(order, { plateIdx, allPacked })}
                         />
                       ))}
                       {!grouped[status]?.length && (
@@ -1097,7 +1196,7 @@ export default function KitchenDisplay() {
                 <h3 className="text-white/40 text-sm font-semibold uppercase tracking-wider mb-3">Completed</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {doneOrders.map(order => (
-                    <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} onPrint={(mode) => printOrder(order, mode)} />
+                    <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} onPrint={(mode) => printOrder(order, mode)} onTogglePlateLine={() => {}} onTogglePlate={() => {}} />
                   ))}
                 </div>
               </div>
@@ -1109,7 +1208,7 @@ export default function KitchenDisplay() {
   );
 }
 
-function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance, onRevert, onPrint }: {
+function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance, onRevert, onPrint, onTogglePlateLine, onTogglePlate }: {
   order: EventOrder;
   isNew: boolean;
   isUpdating: boolean;
@@ -1118,6 +1217,8 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   onAdvance: () => void;
   onRevert: () => void;
   onPrint: (mode: "receipt" | "kitchen") => void;
+  onTogglePlateLine: (plateIdx: number | "unassigned", itemId: number, packed: boolean) => void;
+  onTogglePlate: (plateIdx: number, allPacked: boolean) => void;
 }) {
   const [expandedNotes, setExpandedNotes] = useState<Set<number>>(new Set());
   const toggleNote = (itemId: number) => setExpandedNotes(prev => {
@@ -1132,6 +1233,12 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   const checkedCount = order.items.filter(i => checkedItemIds.has(i.itemId)).length;
   const allChecked = checkedCount === order.items.length;
   const nextLabel = nextLabelFor(order);
+  const hasPlating = !!(order.plateGroups && order.plateGroups.length > 0);
+  const progress = hasPlating ? deriveKitchenProgress(order) : null;
+  // Auto-collapse Fire totals once all are checked, but let the cook expand
+  // again with one tap. Resets implicitly via local state when checks change.
+  const [fireExpanded, setFireExpanded] = useState(false);
+  const fireCollapsed = isTrackable && hasPlating && allChecked && !fireExpanded && order.items.length > 0;
 
   return (
     <div className={`bg-[#1a1a1a] border rounded-2xl overflow-hidden transition-all ${
@@ -1175,15 +1282,34 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
         </div>
       </div>
 
-      {/* Items — tappable when pending or preparing */}
+      {/* Items — tappable when pending or preparing. On plated orders we
+          collapse the Fire-totals list once everything is checked so the
+          plate cards below stay the focus; tap the header to expand. */}
       <div className="px-4 py-3 space-y-1">
         {isTrackable && (
-          <p className="text-xs text-white/30 font-semibold uppercase tracking-wider pb-1.5">
-            {order.plateGroups && order.plateGroups.length > 0 ? "Fire totals · " : ""}
-            Tap each item to mark · {checkedCount}/{order.items.length}
-          </p>
+          fireCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setFireExpanded(true)}
+              className="w-full flex items-center justify-between text-left text-xs font-semibold uppercase tracking-wider px-1 py-1 rounded-md text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+              data-testid={`order-${order.id}-fire-collapsed`}
+            >
+              <span>✓ All fired · {checkedCount}/{order.items.length}</span>
+              <span className="text-[10px] text-white/40 font-medium normal-case">Tap to expand</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => hasPlating && allChecked && setFireExpanded(false)}
+              className={`w-full text-left text-xs text-white/30 font-semibold uppercase tracking-wider pb-1.5 ${hasPlating && allChecked ? "cursor-pointer hover:text-white/50" : "cursor-default"}`}
+            >
+              {hasPlating ? "Fire totals · " : ""}
+              Tap each item to mark · {checkedCount}/{order.items.length}
+              {hasPlating && allChecked && <span className="ml-2 text-[10px] text-white/30 normal-case">(tap to collapse)</span>}
+            </button>
+          )
         )}
-        {order.items.map(item => {
+        {!fireCollapsed && order.items.map(item => {
           const isChecked = checkedItemIds.has(item.itemId);
           const hasNotes = Boolean(item.internalNotes);
           const notesOpen = expandedNotes.has(item.itemId);
@@ -1267,39 +1393,121 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
               Plating · {order.plateGroups.length} plate{order.plateGroups.length === 1 ? "" : "s"}
             </p>
             <div className="grid gap-2">
-              {order.plateGroups.map((plate, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2"
-                  data-testid={`order-${order.id}-plate-${idx}`}
-                >
-                  <p className="text-xs font-bold text-violet-200 uppercase tracking-wider mb-1">
-                    {plate.label || `Plate ${idx + 1}`}
-                  </p>
-                  <ul className="text-sm text-white/85 space-y-0.5">
-                    {plate.items.map(ln => (
-                      <li key={ln.itemId}>
-                        <span className="font-bold tabular-nums">{ln.quantity}×</span>{" "}
-                        {names.get(ln.itemId) ?? `Item #${ln.itemId}`}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-              {unassigned.length > 0 && (
-                <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2">
-                  <p className="text-xs font-bold text-amber-200 uppercase tracking-wider mb-1">
-                    Unassigned · pack however
-                  </p>
-                  <ul className="text-sm text-white/85 space-y-0.5">
-                    {unassigned.map(ln => (
-                      <li key={ln.itemId}>
-                        <span className="font-bold tabular-nums">{ln.quantity}×</span> {ln.name}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {order.plateGroups.map((plate, idx) => {
+                const allDone = isTrackable && plateAllPacked(progress, idx);
+                const packedCount = progress?.plates[idx]?.items.filter(l => l.packed >= l.quantity).length ?? 0;
+                const totalLines = plate.items.length;
+                return (
+                  <div
+                    key={idx}
+                    className={`rounded-xl border px-3 py-2 transition-colors ${
+                      allDone
+                        ? "border-emerald-400/40 bg-emerald-500/10"
+                        : "border-violet-400/30 bg-violet-500/10"
+                    }`}
+                    data-testid={`order-${order.id}-plate-${idx}`}
+                  >
+                    {isTrackable ? (
+                      <button
+                        type="button"
+                        onClick={() => onTogglePlate(idx, !allDone)}
+                        className={`w-full flex items-center justify-between text-xs font-bold uppercase tracking-wider mb-1 ${
+                          allDone ? "text-emerald-300" : "text-violet-200"
+                        } hover:opacity-80 active:scale-[0.99] transition-all`}
+                        data-testid={`order-${order.id}-plate-${idx}-toggle`}
+                      >
+                        <span>{plate.label || `Plate ${idx + 1}`}</span>
+                        <span className="text-[10px] font-semibold normal-case opacity-80">
+                          {packedCount}/{totalLines} {allDone ? "✓" : "— tap to mark plate"}
+                        </span>
+                      </button>
+                    ) : (
+                      <p className="text-xs font-bold text-violet-200 uppercase tracking-wider mb-1">
+                        {plate.label || `Plate ${idx + 1}`}
+                      </p>
+                    )}
+                    <ul className="text-sm text-white/85 space-y-0.5">
+                      {plate.items.map(ln => {
+                        const packed = isTrackable && plateLinePacked(progress, idx, ln.itemId);
+                        const label = (
+                          <>
+                            <span className="font-bold tabular-nums">{ln.quantity}×</span>{" "}
+                            {names.get(ln.itemId) ?? `Item #${ln.itemId}`}
+                          </>
+                        );
+                        if (!isTrackable) {
+                          return <li key={ln.itemId}>{label}</li>;
+                        }
+                        return (
+                          <li key={ln.itemId}>
+                            <button
+                              type="button"
+                              onClick={() => onTogglePlateLine(idx, ln.itemId, !packed)}
+                              className={`w-full flex items-center justify-between text-left rounded-md px-2 py-1.5 transition-all active:scale-[0.99] ${
+                                packed
+                                  ? "bg-emerald-500/15 text-emerald-300 line-through decoration-emerald-500/60"
+                                  : "hover:bg-white/5 text-white/85"
+                              }`}
+                              data-testid={`order-${order.id}-plate-${idx}-item-${ln.itemId}`}
+                            >
+                              <span>{label}</span>
+                              <span className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+                                packed ? "bg-emerald-500 text-black" : "bg-white/10"
+                              }`}>
+                                {packed && <Check className="w-3 h-3" strokeWidth={3} />}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })}
+              {unassigned.length > 0 && (() => {
+                const allDone = isTrackable && unassigned.every(ln => plateLinePacked(progress, "unassigned", ln.itemId));
+                return (
+                  <div className={`rounded-xl border px-3 py-2 transition-colors ${
+                    allDone ? "border-emerald-400/40 bg-emerald-500/10" : "border-amber-400/30 bg-amber-500/10"
+                  }`}>
+                    <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${allDone ? "text-emerald-300" : "text-amber-200"}`}>
+                      Unassigned · pack however
+                    </p>
+                    <ul className="text-sm text-white/85 space-y-0.5">
+                      {unassigned.map(ln => {
+                        const packed = isTrackable && plateLinePacked(progress, "unassigned", ln.itemId);
+                        const label = (
+                          <>
+                            <span className="font-bold tabular-nums">{ln.quantity}×</span> {ln.name}
+                          </>
+                        );
+                        if (!isTrackable) return <li key={ln.itemId}>{label}</li>;
+                        return (
+                          <li key={ln.itemId}>
+                            <button
+                              type="button"
+                              onClick={() => onTogglePlateLine("unassigned", ln.itemId, !packed)}
+                              className={`w-full flex items-center justify-between text-left rounded-md px-2 py-1.5 transition-all active:scale-[0.99] ${
+                                packed
+                                  ? "bg-emerald-500/15 text-emerald-300 line-through decoration-emerald-500/60"
+                                  : "hover:bg-white/5 text-white/85"
+                              }`}
+                              data-testid={`order-${order.id}-unassigned-item-${ln.itemId}`}
+                            >
+                              <span>{label}</span>
+                              <span className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+                                packed ? "bg-emerald-500 text-black" : "bg-white/10"
+                              }`}>
+                                {packed && <Check className="w-3 h-3" strokeWidth={3} />}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         );
@@ -1320,19 +1528,29 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
         </div>
       )}
 
-      {/* Action button for preparing / ready */}
+      {/* Action button for preparing / ready. Plated preparing orders
+          advance via per-plate packing (auto-flips to Ready when every
+          line is checked), so we hide the manual Mark-Ready button to
+          avoid the cook bypassing the checklist. */}
       {nextLabel && !isPending && (
         <div className="px-4 pb-4 space-y-2">
-          <button
-            onClick={onAdvance}
-            disabled={isUpdating}
-            className={`w-full py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-50 ${
-              order.status === "preparing" ? "bg-emerald-500 hover:bg-emerald-400 text-black" :
-              "bg-white/10 hover:bg-white/20 text-white"
-            }`}
-          >
-            {isUpdating ? "Updating…" : nextLabel}
-          </button>
+          {!(order.status === "preparing" && hasPlating) && (
+            <button
+              onClick={onAdvance}
+              disabled={isUpdating}
+              className={`w-full py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-50 ${
+                order.status === "preparing" ? "bg-emerald-500 hover:bg-emerald-400 text-black" :
+                "bg-white/10 hover:bg-white/20 text-white"
+              }`}
+            >
+              {isUpdating ? "Updating…" : nextLabel}
+            </button>
+          )}
+          {order.status === "preparing" && hasPlating && (
+            <p className="w-full py-2 rounded-xl text-xs font-semibold text-center text-violet-300/80 bg-violet-500/10 border border-violet-400/20">
+              Tap each plate as you pack — auto-marks Ready when complete
+            </p>
+          )}
           {order.status === "preparing" && (
             <button
               onClick={onRevert}
@@ -1341,6 +1559,17 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
             >
               <Undo2 size={12} />
               Undo — move back to New
+            </button>
+          )}
+          {order.status === "ready" && hasPlating && (
+            <button
+              onClick={onRevert}
+              disabled={isUpdating}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-medium text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors disabled:opacity-30"
+              data-testid={`order-${order.id}-undo-ready`}
+            >
+              <Undo2 size={12} />
+              Undo — back to Preparing
             </button>
           )}
         </div>

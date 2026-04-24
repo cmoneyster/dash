@@ -16,6 +16,22 @@ export type EventOrderPlate = {
   items: { itemId: number; quantity: number }[];
 };
 
+// Optional kitchen-side packing progress for plated orders. The cook taps
+// each line on each plate (and on the Unassigned card) as it gets packed;
+// `packed` is stored as a count (not a bool) so the same itemId can be
+// tracked independently across plates and we leave room for partial
+// packing later. Null when no plating is configured or the cook hasn't
+// touched any line yet.
+export type EventOrderKitchenProgressLine = {
+  itemId: number;
+  quantity: number;
+  packed: number;
+};
+export type EventOrderKitchenProgress = {
+  plates: { items: EventOrderKitchenProgressLine[] }[];
+  unassigned: EventOrderKitchenProgressLine[];
+};
+
 export const eventOrdersTable = pgTable("event_orders", {
   id: serial("id").primaryKey(),
   guestName: text("guest_name").notNull(),
@@ -25,6 +41,11 @@ export const eventOrdersTable = pgTable("event_orders", {
   // Null when staff did not configure plating (kitchen renders the standard
   // single-list ticket). Locked once the order leaves the unpaid queue.
   plateGroups: jsonb("plate_groups").$type<EventOrderPlate[]>(),
+  // Per-plate / per-line packing progress for plated orders. Populated
+  // lazily the first time the cook taps a line on the kitchen ticket.
+  // Cleared when the order moves backward (preparing→pending or ready→
+  // preparing) so re-cooking starts from a clean slate.
+  kitchenProgress: jsonb("kitchen_progress").$type<EventOrderKitchenProgress>(),
   status: text("status").notNull().default("pending"),
   eventSessionId: integer("event_session_id"),
   // 'guest' = self-service /event page; 'staff' = /event-taker POS

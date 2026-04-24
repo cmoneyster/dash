@@ -18,6 +18,7 @@ function serializeOrder(o: typeof eventOrdersTable.$inferSelect) {
     cashReceived: o.cashReceived != null ? parseFloat(o.cashReceived) : null,
     changeDue: o.changeDue != null ? parseFloat(o.changeDue) : null,
     plateGroups: o.plateGroups ?? null,
+    kitchenProgress: o.kitchenProgress ?? null,
   };
 }
 

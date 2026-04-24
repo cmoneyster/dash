@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { menuItemsTable, eventOrdersTable, eventSettingsTable, eventSessionsTable, menuCategoriesTable } from "@workspace/db/schema";
+import type { EventOrderItem, EventOrderPlate, EventOrderKitchenProgress, EventOrderKitchenProgressLine } from "@workspace/db/schema";
 import { eq, desc, and, or, sql, inArray } from "drizzle-orm";
 import { sendOrderConfirmation, sendOrderReady } from "../lib/sms";
 import {
@@ -408,6 +409,8 @@ router.get("/event-ordering/orders", verifyKitchenPassword, async (req, res) => 
       taxRate: order.taxRate != null ? parseFloat(order.taxRate) : null,
       taxAmount: order.taxAmount != null ? parseFloat(order.taxAmount) : null,
       total: order.total != null ? parseFloat(order.total) : null,
+      plateGroups: order.plateGroups ?? null,
+      kitchenProgress: order.kitchenProgress ?? null,
       items: (order.items as { itemId: number }[]).map(item => ({
         ...item,
         internalNotes: notesMap[item.itemId] ?? null,
@@ -456,37 +459,268 @@ router.patch("/event-ordering/orders/:id/status", verifyKitchenPassword, async (
       res.status(400).json({ error: "Invalid status" });
       return;
     }
-    // Stamp service-time milestones the first time we reach each step so
-    // re-flipping status (e.g. ready → preparing → ready) doesn't reset the
-    // original timestamps the Sales Report depends on.
-    const [existing] = await db
-      .select({ readyAt: eventOrdersTable.readyAt, pickedUpAt: eventOrdersTable.pickedUpAt })
-      .from(eventOrdersTable)
-      .where(eq(eventOrdersTable.id, id));
-    const updates: Record<string, unknown> = { status };
-    const now = new Date();
-    if (status === "ready" && existing && !existing.readyAt) updates.readyAt = now;
-    if (status === "picked_up" && existing && !existing.pickedUpAt) updates.pickedUpAt = now;
-    const [updated] = await db
-      .update(eventOrdersTable)
-      .set(updates)
-      .where(eq(eventOrdersTable.id, id))
-      .returning();
+    // All status reads + writes happen inside a row-locked transaction so
+    // a concurrent /kitchen-progress auto-advance can't double-fire the
+    // Ready SMS or trample the readyAt stamp.
+    const result = await db.transaction(async tx => {
+      const [existing] = await tx
+        .select()
+        .from(eventOrdersTable)
+        .where(eq(eventOrdersTable.id, id))
+        .for("update");
+      if (!existing) throw Object.assign(new Error("Order not found"), { status: 404 });
+      // Plated orders advance preparing→ready exclusively through the
+      // per-plate packing endpoint. Reject a manual Mark-Ready unless the
+      // packing UI is fully checked, otherwise tickets can sneak past
+      // unfinished plates.
+      const plateGroups = (existing.plateGroups as EventOrderPlate[] | null) ?? null;
+      if (status === "ready" && plateGroups && plateGroups.length > 0) {
+        const progress = normalizeKitchenProgress(
+          existing.kitchenProgress as EventOrderKitchenProgress | null,
+          existing.items as EventOrderItem[],
+          plateGroups,
+        );
+        if (!progress || !isFullyPacked(progress)) {
+          throw Object.assign(
+            new Error("Plated orders advance via per-plate packing — finish packing every plate before marking Ready"),
+            { status: 409 },
+          );
+        }
+      }
+      const updates: Record<string, unknown> = { status };
+      const now = new Date();
+      // Stamp service-time milestones the first time we reach each step so
+      // re-flipping status (e.g. ready → preparing → ready) doesn't reset
+      // the original timestamps the Sales Report depends on.
+      if (status === "ready" && !existing.readyAt) updates.readyAt = now;
+      if (status === "picked_up" && !existing.pickedUpAt) updates.pickedUpAt = now;
+      // Backward transition → wipe per-plate packing progress so when the
+      // cook re-enters the active queue they start with a clean ticket.
+      // Covers Undo on a Preparing card (preparing→pending) and Undo on a
+      // plated Ready card (ready→preparing).
+      if (
+        (status === "pending" && existing.status !== "pending") ||
+        (status === "preparing" && existing.status === "ready")
+      ) {
+        updates.kitchenProgress = null;
+      }
+      const wasReady = existing.status === "ready";
+      const [updated] = await tx
+        .update(eventOrdersTable)
+        .set(updates)
+        .where(eq(eventOrdersTable.id, id))
+        .returning();
+      return { updated, wasReady };
+    });
 
-    if (status === "ready" && updated.phoneNumber) {
+    // Idempotent Ready SMS: only fire on a true transition into "ready"
+    // (existing.status !== "ready"). Auto-advance via /kitchen-progress
+    // takes the same lock, so two devices can't both produce a notice.
+    if (status === "ready" && !result.wasReady && result.updated.phoneNumber) {
       const settings = await getEventSettings();
       sendOrderReady({
-        guestName: updated.guestName,
-        orderId: updated.id,
-        phoneNumber: updated.phoneNumber,
+        guestName: result.updated.guestName,
+        orderId: result.updated.id,
+        phoneNumber: result.updated.phoneNumber,
         eventName: settings?.eventName ?? "",
       }).catch(() => {});
     }
 
-    res.json(updated);
-  } catch (err) {
+    res.json(result.updated);
+  } catch (err: any) {
+    if (err?.status) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
     req.log.error({ err }, "Error updating event order status");
     res.status(500).json({ error: "Failed to update order status" });
+  }
+});
+
+// Build a fresh "nothing packed yet" progress object from an order's plate
+// layout and cart items. Each plate carries the lines defined on it; any
+// remaining cart units (not assigned to a plate) become the `unassigned`
+// group. Returns null when the order has no plating.
+function buildEmptyKitchenProgress(
+  items: EventOrderItem[],
+  plateGroups: EventOrderPlate[] | null,
+): EventOrderKitchenProgress | null {
+  if (!plateGroups || plateGroups.length === 0) return null;
+  const plates = plateGroups.map(p => ({
+    items: p.items.map(i => ({ itemId: i.itemId, quantity: i.quantity, packed: 0 })),
+  }));
+  const platedTotals: Record<number, number> = {};
+  for (const p of plateGroups) {
+    for (const i of p.items) platedTotals[i.itemId] = (platedTotals[i.itemId] ?? 0) + i.quantity;
+  }
+  const unassigned: EventOrderKitchenProgressLine[] = [];
+  for (const line of items) {
+    const remaining = line.quantity - (platedTotals[line.itemId] ?? 0);
+    if (remaining > 0) {
+      unassigned.push({ itemId: line.itemId, quantity: remaining, packed: 0 });
+    }
+  }
+  return { plates, unassigned };
+}
+
+// Reconcile a stored progress object against the order's current plate
+// layout — defends against plate edits between writes by trimming/adding
+// lines and clamping `packed` into [0, quantity].
+function normalizeKitchenProgress(
+  stored: EventOrderKitchenProgress | null,
+  items: EventOrderItem[],
+  plateGroups: EventOrderPlate[] | null,
+): EventOrderKitchenProgress | null {
+  const fresh = buildEmptyKitchenProgress(items, plateGroups);
+  if (!fresh) return null;
+  if (!stored) return fresh;
+  const lookup = (lines: EventOrderKitchenProgressLine[], itemId: number) =>
+    lines.find(l => l.itemId === itemId);
+  const merged: EventOrderKitchenProgress = {
+    plates: fresh.plates.map((plate, idx) => ({
+      items: plate.items.map(line => {
+        const prev = stored.plates?.[idx] ? lookup(stored.plates[idx].items, line.itemId) : undefined;
+        const packed = Math.max(0, Math.min(line.quantity, prev?.packed ?? 0));
+        return { ...line, packed };
+      }),
+    })),
+    unassigned: fresh.unassigned.map(line => {
+      const prev = stored.unassigned ? lookup(stored.unassigned, line.itemId) : undefined;
+      const packed = Math.max(0, Math.min(line.quantity, prev?.packed ?? 0));
+      return { ...line, packed };
+    }),
+  };
+  return merged;
+}
+
+function isFullyPacked(p: EventOrderKitchenProgress): boolean {
+  for (const plate of p.plates) {
+    for (const line of plate.items) if (line.packed < line.quantity) return false;
+  }
+  for (const line of p.unassigned) if (line.packed < line.quantity) return false;
+  return true;
+}
+
+// Per-plate / per-line packing progress. Kitchen-only; mutations are
+// rejected (409) once the order leaves the active queue (preparing /
+// pending) so a stale tap can't reset a Ready ticket. When all plate
+// lines are fully packed we auto-advance preparing→ready in the same
+// transaction (mirrors the SMS-on-ready behaviour of /status).
+router.patch("/event-ordering/orders/:id/kitchen-progress", verifyKitchenPassword, async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(String(req.params.id));
+    if (!Number.isFinite(id)) {
+      res.status(400).json({ error: "Invalid order id" });
+      return;
+    }
+    const body = (req.body ?? {}) as {
+      plateIdx?: unknown;
+      itemId?: unknown;
+      packed?: unknown;
+      allPacked?: unknown;
+    };
+    const isUnassigned = body.plateIdx === "unassigned";
+    const plateIdx = isUnassigned ? -1 : Number(body.plateIdx);
+    if (!isUnassigned && (!Number.isInteger(plateIdx) || plateIdx < 0)) {
+      res.status(400).json({ error: "plateIdx must be a non-negative integer or 'unassigned'" });
+      return;
+    }
+    const isWholePlate = typeof body.allPacked === "boolean";
+    const isSingleLine = typeof body.packed === "boolean" && typeof body.itemId === "number";
+    if (!isWholePlate && !isSingleLine) {
+      res.status(400).json({ error: "Provide either {itemId, packed} or {allPacked}" });
+      return;
+    }
+    if (isWholePlate && isUnassigned) {
+      res.status(400).json({ error: "allPacked is only valid for plate indices" });
+      return;
+    }
+
+    const result = await db.transaction(async tx => {
+      const [row] = await tx
+        .select()
+        .from(eventOrdersTable)
+        .where(eq(eventOrdersTable.id, id))
+        .for("update");
+      if (!row) throw Object.assign(new Error("Order not found"), { status: 404 });
+      if (row.status !== "preparing" && row.status !== "pending") {
+        throw Object.assign(new Error(`Order is ${row.status}; progress is locked`), { status: 409 });
+      }
+      const plateGroups = (row.plateGroups as EventOrderPlate[] | null) ?? null;
+      if (!plateGroups || plateGroups.length === 0) {
+        throw Object.assign(new Error("Order has no plating"), { status: 400 });
+      }
+      const progress = normalizeKitchenProgress(
+        row.kitchenProgress as EventOrderKitchenProgress | null,
+        row.items as EventOrderItem[],
+        plateGroups,
+      );
+      if (!progress) throw Object.assign(new Error("Order has no plating"), { status: 400 });
+
+      if (isWholePlate) {
+        if (plateIdx >= progress.plates.length) {
+          throw Object.assign(new Error("Plate index out of range"), { status: 400 });
+        }
+        const target = body.allPacked ? "full" : "empty";
+        progress.plates[plateIdx].items = progress.plates[plateIdx].items.map(l => ({
+          ...l,
+          packed: target === "full" ? l.quantity : 0,
+        }));
+      } else {
+        const lines = isUnassigned
+          ? progress.unassigned
+          : progress.plates[plateIdx]?.items;
+        if (!lines) {
+          throw Object.assign(new Error("Plate index out of range"), { status: 400 });
+        }
+        const line = lines.find(l => l.itemId === Number(body.itemId));
+        if (!line) {
+          throw Object.assign(new Error("Item not found on this plate"), { status: 400 });
+        }
+        line.packed = body.packed ? line.quantity : 0;
+      }
+
+      const updates: Record<string, unknown> = { kitchenProgress: progress };
+      let advanced = false;
+      if (row.status === "preparing" && isFullyPacked(progress)) {
+        updates.status = "ready";
+        if (!row.readyAt) updates.readyAt = new Date();
+        advanced = true;
+      }
+      const [updated] = await tx
+        .update(eventOrdersTable)
+        .set(updates)
+        .where(eq(eventOrdersTable.id, id))
+        .returning();
+      return { updated, advanced };
+    });
+
+    if (result.advanced && result.updated.phoneNumber) {
+      const settings = await getEventSettings();
+      sendOrderReady({
+        guestName: result.updated.guestName,
+        orderId: result.updated.id,
+        phoneNumber: result.updated.phoneNumber,
+        eventName: settings?.eventName ?? "",
+      }).catch(() => {});
+    }
+
+    res.json({
+      ...result.updated,
+      subtotal: result.updated.subtotal != null ? parseFloat(result.updated.subtotal) : null,
+      taxRate: result.updated.taxRate != null ? parseFloat(result.updated.taxRate) : null,
+      taxAmount: result.updated.taxAmount != null ? parseFloat(result.updated.taxAmount) : null,
+      total: result.updated.total != null ? parseFloat(result.updated.total) : null,
+      plateGroups: result.updated.plateGroups ?? null,
+      kitchenProgress: result.updated.kitchenProgress ?? null,
+    });
+  } catch (err: any) {
+    if (err?.status) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    req.log.error({ err }, "Error updating kitchen progress");
+    res.status(500).json({ error: "Failed to update kitchen progress" });
   }
 });
 
