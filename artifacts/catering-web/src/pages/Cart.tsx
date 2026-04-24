@@ -712,7 +712,10 @@ export default function Cart() {
                         <div className="flex justify-between items-baseline text-sm">
                           <span className="font-semibold text-orange-900">On-site setup fee</span>
                           {isWaiverApplied ? (
-                            <span className="font-bold text-emerald-600">Waived</span>
+                            <span className="flex items-baseline gap-2">
+                              <span className="text-muted-foreground line-through text-xs">{formatCurrency(otdConfig.setupFee)}</span>
+                              <span className="font-bold text-emerald-600">Waived</span>
+                            </span>
                           ) : (
                             <span className="font-bold text-orange-900">{formatCurrency(otdConfig.setupFee)}</span>
                           )}

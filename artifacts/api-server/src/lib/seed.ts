@@ -280,6 +280,22 @@ async function runStandaloneMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS otd_max_additional_hours integer
   `);
 
+  // Strict-enum guard at the DB layer so a buggy migration or direct
+  // SQL write can never sneak an unknown service_mode through. The
+  // app-level parser still rejects bad values first.
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'catering_inquiries_service_mode_check'
+      ) THEN
+        ALTER TABLE catering_inquiries
+          ADD CONSTRAINT catering_inquiries_service_mode_check
+          CHECK (service_mode IN ('drop_off', 'on_the_dash'));
+      END IF;
+    END $$;
+  `);
+
   // Live OTD pricing config admins can edit in /admin/event-settings.
   // Defaults match launch pricing: $500 setup, waived at $2,000 subtotal,
   // 2 included hours, $100/hr extra up to 3 additional hours.

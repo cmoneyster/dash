@@ -10,7 +10,7 @@ import {
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useToast } from "@/hooks/use-toast";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
-import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
+import { saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
 
 // ── Category helpers ──────────────────────────────────────────────────────────
 
@@ -443,16 +443,6 @@ export default function SharedPlan() {
     }
   };
 
-  const handleRemoveFromShared = async (itemId: number) => {
-    try {
-      const res = await fetch(`/api/plan/share/${token}/items/${itemId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
-      setPlan(await res.json());
-    } catch {
-      toast({ title: "Error", description: "Could not remove item.", variant: "destructive" });
-    }
-  };
-
   const handleCopyToMyPlan = async () => {
     if (!plan || copying) return;
     setCopying(true);
@@ -549,7 +539,7 @@ export default function SharedPlan() {
                   <li key={it.id} className="flex items-center justify-between gap-3 bg-white/60 rounded-lg px-3 py-2">
                     <span className="text-sm text-amber-900 truncate">{it.menuItem.name}</span>
                     <button
-                      onClick={() => handleRemoveFromShared(it.id)}
+                      onClick={() => handleRemove(it.id)}
                       className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> Remove
