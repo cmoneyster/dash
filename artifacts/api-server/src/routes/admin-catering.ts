@@ -10,6 +10,7 @@ import type {
   CateringInquiry,
   QuoteAdjustment,
   QuoteLineItem,
+  QuoteReply,
 } from "@workspace/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { sendNewInquiryAlert } from "../lib/sms";
@@ -569,6 +570,146 @@ router.post("/admin/catering/:id/quote/sms", async (req, res): Promise<void> => 
   } catch (err) {
     req.log.error({ err }, "Error texting quote");
     res.status(500).json({ error: "Failed to text quote" });
+  }
+});
+
+// ── Change-request: reply (email or SMS) ──────────────────────────────────────
+
+router.post("/admin/catering/:id/change-request/reply", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
+    if (!inquiry) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Body;
+    const channel = asString(body.channel);
+    if (channel !== "email" && channel !== "sms") {
+      res.status(400).json({ error: "channel must be 'email' or 'sms'" });
+      return;
+    }
+    const message = asString(body.message)?.trim();
+    if (!message) {
+      res.status(400).json({ error: "Message cannot be empty" });
+      return;
+    }
+    if (message.length > 2000) {
+      res.status(400).json({ error: "Message is too long (max 2000 characters)" });
+      return;
+    }
+
+    const sentAt = new Date();
+    let sentTo: string;
+
+    if (channel === "email") {
+      const to = inquiry.clientEmail?.trim();
+      if (!to) {
+        res.status(400).json({ error: "No client email on file" });
+        return;
+      }
+      const subject = `Re: Your catering quote ${inquiry.quoteNumber ?? ""}`.trim();
+      const link = inquiry.quoteToken ? quoteViewUrl(req, inquiry.quoteToken) : null;
+      const text = [
+        `Hi ${inquiry.clientName},`,
+        ``,
+        message,
+        ...(link ? [``, `View your quote: ${link}`] : []),
+        ``,
+        `— Hollywood East Cafe`,
+      ].join("\n");
+      const escapedMessage = message
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
+      const html = `
+        <p>Hi ${inquiry.clientName},</p>
+        <p>${escapedMessage}</p>
+        ${link ? `<p><a href="${link}">View your quote</a></p>` : ""}
+        <p>— Hollywood East Cafe</p>
+      `;
+      const result = await sendMail({ to, subject, text, html });
+      if (!result.ok) {
+        res.status(502).json({ error: result.error ?? "Failed to send email" });
+        return;
+      }
+      sentTo = to;
+    } else {
+      const to = inquiry.clientPhone?.trim();
+      if (!to) {
+        res.status(400).json({ error: "No client phone on file" });
+        return;
+      }
+      if (!isEjoinConfigured()) {
+        res.status(502).json({ error: "SMS gateway not configured" });
+        return;
+      }
+      try {
+        await sendSmsViaEjoin(to, message);
+      } catch (sendErr) {
+        req.log.error({ err: sendErr }, "Change-request reply SMS failed");
+        res.status(502).json({ error: "Failed to send SMS via gateway" });
+        return;
+      }
+      sentTo = to;
+    }
+
+    const reply: QuoteReply = {
+      id: randomUUID(),
+      channel,
+      message,
+      sentAt: sentAt.toISOString(),
+      sentTo,
+    };
+    const replies: QuoteReply[] = [...(inquiry.quoteReplies ?? []), reply];
+
+    const [updated] = await db
+      .update(cateringInquiriesTable)
+      .set({
+        quoteReplies: replies,
+        quoteChangeRequestRespondedAt: inquiry.quoteChangeRequestRespondedAt ?? sentAt,
+        updatedAt: sentAt,
+      })
+      .where(eq(cateringInquiriesTable.id, id))
+      .returning();
+
+    res.json({ ok: true, inquiry: updated, sentTo });
+  } catch (err) {
+    req.log.error({ err }, "Error sending change-request reply");
+    res.status(500).json({ error: "Failed to send reply" });
+  }
+});
+
+// ── Change-request: dismiss / mark responded ──────────────────────────────────
+
+router.post("/admin/catering/:id/change-request/dismiss", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
+    if (!inquiry) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
+    if (!inquiry.quoteChangeRequestAt) {
+      res.status(400).json({ error: "No change request to dismiss" });
+      return;
+    }
+
+    const now = new Date();
+    const [updated] = await db
+      .update(cateringInquiriesTable)
+      .set({
+        quoteChangeRequestRespondedAt: inquiry.quoteChangeRequestRespondedAt ?? now,
+        updatedAt: now,
+      })
+      .where(eq(cateringInquiriesTable.id, id))
+      .returning();
+    res.json({ ok: true, inquiry: updated });
+  } catch (err) {
+    req.log.error({ err }, "Error dismissing change request");
+    res.status(500).json({ error: "Failed to dismiss" });
   }
 });
 

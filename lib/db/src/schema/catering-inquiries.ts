@@ -41,6 +41,14 @@ export type QuoteAdjustment = {
   amount: number;
 };
 
+export type QuoteReply = {
+  id: string;
+  channel: "email" | "sms";
+  message: string;
+  sentAt: string;
+  sentTo: string;
+};
+
 export const cateringInquiriesTable = pgTable("catering_inquiries", {
   id: serial("id").primaryKey(),
   clientName: text("client_name").notNull(),
@@ -77,6 +85,8 @@ export const cateringInquiriesTable = pgTable("catering_inquiries", {
   quoteAcceptedAt: timestamp("quote_accepted_at"),
   quoteChangeRequestAt: timestamp("quote_change_request_at"),
   quoteChangeRequestMessage: text("quote_change_request_message"),
+  quoteChangeRequestRespondedAt: timestamp("quote_change_request_responded_at"),
+  quoteReplies: jsonb("quote_replies").$type<QuoteReply[]>(),
   // Square invoice mirror (Square is the system of record; we cache for display + lookup)
   squareInvoiceId: text("square_invoice_id"),
   squareInvoiceVersion: integer("square_invoice_version"),

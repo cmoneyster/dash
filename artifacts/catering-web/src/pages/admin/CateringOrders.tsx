@@ -55,6 +55,14 @@ type QuoteAdjustment = {
   amount: number;
 };
 
+type QuoteReply = {
+  id: string;
+  channel: "email" | "sms";
+  message: string;
+  sentAt: string;
+  sentTo: string;
+};
+
 type Inquiry = {
   id: number;
   clientName: string;
@@ -87,6 +95,8 @@ type Inquiry = {
   quoteAcceptedAt: string | null;
   quoteChangeRequestAt: string | null;
   quoteChangeRequestMessage: string | null;
+  quoteChangeRequestRespondedAt: string | null;
+  quoteReplies: QuoteReply[] | null;
   squareInvoiceId: string | null;
   squareInvoiceStatus: string | null;
   squareHostedUrl: string | null;
@@ -740,9 +750,10 @@ function QuoteActions({
   inquiry: Inquiry;
   onUpdated: (i: Inquiry) => void;
 }) {
-  const [busy, setBusy] = useState<null | "gen" | "email" | "sms">(null);
+  const [busy, setBusy] = useState<null | "gen" | "email" | "sms" | "reply-email" | "reply-sms" | "dismiss">(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [replyText, setReplyText] = useState("");
 
   const viewUrl = inquiry.quoteToken
     ? `${window.location.origin}${BASE}/quote/${inquiry.quoteToken}`
@@ -798,6 +809,41 @@ function QuoteActions({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
+  }
+
+  async function sendReply(channel: "email" | "sms") {
+    const text = replyText.trim();
+    if (!text) { setMsg("Type a reply first."); return; }
+    if (channel === "email" && !inquiry.clientEmail) { setMsg("No client email on file."); return; }
+    if (channel === "sms" && !inquiry.clientPhone) { setMsg("No client phone on file."); return; }
+    setBusy(channel === "email" ? "reply-email" : "reply-sms");
+    setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/change-request/reply`, {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ channel, message: text }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to send reply"); return; }
+      onUpdated(data.inquiry);
+      setReplyText("");
+      setMsg(`Reply sent ${channel === "email" ? "by email" : "by text"} to ${data.sentTo}.`);
+    } catch { setMsg("Failed to send reply."); }
+    finally { setBusy(null); }
+  }
+
+  async function dismissChangeRequest() {
+    setBusy("dismiss"); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/change-request/dismiss`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to dismiss"); return; }
+      onUpdated(data.inquiry);
+      setMsg("Marked as responded.");
+    } catch { setMsg("Failed to mark responded."); }
+    finally { setBusy(null); }
   }
 
   return (
@@ -896,12 +942,95 @@ function QuoteActions({
           </div>
         )}
         {inquiry.quoteChangeRequestAt && !inquiry.quoteAcceptedAt && (
-          <div className="flex items-start gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
-            <MessageSquare className="w-4 h-4 mt-0.5 shrink-0" />
-            <div className="text-xs space-y-1 min-w-0">
-              <p className="font-semibold">Client requested changes — {formatDateTime(inquiry.quoteChangeRequestAt)}</p>
-              {inquiry.quoteChangeRequestMessage && (
-                <p className="italic whitespace-pre-wrap break-words">"{inquiry.quoteChangeRequestMessage}"</p>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-900 overflow-hidden">
+            <div className="flex items-start gap-2 p-3">
+              <MessageSquare className="w-4 h-4 mt-0.5 shrink-0" />
+              <div className="text-xs space-y-1 min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="font-semibold">
+                    Client requested changes — {formatDateTime(inquiry.quoteChangeRequestAt)}
+                  </p>
+                  {inquiry.quoteChangeRequestRespondedAt && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">
+                      <Check className="w-3 h-3" /> Responded
+                    </span>
+                  )}
+                </div>
+                {inquiry.quoteChangeRequestMessage && (
+                  <p className="italic whitespace-pre-wrap break-words">"{inquiry.quoteChangeRequestMessage}"</p>
+                )}
+              </div>
+            </div>
+
+            {inquiry.quoteReplies && inquiry.quoteReplies.length > 0 && (
+              <div className="border-t border-amber-200 bg-amber-50/60 px-3 py-2 space-y-1.5">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-amber-800">Reply history</p>
+                {inquiry.quoteReplies.map(reply => (
+                  <div key={reply.id} className="text-xs bg-white/70 rounded-md p-2 border border-amber-200">
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-amber-800 mb-0.5">
+                      <span className="inline-flex items-center gap-1 font-semibold">
+                        {reply.channel === "email"
+                          ? <><Mail className="w-3 h-3" /> Email</>
+                          : <><MessageSquare className="w-3 h-3" /> Text</>}
+                        <span className="font-normal text-amber-700">→ {reply.sentTo}</span>
+                      </span>
+                      <span>{formatDateTime(reply.sentAt)}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap break-words text-amber-950">{reply.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t border-amber-200 p-3 bg-white/40 space-y-2">
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-amber-800">
+                  Reply to client
+                </span>
+                <textarea
+                  value={replyText}
+                  onChange={e => setReplyText(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="Type your reply — sent to the client by email or text…"
+                  className="mt-1 w-full px-3 py-2 border border-amber-300 rounded-lg bg-white text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => sendReply("email")}
+                  disabled={busy !== null || !replyText.trim() || !inquiry.clientEmail}
+                  title={!inquiry.clientEmail ? "No client email on file" : ""}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-semibold rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {busy === "reply-email" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                  Send email
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sendReply("sms")}
+                  disabled={busy !== null || !replyText.trim() || !inquiry.clientPhone}
+                  title={!inquiry.clientPhone ? "No client phone on file" : ""}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-semibold rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {busy === "reply-sms" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageSquare className="w-3.5 h-3.5" />}
+                  Send text
+                </button>
+                {!inquiry.quoteChangeRequestRespondedAt && (
+                  <button
+                    type="button"
+                    onClick={dismissChangeRequest}
+                    disabled={busy !== null}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-transparent text-amber-800 text-xs font-semibold rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-40 ml-auto"
+                  >
+                    {busy === "dismiss" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                    Mark responded
+                  </button>
+                )}
+              </div>
+              {replyText.length > 0 && (
+                <p className="text-[10px] text-amber-700">{replyText.length}/2000</p>
               )}
             </div>
           </div>
