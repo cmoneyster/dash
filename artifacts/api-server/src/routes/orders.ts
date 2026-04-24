@@ -114,8 +114,10 @@ router.post("/orders", async (req, res): Promise<void> => {
     );
 
     // Snapshot the live OTD pricing config so this inquiry's quote stays
-    // stable even if admins later edit /admin/event-settings. For drop-off
-    // orders we still snapshot zeros so reporting columns aren't ragged.
+    // stable even if admins later edit /admin/event-settings. We only
+    // populate the snapshot for on_the_dash inquiries — drop_off rows
+    // leave the snapshot columns null (which is what the schema expects)
+    // and the admin Catering Orders panel hides them in that case.
     const [eventSettings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     const otdConfig = {
       setupFee: eventSettings?.otdSetupFee != null ? parseFloat(eventSettings.otdSetupFee) : OTD_DEFAULTS.setupFee,
@@ -124,6 +126,7 @@ router.post("/orders", async (req, res): Promise<void> => {
       additionalHourRate: eventSettings?.otdAdditionalHourRate != null ? parseFloat(eventSettings.otdAdditionalHourRate) : OTD_DEFAULTS.additionalHourRate,
       maxAdditionalHours: eventSettings?.otdMaxAdditionalHours ?? OTD_DEFAULTS.maxAdditionalHours,
     };
+    const isOtd = serviceMode === "on_the_dash";
 
     // Compute the OTD fee server-side. The setup fee is waived once the
     // food subtotal hits the configured threshold; additional staff hours
@@ -187,13 +190,14 @@ router.post("/orders", async (req, res): Promise<void> => {
         orderTotal: orderTotalStr,
         status: "inquiry",
         // Service mode + per-inquiry fee snapshot (see comment in
-        // lib/db/src/schema/catering-inquiries.ts).
+        // lib/db/src/schema/catering-inquiries.ts). Snapshot only on
+        // OTD inquiries — drop_off rows leave these columns null.
         serviceMode,
-        otdSetupFee: String(otdConfig.setupFee.toFixed(2)),
-        otdFeeWaiverThreshold: String(otdConfig.feeWaiverThreshold.toFixed(2)),
-        otdIncludedHours: String(otdConfig.includedHours.toFixed(2)),
-        otdAdditionalHourRate: String(otdConfig.additionalHourRate.toFixed(2)),
-        otdMaxAdditionalHours: otdConfig.maxAdditionalHours,
+        otdSetupFee: isOtd ? String(otdConfig.setupFee.toFixed(2)) : null,
+        otdFeeWaiverThreshold: isOtd ? String(otdConfig.feeWaiverThreshold.toFixed(2)) : null,
+        otdIncludedHours: isOtd ? String(otdConfig.includedHours.toFixed(2)) : null,
+        otdAdditionalHourRate: isOtd ? String(otdConfig.additionalHourRate.toFixed(2)) : null,
+        otdMaxAdditionalHours: isOtd ? otdConfig.maxAdditionalHours : null,
       }).returning();
 
       // Build a deep link to the admin inquiry editor for the SMS alert.
