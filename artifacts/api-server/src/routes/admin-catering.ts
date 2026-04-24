@@ -387,6 +387,15 @@ router.put("/admin/catering/:id", async (req, res): Promise<void> => {
         updates.otdIncludedHours = null;
         updates.otdAdditionalHourRate = null;
         updates.otdMaxAdditionalHours = null;
+        // Strip the synthesized OTD extra-hours fee row (if any) so a
+        // hidden upcharge doesn't carry over after switching to Drop-Off.
+        // Mirror the QuoteEditor's stable id so this stays in sync.
+        const baseFees = (updates.fees as QuoteAdjustment[] | undefined) ?? current.fees ?? [];
+        const cleanedFees = baseFees.filter((f) => f.id !== "otd-extra-hours");
+        if (cleanedFees.length !== baseFees.length) {
+          updates.fees = cleanedFees;
+          applyTotalsToUpdates(updates);
+        }
       }
 
       // Audit trail: append a single line to admin notes recording the

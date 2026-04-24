@@ -392,9 +392,16 @@ function MenuPicker({ menu, onPick }: {
   );
 }
 
+// Stable id used for the synthesized "billed OTD extra hours" fee row.
+// Using a fixed id lets us upsert/remove the row without ever doubling up
+// when staff bumps the stepper, and keeps the line easily distinguishable
+// from manually-added fees with the same label.
+const OTD_EXTRA_HOURS_FEE_ID = "otd-extra-hours";
+
 function QuoteEditor({
   lineItems, fees, discounts, quoteNotes, quoteExpiresAt,
   onChange, menu,
+  serviceMode, otdAdditionalHourRate, otdMaxAdditionalHours,
 }: {
   lineItems: QuoteLineItem[];
   fees: QuoteAdjustment[];
@@ -409,6 +416,9 @@ function QuoteEditor({
     quoteExpiresAt?: string | null;
   }) => void;
   menu: AdminMenuItem[];
+  serviceMode: string | null;
+  otdAdditionalHourRate: number | null;
+  otdMaxAdditionalHours: number | null;
 }) {
   const totals = useMemo(() => computeTotalsClient(lineItems, fees, discounts), [lineItems, fees, discounts]);
 
@@ -504,6 +514,46 @@ function QuoteEditor({
     if (kind === "fee") onChange({ fees: [...fees, newRow] });
     else onChange({ discounts: [...discounts, newRow] });
   }
+
+  // OTD billed-extra-hours stepper state. We derive the current count from
+  // the synthesized fee row (if any) by dividing by the snapshot rate so
+  // re-opens of an existing inquiry pick up where we left off.
+  const isOtd = serviceMode === "on_the_dash";
+  const otdRate = otdAdditionalHourRate != null && Number.isFinite(otdAdditionalHourRate)
+    ? otdAdditionalHourRate
+    : null;
+  const otdMax = otdMaxAdditionalHours != null && Number.isFinite(otdMaxAdditionalHours)
+    ? Math.max(0, Math.floor(otdMaxAdditionalHours))
+    : null;
+  const otdExtraHoursRow = fees.find(f => f.id === OTD_EXTRA_HOURS_FEE_ID) ?? null;
+  const otdExtraHours = (() => {
+    if (!otdExtraHoursRow || otdRate == null || otdRate <= 0) return 0;
+    const n = Math.round(Number(otdExtraHoursRow.amount) / otdRate);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    if (otdMax != null) return Math.min(n, otdMax);
+    return n;
+  })();
+  function setOtdExtraHours(nRaw: number) {
+    if (otdRate == null) return;
+    let n = Math.max(0, Math.floor(nRaw));
+    if (otdMax != null) n = Math.min(n, otdMax);
+    const otherFees = fees.filter(f => f.id !== OTD_EXTRA_HOURS_FEE_ID);
+    if (n === 0) {
+      onChange({ fees: otherFees });
+      return;
+    }
+    const row: QuoteAdjustment = {
+      id: OTD_EXTRA_HOURS_FEE_ID,
+      label: `On the Dash — ${n} extra staff hour${n === 1 ? "" : "s"}`,
+      kind: "fixed",
+      amount: round2(otdRate * n),
+    };
+    onChange({ fees: [...otherFees, row] });
+  }
+  // Hide the synthesized OTD row from the regular Fees editor so it can't be
+  // hand-edited (any manual edit would drift from the stepper). Totals + PDF
+  // still pull from the full `fees` array.
+  const editableFees = fees.filter(f => f.id !== OTD_EXTRA_HOURS_FEE_ID);
   function updateAdj(arr: QuoteAdjustment[], id: string, patch: Partial<QuoteAdjustment>, target: "fee" | "discount") {
     const next = arr.map(a => a.id === id ? { ...a, ...patch } : a);
     if (target === "fee") onChange({ fees: next });
@@ -631,11 +681,70 @@ function QuoteEditor({
           </div>
         )}
 
+        {/* OTD billed extra hours — admins can quote staff-hour upcharges
+            without doing the math by hand. Only the snapshot rate/cap from
+            the inquiry are used so historical quotes stay stable even if
+            event settings change later. */}
+        {isOtd && otdRate != null && otdRate > 0 && otdMax != null && otdMax > 0 && (
+          <div className="border border-orange-200 bg-orange-50/40 rounded-xl p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Flame className="w-3.5 h-3.5 text-orange-700" />
+              <span className="text-xs font-bold uppercase tracking-wider text-orange-900">
+                Billed Extra Hours
+              </span>
+              <span className="text-[11px] text-orange-900/70">
+                {formatCurrency(otdRate)}/hr · max {otdMax}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setOtdExtraHours(otdExtraHours - 1)}
+                disabled={otdExtraHours <= 0}
+                className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-orange-300 bg-white text-orange-900 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-orange-100"
+                aria-label="Decrease billed extra hours"
+              >
+                −
+              </button>
+              <input
+                type="number"
+                min={0}
+                max={otdMax}
+                step={1}
+                value={otdExtraHours}
+                onChange={e => setOtdExtraHours(e.target.value === "" ? 0 : Number(e.target.value))}
+                className="w-16 px-2 py-1 text-center text-sm font-semibold border border-orange-300 rounded-lg bg-white text-orange-900 outline-none focus:ring-2 focus:ring-orange-200"
+              />
+              <span className="text-xs text-orange-900/80">
+                hr × {formatCurrency(otdRate)} = <strong>{formatCurrency(round2(otdExtraHours * otdRate))}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setOtdExtraHours(otdExtraHours + 1)}
+                disabled={otdExtraHours >= otdMax}
+                className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-orange-300 bg-white text-orange-900 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-orange-100"
+                aria-label="Increase billed extra hours"
+              >
+                +
+              </button>
+            </div>
+            <p className="text-[11px] text-orange-900/70 italic">
+              Adds a fee line to the quote. Set to 0 to remove.
+            </p>
+          </div>
+        )}
+
         {/* Fees */}
-        <AdjustmentList kind="fee" rows={fees}
+        <AdjustmentList kind="fee" rows={editableFees}
           onAdd={() => addAdj("fee")}
-          onUpdate={(id, patch) => updateAdj(fees, id, patch, "fee")}
-          onRemove={(id) => removeAdj(fees, id, "fee")}
+          onUpdate={(id, patch) => {
+            const nextEditable = editableFees.map(a => a.id === id ? { ...a, ...patch } : a);
+            onChange({ fees: otdExtraHoursRow ? [...nextEditable, otdExtraHoursRow] : nextEditable });
+          }}
+          onRemove={(id) => {
+            const nextEditable = editableFees.filter(a => a.id !== id);
+            onChange({ fees: otdExtraHoursRow ? [...nextEditable, otdExtraHoursRow] : nextEditable });
+          }}
         />
 
         {/* Discounts */}
@@ -1644,6 +1753,9 @@ function DetailPanel({
                 quoteExpiresAt={form.quoteExpiresAt ?? null}
                 onChange={(p) => patch(p as Partial<Inquiry>)}
                 menu={menu}
+                serviceMode={form.serviceMode ?? null}
+                otdAdditionalHourRate={form.otdAdditionalHourRate != null ? Number(form.otdAdditionalHourRate) : null}
+                otdMaxAdditionalHours={form.otdMaxAdditionalHours ?? null}
               />
 
               <p className="text-xs text-muted-foreground italic">
