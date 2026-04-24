@@ -1237,8 +1237,9 @@ function ChannelControlsModal({
           </div>
           <button
             onClick={onCancel}
+            disabled={busy}
             aria-label="Close"
-            className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40"
           >
             <X className="w-4 h-4" />
           </button>
