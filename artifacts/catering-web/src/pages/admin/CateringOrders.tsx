@@ -5,7 +5,7 @@ import {
   Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
-  ArrowUp, ArrowDown, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame,
+  ArrowUp, ArrowDown, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
@@ -136,6 +136,7 @@ type AdminMenuItem = {
   tier2Price: number | null;
   tier3Qty: number | null;
   tier3Price: number | null;
+  otdEligible: boolean;
 };
 
 function emptyForm(): Partial<Inquiry> {
@@ -1389,8 +1390,41 @@ function DetailPanel({
             const incHrs   = form.otdIncludedHours != null ? Number(form.otdIncludedHours) : null;
             const addRate  = form.otdAdditionalHourRate != null ? Number(form.otdAdditionalHourRate) : null;
             const maxAdd   = form.otdMaxAdditionalHours ?? null;
-            const subtotalNum = form.subtotal != null ? Number(form.subtotal) : (form.orderTotal != null ? Number(form.orderTotal) : null);
-            const waivedHere = setupFee != null && waiver != null && subtotalNum != null && subtotalNum >= waiver;
+            // Count how many of this inquiry's items are still On-the-Dash
+            // eligible per the live menu. Prefer line items (have menuItemId);
+            // fall back to legacy cart orderItems by name match. Items we
+            // can't resolve to the menu are excluded from the denominator
+            // so the ratio reflects what we can actually verify.
+            const menuById = new Map<number, AdminMenuItem>(menu.map(m => [m.id, m]));
+            const menuByName = new Map<string, AdminMenuItem>(
+              menu.map(m => [m.name.trim().toLowerCase(), m]),
+            );
+            const lineItemsRaw = (form.lineItems as QuoteLineItem[] | null | undefined) ?? [];
+            const orderItemsRaw = (form.orderItems as OrderItem[] | null | undefined) ?? [];
+            const itemsForCheck: { name: string; menuItemId: number | null }[] =
+              lineItemsRaw.length > 0
+                ? lineItemsRaw.map(li => ({ name: li.name, menuItemId: li.menuItemId ?? null }))
+                : orderItemsRaw.map(oi => ({ name: oi.name, menuItemId: null }));
+            let resolved = 0;
+            let eligible = 0;
+            for (const it of itemsForCheck) {
+              const m = (it.menuItemId != null ? menuById.get(it.menuItemId) : undefined)
+                ?? menuByName.get(it.name.trim().toLowerCase());
+              if (!m) continue;
+              resolved++;
+              if (m.otdEligible) eligible++;
+            }
+            const totalItems = itemsForCheck.length;
+            const allResolvedEligible = resolved > 0 && eligible === resolved;
+            const subtotalRaw = form.subtotal != null ? Number(form.subtotal) : null;
+            const subtotalNum = subtotalRaw != null && Number.isFinite(subtotalRaw)
+              ? subtotalRaw
+              : (form.orderTotal != null ? (() => {
+                  const n = Number(String(form.orderTotal).replace(/[^0-9.\-]/g, ""));
+                  return Number.isFinite(n) ? n : null;
+                })() : null);
+            const canEvalWaiver = setupFee != null && waiver != null && subtotalNum != null;
+            const waivedHere = canEvalWaiver && subtotalNum >= waiver;
             return (
               <div className="border border-orange-200 bg-orange-50/60 rounded-xl overflow-hidden">
                 <div className="px-4 py-2 border-b border-orange-200 bg-orange-100/60 flex items-center gap-2">
@@ -1398,10 +1432,22 @@ function DetailPanel({
                   <span className="text-xs font-bold uppercase tracking-wider text-orange-900">
                     On the Dash Experience
                   </span>
-                  {waivedHere && (
-                    <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
-                      Setup fee waived
-                    </span>
+                  {canEvalWaiver && (
+                    waivedHere ? (
+                      <span
+                        className="ml-auto text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full"
+                        title={`Subtotal ${formatCurrency(subtotalNum!)} ≥ waiver threshold ${formatCurrency(waiver!)}`}
+                      >
+                        Setup fee waived
+                      </span>
+                    ) : (
+                      <span
+                        className="ml-auto text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full"
+                        title={`Subtotal ${formatCurrency(subtotalNum!)} < waiver threshold ${formatCurrency(waiver!)} — fee will be billed`}
+                      >
+                        Setup fee applies
+                      </span>
+                    )
                   )}
                 </div>
                 <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
@@ -1425,9 +1471,41 @@ function DetailPanel({
                     <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Max extra hours</div>
                     <div className="font-bold text-orange-900">{maxAdd != null ? `${maxAdd} hr` : "—"}</div>
                   </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Eligible items</div>
+                    {totalItems === 0 ? (
+                      <div className="font-bold text-orange-900/60">—</div>
+                    ) : resolved === 0 ? (
+                      <div
+                        className="font-bold text-orange-900/60"
+                        title="None of these items match the current menu, so eligibility can't be confirmed."
+                      >
+                        Unknown
+                      </div>
+                    ) : allResolvedEligible ? (
+                      <div
+                        className="font-bold text-emerald-700 inline-flex items-center gap-1"
+                        title={`All ${eligible} of ${resolved} matched item(s) are flagged On the Dash–eligible.`}
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        {eligible}/{resolved}
+                      </div>
+                    ) : (
+                      <div
+                        className="font-bold text-amber-700 inline-flex items-center gap-1"
+                        title={`Only ${eligible} of ${resolved} matched item(s) are still flagged On the Dash–eligible — ${resolved - eligible} item(s) would now be blocked.`}
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                        {eligible}/{resolved}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <p className="px-4 pb-3 text-[11px] text-orange-900/70 italic">
                   These terms were snapshotted when the customer submitted this inquiry, so they remain accurate even if event settings change later.
+                  {totalItems > 0 && resolved < totalItems && (
+                    <> {totalItems - resolved} item(s) couldn't be matched to the current menu.</>
+                  )}
                 </p>
               </div>
             );
@@ -1605,6 +1683,7 @@ export default function CateringOrders() {
       size5Label?: string | null; size5Servings?: number | null; size5Price?: string | number | null;
       tier2Qty?: number | null; tier2Price?: string | number | null;
       tier3Qty?: number | null; tier3Price?: string | number | null;
+      otdEligible?: boolean | null;
     };
     const num = (v: unknown): number | null => {
       if (v == null || v === "") return null;
@@ -1642,6 +1721,7 @@ export default function CateringOrders() {
             tier2Price: num(m.tier2Price),
             tier3Qty: num(m.tier3Qty),
             tier3Price: num(m.tier3Price),
+            otdEligible: m.otdEligible === true,
           };
         }),
       ))
@@ -1801,14 +1881,21 @@ export default function CateringOrders() {
                               <ShoppingCart className="w-2.5 h-2.5" /> Cart
                             </span>
                           )}
-                          {inquiry.serviceMode === "on_the_dash" && (
+                          {inquiry.serviceMode === "on_the_dash" ? (
                             <span
                               className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-full font-bold uppercase tracking-wider"
                               title="On the Dash Experience — food trailer cooking on-site"
                             >
                               <Flame className="w-2.5 h-2.5" /> On the Dash
                             </span>
-                          )}
+                          ) : inquiry.serviceMode === "drop_off" ? (
+                            <span
+                              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded-full font-semibold uppercase tracking-wider"
+                              title="Standard Drop-Off catering"
+                            >
+                              <Truck className="w-2.5 h-2.5" /> Drop-Off
+                            </span>
+                          ) : null}
                           {inquiry.quoteNumber && (
                             <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded-full">
                               {inquiry.quoteNumber}
