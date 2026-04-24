@@ -1338,7 +1338,7 @@ function PaymentModal({
               <span className="text-xs font-medium">
                 {plates && plates.length > 0
                   ? `${plates.length} plate${plates.length === 1 ? "" : "s"}`
-                  : "Optional · single ticket"}
+                  : "1 plate (default)"}
               </span>
             </button>
             <div className="grid gap-2.5 mt-4">
@@ -1608,8 +1608,15 @@ function PlatingModal({
       // Defensive deep-clone — we mutate plate items via setState below.
       return initial.map(p => ({ label: p.label, items: p.items.map(i => ({ ...i })) }));
     }
-    // Default: one empty plate so the cashier can immediately start assigning.
-    return [{ label: "Plate 1", items: [] }];
+    // Default: one plate pre-filled with the entire cart. Spec calls for the
+    // cashier to start from "everything on plate 1" and split outward, not
+    // from an empty plate they have to load up by hand.
+    return [{
+      label: "Plate 1",
+      items: order.items
+        .filter(i => i.quantity > 0)
+        .map(i => ({ itemId: i.itemId, quantity: i.quantity })),
+    }];
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
