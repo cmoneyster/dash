@@ -242,6 +242,7 @@ export const CreateMenuItemBody = zod.object({
   eventTakerVisible: zod.boolean().optional(),
   eventTakerPrice: zod.number().nullish(),
   eventStock: zod.number().nullish(),
+  otdEligible: zod.boolean().optional(),
 });
 
 /**

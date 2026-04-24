@@ -750,6 +750,8 @@ components:
         eventStock:
           type: integer
           nullable: true
+        otdEligible:
+          type: boolean
       required:
         - name
         - description
