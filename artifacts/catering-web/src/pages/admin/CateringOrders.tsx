@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
+import { computeEffectivePriceDetail } from "@workspace/pricing";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -261,18 +262,12 @@ function lineItemDescriptor(li: QuoteLineItem): string | null {
 
 // Compute the appropriate per-unit price for a given quantity, picking the
 // best matching tier break. Returns the price + whether a tier was applied.
+// Delegates to the shared `@workspace/pricing` helper so the admin quote
+// editor can never drift from the customer cart preview or the server-side
+// order checkout (see lib/pricing).
 function priceForQuantity(m: AdminMenuItem, qty: number): { price: number; tierApplied: boolean } {
-  let price = m.price;
-  let tierApplied = false;
-  if (m.tier2Qty != null && m.tier2Price != null && qty >= m.tier2Qty) {
-    price = m.tier2Price;
-    tierApplied = true;
-  }
-  if (m.tier3Qty != null && m.tier3Price != null && qty >= m.tier3Qty) {
-    price = m.tier3Price;
-    tierApplied = true;
-  }
-  return { price, tierApplied };
+  const { price, tier } = computeEffectivePriceDetail(m, qty, null);
+  return { price, tierApplied: tier === "tier2" || tier === "tier3" };
 }
 
 function MenuPicker({ menu, onPick }: {

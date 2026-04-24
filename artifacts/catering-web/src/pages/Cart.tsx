@@ -14,6 +14,7 @@ import {
   getGetCartQueryKey
 } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
+import { computeEffectivePriceDetail } from "@workspace/pricing";
 import { formatCurrency } from "@/lib/utils";
 import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw, CalendarDays, X as XIcon, Truck, Flame, AlertTriangle } from "lucide-react";
 import {
@@ -466,10 +467,14 @@ export default function Cart() {
                         const basePrice: number = item.menuItem.price;
                         const minQty: number = anyItem.menuItem?.minimumOrderQty ?? (item.menuItem as any).minimumOrderQty ?? 1;
                         const hasSavings = sizePrice == null && effectivePrice < basePrice;
+                        // Tier label inference is routed through the shared
+                        // pricing helper so the badge can never claim a tier
+                        // the server didn't actually apply (see lib/pricing).
                         const tierLabel = sizePrice == null ? (() => {
                           const mi = item.menuItem as any;
-                          if (mi.tier3Qty && mi.tier3Price && item.quantity >= mi.tier3Qty) return "Tier 3 price";
-                          if (mi.tier2Qty && mi.tier2Price && item.quantity >= mi.tier2Qty) return "Tier 2 price";
+                          const { tier } = computeEffectivePriceDetail(mi, item.quantity, null);
+                          if (tier === "tier3") return "Tier 3 price";
+                          if (tier === "tier2") return "Tier 2 price";
                           return null;
                         })() : null;
 
