@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer, Pause, Play, Ban, ShoppingBag, Users, X, AlertTriangle } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer, Pause, Play, Ban, ShoppingBag, Users, X, AlertTriangle, Minus, Plus } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -7,15 +7,11 @@ const POLL_INTERVAL = 6000;
 const STOCK_POLL_INTERVAL = 15000;
 const LS_KEY = "kitchen_item_checks";
 const LOW_STOCK_LS_KEY = "kitchen_low_stock_seen";
-const LOW_STOCK_THRESHOLD_LS_KEY = "kitchen_low_stock_threshold";
 const DEFAULT_LOW_STOCK_THRESHOLD = 5;
+const LOW_STOCK_THRESHOLD_MIN = 1;
+const LOW_STOCK_THRESHOLD_MAX = 20;
 const LOW_STOCK_TOAST_TTL = 12000;
 
-function getLowStockThreshold(): number {
-  const raw = localStorage.getItem(LOW_STOCK_THRESHOLD_LS_KEY);
-  const n = raw === null ? NaN : parseInt(raw);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_LOW_STOCK_THRESHOLD;
-}
 function loadLowStockSeen(): Set<number> {
   try {
     const raw = JSON.parse(localStorage.getItem(LOW_STOCK_LS_KEY) ?? "[]");
@@ -293,6 +289,22 @@ export default function KitchenDisplay() {
   const lowStockSeenRef = useRef<Set<number>>(loadLowStockSeen());
   const stockPollCountRef = useRef(0);
 
+  // Server-side low-stock threshold (shared with the SMS alert + admin UI).
+  // Defaults to 5; fetched once after auth. The ref mirrors state so the
+  // stable-identity fetchStock callback can read the latest value on each poll
+  // without re-creating + restarting the polling interval.
+  const [lowStockThreshold, setLowStockThreshold] = useState<number>(DEFAULT_LOW_STOCK_THRESHOLD);
+  const lowStockThresholdRef = useRef<number>(DEFAULT_LOW_STOCK_THRESHOLD);
+  useEffect(() => { lowStockThresholdRef.current = lowStockThreshold; }, [lowStockThreshold]);
+  // Until the server-side threshold has been fetched at least once, skip
+  // the low-stock detection in fetchStock — otherwise a poll using the
+  // default 5 could mis-seed lowStockSeenRef and make a real persisted
+  // value of, say, 8 fire spurious toasts on the next poll for items
+  // already in the 6–8 band.
+  const lowStockThresholdLoadedRef = useRef(false);
+  const [thresholdSaving, setThresholdSaving] = useState(false);
+  const [thresholdError, setThresholdError] = useState("");
+
   const dismissLowStockToast = useCallback((id: string) => {
     setLowStockToasts(prev => prev.filter(t => t.id !== id));
   }, []);
@@ -328,7 +340,11 @@ export default function KitchenDisplay() {
         // Low-stock detection. Skip alerts on the very first poll after page
         // load — we only seed the "seen" set so a fresh-loaded display doesn't
         // dump a wall of toasts for items that were already low.
-        const threshold = getLowStockThreshold();
+        // Also skip entirely until the server-side threshold has loaded; using
+        // the default 5 here would mis-seed the "seen" set and cause spurious
+        // toasts on the next poll if the persisted value is higher.
+        if (!lowStockThresholdLoadedRef.current) return;
+        const threshold = lowStockThresholdRef.current;
         const seen = new Set(lowStockSeenRef.current);
         const newToasts: LowStockToast[] = [];
         const isFirstPoll = stockPollCountRef.current === 0;
@@ -384,6 +400,77 @@ export default function KitchenDisplay() {
     const id = setInterval(() => fetchStock(authedPassword), STOCK_POLL_INTERVAL);
     return () => clearInterval(id);
   }, [authedPassword, fetchStock]);
+
+  // Pull the kitchen-controlled low-stock threshold once after auth. Falls
+  // back to DEFAULT_LOW_STOCK_THRESHOLD if the request fails so the UI keeps
+  // working offline.
+  useEffect(() => {
+    if (!authedPassword) return;
+    let cancelled = false;
+    fetch(`${BASE}/api/event-ordering/low-stock-threshold`, {
+      headers: { Authorization: `Bearer ${authedPassword}` },
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled) return;
+        if (data) {
+          const n = Number(data.threshold);
+          if (Number.isFinite(n) && n >= LOW_STOCK_THRESHOLD_MIN && n <= 1000) {
+            setLowStockThreshold(n);
+          }
+        }
+        // Mark loaded even on a failed/empty response so we fall back to the
+        // default and stop blocking low-stock detection in fetchStock.
+        lowStockThresholdLoadedRef.current = true;
+      })
+      .catch(() => {
+        if (cancelled) return;
+        lowStockThresholdLoadedRef.current = true;
+      });
+    return () => { cancelled = true; };
+  }, [authedPassword]);
+
+  const updateLowStockThreshold = useCallback(async (next: number) => {
+    if (!authedPassword) return;
+    const clamped = Math.max(LOW_STOCK_THRESHOLD_MIN, Math.min(LOW_STOCK_THRESHOLD_MAX, Math.round(next)));
+    if (clamped === lowStockThreshold) return;
+    setThresholdSaving(true);
+    setThresholdError("");
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/low-stock-threshold`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
+        body: JSON.stringify({ threshold: clamped }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setThresholdError(err.error ?? "Could not update threshold");
+        return;
+      }
+      const data = await res.json();
+      const saved = Number(data.threshold);
+      const finalThreshold = Number.isFinite(saved) ? saved : clamped;
+      setLowStockThreshold(finalThreshold);
+      // Re-seed the "seen" set so changing the threshold doesn't dump a wall
+      // of toasts for items that were already at-or-below the new value.
+      // Items currently low under the new threshold are added (suppressing a
+      // toast on the next poll); items above are removed so a future dip will
+      // alert again.
+      const newSeen = new Set<number>();
+      for (const item of stockItems) {
+        const stock = item.eventStock;
+        if (stock !== null && stock > 0 && stock <= finalThreshold) {
+          newSeen.add(item.id);
+        }
+      }
+      lowStockSeenRef.current = newSeen;
+      saveLowStockSeen(newSeen);
+    } catch {
+      setThresholdError("Network error");
+    } finally {
+      setThresholdSaving(false);
+    }
+  }, [authedPassword, lowStockThreshold, stockItems]);
 
   async function saveStockItem(itemId: number, value: string | null) {
     if (!authedPassword) return;
@@ -834,7 +921,15 @@ export default function KitchenDisplay() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {view === "stock" && (
           <div className="max-w-2xl mx-auto">
-            <p className="text-white/40 text-sm mb-6">Set stock to a number to limit how many can be ordered. Leave blank (∞) for unlimited.</p>
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+              <p className="text-white/40 text-sm flex-1 min-w-[16rem]">Set stock to a number to limit how many can be ordered. Leave blank (∞) for unlimited.</p>
+              <LowStockThresholdControl
+                value={lowStockThreshold}
+                onChange={updateLowStockThreshold}
+                saving={thresholdSaving}
+                error={thresholdError}
+              />
+            </div>
             {stockItems.length === 0 ? (
               <div className="text-center py-16 text-white/30">
                 <Package className="w-10 h-10 mx-auto mb-3 opacity-40" />
@@ -851,7 +946,7 @@ export default function KitchenDisplay() {
                       const saving = stockSaving.has(item.id);
                       const isUnlimited = item.eventStock === null;
                       const isSoldOut = item.eventStock === 0;
-                      const threshold = getLowStockThreshold();
+                      const threshold = lowStockThreshold;
                       const isLow = item.eventStock !== null && item.eventStock > 0 && item.eventStock <= threshold;
                       return (
                         <div
@@ -1194,6 +1289,54 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
           <Receipt size={12} /> Print receipt
         </button>
       </div>
+    </div>
+  );
+}
+
+function LowStockThresholdControl({
+  value, onChange, saving, error,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  saving: boolean;
+  error: string;
+}) {
+  const canDec = !saving && value > LOW_STOCK_THRESHOLD_MIN;
+  const canInc = !saving && value < LOW_STOCK_THRESHOLD_MAX;
+  return (
+    <div className="flex flex-col items-end gap-1 shrink-0">
+      <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-1.5">
+        <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+        <span className="text-xs font-semibold text-amber-300 whitespace-nowrap hidden sm:inline">Low-stock alert at</span>
+        <span className="text-xs font-semibold text-amber-300 whitespace-nowrap sm:hidden">Alert at</span>
+        <button
+          type="button"
+          onClick={() => onChange(value - 1)}
+          disabled={!canDec}
+          aria-label="Decrease low-stock threshold"
+          title="Decrease"
+          className="w-7 h-7 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+        <span className="min-w-[1.75rem] text-center text-sm font-extrabold tabular-nums text-amber-200">{value}</span>
+        <button
+          type="button"
+          onClick={() => onChange(value + 1)}
+          disabled={!canInc}
+          aria-label="Increase low-stock threshold"
+          title="Increase"
+          className="w-7 h-7 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+        <span className="text-xs font-semibold text-amber-300 whitespace-nowrap">or fewer</span>
+        {saving && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300 ml-1" />}
+      </div>
+      {error
+        ? <p className="text-rose-400 text-xs">{error}</p>
+        : <p className="text-white/30 text-[10px] uppercase tracking-wider">Saved for everyone</p>
+      }
     </div>
   );
 }

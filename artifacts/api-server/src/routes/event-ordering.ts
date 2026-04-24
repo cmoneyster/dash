@@ -515,6 +515,47 @@ router.get("/event-ordering/stock", verifyKitchenPassword, async (req, res) => {
   }
 });
 
+// ── Low-stock alert threshold ───────────────────────────────────────────────
+// Kitchen-controlled threshold for the "Low" stock badge + toast on the
+// Kitchen Display, and for the server-side SMS alert. Persisted on
+// event_settings.low_stock_alert_threshold (shared with the admin Event
+// Settings UI, which can set a wider 1–1000 range). The Kitchen Display
+// itself is intentionally constrained to a sensible 1–20 range so a
+// fat-finger tap can't push it to nonsense.
+router.get("/event-ordering/low-stock-threshold", verifyKitchenPassword, async (req, res) => {
+  try {
+    const settings = await getEventSettings();
+    const threshold = settings?.lowStockAlertThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
+    res.json({ threshold, defaultThreshold: DEFAULT_LOW_STOCK_THRESHOLD });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching low-stock threshold");
+    res.status(500).json({ error: "Failed to fetch low-stock threshold" });
+  }
+});
+
+router.put("/event-ordering/low-stock-threshold", verifyKitchenPassword, async (req, res) => {
+  try {
+    const { threshold } = req.body as { threshold?: number | string };
+    const n = Number(threshold);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 20) {
+      res.status(400).json({ error: "threshold must be an integer between 1 and 20" });
+      return;
+    }
+    const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    if (existing) {
+      await db.update(eventSettingsTable)
+        .set({ lowStockAlertThreshold: n, updatedAt: new Date() })
+        .where(eq(eventSettingsTable.id, 1));
+    } else {
+      await db.insert(eventSettingsTable).values({ id: 1, eventName: "", lowStockAlertThreshold: n });
+    }
+    res.json({ threshold: n, defaultThreshold: DEFAULT_LOW_STOCK_THRESHOLD });
+  } catch (err) {
+    req.log.error({ err }, "Error updating low-stock threshold");
+    res.status(500).json({ error: "Failed to update low-stock threshold" });
+  }
+});
+
 router.patch("/event-ordering/stock/:itemId", verifyKitchenPassword, async (req, res): Promise<void> => {
   try {
     const itemId = parseInt(String(req.params.itemId));
