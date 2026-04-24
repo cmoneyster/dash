@@ -30,8 +30,12 @@ app.use(cors());
 // raw-body parser for that one path BEFORE express.json so the buffer is
 // preserved; the route handler parses the JSON itself.
 app.use("/api/webhooks/square", express.raw({ type: "*/*", limit: "1mb" }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 2mb covers the menu CSV apply endpoint which echoes parsed CSVs back to
+// the server (real exports approach a few hundred KB; the multipart upload
+// cap on the same feature is 10MB). All other endpoints send much smaller
+// payloads, so this is comfortably below DoS-territory.
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
 app.use("/api", router);
 

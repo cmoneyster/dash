@@ -4,6 +4,7 @@ import healthRouter from "./health";
 import menuRouter from "./menu";
 import adminAuthRouter from "./admin-auth";
 import adminMenuRouter from "./admin-menu";
+import adminMenuCsvRouter from "./admin-menu-csv";
 import adminImagesRouter from "./admin-images";
 import eventsRouter from "./events";
 import cartRouter from "./cart";
@@ -57,6 +58,7 @@ router.use("/admin/plans", requireAdminAuth);
 router.use("/admin/categories", requireAdminAuth);
 
 router.use(adminMenuRouter);
+router.use(adminMenuCsvRouter);
 router.use(adminCategoriesRouter);
 router.use(adminStatsRouter);
 router.use(adminImagesRouter);

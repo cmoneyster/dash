@@ -23,6 +23,7 @@
     "drizzle-orm": "catalog:",
     "express": "^5",
     "google-auth-library": "^10.6.2",
+    "jszip": "^3.10.1",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.4",
     "pdfkit": "^0.18.0",

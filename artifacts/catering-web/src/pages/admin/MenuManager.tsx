@@ -9,10 +9,11 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon } from "lucide-react";
+import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon, Upload } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { getAdminToken } from "@/components/AdminGuard";
-import { useAdminCategories } from "@/lib/categories";
+import { useAdminCategories, ADMIN_CATEGORIES_QUERY_KEY } from "@/lib/categories";
+import { MenuCsvDialog, ExportMenuButton, AppliedToast } from "./MenuCsvDialog";
 
 interface ImageRecord {
   id: number;
@@ -123,6 +124,11 @@ export default function MenuManager() {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isCsvDialogOpen, setIsCsvDialogOpen] = useState(false);
+  const [applyResult, setApplyResult] = useState<{
+    categoriesCreated: number; categoriesUpdated: number; categoriesDeleted: number;
+    itemsCreated: number; itemsUpdated: number; itemsDeleted: number;
+  } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [isNewCategory, setIsNewCategory] = useState(false);
 
@@ -314,13 +320,35 @@ export default function MenuManager() {
           <h1 className="font-display font-bold text-4xl mb-2">Menu Manager</h1>
           <p className="text-muted-foreground">Add, edit, or remove items from your catering menu.</p>
         </div>
-        <button
-          onClick={openNew}
-          className="px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors flex items-center gap-2"
-        >
-          <Plus className="w-5 h-5" /> Add Item
-        </button>
+        <div className="flex gap-2">
+          <ExportMenuButton />
+          <button
+            onClick={() => setIsCsvDialogOpen(true)}
+            className="px-4 py-2.5 bg-secondary text-foreground font-semibold rounded-xl hover:bg-secondary/70 transition-colors flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4" /> Import CSV
+          </button>
+          <button
+            onClick={openNew}
+            className="px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" /> Add Item
+          </button>
+        </div>
       </div>
+
+      {isCsvDialogOpen && (
+        <MenuCsvDialog
+          onClose={() => setIsCsvDialogOpen(false)}
+          onApplied={(result) => {
+            setIsCsvDialogOpen(false);
+            setApplyResult(result);
+            queryClient.invalidateQueries({ queryKey: getAdminListMenuItemsQueryKey() });
+            queryClient.invalidateQueries({ queryKey: ADMIN_CATEGORIES_QUERY_KEY });
+          }}
+        />
+      )}
+      {applyResult && <AppliedToast result={applyResult} onDone={() => setApplyResult(null)} />}
 
       <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
