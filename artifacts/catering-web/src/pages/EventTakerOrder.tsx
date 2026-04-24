@@ -1686,8 +1686,10 @@ function PlatingModal({
     setError("");
     try {
       const cleaned = plates
-        .map(p => ({
-          label: (p.label || "").trim() || "Plate",
+        .map((p, idx) => ({
+          // Mirror server numbering ("Plate 1", "Plate 2", …) so a blank
+          // label round-trips to a stable, predictable name.
+          label: (p.label || "").trim() || `Plate ${idx + 1}`,
           items: p.items.filter(ln => ln.quantity > 0),
         }))
         .filter(p => p.items.length > 0);
@@ -1800,6 +1802,14 @@ function PlatingModal({
                   return (
                     <div key={ln.itemId} className="flex items-center gap-2 text-sm">
                       <span className="flex-1 truncate">{ln.name}</span>
+                      <span
+                        className={`text-[11px] tabular-nums whitespace-nowrap font-medium ${
+                          remaining > 0 ? "text-amber-700" : "text-muted-foreground"
+                        }`}
+                        data-testid={`text-plate-${plateIdx}-item-${ln.itemId}-remaining`}
+                      >
+                        Remaining: {remaining}
+                      </span>
                       <button
                         type="button"
                         onClick={() => bumpItem(plateIdx, ln.itemId, -1)}
