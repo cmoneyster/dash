@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Heart, HeartOff, Info, ChevronRight } from "lucide-react";
+import { Plus, Heart, HeartOff, Info, ChevronRight, Flame } from "lucide-react";
 import type { MenuItem } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { isPanSizesItem, getPanSizesFromPrice } from "@/lib/menu-types";
@@ -58,6 +58,15 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan }: MenuCard
             {minQty > 1 && (
               <span className="px-3 py-1 bg-amber-500/90 text-white backdrop-blur-sm text-xs font-bold rounded-full shadow-sm">
                 Min. {minQty}
+              </span>
+            )}
+            {item.otdEligible && (
+              <span
+                className="px-3 py-1 bg-orange-600/90 text-white backdrop-blur-sm text-xs font-bold uppercase tracking-wider rounded-full shadow-sm flex items-center gap-1"
+                title="On the Dash Experience — we cook this one fresh on-site from our food trailer"
+              >
+                <Flame className="w-3 h-3" />
+                On the Dash
               </span>
             )}
           </div>
@@ -166,6 +175,15 @@ export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan }: M
           {minQty > 1 && (
             <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">
               Min. {minQty}
+            </span>
+          )}
+          {item.otdEligible && (
+            <span
+              className="px-2 py-0.5 bg-orange-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-full flex items-center gap-1"
+              title="On the Dash Experience — we cook this one fresh on-site from our food trailer"
+            >
+              <Flame className="w-3 h-3" />
+              On the Dash
             </span>
           )}
         </div>

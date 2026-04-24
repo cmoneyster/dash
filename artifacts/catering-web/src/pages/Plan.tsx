@@ -18,6 +18,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useCategories, type Category } from "@/lib/categories";
+import { ServiceModeBanner } from "@/components/ServiceModeBanner";
+import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
 
 // ── Category helpers (derived from API) ──────────────────────────────────────
 
@@ -226,7 +228,7 @@ export default function Plan() {
   const plannerSyncTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const planPollTimer      = useRef<ReturnType<typeof setInterval> | null>(null);
   const receivedFromPoll   = useRef(false); // prevents auto-save echo after a poll update
-  const currentPlannerRef  = useRef({ guests: 20, savoryPPG: 3, sweetPPG: 2, servingsPPG: 4, piecesMap: {} as Record<number,number>, servingsMap: {} as Record<number,number>, panQtys: {} as Record<number,Record<number,number>> });
+  const currentPlannerRef  = useRef({ guests: 20, savoryPPG: 3, sweetPPG: 2, servingsPPG: 4, piecesMap: {} as Record<number,number>, servingsMap: {} as Record<number,number>, panQtys: {} as Record<number,Record<number,number>>, serviceMode: "drop_off" as ServiceMode });
   const currentItemIdsRef  = useRef<string>("[]");
   const shareUrl = shareToken ? buildShareUrl(shareToken) : null;
 
@@ -234,7 +236,7 @@ export default function Plan() {
   useEffect(() => { shareTokenRef.current = shareToken; }, [shareToken]);
 
   const getPlannerState = () => ({
-    guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys,
+    guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys, serviceMode,
   });
 
   const openShare = async () => {
@@ -392,6 +394,8 @@ export default function Plan() {
   const [piecesMap,   setPiecesMap]   = useState<Record<number, number>>({});
   const [servingsMap, setServingsMap] = useState<Record<number, number>>({});
   const [panQtys,     setPanQtys]     = useState<Record<number, Record<number, number>>>({}); // planItemId → slotIdx → qty
+  const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());
+  useEffect(() => { saveServiceMode(serviceMode); }, [serviceMode]);
 
   // ── Persist planner state to localStorage so it survives navigation ──
   useEffect(() => {
@@ -438,11 +442,11 @@ export default function Plan() {
       await fetch(`/api/plan/share/${tok}/planner`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plannerState: { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys } }),
+        body: JSON.stringify({ plannerState: { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys, serviceMode } }),
       }).catch(() => {});
     }, 800);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shareToken, guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys]);
+  }, [shareToken, guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys, serviceMode]);
 
   // Poll for changes made by the sharee (only active once a share token exists)
   useEffect(() => {
@@ -465,6 +469,7 @@ export default function Plan() {
         const ps = data.plannerState;
         if (!ps) return;
         const cur = currentPlannerRef.current;
+        const polledMode: ServiceMode = ps.serviceMode === "on_the_dash" ? "on_the_dash" : "drop_off";
         const changed =
           ps.guests !== cur.guests ||
           ps.savoryPPG !== cur.savoryPPG ||
@@ -472,9 +477,11 @@ export default function Plan() {
           ps.servingsPPG !== cur.servingsPPG ||
           JSON.stringify(ps.piecesMap) !== JSON.stringify(cur.piecesMap) ||
           JSON.stringify(ps.servingsMap) !== JSON.stringify(cur.servingsMap) ||
-          JSON.stringify(ps.panQtys) !== JSON.stringify(cur.panQtys);
+          JSON.stringify(ps.panQtys) !== JSON.stringify(cur.panQtys) ||
+          polledMode !== cur.serviceMode;
         if (!changed) return;
         receivedFromPoll.current = true;
+        if (polledMode !== cur.serviceMode) setServiceMode(polledMode);
         if (ps.guests !== cur.guests) setGuests(ps.guests);
         if (ps.savoryPPG !== cur.savoryPPG) setSavoryPPG(ps.savoryPPG);
         if (ps.sweetPPG !== cur.sweetPPG) setSweetPPG(ps.sweetPPG);
@@ -502,9 +509,9 @@ export default function Plan() {
 
   // Keep currentPlannerRef up to date for poll comparisons
   useEffect(() => {
-    currentPlannerRef.current = { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys };
+    currentPlannerRef.current = { guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys, serviceMode };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys]);
+  }, [guests, savoryPPG, sweetPPG, servingsPPG, piecesMap, servingsMap, panQtys, serviceMode]);
 
   // Keep currentItemIdsRef in sync with plan items
   useEffect(() => {
@@ -783,6 +790,8 @@ export default function Plan() {
       )}
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
+
+        <ServiceModeBanner mode={serviceMode} onChange={setServiceMode} />
 
         {/* ── Page header ── */}
         <div className="flex items-center gap-4 mb-10">

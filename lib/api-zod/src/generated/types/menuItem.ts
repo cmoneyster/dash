@@ -38,5 +38,7 @@ export interface MenuItem {
   eventTakerPrice?: number | null;
   /** Optional inventory cap for event ordering. Decremented on each event/POS order; null means unlimited. */
   eventStock?: number | null;
+  /** Whether this item can be cooked fresh on-site as part of the "On the Dash Experience" food trailer service. Drop-off-only items default to false. */
+  otdEligible?: boolean;
   createdAt: Date;
 }

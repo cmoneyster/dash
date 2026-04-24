@@ -97,6 +97,7 @@ const ITEM_FIELDS: FieldSpec<ItemKey>[] = [
   { key: "size5Servings",     column: "size5_servings",    type: "int_nullable", default: null },
   { key: "size5Price",        column: "size5_price",       type: "decimal_nullable", default: null },
   { key: "internalNotes",     column: "internal_notes",    type: "string_nullable", default: null },
+  { key: "otdEligible",       column: "otd_eligible",      type: "bool", default: false },
   // Note: `lowStockAlertSent` and `createdAt` are intentionally excluded —
   // they are runtime/system state (alert deduplication and insertion time),
   // not admin-configurable. See lib/db/src/schema/menu-items.ts.

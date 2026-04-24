@@ -5,6 +5,7 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateOrderBodyServiceMode } from "./createOrderBodyServiceMode";
 
 export interface CreateOrderBody {
   sessionId: string;
@@ -15,5 +16,7 @@ export interface CreateOrderBody {
   eventType?: string | null;
   guestCount?: number | null;
   serviceStyle?: string | null;
+  /** Whether the customer wants standard drop-off catering or the On the Dash on-site food trailer experience. */
+  serviceMode?: CreateOrderBodyServiceMode;
   deliveryNotes?: string | null;
 }

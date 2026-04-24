@@ -31,6 +31,18 @@ export const eventSettingsTable = pgTable("event_settings", {
   // disabled.
   lowStockAlertPhones: text("low_stock_alert_phones").array().notNull().default(sql`ARRAY[]::text[]`),
   lowStockAlertThreshold: integer("low_stock_alert_threshold"),
+  // ── On the Dash Experience pricing config ──────────────────────────────────
+  // Controls the on-site food trailer service mode. Defaults match the
+  // launch pricing: $500 setup fee, waived once subtotal is $2,000+,
+  // includes 2 hours of on-site service, then $100/hour up to 3 additional
+  // hours. Admins edit these in /admin/event-settings; the cart route
+  // snapshots the live values onto every catering inquiry so historic
+  // quotes stay stable even after price changes.
+  otdSetupFee: numeric("otd_setup_fee", { precision: 10, scale: 2 }).notNull().default("500"),
+  otdFeeWaiverThreshold: numeric("otd_fee_waiver_threshold", { precision: 10, scale: 2 }).notNull().default("2000"),
+  otdIncludedHours: numeric("otd_included_hours", { precision: 5, scale: 2 }).notNull().default("2"),
+  otdAdditionalHourRate: numeric("otd_additional_hour_rate", { precision: 10, scale: 2 }).notNull().default("100"),
+  otdMaxAdditionalHours: integer("otd_max_additional_hours").notNull().default(3),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

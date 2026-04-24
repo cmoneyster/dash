@@ -72,6 +72,7 @@ router.post("/admin/menu", async (req, res) => {
       size4Label, size4Servings, size4Price,
       size5Label, size5Servings, size5Price,
       internalNotes,
+      otdEligible,
     } = req.body;
     const [item] = await db.insert(menuItemsTable).values({
       name,
@@ -110,6 +111,7 @@ router.post("/admin/menu", async (req, res) => {
       size5Servings: size5Servings != null ? parseInt(String(size5Servings)) : null,
       size5Price: size5Price != null ? String(size5Price) : null,
       internalNotes: internalNotes ? String(internalNotes).trim() || null : null,
+      otdEligible: otdEligible ?? false,
     }).returning();
     await ensureCategoryExists(category);
     res.status(201).json(formatItem(item));
@@ -136,6 +138,7 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
       size4Label, size4Servings, size4Price,
       size5Label, size5Servings, size5Price,
       internalNotes,
+      otdEligible,
     } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined)             updates.name = name;
@@ -174,6 +177,7 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
     if (size5Servings !== undefined)    updates.size5Servings = size5Servings != null ? parseInt(String(size5Servings)) : null;
     if (size5Price !== undefined)       updates.size5Price = size5Price === null ? null : String(size5Price);
     if (internalNotes !== undefined)    updates.internalNotes = internalNotes ? String(internalNotes).trim() || null : null;
+    if (otdEligible !== undefined)      updates.otdEligible = !!otdEligible;
 
     const [item] = await db.update(menuItemsTable).set(updates).where(eq(menuItemsTable.id, id)).returning();
     if (!item) {

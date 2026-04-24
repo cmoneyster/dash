@@ -15,7 +15,15 @@ import {
 } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
 import { formatCurrency } from "@/lib/utils";
-import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw, CalendarDays, X as XIcon } from "lucide-react";
+import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw, CalendarDays, X as XIcon, Truck, Flame, AlertTriangle } from "lucide-react";
+import {
+  SERVICE_MODE_KEY,
+  type ServiceMode,
+  loadServiceMode,
+  saveServiceMode,
+  computeOtdSetupFee,
+  type OtdConfig,
+} from "@/lib/serviceMode";
 import { useToast } from "@/hooks/use-toast";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
@@ -141,6 +149,9 @@ const checkoutSchema = z.object({
   eventDate: z.string().optional(),
   eventType: z.string().optional(),
   guestCount: z.coerce.number().min(1, "At least 1 guest required").optional(),
+  // Legacy free-text "service style" is kept in the schema for back-compat
+  // but no longer surfaced in the UI — it's overwritten on submit with a
+  // human label derived from the structured `serviceMode` toggle.
   serviceStyle: z.string().optional(),
   deliveryNotes: z.string().optional()
 });
@@ -174,6 +185,31 @@ export default function Cart() {
 
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
+
+  // ── Service mode (Drop-Off vs On the Dash Experience) ────────────────────
+  // Persisted in localStorage so the choice survives navigation between
+  // Menu / Plan / Cart. The structured value is sent to the server on
+  // submit; the legacy `serviceStyle` text field keeps a human label so
+  // existing admin views render without code changes.
+  const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());
+  useEffect(() => { saveServiceMode(serviceMode); }, [serviceMode]);
+
+  // Live OTD pricing config — admins can edit per event in
+  // /admin/event-settings. Falls back to the schema defaults so the
+  // checkout still works on a fresh database.
+  const [otdConfig, setOtdConfig] = useState<OtdConfig>({
+    setupFee: 500,
+    feeWaiverThreshold: 2000,
+    includedHours: 2,
+    additionalHourRate: 100,
+    maxAdditionalHours: 3,
+  });
+  useEffect(() => {
+    fetch(`${API_BASE}/api/event-settings/otd-config`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setOtdConfig(d); })
+      .catch(() => {});
+  }, []);
 
   const { data: cart, isLoading } = useGetCart({ sessionId });
   
@@ -274,6 +310,25 @@ export default function Cart() {
     }
   };
 
+  // Items in the cart that are NOT eligible for the on-site food trailer.
+  // Used to render the warning banner on the OTD toggle and to block
+  // submission until the customer either switches modes or removes them.
+  const ineligibleItems = useMemo(() => {
+    if (!cart?.items.length) return [] as { id: number; name: string }[];
+    return cart.items
+      .filter((i: any) => !i.menuItem?.otdEligible)
+      .map((i: any) => ({ id: i.id, name: i.menuItem?.name ?? "Unknown item" }));
+  }, [cart?.items]);
+  const hasIneligible = ineligibleItems.length > 0;
+  const otdBlocked = serviceMode === "on_the_dash" && hasIneligible;
+
+  // Live fee preview — mirrors orders.ts on the server. When the cart
+  // subtotal hits the waiver threshold the setup fee disappears.
+  const subtotal = cart?.total ?? 0;
+  const otdSetupFee = serviceMode === "on_the_dash" ? computeOtdSetupFee(subtotal, otdConfig) : 0;
+  const previewedTotal = subtotal + otdSetupFee;
+  const isWaiverApplied = serviceMode === "on_the_dash" && subtotal >= otdConfig.feeWaiverThreshold;
+
   const onSubmit = (data: CheckoutForm) => {
     if (!cart?.items.length) {
       toast({ title: "Cart empty", description: "Add items before checking out.", variant: "destructive" });
@@ -283,7 +338,25 @@ export default function Cart() {
       toast({ title: "Phone not verified", description: "Please verify your phone number before placing an order.", variant: "destructive" });
       return;
     }
-    createOrder.mutate({ data: { sessionId, ...data } });
+    if (otdBlocked) {
+      toast({
+        title: "Some items aren't On the Dash–eligible",
+        description: "Switch to Standard Drop-Off or remove the flagged items below before submitting.",
+        variant: "destructive",
+      });
+      return;
+    }
+    // Stamp the legacy free-text serviceStyle field with a derived label
+    // so admin views that key off it keep displaying something sensible.
+    const styleLabel = serviceMode === "on_the_dash" ? "On the Dash Experience" : "Standard Drop-Off";
+    createOrder.mutate({
+      data: {
+        sessionId,
+        ...data,
+        serviceStyle: styleLabel,
+        serviceMode,
+      },
+    });
   };
 
   const isEmpty = !cart?.items.length;
@@ -588,13 +661,98 @@ export default function Cart() {
                     </div>
                   </div>
 
+                  {/* Service Mode toggle — replaces the legacy free-text dropdown */}
                   <div>
-                    <label className="block text-sm font-semibold mb-1">Service Style</label>
-                    <select {...register("serviceStyle")} className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all">
-                      <option value="">Select style...</option>
-                      <option value="Drop-off">Drop-off</option>
-                      <option value="Food Trailer">Food Trailer On-site</option>
-                    </select>
+                    <label className="block text-sm font-semibold mb-2">How should we serve your event?</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setServiceMode("drop_off")}
+                        aria-pressed={serviceMode === "drop_off"}
+                        className={`flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+                          serviceMode === "drop_off"
+                            ? "border-primary bg-primary/5"
+                            : "border-border bg-background hover:border-primary/40"
+                        }`}
+                      >
+                        <Truck className={`w-5 h-5 shrink-0 mt-0.5 ${serviceMode === "drop_off" ? "text-primary" : "text-muted-foreground"}`} />
+                        <div>
+                          <div className="font-bold text-sm">Standard Drop-Off</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            We deliver everything ready-to-serve at your scheduled time.
+                          </div>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setServiceMode("on_the_dash")}
+                        aria-pressed={serviceMode === "on_the_dash"}
+                        className={`flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+                          serviceMode === "on_the_dash"
+                            ? "border-orange-600 bg-orange-50"
+                            : "border-border bg-background hover:border-orange-400"
+                        }`}
+                      >
+                        <Flame className={`w-5 h-5 shrink-0 mt-0.5 ${serviceMode === "on_the_dash" ? "text-orange-600" : "text-muted-foreground"}`} />
+                        <div>
+                          <div className="font-bold text-sm flex items-center gap-1.5">
+                            On the Dash Experience
+                            <span className="text-[10px] uppercase tracking-wider bg-orange-600 text-white px-1.5 py-0.5 rounded-full">New</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            Our food trailer rolls up and cooks fresh on-site for your guests.
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* OTD explainer + fee preview */}
+                    {serviceMode === "on_the_dash" && (
+                      <div className="mt-3 p-4 rounded-xl border border-orange-200 bg-orange-50/50 space-y-2">
+                        <div className="flex justify-between items-baseline text-sm">
+                          <span className="font-semibold text-orange-900">On-site setup fee</span>
+                          {isWaiverApplied ? (
+                            <span className="font-bold text-emerald-600">Waived</span>
+                          ) : (
+                            <span className="font-bold text-orange-900">{formatCurrency(otdConfig.setupFee)}</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Includes {otdConfig.includedHours} {otdConfig.includedHours === 1 ? "hour" : "hours"} of on-site service.
+                          Additional hours are {formatCurrency(otdConfig.additionalHourRate)}/hr (up to {otdConfig.maxAdditionalHours} extra),
+                          billed by our team after the event.
+                        </p>
+                        {!isWaiverApplied && otdConfig.feeWaiverThreshold > 0 && (
+                          <p className="text-xs text-orange-700">
+                            Add {formatCurrency(Math.max(0, otdConfig.feeWaiverThreshold - subtotal))} more to your order to waive the setup fee
+                            (waived at {formatCurrency(otdConfig.feeWaiverThreshold)}+).
+                          </p>
+                        )}
+                        {isWaiverApplied && (
+                          <p className="text-xs text-emerald-700">
+                            Setup fee waived because your order is over {formatCurrency(otdConfig.feeWaiverThreshold)}.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Ineligibility warning (shown only when OTD selected and cart contains drop-off-only items) */}
+                    {serviceMode === "on_the_dash" && hasIneligible && (
+                      <div className="mt-3 p-4 rounded-xl border border-destructive/40 bg-destructive/5 space-y-2">
+                        <div className="flex items-start gap-2 text-sm font-semibold text-destructive">
+                          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                          <span>These items aren't On the Dash–eligible:</span>
+                        </div>
+                        <ul className="list-disc list-inside text-sm text-destructive/90 space-y-0.5">
+                          {ineligibleItems.map(it => (
+                            <li key={it.id}>{it.name}</li>
+                          ))}
+                        </ul>
+                        <p className="text-xs text-muted-foreground">
+                          Switch to Standard Drop-Off above, or remove these items from your order to continue with On the Dash.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -603,14 +761,27 @@ export default function Cart() {
                   </div>
 
                   <div className="pt-6 border-t border-border mt-6">
+                    {/* Fee breakdown — only shows the OTD line when relevant. */}
+                    <div className="space-y-1.5 mb-4">
+                      <div className="flex justify-between items-center text-sm text-muted-foreground">
+                        <span>Food subtotal</span>
+                        <span>{formatCurrency(subtotal)}</span>
+                      </div>
+                      {serviceMode === "on_the_dash" && (
+                        <div className="flex justify-between items-center text-sm text-muted-foreground">
+                          <span>On the Dash setup fee</span>
+                          <span>{otdSetupFee === 0 ? "Waived" : formatCurrency(otdSetupFee)}</span>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex justify-between items-center mb-6">
                       <span className="text-lg font-semibold text-muted-foreground">Estimated Total</span>
-                      <span className="font-display font-bold text-3xl text-foreground">{formatCurrency(cart.total)}</span>
+                      <span className="font-display font-bold text-3xl text-foreground">{formatCurrency(previewedTotal)}</span>
                     </div>
-                    
-                    <button 
-                      type="submit" 
-                      disabled={createOrder.isPending || verifyState !== "verified"}
+
+                    <button
+                      type="submit"
+                      disabled={createOrder.isPending || verifyState !== "verified" || otdBlocked}
                       className="w-full py-4 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 hover:-translate-y-0.5 transition-all shadow-lg shadow-primary/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none"
                     >
                       {createOrder.isPending ? "Submitting…" : "Submit Catering Inquiry"}
@@ -619,6 +790,11 @@ export default function Cart() {
                     {verifyState !== "verified" && (
                       <p className="text-center text-xs text-amber-600 font-medium mt-3">
                         Verify your phone number above to place your order.
+                      </p>
+                    )}
+                    {otdBlocked && verifyState === "verified" && (
+                      <p className="text-center text-xs text-destructive font-medium mt-3">
+                        Resolve the On the Dash item warnings above to submit.
                       </p>
                     )}
                     <p className="text-center text-xs text-muted-foreground mt-2">

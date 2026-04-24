@@ -1,9 +1,29 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { blackoutDatesTable } from "@workspace/db/schema";
+import { blackoutDatesTable, eventSettingsTable } from "@workspace/db/schema";
 import { eq, between } from "drizzle-orm";
 
 const router: IRouter = Router();
+
+// Public OTD pricing config — read by Cart and Plan toggles to render
+// the live setup-fee summary, waiver hint, and explainer copy without
+// admin auth. Mirrors the OTD subset of /admin/event-settings. Returns
+// schema defaults when the row is missing so a fresh database doesn't
+// break checkout.
+router.get("/event-settings/otd-config", async (_req, res) => {
+  try {
+    const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    res.json({
+      setupFee: settings?.otdSetupFee != null ? parseFloat(settings.otdSetupFee) : 500,
+      feeWaiverThreshold: settings?.otdFeeWaiverThreshold != null ? parseFloat(settings.otdFeeWaiverThreshold) : 2000,
+      includedHours: settings?.otdIncludedHours != null ? parseFloat(settings.otdIncludedHours) : 2,
+      additionalHourRate: settings?.otdAdditionalHourRate != null ? parseFloat(settings.otdAdditionalHourRate) : 100,
+      maxAdditionalHours: settings?.otdMaxAdditionalHours ?? 3,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to load OTD config" });
+  }
+});
 
 router.get("/events/availability", async (req, res): Promise<void> => {
   try {

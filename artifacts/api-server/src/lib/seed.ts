@@ -256,6 +256,41 @@ async function runStandaloneMigrations(): Promise<void> {
     ALTER TABLE event_orders
       ADD COLUMN IF NOT EXISTS kitchen_progress jsonb
   `);
+
+  // ── On the Dash Experience (food trailer / on-site cooking) ──────────────
+  // Per-item eligibility flag — drop-off-only by default so the migration
+  // is non-disruptive. Admins flip the flag per item via the Menu CSV or
+  // direct edit.
+  await db.execute(sql`
+    ALTER TABLE menu_items
+      ADD COLUMN IF NOT EXISTS otd_eligible boolean NOT NULL DEFAULT false
+  `);
+
+  // Service mode chosen at checkout + per-inquiry snapshot of the OTD fee
+  // configuration so historical quotes never shift when the admin updates
+  // pricing. Snapshot columns are intentionally nullable — only OTD
+  // inquiries fill them in.
+  await db.execute(sql`
+    ALTER TABLE catering_inquiries
+      ADD COLUMN IF NOT EXISTS service_mode text NOT NULL DEFAULT 'drop_off',
+      ADD COLUMN IF NOT EXISTS otd_setup_fee numeric(10,2),
+      ADD COLUMN IF NOT EXISTS otd_fee_waiver_threshold numeric(10,2),
+      ADD COLUMN IF NOT EXISTS otd_included_hours numeric(5,2),
+      ADD COLUMN IF NOT EXISTS otd_additional_hour_rate numeric(10,2),
+      ADD COLUMN IF NOT EXISTS otd_max_additional_hours integer
+  `);
+
+  // Live OTD pricing config admins can edit in /admin/event-settings.
+  // Defaults match launch pricing: $500 setup, waived at $2,000 subtotal,
+  // 2 included hours, $100/hr extra up to 3 additional hours.
+  await db.execute(sql`
+    ALTER TABLE event_settings
+      ADD COLUMN IF NOT EXISTS otd_setup_fee numeric(10,2) NOT NULL DEFAULT 500,
+      ADD COLUMN IF NOT EXISTS otd_fee_waiver_threshold numeric(10,2) NOT NULL DEFAULT 2000,
+      ADD COLUMN IF NOT EXISTS otd_included_hours numeric(5,2) NOT NULL DEFAULT 2,
+      ADD COLUMN IF NOT EXISTS otd_additional_hour_rate numeric(10,2) NOT NULL DEFAULT 100,
+      ADD COLUMN IF NOT EXISTS otd_max_additional_hours integer NOT NULL DEFAULT 3
+  `);
 }
 
 async function backfillCategories(): Promise<void> {

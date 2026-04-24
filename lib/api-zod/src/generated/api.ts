@@ -74,6 +74,12 @@ export const ListMenuItemsResponseItem = zod.object({
     .describe(
       "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
     ),
+  otdEligible: zod
+    .boolean()
+    .optional()
+    .describe(
+      'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+    ),
   createdAt: zod.date(),
 });
 export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
@@ -137,6 +143,12 @@ export const GetMenuItemResponse = zod.object({
     .describe(
       "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
     ),
+  otdEligible: zod
+    .boolean()
+    .optional()
+    .describe(
+      'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+    ),
   createdAt: zod.date(),
 });
 
@@ -194,6 +206,12 @@ export const AdminListMenuItemsResponseItem = zod.object({
     .nullish()
     .describe(
       "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+    ),
+  otdEligible: zod
+    .boolean()
+    .optional()
+    .describe(
+      'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
   createdAt: zod.date(),
 });
@@ -253,6 +271,7 @@ export const UpdateMenuItemBody = zod.object({
   eventTakerVisible: zod.boolean().optional(),
   eventTakerPrice: zod.number().nullish(),
   eventStock: zod.number().nullish(),
+  otdEligible: zod.boolean().optional(),
 });
 
 export const updateMenuItemResponseMinimumOrderQtyDefault = 1;
@@ -306,6 +325,12 @@ export const UpdateMenuItemResponse = zod.object({
     .nullish()
     .describe(
       "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+    ),
+  otdEligible: zod
+    .boolean()
+    .optional()
+    .describe(
+      'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
   createdAt: zod.date(),
 });
@@ -424,6 +449,12 @@ export const GetCartResponse = zod.object({
           .describe(
             "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
           ),
+        otdEligible: zod
+          .boolean()
+          .optional()
+          .describe(
+            'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -504,6 +535,12 @@ export const AddToCartResponse = zod.object({
           .nullish()
           .describe(
             "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+          ),
+        otdEligible: zod
+          .boolean()
+          .optional()
+          .describe(
+            'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
         createdAt: zod.date(),
       }),
@@ -588,6 +625,12 @@ export const UpdateCartItemResponse = zod.object({
           .describe(
             "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
           ),
+        otdEligible: zod
+          .boolean()
+          .optional()
+          .describe(
+            'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -666,6 +709,12 @@ export const RemoveFromCartResponse = zod.object({
           .describe(
             "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
           ),
+        otdEligible: zod
+          .boolean()
+          .optional()
+          .describe(
+            'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
         createdAt: zod.date(),
       }),
       quantity: zod.number(),
@@ -742,6 +791,12 @@ export const GetPlanResponse = zod.object({
           .describe(
             "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
           ),
+        otdEligible: zod
+          .boolean()
+          .optional()
+          .describe(
+            'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
         createdAt: zod.date(),
       }),
     }),
@@ -813,6 +868,12 @@ export const AddToPlanResponse = zod.object({
           .nullish()
           .describe(
             "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+          ),
+        otdEligible: zod
+          .boolean()
+          .optional()
+          .describe(
+            'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
         createdAt: zod.date(),
       }),
@@ -887,6 +948,12 @@ export const RemoveFromPlanResponse = zod.object({
           .describe(
             "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
           ),
+        otdEligible: zod
+          .boolean()
+          .optional()
+          .describe(
+            'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
         createdAt: zod.date(),
       }),
     }),
@@ -905,6 +972,12 @@ export const CreateOrderBody = zod.object({
   eventType: zod.string().nullish(),
   guestCount: zod.number().nullish(),
   serviceStyle: zod.string().nullish(),
+  serviceMode: zod
+    .enum(["drop_off", "on_the_dash"])
+    .nullish()
+    .describe(
+      "Whether the customer wants standard drop-off catering or the On the Dash on-site food trailer experience.",
+    ),
   deliveryNotes: zod.string().nullish(),
 });
 
@@ -1073,6 +1146,12 @@ export const SuggestMenuItemsResponse = zod.object({
           .nullish()
           .describe(
             "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+          ),
+        otdEligible: zod
+          .boolean()
+          .optional()
+          .describe(
+            'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
         createdAt: zod.date(),
       }),

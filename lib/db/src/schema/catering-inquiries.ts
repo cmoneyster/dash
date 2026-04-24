@@ -62,6 +62,17 @@ export const cateringInquiriesTable = pgTable("catering_inquiries", {
   adminNotes: text("admin_notes"),
   status: text("status").notNull().default("inquiry"),
   source: text("source").notNull().default("form"),
+  // Service mode the customer chose at checkout. 'drop_off' (default) is
+  // standard catering drop-off; 'on_the_dash' is the food trailer cooking
+  // on-site. The OTD fee config columns below are snapshots of the live
+  // event_settings values at the time of submission so the historical
+  // quote stays stable even after admins update the price list.
+  serviceMode: text("service_mode").notNull().default("drop_off"),
+  otdSetupFee: numeric("otd_setup_fee", { precision: 10, scale: 2 }),
+  otdFeeWaiverThreshold: numeric("otd_fee_waiver_threshold", { precision: 10, scale: 2 }),
+  otdIncludedHours: numeric("otd_included_hours", { precision: 5, scale: 2 }),
+  otdAdditionalHourRate: numeric("otd_additional_hour_rate", { precision: 10, scale: 2 }),
+  otdMaxAdditionalHours: integer("otd_max_additional_hours"),
   // Legacy cart-order snapshot (kept for backwards compatibility)
   orderItems: jsonb("order_items").$type<CateringOrderItem[]>(),
   orderTotal: text("order_total"),

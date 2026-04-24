@@ -45,6 +45,8 @@ export interface MenuItem {
   eventTakerPrice?: number | null;
   /** Optional inventory cap for event ordering. Decremented on each event/POS order; null means unlimited. */
   eventStock?: number | null;
+  /** Whether this item can be cooked fresh on-site as part of the "On the Dash Experience" food trailer service. Drop-off-only items default to false. */
+  otdEligible?: boolean;
   createdAt: string;
 }
 
@@ -90,6 +92,7 @@ export interface UpdateMenuItemBody {
   eventTakerVisible?: boolean;
   eventTakerPrice?: number | null;
   eventStock?: number | null;
+  otdEligible?: boolean;
 }
 
 export interface BlackoutDate {
@@ -191,6 +194,18 @@ export interface Order {
   createdAt: string;
 }
 
+/**
+ * Whether the customer wants standard drop-off catering or the On the Dash on-site food trailer experience.
+ */
+export type CreateOrderBodyServiceMode =
+  | (typeof CreateOrderBodyServiceMode)[keyof typeof CreateOrderBodyServiceMode]
+  | null;
+
+export const CreateOrderBodyServiceMode = {
+  drop_off: "drop_off",
+  on_the_dash: "on_the_dash",
+} as const;
+
 export interface CreateOrderBody {
   sessionId: string;
   customerName: string;
@@ -200,6 +215,8 @@ export interface CreateOrderBody {
   eventType?: string | null;
   guestCount?: number | null;
   serviceStyle?: string | null;
+  /** Whether the customer wants standard drop-off catering or the On the Dash on-site food trailer experience. */
+  serviceMode?: CreateOrderBodyServiceMode;
   deliveryNotes?: string | null;
 }
 

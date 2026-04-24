@@ -109,6 +109,14 @@ export default function EventSettings() {
   const [venmoUploadError, setVenmoUploadError] = useState("");
   const [lowStockAlertPhones, setLowStockAlertPhones] = useState<string[]>([]);
   const [lowStockAlertThreshold, setLowStockAlertThreshold] = useState<string>("");
+  // ── On the Dash Experience pricing config ──
+  // String-backed inputs so we can preserve admin keystrokes (decimals,
+  // empty while typing, etc.). Validated and coerced to numbers on save.
+  const [otdSetupFee, setOtdSetupFee] = useState<string>("500");
+  const [otdFeeWaiverThreshold, setOtdFeeWaiverThreshold] = useState<string>("2000");
+  const [otdIncludedHours, setOtdIncludedHours] = useState<string>("2");
+  const [otdAdditionalHourRate, setOtdAdditionalHourRate] = useState<string>("100");
+  const [otdMaxAdditionalHours, setOtdMaxAdditionalHours] = useState<string>("3");
   const [alertPhoneRowError, setAlertPhoneRowError] = useState<{ index: number; message: string } | null>(null);
   // Snapshot of the persisted recipient list — the test endpoint sends to
   // whatever is in the DB, so the test button is only enabled when the
@@ -152,6 +160,11 @@ export default function EventSettings() {
           setSavedAlertPhones(phones);
         }
         setLowStockAlertThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
+        if (data.otdSetupFee != null) setOtdSetupFee(String(data.otdSetupFee));
+        if (data.otdFeeWaiverThreshold != null) setOtdFeeWaiverThreshold(String(data.otdFeeWaiverThreshold));
+        if (data.otdIncludedHours != null) setOtdIncludedHours(String(data.otdIncludedHours));
+        if (data.otdAdditionalHourRate != null) setOtdAdditionalHourRate(String(data.otdAdditionalHourRate));
+        if (data.otdMaxAdditionalHours != null) setOtdMaxAdditionalHours(String(data.otdMaxAdditionalHours));
         setTwilioConfigured(data.twilioConfigured ?? false);
       })
       .catch(() => setError("Failed to load event settings"))
@@ -243,6 +256,11 @@ export default function EventSettings() {
         venmoQrImageUrl: venmoQrImageUrl ?? null,
         lowStockAlertPhones: lowStockAlertPhones.map(p => p.trim()).filter(p => p !== ""),
         lowStockAlertThreshold: lowStockAlertThreshold.trim() === "" ? null : Number(lowStockAlertThreshold),
+        otdSetupFee: otdSetupFee.trim() === "" ? 0 : Number(otdSetupFee),
+        otdFeeWaiverThreshold: otdFeeWaiverThreshold.trim() === "" ? 0 : Number(otdFeeWaiverThreshold),
+        otdIncludedHours: otdIncludedHours.trim() === "" ? 0 : Number(otdIncludedHours),
+        otdAdditionalHourRate: otdAdditionalHourRate.trim() === "" ? 0 : Number(otdAdditionalHourRate),
+        otdMaxAdditionalHours: otdMaxAdditionalHours.trim() === "" ? 0 : Number(otdMaxAdditionalHours),
       };
       if (clearOrderPassword) body.orderPassword = null;
       else if (orderPassword) body.orderPassword = orderPassword;
@@ -604,6 +622,87 @@ export default function EventSettings() {
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {saving ? "Saving…" : "Save Alert Settings"}
+            </button>
+          </form>
+
+          <form onSubmit={handleSave} className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+            <div>
+              <h2 className="font-display font-bold text-lg">On the Dash Experience Pricing</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Live pricing for the on-site food trailer service mode. Each customer's quote
+                snapshots these values at submission time, so changes here only affect new inquiries.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Setup fee ($)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={otdSetupFee}
+                  onChange={e => setOtdSetupFee(e.target.value)}
+                  className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Charged when subtotal is under the waiver threshold below.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Setup fee waived at subtotal ($)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={otdFeeWaiverThreshold}
+                  onChange={e => setOtdFeeWaiverThreshold(e.target.value)}
+                  className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Food subtotal at or above this amount gets the setup fee waived.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Included on-site hours</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.5"
+                  value={otdIncludedHours}
+                  onChange={e => setOtdIncludedHours(e.target.value)}
+                  className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Hours of on-site service included in the setup fee.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Additional hour rate ($/hr)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={otdAdditionalHourRate}
+                  onChange={e => setOtdAdditionalHourRate(e.target.value)}
+                  className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Maximum additional hours</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={24}
+                  step={1}
+                  value={otdMaxAdditionalHours}
+                  onChange={e => setOtdMaxAdditionalHours(e.target.value)}
+                  className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                />
+                <p className="text-xs text-muted-foreground mt-1">How many extra hours past the included time guests can book.</p>
+              </div>
+            </div>
+            {error && <p className="text-destructive text-sm">{error}</p>}
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
+              {saving ? "Saving…" : saved ? "Saved!" : "Save On the Dash Pricing"}
             </button>
           </form>
 

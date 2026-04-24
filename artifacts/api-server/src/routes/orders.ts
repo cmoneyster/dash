@@ -1,10 +1,25 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, orderItemsTable, cartItemsTable, menuItemsTable, cateringInquiriesTable } from "@workspace/db/schema";
+import { ordersTable, orderItemsTable, cartItemsTable, menuItemsTable, cateringInquiriesTable, eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { sendNewInquiryAlert } from "../lib/sms";
 
 const router: IRouter = Router();
+
+// Hard fallbacks if the event_settings row is somehow missing — keeps
+// checkout functional even on a fresh database. Mirror the schema defaults.
+const OTD_DEFAULTS = {
+  setupFee: 500,
+  feeWaiverThreshold: 2000,
+  includedHours: 2,
+  additionalHourRate: 100,
+  maxAdditionalHours: 3,
+};
+
+type ServiceMode = "drop_off" | "on_the_dash";
+function parseServiceMode(v: unknown): ServiceMode {
+  return v === "on_the_dash" ? "on_the_dash" : "drop_off";
+}
 
 async function getOrderWithItems(orderId: number) {
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
@@ -21,13 +36,16 @@ router.post("/orders", async (req, res): Promise<void> => {
   try {
     const {
       sessionId, customerName, customerEmail, customerPhone,
-      eventDate, eventType, guestCount, serviceStyle, deliveryNotes
+      eventDate, eventType, guestCount, serviceStyle, deliveryNotes,
+      serviceMode: rawServiceMode,
     } = req.body;
 
     if (!sessionId || !customerName || !customerEmail) {
       res.status(400).json({ error: "sessionId, customerName, and customerEmail are required" });
       return;
     }
+
+    const serviceMode = parseServiceMode(rawServiceMode);
 
     // Get cart items
     const cartItems = await db
@@ -41,10 +59,76 @@ router.post("/orders", async (req, res): Promise<void> => {
       return;
     }
 
-    const total = cartItems.reduce(
-      (sum, row) => sum + parseFloat(row.menu_items.price) * row.cart_items.quantity,
-      0
+    // OTD eligibility gate — server-authoritative. The Cart UI also blocks
+    // submission, but we re-check here so direct API callers can't bypass
+    // the rule and end up promising on-site cooking for items the trailer
+    // can't actually prepare.
+    if (serviceMode === "on_the_dash") {
+      const ineligible = cartItems
+        .filter(row => !row.menu_items.otdEligible)
+        .map(row => row.menu_items.name);
+      if (ineligible.length > 0) {
+        res.status(400).json({
+          error:
+            `Some items in your cart are not available for the On the Dash Experience: ` +
+            `${ineligible.join(", ")}. Please remove them or switch to Standard Drop-Off.`,
+        });
+        return;
+      }
+    }
+
+    // Mirror cart.ts's getEffectivePrice so the server-side subtotal
+    // (and therefore the OTD waiver decision + total) match the live
+    // preview the customer sees in the Cart UI. Pan-size price wins,
+    // else tier3 / tier2 thresholds, else the base price.
+    const computeEffectivePrice = (
+      mi: { price: string; tier2Qty: number | null; tier2Price: string | null; tier3Qty: number | null; tier3Price: string | null },
+      qty: number,
+      sizePrice: string | null,
+    ): number => {
+      if (sizePrice != null) return parseFloat(sizePrice);
+      const t2q = mi.tier2Qty;
+      const t2p = mi.tier2Price ? parseFloat(mi.tier2Price) : null;
+      const t3q = mi.tier3Qty;
+      const t3p = mi.tier3Price ? parseFloat(mi.tier3Price) : null;
+      if (t3q && t3p && qty >= t3q) return t3p;
+      if (t2q && t2p && qty >= t2q) return t2p;
+      return parseFloat(mi.price);
+    };
+
+    // Per-line effective price snapshot — reused for subtotal, order
+    // items insert, and the inquiry summary so the three sources stay
+    // consistent.
+    const lineEffectivePrices = cartItems.map(row =>
+      computeEffectivePrice(row.menu_items, row.cart_items.quantity, row.cart_items.sizePrice ?? null),
     );
+    const subtotal = cartItems.reduce(
+      (sum, row, i) => sum + lineEffectivePrices[i] * row.cart_items.quantity,
+      0,
+    );
+
+    // Snapshot the live OTD pricing config so this inquiry's quote stays
+    // stable even if admins later edit /admin/event-settings. For drop-off
+    // orders we still snapshot zeros so reporting columns aren't ragged.
+    const [eventSettings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    const otdConfig = {
+      setupFee: eventSettings?.otdSetupFee != null ? parseFloat(eventSettings.otdSetupFee) : OTD_DEFAULTS.setupFee,
+      feeWaiverThreshold: eventSettings?.otdFeeWaiverThreshold != null ? parseFloat(eventSettings.otdFeeWaiverThreshold) : OTD_DEFAULTS.feeWaiverThreshold,
+      includedHours: eventSettings?.otdIncludedHours != null ? parseFloat(eventSettings.otdIncludedHours) : OTD_DEFAULTS.includedHours,
+      additionalHourRate: eventSettings?.otdAdditionalHourRate != null ? parseFloat(eventSettings.otdAdditionalHourRate) : OTD_DEFAULTS.additionalHourRate,
+      maxAdditionalHours: eventSettings?.otdMaxAdditionalHours ?? OTD_DEFAULTS.maxAdditionalHours,
+    };
+
+    // Compute the OTD fee server-side. The setup fee is waived once the
+    // food subtotal hits the configured threshold; additional staff hours
+    // are billed at the per-hour rate (capped). Drop-off orders have
+    // zero OTD fees by definition.
+    let otdFee = 0;
+    if (serviceMode === "on_the_dash") {
+      const setupFee = subtotal >= otdConfig.feeWaiverThreshold ? 0 : otdConfig.setupFee;
+      otdFee = setupFee; // hourly upcharge is captured separately by the admin during quoting
+    }
+    const total = subtotal + otdFee;
 
     const [order] = await db.insert(ordersTable).values({
       sessionId,
@@ -60,13 +144,15 @@ router.post("/orders", async (req, res): Promise<void> => {
       total: String(total),
     }).returning();
 
-    // Insert order items
+    // Insert order items — store the effective per-unit price the
+    // customer actually saw in their cart (size/tier-aware) so admin
+    // views display the same line totals as the cart.
     await db.insert(orderItemsTable).values(
-      cartItems.map((row) => ({
+      cartItems.map((row, i) => ({
         orderId: order.id,
         menuItemId: row.menu_items.id,
         menuItemName: row.menu_items.name,
-        price: row.menu_items.price,
+        price: lineEffectivePrices[i].toFixed(2),
         quantity: row.cart_items.quantity,
       }))
     );
@@ -76,10 +162,10 @@ router.post("/orders", async (req, res): Promise<void> => {
 
     // Dual-write: create a catering inquiry for this cart order
     try {
-      const orderItemsForInquiry = cartItems.map(row => ({
+      const orderItemsForInquiry = cartItems.map((row, i) => ({
         name: row.menu_items.name,
         quantity: row.cart_items.quantity,
-        price: parseFloat(row.menu_items.price),
+        price: lineEffectivePrices[i],
       }));
       const orderTotalStr = `$${total.toFixed(2)}`;
 
@@ -94,6 +180,14 @@ router.post("/orders", async (req, res): Promise<void> => {
         orderItems: orderItemsForInquiry,
         orderTotal: orderTotalStr,
         status: "inquiry",
+        // Service mode + per-inquiry fee snapshot (see comment in
+        // lib/db/src/schema/catering-inquiries.ts).
+        serviceMode,
+        otdSetupFee: String(otdConfig.setupFee.toFixed(2)),
+        otdFeeWaiverThreshold: String(otdConfig.feeWaiverThreshold.toFixed(2)),
+        otdIncludedHours: String(otdConfig.includedHours.toFixed(2)),
+        otdAdditionalHourRate: String(otdConfig.additionalHourRate.toFixed(2)),
+        otdMaxAdditionalHours: otdConfig.maxAdditionalHours,
       }).returning();
 
       // Build a deep link to the admin inquiry editor for the SMS alert.

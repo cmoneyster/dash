@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useToast } from "@/hooks/use-toast";
+import { ServiceModeBanner } from "@/components/ServiceModeBanner";
+import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
 
 // ── Category helpers ──────────────────────────────────────────────────────────
 
@@ -56,6 +58,7 @@ type PlannerState = {
   piecesMap: Record<string, number>;
   servingsMap: Record<string, number>;
   panQtys: Record<string, Record<string, number>>; // planItemId → slotIdx → qty
+  serviceMode?: ServiceMode;
 };
 
 type SharedPlanData = {
@@ -75,6 +78,7 @@ const DEFAULT_PLANNER: PlannerState = {
   piecesMap: {},
   servingsMap: {},
   panQtys: {},
+  serviceMode: "drop_off",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -504,6 +508,14 @@ export default function SharedPlan() {
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
+
+        <ServiceModeBanner
+          mode={(plannerState.serviceMode ?? "drop_off") as ServiceMode}
+          onChange={(m) => {
+            saveServiceMode(m);
+            updatePlanner(prev => ({ ...prev, serviceMode: m }));
+          }}
+        />
 
         {/* ── Header ── */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">

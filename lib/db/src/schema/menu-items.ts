@@ -45,6 +45,12 @@ export const menuItemsTable = pgTable("menu_items", {
   size5Servings: integer("size5_servings"),
   size5Price: numeric("size5_price", { precision: 10, scale: 2 }),
   internalNotes: text("internal_notes"),
+  // ── On the Dash Experience eligibility ────────────────────────────────────
+  // True when the food trailer can prepare this item fresh on-site at the
+  // event. False (default) means the item is drop-off-only — selecting "On
+  // the Dash" service mode while it's in the cart triggers a warning and
+  // server-side validation rejects checkout.
+  otdEligible: boolean("otd_eligible").notNull().default(false),
   // Tracks whether a low-stock SMS alert has already been fired for the
   // current crossing of the kitchen alert threshold. Reset to false when
   // stock is restocked above the threshold (or set to unlimited / 0) so

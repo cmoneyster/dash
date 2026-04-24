@@ -26,4 +26,5 @@ export interface UpdateMenuItemBody {
   eventTakerVisible?: boolean;
   eventTakerPrice?: number | null;
   eventStock?: number | null;
+  otdEligible?: boolean;
 }

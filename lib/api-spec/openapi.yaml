@@ -680,6 +680,9 @@ components:
           type: integer
           nullable: true
           description: Optional inventory cap for event ordering. Decremented on each event/POS order; null means unlimited.
+        otdEligible:
+          type: boolean
+          description: Whether this item can be cooked fresh on-site as part of the "On the Dash Experience" food trailer service. Drop-off-only items default to false.
         createdAt:
           type: string
           format: date-time
@@ -808,6 +811,8 @@ components:
         eventStock:
           type: integer
           nullable: true
+        otdEligible:
+          type: boolean
 
     BlackoutDate:
       type: object
@@ -1071,6 +1076,11 @@ components:
         serviceStyle:
           type: string
           nullable: true
+        serviceMode:
+          type: string
+          enum: [drop_off, on_the_dash]
+          nullable: true
+          description: Whether the customer wants standard drop-off catering or the On the Dash on-site food trailer experience.
         deliveryNotes:
           type: string
           nullable: true

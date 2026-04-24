@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { MenuCard, MenuCardCompact } from "@/components/MenuCard";
@@ -18,6 +18,8 @@ import type { MenuItem } from "@workspace/api-client-react";
 import { isPanSizesItem, type PanSizeMenuItem } from "@/lib/menu-types";
 import type { PanSizeSelection } from "@/components/PanSizePicker";
 import { useCategories } from "@/lib/categories";
+import { ServiceModeBanner } from "@/components/ServiceModeBanner";
+import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -25,6 +27,8 @@ export default function Menu() {
   const [category, setCategory] = useState<string>("");
   const [pickerItem, setPickerItem] = useState<PanSizeMenuItem | null>(null);
   const [pickerLoading, setPickerLoading] = useState(false);
+  const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());
+  useEffect(() => { saveServiceMode(serviceMode); }, [serviceMode]);
   const sessionId = getSessionId();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -138,6 +142,7 @@ export default function Menu() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <ServiceModeBanner mode={serviceMode} onChange={setServiceMode} />
         {/* Filters */}
         <div className="flex flex-col sm:flex-row justify-between items-center mb-12 gap-6">
           <div className="flex flex-wrap gap-2 justify-center">

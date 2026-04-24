@@ -43,6 +43,14 @@ router.get("/admin/event-settings", async (req, res) => {
       venmoQrImageUrl: settings?.venmoQrImageUrl ?? null,
       lowStockAlertPhones: settings?.lowStockAlertPhones ?? [],
       lowStockAlertThreshold: settings?.lowStockAlertThreshold ?? null,
+      // ── On the Dash Experience pricing config ──
+      // Numeric columns are returned as parsed numbers so the admin UI
+      // can render them in plain inputs without re-parsing.
+      otdSetupFee: settings?.otdSetupFee != null ? parseFloat(settings.otdSetupFee) : 500,
+      otdFeeWaiverThreshold: settings?.otdFeeWaiverThreshold != null ? parseFloat(settings.otdFeeWaiverThreshold) : 2000,
+      otdIncludedHours: settings?.otdIncludedHours != null ? parseFloat(settings.otdIncludedHours) : 2,
+      otdAdditionalHourRate: settings?.otdAdditionalHourRate != null ? parseFloat(settings.otdAdditionalHourRate) : 100,
+      otdMaxAdditionalHours: settings?.otdMaxAdditionalHours ?? 3,
       twilioConfigured,
     });
   } catch (err) {
@@ -58,6 +66,8 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerPassword, eventTakerTaxEnabled, eventTakerTaxRate,
       venmoHandle, venmoQrImageUrl,
       lowStockAlertPhones, lowStockAlertThreshold,
+      otdSetupFee, otdFeeWaiverThreshold, otdIncludedHours,
+      otdAdditionalHourRate, otdMaxAdditionalHours,
     } = req.body as {
       eventName?: string;
       orderPassword?: string;
@@ -69,6 +79,11 @@ router.put("/admin/event-settings", async (req, res) => {
       venmoQrImageUrl?: string | null;
       lowStockAlertPhones?: string[] | null;
       lowStockAlertThreshold?: number | string | null;
+      otdSetupFee?: number | string | null;
+      otdFeeWaiverThreshold?: number | string | null;
+      otdIncludedHours?: number | string | null;
+      otdAdditionalHourRate?: number | string | null;
+      otdMaxAdditionalHours?: number | string | null;
     };
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     const twilioConfigured = await isTwilioConfigured();
@@ -84,6 +99,11 @@ router.put("/admin/event-settings", async (req, res) => {
       venmoQrImageUrl: s.venmoQrImageUrl ?? null,
       lowStockAlertPhones: s.lowStockAlertPhones ?? [],
       lowStockAlertThreshold: s.lowStockAlertThreshold ?? null,
+      otdSetupFee: s.otdSetupFee != null ? parseFloat(s.otdSetupFee) : 500,
+      otdFeeWaiverThreshold: s.otdFeeWaiverThreshold != null ? parseFloat(s.otdFeeWaiverThreshold) : 2000,
+      otdIncludedHours: s.otdIncludedHours != null ? parseFloat(s.otdIncludedHours) : 2,
+      otdAdditionalHourRate: s.otdAdditionalHourRate != null ? parseFloat(s.otdAdditionalHourRate) : 100,
+      otdMaxAdditionalHours: s.otdMaxAdditionalHours ?? 3,
       twilioConfigured,
     });
 
@@ -119,6 +139,39 @@ router.put("/admin/event-settings", async (req, res) => {
       const n = Number(v);
       if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 1000) {
         throw Object.assign(new Error("lowStockAlertThreshold must be an integer between 1 and 1000"), { status: 400 });
+      }
+      return n;
+    }
+    // OTD numeric helpers — money/hour values stored as numeric strings.
+    // We accept anything coerceable to a finite non-negative number with at
+    // most two decimals (money) or one decimal (hours). Out-of-range values
+    // throw a 400 so admins see the offending field instead of silently
+    // saving NaN or zero.
+    function normalizeOtdMoney(v: number | string | null | undefined, field: string, max: number): string {
+      if (v === null || v === undefined || v === "") {
+        throw Object.assign(new Error(`${field} is required`), { status: 400 });
+      }
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0 || n > max) {
+        throw Object.assign(new Error(`${field} must be a number between 0 and ${max}`), { status: 400 });
+      }
+      return n.toFixed(2);
+    }
+    function normalizeOtdHours(v: number | string | null | undefined, field: string): string {
+      if (v === null || v === undefined || v === "") {
+        throw Object.assign(new Error(`${field} is required`), { status: 400 });
+      }
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0 || n > 24) {
+        throw Object.assign(new Error(`${field} must be between 0 and 24 hours`), { status: 400 });
+      }
+      return n.toFixed(2);
+    }
+    function normalizeOtdMaxAdditionalHours(v: number | string | null | undefined): number {
+      if (v === null || v === undefined || v === "") return 3;
+      const n = Number(v);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > 24) {
+        throw Object.assign(new Error("otdMaxAdditionalHours must be an integer between 0 and 24"), { status: 400 });
       }
       return n;
     }
@@ -159,6 +212,23 @@ router.put("/admin/event-settings", async (req, res) => {
       if (lowStockAlertThreshold !== undefined) {
         updates.lowStockAlertThreshold = normalizeAlertThreshold(lowStockAlertThreshold);
       }
+      // OTD pricing config — only validate/update fields that were sent so
+      // partial PUTs from older clients still work.
+      if (otdSetupFee !== undefined) {
+        updates.otdSetupFee = normalizeOtdMoney(otdSetupFee, "otdSetupFee", 100000);
+      }
+      if (otdFeeWaiverThreshold !== undefined) {
+        updates.otdFeeWaiverThreshold = normalizeOtdMoney(otdFeeWaiverThreshold, "otdFeeWaiverThreshold", 1000000);
+      }
+      if (otdIncludedHours !== undefined) {
+        updates.otdIncludedHours = normalizeOtdHours(otdIncludedHours, "otdIncludedHours");
+      }
+      if (otdAdditionalHourRate !== undefined) {
+        updates.otdAdditionalHourRate = normalizeOtdMoney(otdAdditionalHourRate, "otdAdditionalHourRate", 100000);
+      }
+      if (otdMaxAdditionalHours !== undefined) {
+        updates.otdMaxAdditionalHours = normalizeOtdMaxAdditionalHours(otdMaxAdditionalHours);
+      }
       const [updated] = await db.update(eventSettingsTable).set(updates).where(eq(eventSettingsTable.id, 1)).returning();
       res.json(buildResponse(updated));
     } else {
@@ -174,6 +244,11 @@ router.put("/admin/event-settings", async (req, res) => {
         venmoQrImageUrl: venmoQrImageUrl == null || venmoQrImageUrl === "" ? null : venmoQrImageUrl,
         lowStockAlertPhones: normalizeAlertPhones(lowStockAlertPhones),
         lowStockAlertThreshold: normalizeAlertThreshold(lowStockAlertThreshold),
+        otdSetupFee: otdSetupFee !== undefined ? normalizeOtdMoney(otdSetupFee, "otdSetupFee", 100000) : "500.00",
+        otdFeeWaiverThreshold: otdFeeWaiverThreshold !== undefined ? normalizeOtdMoney(otdFeeWaiverThreshold, "otdFeeWaiverThreshold", 1000000) : "2000.00",
+        otdIncludedHours: otdIncludedHours !== undefined ? normalizeOtdHours(otdIncludedHours, "otdIncludedHours") : "2.00",
+        otdAdditionalHourRate: otdAdditionalHourRate !== undefined ? normalizeOtdMoney(otdAdditionalHourRate, "otdAdditionalHourRate", 100000) : "100.00",
+        otdMaxAdditionalHours: otdMaxAdditionalHours !== undefined ? normalizeOtdMaxAdditionalHours(otdMaxAdditionalHours) : 3,
       }).returning();
       res.json(buildResponse(created));
     }

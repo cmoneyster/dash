@@ -21,6 +21,7 @@ export * from "./createBlackoutDateBody";
 export * from "./createMenuItemBody";
 export * from "./createOpenaiConversationBody";
 export * from "./createOrderBody";
+export * from "./createOrderBodyServiceMode";
 export * from "./errorResponse";
 export * from "./getCartParams";
 export * from "./getPlanParams";
