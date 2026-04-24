@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon, AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon, AlertTriangle, Plus, Trash2, Send } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -110,6 +110,12 @@ export default function EventSettings() {
   const [lowStockAlertPhones, setLowStockAlertPhones] = useState<string[]>([]);
   const [lowStockAlertThreshold, setLowStockAlertThreshold] = useState<string>("");
   const [alertPhoneRowError, setAlertPhoneRowError] = useState<{ index: number; message: string } | null>(null);
+  // Snapshot of the persisted recipient list — the test endpoint sends to
+  // whatever is in the DB, so the test button is only enabled when the
+  // current input matches what's saved.
+  const [savedAlertPhones, setSavedAlertPhones] = useState<string[]>([]);
+  const [sendingTest, setSendingTest] = useState(false);
+  const [testFeedback, setTestFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
   const [hasOrderPassword, setHasOrderPassword] = useState(false);
   const [hasKitchenPassword, setHasKitchenPassword] = useState(false);
   const [hasEventTakerPassword, setHasEventTakerPassword] = useState(false);
@@ -140,7 +146,11 @@ export default function EventSettings() {
         setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
         setVenmoHandle(data.venmoHandle ?? "");
         setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
-        setLowStockAlertPhones(Array.isArray(data.lowStockAlertPhones) ? data.lowStockAlertPhones : []);
+        {
+          const phones = Array.isArray(data.lowStockAlertPhones) ? data.lowStockAlertPhones : [];
+          setLowStockAlertPhones(phones);
+          setSavedAlertPhones(phones);
+        }
         setLowStockAlertThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
         setTwilioConfigured(data.twilioConfigured ?? false);
       })
@@ -151,13 +161,16 @@ export default function EventSettings() {
   function updatePhoneAt(idx: number, value: string) {
     setLowStockAlertPhones(prev => prev.map((p, i) => (i === idx ? value : p)));
     setAlertPhoneRowError(prev => (prev && prev.index === idx ? null : prev));
+    setTestFeedback(null);
   }
   function removePhoneAt(idx: number) {
     setLowStockAlertPhones(prev => prev.filter((_, i) => i !== idx));
     setAlertPhoneRowError(null);
+    setTestFeedback(null);
   }
   function addPhone() {
     setLowStockAlertPhones(prev => [...prev, ""]);
+    setTestFeedback(null);
   }
 
   async function handleVenmoQrUpload(file: File) {
@@ -179,6 +192,41 @@ export default function EventSettings() {
     } finally {
       setVenmoUploading(false);
     }
+  }
+
+  async function handleTestAlert() {
+    setSendingTest(true);
+    setTestFeedback(null);
+    try {
+      const res = await fetch(`${BASE}/api/admin/event-settings/test-low-stock-alert`, {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Failed to send test alert");
+      const sent = typeof data?.sentCount === "number" ? data.sentCount : savedAlertPhones.length;
+      const total = typeof data?.totalCount === "number" ? data.totalCount : savedAlertPhones.length;
+      const failedRecipients: string[] = Array.isArray(data?.results)
+        ? data.results.filter((r: any) => !r?.ok).map((r: any) => r.phone)
+        : [];
+      const message = failedRecipients.length === 0
+        ? (total === 1 ? `Test alert sent to ${savedAlertPhones[0] ?? "the saved number"}.` : `Test alert sent to all ${sent} recipients.`)
+        : `Test alert sent to ${sent} of ${total}. Failed: ${failedRecipients.join(", ")}.`;
+      setTestFeedback({ kind: failedRecipients.length === 0 ? "success" : "error", message });
+    } catch (e: any) {
+      setTestFeedback({ kind: "error", message: e?.message || "Failed to send test alert" });
+    } finally {
+      setSendingTest(false);
+    }
+  }
+
+  // Used by the test button to detect unsaved edits — the test endpoint
+  // sends to the persisted list, so we disable testing until those match.
+  function alertPhonesUnsaved(): boolean {
+    const current = lowStockAlertPhones.map(p => p.trim()).filter(Boolean);
+    const saved = savedAlertPhones.map(p => p.trim()).filter(Boolean);
+    if (current.length !== saved.length) return true;
+    return current.some((p, i) => p !== saved[i]);
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -232,7 +280,11 @@ export default function EventSettings() {
       setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
       setVenmoHandle(data.venmoHandle ?? "");
       setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
-      setLowStockAlertPhones(Array.isArray(data.lowStockAlertPhones) ? data.lowStockAlertPhones : []);
+      {
+        const phones = Array.isArray(data.lowStockAlertPhones) ? data.lowStockAlertPhones : [];
+        setLowStockAlertPhones(phones);
+        setSavedAlertPhones(phones);
+      }
       setLowStockAlertThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
       setTwilioConfigured(data.twilioConfigured ?? false);
       setOrderPassword("");
@@ -490,13 +542,42 @@ export default function EventSettings() {
                   })}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={addPhone}
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-1.5 hover:bg-secondary transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add another phone
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={addPhone}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-1.5 hover:bg-secondary transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add another phone
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTestAlert}
+                  disabled={sendingTest || savedAlertPhones.length === 0 || alertPhonesUnsaved()}
+                  title={
+                    savedAlertPhones.length === 0
+                      ? "Add and save at least one phone number first"
+                      : alertPhonesUnsaved()
+                      ? "Save your changes before testing"
+                      : `Send a test SMS to ${savedAlertPhones.length === 1 ? "the saved recipient" : `all ${savedAlertPhones.length} saved recipients`}`
+                  }
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-1.5 hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {sendingTest ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  {sendingTest ? "Sending…" : "Send test alert"}
+                </button>
+              </div>
+              {testFeedback && (
+                <p
+                  className={
+                    testFeedback.kind === "success"
+                      ? "text-xs text-emerald-600 mt-2"
+                      : "text-xs text-destructive mt-2"
+                  }
+                >
+                  {testFeedback.message}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground mt-2">
                 Every saved number gets the same alert. Remove all rows to disable low-stock SMS entirely.
               </p>

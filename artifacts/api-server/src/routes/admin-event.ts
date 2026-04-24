@@ -5,6 +5,7 @@ import { db } from "@workspace/db";
 import { eventSettingsTable, eventOrdersTable } from "@workspace/db/schema";
 import { eq, and, gte, lt, inArray } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
 
 const router: IRouter = Router();
 
@@ -183,6 +184,49 @@ router.put("/admin/event-settings", async (req, res) => {
     }
     req.log.error({ err }, "Error updating event settings");
     res.status(500).json({ error: "Failed to update event settings" });
+  }
+});
+
+// Sends a one-line "Test alert from <event name>" SMS to every saved
+// kitchen recipient so the admin can verify delivery before crossing the
+// real threshold. Uses sendSmsViaEjoin directly (not sendSms) so gateway
+// failures surface in the response instead of being swallowed. Sends to
+// all recipients sequentially and reports per-recipient outcomes; the
+// HTTP status reflects whether at least one delivery succeeded.
+router.post("/admin/event-settings/test-low-stock-alert", async (req, res) => {
+  try {
+    const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    const phones = (settings?.lowStockAlertPhones ?? []).map(p => p.trim()).filter(Boolean);
+    if (phones.length === 0) {
+      res.status(400).json({ error: "No recipient phone numbers saved. Add at least one and save before testing." });
+      return;
+    }
+    if (!isEjoinConfigured()) {
+      res.status(503).json({ error: "SMS gateway is not configured." });
+      return;
+    }
+    const event = settings?.eventName?.trim() || "dash by Hollywood East Cafe";
+    const message = `Test alert from ${event}`;
+    const results: Array<{ phone: string; ok: boolean; error?: string }> = [];
+    for (const phone of phones) {
+      try {
+        await sendSmsViaEjoin(phone, message);
+        results.push({ phone, ok: true });
+      } catch (err: any) {
+        const detail = typeof err?.message === "string" ? err.message : "send failed";
+        results.push({ phone, ok: false, error: detail });
+      }
+    }
+    const okCount = results.filter(r => r.ok).length;
+    if (okCount === 0) {
+      res.status(502).json({ error: `Failed to send test alert to ${results[0].phone}: ${results[0].error}`, results });
+      return;
+    }
+    res.json({ ok: true, sentCount: okCount, totalCount: results.length, results });
+  } catch (err: any) {
+    req.log.error({ err }, "Error sending test low-stock alert");
+    const detail = typeof err?.message === "string" ? err.message : "Failed to send test alert";
+    res.status(502).json({ error: `Failed to send test alert: ${detail}` });
   }
 });
 
