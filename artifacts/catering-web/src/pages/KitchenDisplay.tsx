@@ -34,6 +34,10 @@ type StockItem = {
   eventActive?: boolean;
   eventTakerVisible?: boolean;
 };
+// Optional staff plating layout (set in the POS payment modal). When present
+// the kitchen renders one ticket with "Fire totals" + per-plate cards.
+type PlateGroup = { label: string; items: { itemId: number; quantity: number }[] };
+
 type EventOrder = {
   id: number;
   guestName: string;
@@ -48,7 +52,32 @@ type EventOrder = {
   taxRate?: number | null;
   taxAmount?: number | null;
   total?: number | null;
+  plateGroups?: PlateGroup[] | null;
 };
+
+// Build a per-itemId lookup for displaying names in plate cards. Item names
+// live on `items[]` (cart) — plate entries only carry `{itemId, quantity}`.
+function nameByItemId(order: EventOrder): Map<number, string> {
+  const m = new Map<number, string>();
+  for (const i of order.items) m.set(i.itemId, i.name);
+  return m;
+}
+
+// Compute "unassigned" units per item (cart qty minus sum across plates).
+// Returned in cart order so the kitchen sees them in the same sequence.
+function unassignedItems(order: EventOrder): { itemId: number; name: string; quantity: number }[] {
+  if (!order.plateGroups || order.plateGroups.length === 0) return [];
+  const allocByItem = new Map<number, number>();
+  for (const p of order.plateGroups) {
+    for (const ln of p.items) allocByItem.set(ln.itemId, (allocByItem.get(ln.itemId) ?? 0) + ln.quantity);
+  }
+  const out: { itemId: number; name: string; quantity: number }[] = [];
+  for (const ci of order.items) {
+    const left = ci.quantity - (allocByItem.get(ci.itemId) ?? 0);
+    if (left > 0) out.push({ itemId: ci.itemId, name: ci.name, quantity: left });
+  }
+  return out;
+}
 
 type PrintJob = { order: EventOrder; mode: "receipt" | "kitchen" };
 
@@ -1150,6 +1179,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
       <div className="px-4 py-3 space-y-1">
         {isTrackable && (
           <p className="text-xs text-white/30 font-semibold uppercase tracking-wider pb-1.5">
+            {order.plateGroups && order.plateGroups.length > 0 ? "Fire totals · " : ""}
             Tap each item to mark · {checkedCount}/{order.items.length}
           </p>
         )}
@@ -1224,6 +1254,56 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
           );
         })}
       </div>
+
+      {/* Plating layout — when staff configured plate cards, show them after
+          the fire totals so the line cooks see how to plate up. Unassigned
+          units render as a fallback section so nothing silently disappears. */}
+      {order.plateGroups && order.plateGroups.length > 0 && (() => {
+        const names = nameByItemId(order);
+        const unassigned = unassignedItems(order);
+        return (
+          <div className="px-4 pb-3 space-y-2 border-t border-white/10 pt-3">
+            <p className="text-xs text-violet-300 font-semibold uppercase tracking-wider">
+              Plating · {order.plateGroups.length} plate{order.plateGroups.length === 1 ? "" : "s"}
+            </p>
+            <div className="grid gap-2">
+              {order.plateGroups.map((plate, idx) => (
+                <div
+                  key={idx}
+                  className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2"
+                  data-testid={`order-${order.id}-plate-${idx}`}
+                >
+                  <p className="text-xs font-bold text-violet-200 uppercase tracking-wider mb-1">
+                    {plate.label || `Plate ${idx + 1}`}
+                  </p>
+                  <ul className="text-sm text-white/85 space-y-0.5">
+                    {plate.items.map(ln => (
+                      <li key={ln.itemId}>
+                        <span className="font-bold tabular-nums">{ln.quantity}×</span>{" "}
+                        {names.get(ln.itemId) ?? `Item #${ln.itemId}`}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              {unassigned.length > 0 && (
+                <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2">
+                  <p className="text-xs font-bold text-amber-200 uppercase tracking-wider mb-1">
+                    Unassigned · pack however
+                  </p>
+                  <ul className="text-sm text-white/85 space-y-0.5">
+                    {unassigned.map(ln => (
+                      <li key={ln.itemId}>
+                        <span className="font-bold tabular-nums">{ln.quantity}×</span> {ln.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Progress bar for pending and preparing orders */}
       {isTrackable && (
@@ -1429,6 +1509,9 @@ function PrintableTicket({ order, mode, eventName }: { order: EventOrder; mode: 
   const totalQty = order.items.reduce((s, l) => s + l.quantity, 0);
 
   if (mode === "kitchen") {
+    const hasPlating = !!(order.plateGroups && order.plateGroups.length > 0);
+    const names = nameByItemId(order);
+    const unassigned = hasPlating ? unassignedItems(order) : [];
     return (
       <div className="font-mono text-base bg-white text-black p-3">
         <div className="text-center mb-3">
@@ -1449,6 +1532,9 @@ function PrintableTicket({ order, mode, eventName }: { order: EventOrder; mode: 
           <p className="font-bold text-lg">{order.guestName}</p>
           {order.tableNumber && <p className="text-sm">{order.tableNumber}</p>}
         </div>
+        {hasPlating && (
+          <p className="text-xs font-bold uppercase tracking-wider mb-1">Fire totals</p>
+        )}
         <table className="w-full mb-2">
           <tbody>
             {order.items.map(l => (
@@ -1464,6 +1550,40 @@ function PrintableTicket({ order, mode, eventName }: { order: EventOrder; mode: 
             ))}
           </tbody>
         </table>
+        {hasPlating && (
+          <div className="border-t border-dashed border-black pt-2 mt-2 space-y-2">
+            <p className="text-xs font-bold uppercase tracking-wider">
+              Plating · {order.plateGroups!.length} plate{order.plateGroups!.length === 1 ? "" : "s"}
+            </p>
+            {order.plateGroups!.map((plate, idx) => (
+              <div key={idx} className="border border-black rounded-sm p-2">
+                <p className="font-bold uppercase tracking-wider text-sm mb-1">
+                  {plate.label || `Plate ${idx + 1}`}
+                </p>
+                <ul className="text-sm">
+                  {plate.items.map(ln => (
+                    <li key={ln.itemId}>
+                      <span className="font-bold">{ln.quantity}×</span>{" "}
+                      {names.get(ln.itemId) ?? `Item #${ln.itemId}`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            {unassigned.length > 0 && (
+              <div className="border border-dashed border-black rounded-sm p-2">
+                <p className="font-bold uppercase tracking-wider text-sm mb-1">Unassigned · pack however</p>
+                <ul className="text-sm">
+                  {unassigned.map(ln => (
+                    <li key={ln.itemId}>
+                      <span className="font-bold">{ln.quantity}×</span> {ln.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
         <p className="text-center text-xs border-t border-dashed border-black pt-2 mt-2">
           {totalQty} item(s) total
         </p>

@@ -241,6 +241,13 @@ async function runStandaloneMigrations(): Promise<void> {
       END IF;
     END$$;
   `);
+  // Plating layout column (nullable). Set by staff in the POS payment modal,
+  // consumed by the kitchen display to render plate-grouped tickets. Safe to
+  // re-run; existing rows simply remain NULL = no plating configured.
+  await db.execute(sql`
+    ALTER TABLE event_orders
+      ADD COLUMN IF NOT EXISTS plate_groups jsonb
+  `);
 }
 
 async function backfillCategories(): Promise<void> {

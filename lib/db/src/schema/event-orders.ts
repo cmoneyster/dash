@@ -7,12 +7,24 @@ export type EventOrderItem = {
   price: number;
 };
 
+// Optional staff-set plating layout. Each plate carries whole-number
+// quantities of items pulled from the parent `items` cart. Sum per itemId
+// across plates must be <= cart line quantity. Unassigned units (cart - sum)
+// are rendered as a separate "Unassigned" group on the kitchen ticket.
+export type EventOrderPlate = {
+  label: string;
+  items: { itemId: number; quantity: number }[];
+};
+
 export const eventOrdersTable = pgTable("event_orders", {
   id: serial("id").primaryKey(),
   guestName: text("guest_name").notNull(),
   tableNumber: text("table_number"),
   phoneNumber: text("phone_number"),
   items: jsonb("items").notNull().$type<EventOrderItem[]>(),
+  // Null when staff did not configure plating (kitchen renders the standard
+  // single-list ticket). Locked once the order leaves the unpaid queue.
+  plateGroups: jsonb("plate_groups").$type<EventOrderPlate[]>(),
   status: text("status").notNull().default("pending"),
   eventSessionId: integer("event_session_id"),
   // 'guest' = self-service /event page; 'staff' = /event-taker POS

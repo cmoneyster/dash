@@ -17,7 +17,69 @@ function serializeOrder(o: typeof eventOrdersTable.$inferSelect) {
     total: o.total != null ? parseFloat(o.total) : null,
     cashReceived: o.cashReceived != null ? parseFloat(o.cashReceived) : null,
     changeDue: o.changeDue != null ? parseFloat(o.changeDue) : null,
+    plateGroups: o.plateGroups ?? null,
   };
+}
+
+// Validate a staff-supplied plating layout against the order's items list.
+// Returns the cleaned plate array (empty plates dropped, item lines with
+// quantity 0 stripped) or throws an error tagged with status=400.
+type PlateGroupInput = { label?: unknown; items?: unknown };
+type CartLine = { itemId: number; name: string; quantity: number };
+function validateAndCleanPlateGroups(
+  raw: unknown,
+  cartItems: CartLine[],
+): { label: string; items: { itemId: number; quantity: number }[] }[] | null {
+  if (raw == null) return null;
+  if (!Array.isArray(raw)) {
+    throw Object.assign(new Error("plateGroups must be an array"), { status: 400 });
+  }
+  const cartByItem = new Map(cartItems.map(c => [c.itemId, c]));
+  // Track running per-item allocation so we can index errors precisely.
+  const allocByItem = new Map<number, number>();
+  const cleaned: { label: string; items: { itemId: number; quantity: number }[] }[] = [];
+  raw.forEach((p, plateIdx) => {
+    const plate = p as PlateGroupInput;
+    const labelRaw = typeof plate.label === "string" ? plate.label.trim() : "";
+    const label = labelRaw || `Plate ${plateIdx + 1}`;
+    if (!Array.isArray(plate.items)) {
+      throw Object.assign(new Error(`Plate ${plateIdx + 1} items must be an array`), { status: 400 });
+    }
+    // Aggregate within a single plate so duplicate item lines collapse cleanly.
+    const perPlate = new Map<number, number>();
+    for (const ln of plate.items as unknown[]) {
+      const line = ln as { itemId?: unknown; quantity?: unknown };
+      const itemId = Number(line?.itemId);
+      const qty = Number(line?.quantity);
+      if (!Number.isInteger(itemId) || itemId <= 0) {
+        throw Object.assign(new Error(`Plate ${plateIdx + 1} has an invalid itemId`), { status: 400 });
+      }
+      if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty < 0) {
+        throw Object.assign(new Error(`Plate ${plateIdx + 1} quantities must be whole numbers`), { status: 400 });
+      }
+      if (qty === 0) continue;
+      if (!cartByItem.has(itemId)) {
+        throw Object.assign(new Error(`Plate ${plateIdx + 1} references an item not in the order`), { status: 400 });
+      }
+      perPlate.set(itemId, (perPlate.get(itemId) ?? 0) + qty);
+    }
+    const items: { itemId: number; quantity: number }[] = [];
+    for (const [itemId, qty] of perPlate) {
+      const cart = cartByItem.get(itemId)!;
+      const next = (allocByItem.get(itemId) ?? 0) + qty;
+      if (next > cart.quantity) {
+        throw Object.assign(
+          new Error(`Plate ${plateIdx + 1} has too many of "${cart.name}" (only ${cart.quantity} in cart)`),
+          { status: 400 },
+        );
+      }
+      allocByItem.set(itemId, next);
+      items.push({ itemId, quantity: qty });
+    }
+    if (items.length === 0) return; // drop empty plates
+    cleaned.push({ label, items });
+  });
+  return cleaned.length > 0 ? cleaned : null;
 }
 
 async function getSettings() {
@@ -127,11 +189,12 @@ router.get("/event-taker/menu", verifyTakerPassword, async (req, res) => {
 
 router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
   try {
-    const { guestName, phoneNumber, items, statusUrlBase } = req.body as {
+    const { guestName, phoneNumber, items, statusUrlBase, plateGroups } = req.body as {
       guestName?: string;
       phoneNumber?: string | null;
       items?: { itemId: number; quantity: number }[];
       statusUrlBase?: string;
+      plateGroups?: unknown;
     };
     if (!guestName?.trim() || !items?.length) {
       res.status(400).json({ error: "guestName and items are required" });
@@ -262,12 +325,17 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
 
       const activeEventSessionId = settings?.activeEventSessionId ?? null;
 
+      // Validate plating against the just-priced items so the indexed errors
+      // match what staff are looking at on screen. Throws status=400 on bad data.
+      const cleanedPlateGroups = validateAndCleanPlateGroups(plateGroups, orderItems);
+
       const [created] = await tx
         .insert(eventOrdersTable)
         .values({
           guestName: guestName.trim(),
           phoneNumber: phoneNumber?.trim() || null,
           items: orderItems,
+          plateGroups: cleanedPlateGroups,
           status: "pending",
           eventSessionId: activeEventSessionId,
           orderSource: "staff",
@@ -320,6 +388,74 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
     }
     req.log.error({ err }, "Error creating taker order");
     res.status(500).json({ error: "Failed to create order" });
+  }
+});
+
+// ── Plate groups (plating layout) ──────────────────────────────────────
+// Set/clear the optional plating layout while the order is still unpaid.
+// Once payment is recorded (or override sent), the layout is locked — kitchen
+// has already started reading it. PATCH with `plateGroups: null` (or omitted)
+// to clear; otherwise the array is validated against the order's items.
+router.patch("/event-taker/orders/:id/plate-groups", verifyTakerPassword, async (req, res) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid order id" });
+      return;
+    }
+    const body = (req.body ?? {}) as { plateGroups?: unknown };
+    const [existing] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id));
+    if (!existing) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    if (existing.orderSource !== "staff") {
+      res.status(400).json({ error: "Only staff (POS) orders accept plating" });
+      return;
+    }
+    if (existing.paymentStatus !== "unpaid") {
+      res.status(409).json({ error: "Plating is locked — order has already been sent to the kitchen" });
+      return;
+    }
+    const settings = await getSettings();
+    const activeId = settings?.activeEventSessionId ?? null;
+    if (activeId != null && existing.eventSessionId !== activeId) {
+      res.status(409).json({ error: "Order belongs to a different event session" });
+      return;
+    }
+    const cartItems = (existing.items ?? []).map(i => ({
+      itemId: i.itemId, name: i.name, quantity: i.quantity,
+    }));
+    const cleaned = validateAndCleanPlateGroups(body.plateGroups ?? null, cartItems);
+    // Atomic guarded update: re-assert "staff" + "unpaid" in the WHERE clause so
+    // a concurrent payment/override can't slip past our earlier read-check.
+    const [updated] = await db
+      .update(eventOrdersTable)
+      .set({ plateGroups: cleaned })
+      .where(and(
+        eq(eventOrdersTable.id, id),
+        eq(eventOrdersTable.orderSource, "staff"),
+        eq(eventOrdersTable.paymentStatus, "unpaid"),
+      ))
+      .returning();
+    if (!updated) {
+      // Re-read to disambiguate: missing row vs lock fired between read and update.
+      const [after] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id));
+      if (!after) {
+        res.status(404).json({ error: "Order not found" });
+        return;
+      }
+      res.status(409).json({ error: "Plating is locked — order has already been sent to the kitchen" });
+      return;
+    }
+    res.json(serializeOrder(updated));
+  } catch (err: any) {
+    if (err?.status === 400) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    req.log.error({ err }, "Error updating plate groups");
+    res.status(500).json({ error: "Failed to update plating" });
   }
 });
 

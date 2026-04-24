@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle } from "lucide-react";
+import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
@@ -78,6 +78,14 @@ interface PendingOrderItem {
   lineTotal: number;
 }
 
+// One plate in a staff-defined plating layout. Quantities are whole units of
+// items already in the parent order's `items` cart. The kitchen ticket renders
+// these as plate cards; any unassigned units appear in an "Unassigned" group.
+export interface PlateGroup {
+  label: string;
+  items: { itemId: number; quantity: number }[];
+}
+
 interface PendingOrder {
   id: number;
   guestName: string;
@@ -93,6 +101,7 @@ interface PendingOrder {
   cashReceived?: number | null;
   changeDue?: number | null;
   paymentOverrideReason?: string | null;
+  plateGroups?: PlateGroup[] | null;
 }
 
 function getStoredPassword(): string | null {
@@ -520,6 +529,7 @@ export default function EventTakerOrder() {
         taxAmount: data.taxAmount ?? taxAmount,
         total: data.total ?? total,
         createdAt: data.createdAt ?? new Date().toISOString(),
+        plateGroups: data.plateGroups ?? null,
       };
       setPaymentOrder(order);
       // Clear the cart now so the cashier can start a new order while the
@@ -1209,6 +1219,11 @@ function PaymentModal({
   const [error, setError] = useState("");
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  // Plating layout — locally tracks the latest server-confirmed plates and
+  // controls the opt-in plating modal. Defaults to whatever the order row
+  // carries (re-opening a held order keeps the prior layout).
+  const [plates, setPlates] = useState<PlateGroup[] | null>(order.plateGroups ?? null);
+  const [showPlating, setShowPlating] = useState(false);
   // Shortcut: jump back to the method picker and immediately reveal the
   // override form. Exposed on every method step to match the spec.
   function gotoOverride() { setStep("method"); setOverrideOpen(true); setError(""); }
@@ -1280,6 +1295,7 @@ function PaymentModal({
   }, [total]);
 
   return (
+    <>
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm print:hidden">
       <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-secondary/30 flex items-start justify-between gap-3">
@@ -1302,6 +1318,29 @@ function PaymentModal({
           <div className="p-6 space-y-3">
             <p className="text-center text-3xl font-display font-bold">${total.toFixed(2)}</p>
             <p className="text-center text-sm text-muted-foreground">Choose payment method</p>
+            {/* Opt-in plating: lets staff split this cart into N plates so the
+                kitchen sees plate cards instead of one flat list. Locks once
+                the order is sent. */}
+            <button
+              type="button"
+              onClick={() => setShowPlating(true)}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition-colors ${
+                plates && plates.length > 0
+                  ? "border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100"
+                  : "border-border text-foreground/80 hover:bg-secondary"
+              }`}
+              data-testid="button-open-plating"
+            >
+              <span className="flex items-center gap-2">
+                <Layers className="w-4 h-4" />
+                Plating
+              </span>
+              <span className="text-xs font-medium">
+                {plates && plates.length > 0
+                  ? `${plates.length} plate${plates.length === 1 ? "" : "s"}`
+                  : "Optional · single ticket"}
+              </span>
+            </button>
             <div className="grid gap-2.5 mt-4">
               <button
                 onClick={() => { setStep("cash"); setCashStr(total.toFixed(2)); setError(""); }}
@@ -1534,6 +1573,277 @@ function PaymentModal({
             </button>
           </div>
         )}
+      </div>
+    </div>
+    {showPlating && (
+      <PlatingModal
+        order={order}
+        password={password}
+        initial={plates}
+        onClose={() => setShowPlating(false)}
+        onSaved={(next) => { setPlates(next); setShowPlating(false); }}
+      />
+    )}
+    </>
+  );
+}
+
+// ── Plating layout modal ───────────────────────────────────────────────
+// Opt-in editor: split the order's cart into N plates with whole-number
+// quantities. Persists via PATCH /event-taker/orders/:id/plate-groups.
+// Layered above the PaymentModal (z-[80] vs z-[70]) so cancel returns the
+// cashier to the payment screen.
+function PlatingModal({
+  order, password, initial, onClose, onSaved,
+}: {
+  order: PendingOrder;
+  password: string;
+  initial: PlateGroup[] | null;
+  onClose: () => void;
+  onSaved: (next: PlateGroup[] | null) => void;
+}) {
+  // Local working copy so cancel discards in-flight edits without a server roundtrip.
+  const [plates, setPlates] = useState<PlateGroup[]>(() => {
+    if (initial && initial.length > 0) {
+      // Defensive deep-clone — we mutate plate items via setState below.
+      return initial.map(p => ({ label: p.label, items: p.items.map(i => ({ ...i })) }));
+    }
+    // Default: one empty plate so the cashier can immediately start assigning.
+    return [{ label: "Plate 1", items: [] }];
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  // Per-item totals: how much of this cart line has been allocated across
+  // all plates? Drives the +/- enable state and the unassigned counter.
+  function assignedFor(itemId: number): number {
+    let sum = 0;
+    for (const p of plates) {
+      for (const ln of p.items) if (ln.itemId === itemId) sum += ln.quantity;
+    }
+    return sum;
+  }
+
+  function setPlateLabel(idx: number, label: string) {
+    setPlates(prev => prev.map((p, i) => (i === idx ? { ...p, label } : p)));
+  }
+
+  function bumpItem(plateIdx: number, itemId: number, delta: number) {
+    setPlates(prev => prev.map((p, i) => {
+      if (i !== plateIdx) return p;
+      const existingIdx = p.items.findIndex(ln => ln.itemId === itemId);
+      const current = existingIdx >= 0 ? p.items[existingIdx].quantity : 0;
+      const next = current + delta;
+      if (next <= 0) {
+        // Drop the line when it hits zero — cleaner state, no zero noise.
+        return { ...p, items: p.items.filter(ln => ln.itemId !== itemId) };
+      }
+      if (existingIdx >= 0) {
+        const items = p.items.slice();
+        items[existingIdx] = { itemId, quantity: next };
+        return { ...p, items };
+      }
+      return { ...p, items: [...p.items, { itemId, quantity: next }] };
+    }));
+  }
+
+  function addPlate() {
+    setPlates(prev => [...prev, { label: `Plate ${prev.length + 1}`, items: [] }]);
+  }
+
+  function removePlate(idx: number) {
+    setPlates(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  // "Done" sends only non-empty plates so the server stores a clean layout.
+  // Empty payload (no plates with any items) clears plating entirely (null).
+  async function save() {
+    setSubmitting(true);
+    setError("");
+    try {
+      const cleaned = plates
+        .map(p => ({
+          label: (p.label || "").trim() || "Plate",
+          items: p.items.filter(ln => ln.quantity > 0),
+        }))
+        .filter(p => p.items.length > 0);
+      const payload: PlateGroup[] | null = cleaned.length > 0 ? cleaned : null;
+      const res = await fetch(`${BASE}/api/event-taker/orders/${order.id}/plate-groups`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
+        body: JSON.stringify({ plateGroups: payload }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setError(err.error ?? "Failed to save plating");
+        return;
+      }
+      const data = await res.json();
+      onSaved(data.plateGroups ?? null);
+    } catch {
+      setError("Could not reach the server");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Cart lines drive the per-plate stepper grid. Order matches the cart so
+  // the layout reads top-to-bottom the same way the cashier built the order.
+  const cartLines = order.items;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-foreground/50 backdrop-blur-sm print:hidden">
+      <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-secondary/30 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Order #{order.id} · Plating</p>
+            <h2 className="font-display font-bold text-xl mt-0.5 flex items-center gap-2">
+              <Layers className="w-5 h-5 text-violet-600" />
+              Split into plates
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Whole units only. Anything left over prints as “Unassigned” for the kitchen.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-secondary rounded-lg shrink-0"
+            aria-label="Close plating"
+            data-testid="button-close-plating"
+          >
+            <XIcon className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Per-item allocation summary — sticky so the cashier always sees what's left. */}
+        <div className="px-6 py-3 border-b border-border bg-background/60">
+          <div className="flex flex-wrap gap-2">
+            {cartLines.map(ln => {
+              const assigned = assignedFor(ln.itemId);
+              const remaining = ln.quantity - assigned;
+              const tone =
+                remaining === 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-amber-50 text-amber-800 border-amber-200";
+              return (
+                <span
+                  key={ln.itemId}
+                  className={`text-xs px-2 py-1 rounded-lg border font-medium ${tone}`}
+                  data-testid={`plating-summary-${ln.itemId}`}
+                >
+                  {ln.name}: {assigned}/{ln.quantity}
+                  {remaining > 0 && ` · ${remaining} unassigned`}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {plates.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No plates yet — tap “Add plate” below to start.
+            </p>
+          )}
+          {plates.map((plate, plateIdx) => (
+            <div
+              key={plateIdx}
+              className="border border-border rounded-2xl p-4 bg-secondary/15"
+              data-testid={`plate-card-${plateIdx}`}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  value={plate.label}
+                  onChange={e => setPlateLabel(plateIdx, e.target.value)}
+                  placeholder={`Plate ${plateIdx + 1}`}
+                  className="flex-1 px-3 py-1.5 text-sm font-bold border border-border rounded-lg bg-background"
+                  data-testid={`input-plate-label-${plateIdx}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => removePlate(plateIdx)}
+                  className="p-1.5 text-destructive hover:bg-destructive/10 rounded-lg"
+                  title="Remove this plate"
+                  data-testid={`button-remove-plate-${plateIdx}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid gap-1.5">
+                {cartLines.map(ln => {
+                  const here = plate.items.find(i => i.itemId === ln.itemId)?.quantity ?? 0;
+                  const remaining = ln.quantity - assignedFor(ln.itemId);
+                  const canAdd = remaining > 0;
+                  return (
+                    <div key={ln.itemId} className="flex items-center gap-2 text-sm">
+                      <span className="flex-1 truncate">{ln.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => bumpItem(plateIdx, ln.itemId, -1)}
+                        disabled={here === 0}
+                        className="w-7 h-7 flex items-center justify-center border border-border rounded-lg disabled:opacity-30 hover:bg-secondary"
+                        data-testid={`button-plate-${plateIdx}-item-${ln.itemId}-minus`}
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span
+                        className="w-7 text-center font-bold tabular-nums"
+                        data-testid={`text-plate-${plateIdx}-item-${ln.itemId}-qty`}
+                      >
+                        {here}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => bumpItem(plateIdx, ln.itemId, +1)}
+                        disabled={!canAdd}
+                        className="w-7 h-7 flex items-center justify-center border border-border rounded-lg disabled:opacity-30 hover:bg-secondary"
+                        data-testid={`button-plate-${plateIdx}-item-${ln.itemId}-plus`}
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addPlate}
+            className="w-full px-4 py-2.5 text-sm font-semibold border border-dashed border-border rounded-2xl hover:bg-secondary flex items-center justify-center gap-1.5"
+            data-testid="button-add-plate"
+          >
+            <Plus className="w-4 h-4" />
+            Add plate
+          </button>
+        </div>
+
+        <div className="px-6 py-4 border-t border-border bg-secondary/20 space-y-2">
+          {error && (
+            <p className="text-sm text-destructive flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4" />{error}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 text-sm font-semibold border border-border rounded-xl hover:bg-secondary"
+              data-testid="button-cancel-plating"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={submitting}
+              className="flex-1 px-4 py-2.5 text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+              data-testid="button-save-plating"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Done
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
