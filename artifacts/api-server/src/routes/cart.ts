@@ -1,31 +1,10 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { cartItemsTable, menuItemsTable } from "@workspace/db/schema";
+import { computeEffectivePrice } from "@workspace/pricing";
 import { eq, and, isNull, asc } from "drizzle-orm";
 
 const router: IRouter = Router();
-
-function getEffectivePrice(
-  item: {
-    price: string;
-    tier2Qty: number | null;
-    tier2Price: string | null;
-    tier3Qty: number | null;
-    tier3Price: string | null;
-  },
-  qty: number,
-  sizePrice?: number | null,
-): number {
-  if (sizePrice != null) return sizePrice;
-  const base = parseFloat(item.price);
-  const t2q = item.tier2Qty;
-  const t2p = item.tier2Price ? parseFloat(item.tier2Price) : null;
-  const t3q = item.tier3Qty;
-  const t3p = item.tier3Price ? parseFloat(item.tier3Price) : null;
-  if (t3q && t3p && qty >= t3q) return t3p;
-  if (t2q && t2p && qty >= t2q) return t2p;
-  return base;
-}
 
 async function getCartData(sessionId: string) {
   const rows = await db
@@ -38,7 +17,7 @@ async function getCartData(sessionId: string) {
   const cartItems = rows.map((row) => {
     const qty = row.cart_items.quantity;
     const sizePrice = row.cart_items.sizePrice ? parseFloat(row.cart_items.sizePrice) : null;
-    const effectivePrice = getEffectivePrice(row.menu_items, qty, sizePrice);
+    const effectivePrice = computeEffectivePrice(row.menu_items, qty, sizePrice);
     return {
       id: row.cart_items.id,
       menuItemId: row.cart_items.menuItemId,

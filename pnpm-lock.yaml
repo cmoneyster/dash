@@ -190,6 +190,9 @@ importers:
       '@workspace/integrations-openai-ai-server':
         specifier: workspace:*
         version: link:../../lib/integrations-openai-ai-server
+      '@workspace/pricing':
+        specifier: workspace:*
+        version: link:../../lib/pricing
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -717,6 +720,8 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.14
+
+  lib/pricing: {}
 
   scripts:
     devDependencies:

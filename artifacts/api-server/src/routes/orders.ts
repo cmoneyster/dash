@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, orderItemsTable, cartItemsTable, menuItemsTable, cateringInquiriesTable, eventSettingsTable } from "@workspace/db/schema";
+import { computeEffectivePrice } from "@workspace/pricing";
 import { eq } from "drizzle-orm";
 import { sendNewInquiryAlert } from "../lib/sms";
 
@@ -82,25 +83,6 @@ router.post("/orders", async (req, res): Promise<void> => {
         return;
       }
     }
-
-    // Mirror cart.ts's getEffectivePrice so the server-side subtotal
-    // (and therefore the OTD waiver decision + total) match the live
-    // preview the customer sees in the Cart UI. Pan-size price wins,
-    // else tier3 / tier2 thresholds, else the base price.
-    const computeEffectivePrice = (
-      mi: { price: string; tier2Qty: number | null; tier2Price: string | null; tier3Qty: number | null; tier3Price: string | null },
-      qty: number,
-      sizePrice: string | null,
-    ): number => {
-      if (sizePrice != null) return parseFloat(sizePrice);
-      const t2q = mi.tier2Qty;
-      const t2p = mi.tier2Price ? parseFloat(mi.tier2Price) : null;
-      const t3q = mi.tier3Qty;
-      const t3p = mi.tier3Price ? parseFloat(mi.tier3Price) : null;
-      if (t3q && t3p && qty >= t3q) return t3p;
-      if (t2q && t2p && qty >= t2q) return t2p;
-      return parseFloat(mi.price);
-    };
 
     // Per-line effective price snapshot — reused for subtotal, order
     // items insert, and the inquiry summary so the three sources stay
