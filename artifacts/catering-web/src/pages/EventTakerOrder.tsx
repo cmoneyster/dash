@@ -1128,6 +1128,15 @@ export default function EventTakerOrder() {
           onHold={() => { setPaymentOrder(null); if (password) loadPending(password); }}
           onCancel={() => handleCancelOrder(paymentOrder.id)}
           onComplete={handlePaymentComplete}
+          onPlatingChanged={(plateGroups) => {
+            // Keep the in-memory payment order + pending queue in sync so the
+            // badge shows the right state if the cashier holds and reopens
+            // before the next pending poll lands.
+            setPaymentOrder(prev => (prev ? { ...prev, plateGroups } : prev));
+            setPendingOrders(prev => prev.map(o => (
+              o.id === paymentOrder.id ? { ...o, plateGroups } : o
+            )));
+          }}
         />
       )}
 
@@ -1203,7 +1212,7 @@ function PrintStatusRow({
 // confirm action. "Hold for later" leaves the order in the pending queue.
 function PaymentModal({
   order, password, venmoHandle, venmoQrImageUrl,
-  onHold, onCancel, onComplete,
+  onHold, onCancel, onComplete, onPlatingChanged,
 }: {
   order: PendingOrder;
   password: string;
@@ -1212,6 +1221,7 @@ function PaymentModal({
   onHold: () => void;
   onCancel: () => void;
   onComplete: (updated: PendingOrder) => void;
+  onPlatingChanged?: (plateGroups: PlateGroup[] | null) => void;
 }) {
   const [step, setStep] = useState<"method" | "cash" | "card" | "venmo">("method");
   const [cashStr, setCashStr] = useState("");
@@ -1581,7 +1591,14 @@ function PaymentModal({
         password={password}
         initial={plates}
         onClose={() => setShowPlating(false)}
-        onSaved={(next) => { setPlates(next); setShowPlating(false); }}
+        onSaved={(next) => {
+          setPlates(next);
+          setShowPlating(false);
+          // Bubble the new layout up so the parent's pending-orders cache
+          // stays current — otherwise a hold-then-resume could show a stale
+          // badge until the next pending poll lands.
+          onPlatingChanged?.(next);
+        }}
       />
     )}
     </>
@@ -1703,10 +1720,10 @@ function PlatingModal({
       <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-secondary/30 flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Order #{order.id} · Plating</p>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Order #{order.id}</p>
             <h2 className="font-display font-bold text-xl mt-0.5 flex items-center gap-2">
               <Layers className="w-5 h-5 text-violet-600" />
-              Split into plates
+              Plating
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
               Whole units only. Anything left over prints as “Unassigned” for the kitchen.
