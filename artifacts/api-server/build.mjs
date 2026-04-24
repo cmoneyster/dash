@@ -130,6 +130,14 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   const destDataDir = path.join(distDir, "data");
   await mkdir(destDataDir, { recursive: true });
   await cp(pdfkitDataDir, destDataDir, { recursive: true });
+
+  // Copy our bundled CJK-capable Unicode font (Noto Sans SC) next to the
+  // bundle so renderQuotePdf() can register it for menu items containing
+  // Chinese characters. PDFKit's built-in Helvetica only covers Latin.
+  const srcFontDir = path.resolve(artifactDir, "assets/fonts");
+  const destFontDir = path.join(distDir, "fonts");
+  await mkdir(destFontDir, { recursive: true });
+  await cp(srcFontDir, destFontDir, { recursive: true });
 }
 
 buildAll().catch((err) => {

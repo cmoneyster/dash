@@ -1,5 +1,26 @@
 import PDFDocument from "pdfkit";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import type { CateringInquiry, QuoteAdjustment, QuoteLineItem } from "@workspace/db/schema";
+
+// Resolve the bundled CJK font path. In production (and `pnpm run dev`, which
+// does `build && start`), the bundle runs from `dist/index.mjs` with the font
+// at `dist/fonts/`. When the TS source is loaded directly (tests, tsx), we
+// instead look in the repo's `assets/fonts/` directory. Falls back silently
+// to Helvetica (Latin-only) if neither exists.
+const FONT_PATH = (() => {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+      path.join(here, "fonts", "NotoSansSC-Regular.otf"), // dist/fonts (built)
+      path.join(here, "..", "..", "assets", "fonts", "NotoSansSC-Regular.otf"), // src/lib → assets/fonts (source)
+    ];
+    return candidates.find((p) => existsSync(p)) ?? null;
+  } catch {
+    return null;
+  }
+})();
 
 export type ComputedAdjustment = QuoteAdjustment & { computed: number };
 
@@ -73,6 +94,13 @@ export function fmtDate(d: Date | string | null | undefined): string {
 export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> {
   const totals = computeQuoteTotals(inquiry.lineItems, inquiry.fees, inquiry.discounts);
   const doc = new PDFDocument({ size: "LETTER", margin: 50 });
+  // Register a Unicode font with CJK coverage so menu items / notes containing
+  // Chinese characters render correctly. Falls back silently to Helvetica
+  // (Latin-only) if the font wasn't bundled, to avoid breaking PDF generation.
+  if (FONT_PATH) {
+    doc.registerFont("Default", FONT_PATH);
+    doc.font("Default");
+  }
   const chunks: Buffer[] = [];
   doc.on("data", (c) => chunks.push(c as Buffer));
 
