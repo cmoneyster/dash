@@ -557,7 +557,9 @@ export default function KitchenDisplay() {
         <PauseDurationModal
           channel={pauseModal}
           currentMessage={channels?.[pauseModal]?.pausedMessage ?? null}
-          onCancel={() => setPauseModal(null)}
+          busy={chBusy === pauseModal}
+          error={chError}
+          onCancel={() => { setChError(""); setPauseModal(null); }}
           onConfirm={(m, msg) => setChannelState(pauseModal, "paused", m, msg)}
         />
       )}
@@ -1278,10 +1280,12 @@ function ChannelControlsModal({
 }
 
 export function PauseDurationModal({
-  channel, currentMessage, onCancel, onConfirm,
+  channel, currentMessage, busy = false, error = "", onCancel, onConfirm,
 }: {
   channel: "guest" | "taker";
   currentMessage?: string | null;
+  busy?: boolean;
+  error?: string;
   onCancel: () => void;
   onConfirm: (minutes: number, message: string) => void;
 }) {
@@ -1290,17 +1294,31 @@ export function PauseDurationModal({
   const presets = [5, 10, 15, 30];
   const title = channel === "guest" ? "Pause Guest Ordering" : "Pause Staff Order Taker";
   const audience = channel === "guest" ? "guests" : "staff";
+  const titleId = `pause-duration-title-${channel}`;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onCancel(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onCancel, busy]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => { if (!busy) onCancel(); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="bg-[#1e1e1e] border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
             <Pause className="w-5 h-5 text-amber-400" />
           </div>
-          <div>
-            <h2 className="font-bold text-base">{title}</h2>
+          <div className="flex-1 min-w-0">
+            <h2 id={titleId} className="font-bold text-base">{title}</h2>
             <p className="text-xs text-white/50">Auto-resumes when the timer ends</p>
           </div>
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            aria-label="Close"
+            className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
         <div className="mb-4">
           <label className="block text-xs font-semibold text-white/70 mb-1.5">
@@ -1320,13 +1338,14 @@ export function PauseDurationModal({
             <button
               key={m}
               onClick={() => onConfirm(m, note)}
-              className="py-2.5 rounded-xl bg-white/10 hover:bg-amber-500/30 text-white font-semibold text-sm transition-colors"
+              disabled={busy}
+              className="py-2.5 rounded-xl bg-white/10 hover:bg-amber-500/30 text-white font-semibold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {m}m
+              {busy ? "…" : `${m}m`}
             </button>
           ))}
         </div>
-        <div className="flex gap-2 mb-5">
+        <div className="flex gap-2 mb-3">
           <input
             type="number"
             min={1}
@@ -1334,22 +1353,29 @@ export function PauseDurationModal({
             value={custom}
             onChange={e => setCustom(e.target.value)}
             placeholder="Custom minutes"
-            className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-amber-400"
+            disabled={busy}
+            className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-amber-400 disabled:opacity-40"
           />
           <button
             onClick={() => {
               const n = Number(custom);
               if (Number.isFinite(n) && n > 0) onConfirm(n, note);
             }}
-            disabled={!custom || Number(custom) <= 0}
+            disabled={busy || !custom || Number(custom) <= 0}
             className="px-4 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold disabled:opacity-40"
           >
-            Pause
+            {busy ? "Pausing…" : "Pause"}
           </button>
         </div>
+        {error && (
+          <div role="alert" className="mb-3 px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+            {error}
+          </div>
+        )}
         <button
           onClick={onCancel}
-          className="w-full px-4 py-2.5 rounded-xl border border-white/10 text-white/60 hover:bg-white/5 hover:text-white transition-colors text-sm font-medium"
+          disabled={busy}
+          className="w-full px-4 py-2.5 rounded-xl border border-white/10 text-white/60 hover:bg-white/5 hover:text-white transition-colors text-sm font-medium disabled:opacity-40"
         >
           Cancel
         </button>
