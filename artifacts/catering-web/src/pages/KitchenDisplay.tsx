@@ -1,10 +1,32 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer, Pause, Play, Ban, ShoppingBag, Users, X } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer, Pause, Play, Ban, ShoppingBag, Users, X, AlertTriangle } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const POLL_INTERVAL = 6000;
+const STOCK_POLL_INTERVAL = 15000;
 const LS_KEY = "kitchen_item_checks";
+const LOW_STOCK_LS_KEY = "kitchen_low_stock_seen";
+const LOW_STOCK_THRESHOLD_LS_KEY = "kitchen_low_stock_threshold";
+const DEFAULT_LOW_STOCK_THRESHOLD = 5;
+const LOW_STOCK_TOAST_TTL = 12000;
+
+function getLowStockThreshold(): number {
+  const raw = localStorage.getItem(LOW_STOCK_THRESHOLD_LS_KEY);
+  const n = raw === null ? NaN : parseInt(raw);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_LOW_STOCK_THRESHOLD;
+}
+function loadLowStockSeen(): Set<number> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LOW_STOCK_LS_KEY) ?? "[]");
+    return new Set(Array.isArray(raw) ? raw.filter((x): x is number => typeof x === "number") : []);
+  } catch {
+    return new Set();
+  }
+}
+function saveLowStockSeen(s: Set<number>) {
+  localStorage.setItem(LOW_STOCK_LS_KEY, JSON.stringify([...s]));
+}
 
 type OrderItem = { itemId: number; name: string; quantity: number; price: number; internalNotes?: string | null };
 type StockItem = {
@@ -261,6 +283,30 @@ export default function KitchenDisplay() {
   const [stockEdits, setStockEdits] = useState<Record<number, string>>({});
   const [stockSaving, setStockSaving] = useState<Set<number>>(new Set());
 
+  // Low-stock alerts — toasts shown when an item with limited event_stock
+  // crosses the configurable low-stock threshold (default 5). Each item alerts
+  // only once per crossing; the "seen low" set persists across reloads so a
+  // refresh doesn't re-fire alerts, and an item must climb back above the
+  // threshold (or be set to unlimited) before its next dip alerts again.
+  type LowStockToast = { id: string; itemId: number; name: string; eventStock: number; createdAt: number };
+  const [lowStockToasts, setLowStockToasts] = useState<LowStockToast[]>([]);
+  const lowStockSeenRef = useRef<Set<number>>(loadLowStockSeen());
+  const stockPollCountRef = useRef(0);
+
+  const dismissLowStockToast = useCallback((id: string) => {
+    setLowStockToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // Auto-dismiss toasts after their TTL
+  useEffect(() => {
+    if (lowStockToasts.length === 0) return;
+    const timers = lowStockToasts.map(t => {
+      const remaining = Math.max(0, LOW_STOCK_TOAST_TTL - (Date.now() - t.createdAt));
+      return setTimeout(() => dismissLowStockToast(t.id), remaining);
+    });
+    return () => { timers.forEach(clearTimeout); };
+  }, [lowStockToasts, dismissLowStockToast]);
+
   const fetchStock = useCallback(async (pwd: string) => {
     try {
       const res = await fetch(`${BASE}/api/event-ordering/stock`, {
@@ -278,13 +324,66 @@ export default function KitchenDisplay() {
           });
           return next;
         });
+
+        // Low-stock detection. Skip alerts on the very first poll after page
+        // load — we only seed the "seen" set so a fresh-loaded display doesn't
+        // dump a wall of toasts for items that were already low.
+        const threshold = getLowStockThreshold();
+        const seen = new Set(lowStockSeenRef.current);
+        const newToasts: LowStockToast[] = [];
+        const isFirstPoll = stockPollCountRef.current === 0;
+        for (const item of data) {
+          const stock = item.eventStock;
+          const isLow = stock !== null && stock > 0 && stock <= threshold;
+          if (isLow) {
+            if (!seen.has(item.id)) {
+              seen.add(item.id);
+              if (!isFirstPoll) {
+                newToasts.push({
+                  id: `${item.id}-${Date.now()}`,
+                  itemId: item.id,
+                  name: item.name,
+                  eventStock: stock,
+                  createdAt: Date.now(),
+                });
+              }
+            }
+          } else if (seen.has(item.id)) {
+            // Restocked above threshold, set to unlimited, or sold out — clear
+            // so a future dip will re-alert.
+            seen.delete(item.id);
+          }
+        }
+        // Only persist + update ref if something actually changed
+        const changed = seen.size !== lowStockSeenRef.current.size
+          || [...seen].some(id => !lowStockSeenRef.current.has(id));
+        if (changed) {
+          lowStockSeenRef.current = seen;
+          saveLowStockSeen(seen);
+        }
+        if (newToasts.length > 0) {
+          setLowStockToasts(prev => {
+            // Replace any existing toast for the same item (so it shows latest count)
+            const filtered = prev.filter(t => !newToasts.some(n => n.itemId === t.itemId));
+            return [...filtered, ...newToasts];
+          });
+          if (soundEnabledRef.current) playChime();
+          if ("vibrate" in navigator) navigator.vibrate([100, 60, 100]);
+        }
+        stockPollCountRef.current += 1;
       }
     } catch {}
   }, []);
 
+  // Always poll stock while authenticated so we can detect low-stock crossings
+  // even when the kitchen is on the Orders view. The Stock view itself just
+  // reads from the same `stockItems` state.
   useEffect(() => {
-    if (authedPassword && view === "stock") fetchStock(authedPassword);
-  }, [authedPassword, view, fetchStock]);
+    if (!authedPassword) return;
+    fetchStock(authedPassword);
+    const id = setInterval(() => fetchStock(authedPassword), STOCK_POLL_INTERVAL);
+    return () => clearInterval(id);
+  }, [authedPassword, fetchStock]);
 
   async function saveStockItem(itemId: number, value: string | null) {
     if (!authedPassword) return;
@@ -572,6 +671,30 @@ export default function KitchenDisplay() {
         />
       )}
 
+      {/* Low-stock alert toasts — fire when an item with limited event_stock
+          dips to ≤ threshold (default 5). Auto-dismiss after a few seconds. */}
+      {lowStockToasts.length > 0 && (
+        <>
+          <style>{`
+            @keyframes kitchenLowStockSlideIn {
+              from { opacity: 0; transform: translateX(24px); }
+              to   { opacity: 1; transform: translateX(0); }
+            }
+          `}</style>
+          <div className="fixed top-4 right-4 z-40 flex flex-col gap-2 w-full max-w-sm pointer-events-none">
+            {lowStockToasts.map(toast => (
+              <LowStockToastCard
+                key={toast.id}
+                name={toast.name}
+                eventStock={toast.eventStock}
+                onDismiss={() => dismissLowStockToast(toast.id)}
+                onView={() => { dismissLowStockToast(toast.id); setView("stock"); }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
       {/* New session prompt */}
       {sessionPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
@@ -728,14 +851,26 @@ export default function KitchenDisplay() {
                       const saving = stockSaving.has(item.id);
                       const isUnlimited = item.eventStock === null;
                       const isSoldOut = item.eventStock === 0;
+                      const threshold = getLowStockThreshold();
+                      const isLow = item.eventStock !== null && item.eventStock > 0 && item.eventStock <= threshold;
                       return (
-                        <div key={item.id} className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
+                        <div
+                          key={item.id}
+                          className={`flex items-center gap-3 rounded-2xl px-4 py-3 border ${
+                            isLow ? "bg-amber-500/10 border-amber-500/40" : "bg-white/5 border-white/10"
+                          }`}
+                        >
                           {item.imageUrl && (
                             <img src={item.imageUrl} alt={item.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
                           )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="text-sm font-semibold text-white truncate flex-1 min-w-0">{item.name}</p>
+                              {isLow && (
+                                <span className="shrink-0 inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200" title={`At or below low-stock threshold (${threshold})`}>
+                                  <AlertTriangle className="w-2.5 h-2.5" /> Low
+                                </span>
+                              )}
                               {item.eventActive && (
                                 <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300" title="Sold on the Guest Event ordering page">
                                   Guest
@@ -747,7 +882,7 @@ export default function KitchenDisplay() {
                                 </span>
                               )}
                             </div>
-                            <p className={`text-xs font-medium mt-0.5 ${isSoldOut ? "text-red-400" : isUnlimited ? "text-emerald-400" : item.eventStock! <= 5 ? "text-amber-400" : "text-white/40"}`}>
+                            <p className={`text-xs font-medium mt-0.5 ${isSoldOut ? "text-red-400" : isUnlimited ? "text-emerald-400" : isLow ? "text-amber-400" : "text-white/40"}`}>
                               {isSoldOut ? "Sold out" : isUnlimited ? "Unlimited" : `${item.eventStock} remaining`}
                             </p>
                           </div>
@@ -1057,6 +1192,80 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
           title="Print customer receipt (with prices)"
         >
           <Receipt size={12} /> Print receipt
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LowStockToastCard({
+  name, eventStock, onDismiss, onView,
+}: {
+  name: string;
+  eventStock: number;
+  onDismiss: () => void;
+  onView: () => void;
+}) {
+  const isCritical = eventStock <= 2;
+  return (
+    <div
+      role="alert"
+      aria-live="polite"
+      className={`pointer-events-auto rounded-2xl shadow-2xl border p-4 backdrop-blur-md ${
+        isCritical
+          ? "bg-rose-500/95 border-rose-300/60 text-white"
+          : "bg-amber-500/95 border-amber-300/60 text-black"
+      }`}
+      style={{ animation: "kitchenLowStockSlideIn 0.28s ease-out" }}
+    >
+      <div className="flex items-start gap-3">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isCritical ? "bg-white/20" : "bg-black/15"}`}>
+          <AlertTriangle className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-sm uppercase tracking-wider">
+            {isCritical ? "Almost out" : "Running low"}
+          </p>
+          <p className="font-semibold mt-0.5 leading-tight">
+            <span className="truncate inline-block max-w-full align-bottom">{name}</span>
+          </p>
+          <p className="text-sm mt-0.5 font-medium opacity-90">
+            Only {eventStock} {eventStock === 1 ? "unit" : "units"} left · prep more or pull the item.
+          </p>
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              type="button"
+              onClick={onView}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                isCritical
+                  ? "bg-white/20 hover:bg-white/30 text-white"
+                  : "bg-black/15 hover:bg-black/25 text-black"
+              }`}
+            >
+              Open Stock
+            </button>
+            <button
+              type="button"
+              onClick={onDismiss}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                isCritical
+                  ? "text-white/80 hover:text-white hover:bg-white/10"
+                  : "text-black/70 hover:text-black hover:bg-black/10"
+              }`}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss alert"
+          className={`p-1 rounded-lg transition-colors shrink-0 ${
+            isCritical ? "text-white/70 hover:text-white hover:bg-white/10" : "text-black/60 hover:text-black hover:bg-black/10"
+          }`}
+        >
+          <X className="w-4 h-4" />
         </button>
       </div>
     </div>
