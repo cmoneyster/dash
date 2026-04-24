@@ -92,11 +92,11 @@ export async function maybeResetLowStockFlag(
 export function fireLowStockAlertIfAny(
   req: Request,
   crossings: LowStockCrossing[],
-  settings: { phone: string | null; eventName: string; threshold: number },
+  settings: { phones: string[]; eventName: string; threshold: number },
 ): void {
-  if (!settings.phone || crossings.length === 0) return;
+  if (settings.phones.length === 0 || crossings.length === 0) return;
   sendLowStockAlert({
-    phoneNumber: settings.phone,
+    phoneNumbers: settings.phones,
     eventName: settings.eventName,
     items: crossings.map(c => ({ name: c.name, eventStock: c.eventStock })),
     threshold: settings.threshold,

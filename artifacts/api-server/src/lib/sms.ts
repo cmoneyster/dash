@@ -77,13 +77,13 @@ export async function sendNewInquiryAlert(opts: {
 }
 
 export async function sendLowStockAlert(opts: {
-  phoneNumber: string;
+  phoneNumbers: string[];
   eventName: string;
   items: Array<{ name: string; eventStock: number }>;
   threshold: number;
 }): Promise<void> {
-  const { phoneNumber, eventName, items, threshold } = opts;
-  if (!phoneNumber || items.length === 0) return;
+  const { phoneNumbers, eventName, items, threshold } = opts;
+  if (phoneNumbers.length === 0 || items.length === 0) return;
   const event = eventName?.trim() || "dash by Hollywood East Cafe";
   // Cap the number of itemized lines so a sudden batch of crossings doesn't
   // produce a multi-segment SMS that gets truncated by the gateway.
@@ -95,7 +95,17 @@ export async function sendLowStockAlert(opts: {
     ? `Low stock at ${event}: "${items[0].name}" is down to ${items[0].eventStock} (threshold ${threshold}).`
     : `Low stock at ${event} (threshold ${threshold}):`;
   const body = items.length === 1 ? head : `${head}\n${lines.join("\n")}`;
-  await sendSms(phoneNumber, body);
+  // Send sequentially so a slow gateway doesn't fan out parallel SMS bursts;
+  // wrap each in try/catch so one bad recipient can't take down the others.
+  // sendSms() already swallows gateway failures and emits an alert email,
+  // but we add a defensive catch in case future implementations throw.
+  for (const phone of phoneNumbers) {
+    try {
+      await sendSms(phone, body);
+    } catch (err) {
+      console.error("[SMS] low-stock alert failed for", phone, err);
+    }
+  }
 }
 
 export async function sendQuoteResponseSms(opts: {

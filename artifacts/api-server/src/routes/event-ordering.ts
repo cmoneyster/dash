@@ -335,7 +335,7 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
       return {
         order: created,
         lowStockCrossings: crossings,
-        lowStockSettings: { phone: s?.lowStockAlertPhone ?? null, eventName: s?.eventName ?? "", threshold },
+        lowStockSettings: { phones: s?.lowStockAlertPhones ?? [], eventName: s?.eventName ?? "", threshold },
       };
     });
 

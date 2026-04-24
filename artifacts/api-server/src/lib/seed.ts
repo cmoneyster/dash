@@ -142,6 +142,32 @@ export async function seedIfEmpty(): Promise<void> {
         ALTER COLUMN plan_number SET DEFAULT nextval('shared_plans_plan_number_seq')
     `);
 
+    // Multi-recipient low-stock SMS migration (production safe / idempotent).
+    // Ensures the new array column exists, copies any pre-existing single
+    // phone into the array first slot, then drops the legacy column. Safe to
+    // re-run: every step is guarded by existence checks. Prevents data loss
+    // when this build deploys to a prod DB that still has the old column.
+    await db.execute(sql`
+      ALTER TABLE event_settings
+        ADD COLUMN IF NOT EXISTS low_stock_alert_phones text[] NOT NULL DEFAULT ARRAY[]::text[]
+    `);
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'event_settings' AND column_name = 'low_stock_alert_phone'
+        ) THEN
+          EXECUTE 'UPDATE event_settings
+                     SET low_stock_alert_phones = ARRAY[low_stock_alert_phone]
+                     WHERE low_stock_alert_phone IS NOT NULL
+                       AND low_stock_alert_phone <> ''''
+                       AND (low_stock_alert_phones IS NULL OR low_stock_alert_phones = ''{}'')';
+          EXECUTE 'ALTER TABLE event_settings DROP COLUMN low_stock_alert_phone';
+        END IF;
+      END$$;
+    `);
+
     // Auto-correct items that have at least one pan price but are still marked per_unit
     await db.execute(sql`
       UPDATE menu_items

@@ -40,7 +40,7 @@ router.get("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate: settings?.eventTakerTaxRate != null ? parseFloat(settings.eventTakerTaxRate) : null,
       venmoHandle: settings?.venmoHandle ?? "",
       venmoQrImageUrl: settings?.venmoQrImageUrl ?? null,
-      lowStockAlertPhone: settings?.lowStockAlertPhone ?? "",
+      lowStockAlertPhones: settings?.lowStockAlertPhones ?? [],
       lowStockAlertThreshold: settings?.lowStockAlertThreshold ?? null,
       twilioConfigured,
     });
@@ -56,7 +56,7 @@ router.put("/admin/event-settings", async (req, res) => {
       eventName, orderPassword, kitchenPassword,
       eventTakerPassword, eventTakerTaxEnabled, eventTakerTaxRate,
       venmoHandle, venmoQrImageUrl,
-      lowStockAlertPhone, lowStockAlertThreshold,
+      lowStockAlertPhones, lowStockAlertThreshold,
     } = req.body as {
       eventName?: string;
       orderPassword?: string;
@@ -66,7 +66,7 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate?: number | string | null;
       venmoHandle?: string | null;
       venmoQrImageUrl?: string | null;
-      lowStockAlertPhone?: string | null;
+      lowStockAlertPhones?: string[] | null;
       lowStockAlertThreshold?: number | string | null;
     };
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
@@ -81,23 +81,37 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate: s.eventTakerTaxRate != null ? parseFloat(s.eventTakerTaxRate) : null,
       venmoHandle: s.venmoHandle ?? "",
       venmoQrImageUrl: s.venmoQrImageUrl ?? null,
-      lowStockAlertPhone: s.lowStockAlertPhone ?? "",
+      lowStockAlertPhones: s.lowStockAlertPhones ?? [],
       lowStockAlertThreshold: s.lowStockAlertThreshold ?? null,
       twilioConfigured,
     });
 
-    // Phone validation: keep digits, "+" and spaces; reject obviously bad
-    // input rather than persisting garbage that the SMS gateway will silently
-    // drop. Stored as the raw user-entered string; the gateway normalizes.
-    function normalizeAlertPhone(v: string | null | undefined): string | null {
-      if (v == null) return null;
-      const trimmed = String(v).trim();
-      if (trimmed === "") return null;
-      const digits = trimmed.replace(/\D/g, "");
-      if (digits.length < 7) {
-        throw Object.assign(new Error("lowStockAlertPhone must contain at least 7 digits"), { status: 400 });
+    // Recipient list validation: trim each entry, drop empties, dedupe
+    // (case-insensitive on digits), and require >= 7 digits per number so the
+    // SMS gateway doesn't silently drop garbage. Errors are recipient-indexed
+    // so the admin UI can highlight the offending row.
+    function normalizeAlertPhones(v: string[] | null | undefined): string[] {
+      if (v == null) return [];
+      if (!Array.isArray(v)) {
+        throw Object.assign(new Error("lowStockAlertPhones must be an array of phone numbers"), { status: 400 });
       }
-      return trimmed.slice(0, 32);
+      const out: string[] = [];
+      const seen = new Set<string>();
+      v.forEach((raw, idx) => {
+        if (typeof raw !== "string") {
+          throw Object.assign(new Error(`Recipient phone #${idx + 1} must be a string`), { status: 400 });
+        }
+        const trimmed = raw.trim();
+        if (trimmed === "") return; // silently skip blank rows
+        const digits = trimmed.replace(/\D/g, "");
+        if (digits.length < 7) {
+          throw Object.assign(new Error(`Recipient phone #${idx + 1} must contain at least 7 digits`), { status: 400 });
+        }
+        if (seen.has(digits)) return; // silently dedupe
+        seen.add(digits);
+        out.push(trimmed.slice(0, 32));
+      });
+      return out;
     }
     function normalizeAlertThreshold(v: number | string | null | undefined): number | null {
       if (v === null || v === undefined || v === "") return null;
@@ -138,8 +152,8 @@ router.put("/admin/event-settings", async (req, res) => {
           ? null
           : venmoQrImageUrl;
       }
-      if (lowStockAlertPhone !== undefined) {
-        updates.lowStockAlertPhone = normalizeAlertPhone(lowStockAlertPhone);
+      if (lowStockAlertPhones !== undefined) {
+        updates.lowStockAlertPhones = normalizeAlertPhones(lowStockAlertPhones);
       }
       if (lowStockAlertThreshold !== undefined) {
         updates.lowStockAlertThreshold = normalizeAlertThreshold(lowStockAlertThreshold);
@@ -157,7 +171,7 @@ router.put("/admin/event-settings", async (req, res) => {
         eventTakerTaxRate: (eventTakerTaxRate === undefined || eventTakerTaxRate === null || eventTakerTaxRate === "") ? null : String(Number(eventTakerTaxRate)),
         venmoHandle: venmoHandle == null ? null : (venmoHandle.trim().replace(/^@/, "") || null),
         venmoQrImageUrl: venmoQrImageUrl == null || venmoQrImageUrl === "" ? null : venmoQrImageUrl,
-        lowStockAlertPhone: normalizeAlertPhone(lowStockAlertPhone),
+        lowStockAlertPhones: normalizeAlertPhones(lowStockAlertPhones),
         lowStockAlertThreshold: normalizeAlertThreshold(lowStockAlertThreshold),
       }).returning();
       res.json(buildResponse(created));
