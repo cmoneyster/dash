@@ -4,6 +4,7 @@ import type { MenuItem } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { isPanSizesItem, getPanSizesFromPrice } from "@/lib/menu-types";
 import { ImageLightbox } from "@/components/ImageLightbox";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface MenuCardProps {
   item: MenuItem;
@@ -64,13 +65,21 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan, serviceMod
               </span>
             )}
             {item.otdEligible && (
-              <span
-                className="px-3 py-1 bg-orange-600/90 text-white backdrop-blur-sm text-xs font-bold uppercase tracking-wider rounded-full shadow-sm flex items-center gap-1"
-                title="On the Dash Experience — we cook this one fresh on-site from our food trailer"
-              >
-                <Flame className="w-3 h-3" />
-                On the Dash
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="px-3 py-1 bg-orange-600/90 text-white backdrop-blur-sm text-xs font-bold uppercase tracking-wider rounded-full shadow-sm flex items-center gap-1 cursor-help"
+                    aria-label="On the Dash Experience details"
+                  >
+                    <Flame className="w-3 h-3" />
+                    On the Dash
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  On the Dash Experience — we cook this one fresh on-site from our food trailer.
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
           <button
@@ -193,13 +202,21 @@ export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan, ser
             </span>
           )}
           {item.otdEligible && (
-            <span
-              className="px-2 py-0.5 bg-orange-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-full flex items-center gap-1"
-              title="On the Dash Experience — we cook this one fresh on-site from our food trailer"
-            >
-              <Flame className="w-3 h-3" />
-              On the Dash
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="px-2 py-0.5 bg-orange-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-full flex items-center gap-1 cursor-help"
+                  aria-label="On the Dash Experience details"
+                >
+                  <Flame className="w-3 h-3" />
+                  On the Dash
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                On the Dash Experience — we cook this one fresh on-site from our food trailer.
+              </TooltipContent>
+            </Tooltip>
           )}
         </div>
 

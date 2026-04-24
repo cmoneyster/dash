@@ -680,7 +680,7 @@ export default function Plan() {
   const ineligiblePlanItems = useMemo(() => {
     if (!plan?.items?.length) return [] as { id: number; name: string; menuItemId: number }[];
     return plan.items
-      .filter(i => !(i.menuItem as any).otdEligible)
+      .filter(i => !i.menuItem.otdEligible)
       .map(i => ({ id: i.id, name: i.menuItem.name, menuItemId: i.menuItemId }));
   }, [plan?.items]);
   const planHasIneligible = ineligiblePlanItems.length > 0;

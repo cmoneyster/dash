@@ -316,8 +316,8 @@ export default function Cart() {
   const ineligibleItems = useMemo(() => {
     if (!cart?.items.length) return [] as { id: number; name: string }[];
     return cart.items
-      .filter((i: any) => !i.menuItem?.otdEligible)
-      .map((i: any) => ({ id: i.id as number, name: i.menuItem?.name ?? "Unknown item" }));
+      .filter(i => !i.menuItem.otdEligible)
+      .map(i => ({ id: i.id, name: i.menuItem.name }));
   }, [cart?.items]);
   const hasIneligible = ineligibleItems.length > 0;
   const otdBlocked = serviceMode === "on_the_dash" && hasIneligible;
