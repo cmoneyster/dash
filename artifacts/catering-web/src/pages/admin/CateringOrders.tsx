@@ -84,6 +84,9 @@ type Inquiry = {
   quoteLastEmailedAt: string | null;
   quoteLastTextedAt: string | null;
   quoteNotes: string | null;
+  quoteAcceptedAt: string | null;
+  quoteChangeRequestAt: string | null;
+  quoteChangeRequestMessage: string | null;
   squareInvoiceId: string | null;
   squareInvoiceStatus: string | null;
   squareHostedUrl: string | null;
@@ -883,6 +886,27 @@ function QuoteActions({
           {inquiry.quoteLastTextedAt && <span>Texted {formatDateTime(inquiry.quoteLastTextedAt)}</span>}
         </div>
 
+        {inquiry.quoteAcceptedAt && (
+          <div className="flex items-start gap-2 p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800">
+            <Check className="w-4 h-4 mt-0.5 shrink-0" />
+            <div className="text-xs">
+              <p className="font-semibold">Client accepted this quote</p>
+              <p className="text-emerald-700">{formatDateTime(inquiry.quoteAcceptedAt)}</p>
+            </div>
+          </div>
+        )}
+        {inquiry.quoteChangeRequestAt && !inquiry.quoteAcceptedAt && (
+          <div className="flex items-start gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
+            <MessageSquare className="w-4 h-4 mt-0.5 shrink-0" />
+            <div className="text-xs space-y-1 min-w-0">
+              <p className="font-semibold">Client requested changes — {formatDateTime(inquiry.quoteChangeRequestAt)}</p>
+              {inquiry.quoteChangeRequestMessage && (
+                <p className="italic whitespace-pre-wrap break-words">"{inquiry.quoteChangeRequestMessage}"</p>
+              )}
+            </div>
+          </div>
+        )}
+
         {msg && <p className="text-xs text-muted-foreground border-t border-border pt-2">{msg}</p>}
       </div>
     </div>
@@ -1594,6 +1618,16 @@ export default function CateringOrders() {
                           {inquiry.quoteNumber && (
                             <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded-full">
                               {inquiry.quoteNumber}
+                            </span>
+                          )}
+                          {inquiry.quoteAcceptedAt && (
+                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-semibold">
+                              <Check className="w-2.5 h-2.5" /> Accepted
+                            </span>
+                          )}
+                          {inquiry.quoteChangeRequestAt && !inquiry.quoteAcceptedAt && (
+                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold">
+                              <MessageSquare className="w-2.5 h-2.5" /> Changes requested
                             </span>
                           )}
                         </div>

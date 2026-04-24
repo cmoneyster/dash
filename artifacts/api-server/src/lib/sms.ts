@@ -75,3 +75,28 @@ export async function sendNewInquiryAlert(opts: {
   if (opts.link)        lines.push(`View: ${opts.link}`);
   await sendSms(ownerPhone, lines.join("\n"));
 }
+
+export async function sendQuoteResponseSms(opts: {
+  kind: "accepted" | "change_request";
+  clientName: string;
+  quoteNumber: string | null;
+  message?: string | null;
+  link?: string | null;
+}): Promise<void> {
+  const ownerPhone = process.env.OWNER_PHONE;
+  if (!ownerPhone) {
+    console.warn("[SMS] OWNER_PHONE not set — skipping quote response alert");
+    return;
+  }
+  const isAccept = opts.kind === "accepted";
+  const head = isAccept
+    ? `${opts.clientName} accepted quote ${opts.quoteNumber ?? ""}`.trim()
+    : `${opts.clientName} requested changes on quote ${opts.quoteNumber ?? ""}`.trim();
+  const lines = [head];
+  if (!isAccept && opts.message?.trim()) {
+    const note = opts.message.trim();
+    lines.push(note.length > 240 ? `${note.slice(0, 237)}…` : note);
+  }
+  if (opts.link) lines.push(opts.link);
+  await sendSms(ownerPhone, lines.join("\n"));
+}

@@ -73,6 +73,10 @@ export const cateringInquiriesTable = pgTable("catering_inquiries", {
   quoteLastEmailedAt: timestamp("quote_last_emailed_at"),
   quoteLastTextedAt: timestamp("quote_last_texted_at"),
   quoteNotes: text("quote_notes"),
+  // Client responses captured from the public quote page (`/quote/:token`)
+  quoteAcceptedAt: timestamp("quote_accepted_at"),
+  quoteChangeRequestAt: timestamp("quote_change_request_at"),
+  quoteChangeRequestMessage: text("quote_change_request_message"),
   // Square invoice mirror (Square is the system of record; we cache for display + lookup)
   squareInvoiceId: text("square_invoice_id"),
   squareInvoiceVersion: integer("square_invoice_version"),

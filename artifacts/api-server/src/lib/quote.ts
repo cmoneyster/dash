@@ -258,6 +258,9 @@ export function publicQuoteFromInquiry(inquiry: CateringInquiry) {
     quoteIssuedAt: inquiry.quoteIssuedAt,
     quoteExpiresAt: inquiry.quoteExpiresAt,
     quoteNotes: inquiry.quoteNotes,
+    acceptedAt: inquiry.quoteAcceptedAt ? inquiry.quoteAcceptedAt.toISOString() : null,
+    changeRequestAt: inquiry.quoteChangeRequestAt ? inquiry.quoteChangeRequestAt.toISOString() : null,
+    changeRequestMessage: inquiry.quoteChangeRequestMessage ?? null,
     client: {
       name: inquiry.clientName,
       organization: inquiry.organization,

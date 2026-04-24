@@ -54,6 +54,62 @@ export async function sendMail(opts: {
   }
 }
 
+export async function sendQuoteResponseAlert(context: {
+  kind: "accepted" | "change_request";
+  clientName: string;
+  quoteNumber: string | null;
+  message?: string | null;
+  link?: string | null;
+}): Promise<void> {
+  const transport = getTransport();
+  if (!transport) {
+    console.warn("[mail] SMTP not configured — skipping quote response alert");
+    return;
+  }
+  const isAccept = context.kind === "accepted";
+  const subject = isAccept
+    ? `Quote ${context.quoteNumber ?? ""} accepted by ${context.clientName}`.trim()
+    : `Changes requested on quote ${context.quoteNumber ?? ""} by ${context.clientName}`.trim();
+  const lines = [
+    `Client: ${context.clientName}`,
+    `Quote: ${context.quoteNumber ?? "—"}`,
+    `Action: ${isAccept ? "Accepted" : "Requested changes"}`,
+  ];
+  if (!isAccept && context.message?.trim()) {
+    lines.push("", "Message:", context.message.trim());
+  }
+  if (context.link) lines.push("", `Open in admin: ${context.link}`);
+  // Escape any client-provided text to avoid HTML/script injection in the
+  // staff alert email. clientName/quoteNumber/message all originate from
+  // user input, so we sanitize before interpolating into HTML.
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const safeName = esc(context.clientName);
+  const safeQuote = esc(context.quoteNumber ?? "—");
+  const safeMessage = context.message?.trim() ? esc(context.message.trim()).replace(/\n/g, "<br/>") : "";
+  const safeLink = context.link ? esc(context.link) : "";
+  const html = `
+    <p><strong>Client:</strong> ${safeName}</p>
+    <p><strong>Quote:</strong> ${safeQuote}</p>
+    <p><strong>Action:</strong> ${isAccept ? "Accepted" : "Requested changes"}</p>
+    ${!isAccept && safeMessage
+      ? `<p><strong>Message:</strong></p><blockquote>${safeMessage}</blockquote>`
+      : ""}
+    ${safeLink ? `<p><a href="${safeLink}">Open in admin</a></p>` : ""}
+  `;
+  try {
+    await transport.sendMail({
+      from: `"dash by Hollywood East Cafe" <${ALERT_FROM}>`,
+      to: ALERT_TO,
+      subject,
+      text: lines.join("\n"),
+      html,
+    });
+  } catch (mailErr) {
+    console.error("[mail] Failed to send quote response alert:", mailErr);
+  }
+}
+
 export async function sendSmsAlert(context: {
   to: string;
   error: unknown;

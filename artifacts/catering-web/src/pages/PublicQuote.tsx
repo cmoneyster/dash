@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
-import { Loader2, Download, AlertCircle, CalendarDays, MapPin, Users, CreditCard, CheckCircle2 } from "lucide-react";
+import { Loader2, Download, AlertCircle, CalendarDays, MapPin, Users, CreditCard, CheckCircle2, MessageSquare, Check, X } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -46,6 +46,9 @@ type Quote = {
   quoteIssuedAt: string | null;
   quoteExpiresAt: string | null;
   quoteNotes: string | null;
+  acceptedAt: string | null;
+  changeRequestAt: string | null;
+  changeRequestMessage: string | null;
   client: {
     name: string;
     organization: string | null;
@@ -85,6 +88,10 @@ export default function PublicQuote() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showChangeForm, setShowChangeForm] = useState(false);
+  const [changeMessage, setChangeMessage] = useState("");
+  const [submitting, setSubmitting] = useState<null | "accept" | "changes">(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -98,6 +105,44 @@ export default function PublicQuote() {
       .then((q) => { setQuote(q); setLoading(false); })
       .catch((err) => { setError(err.message); setLoading(false); });
   }, [token]);
+
+  async function acceptQuote() {
+    if (!token || submitting) return;
+    setSubmitting("accept"); setActionError(null);
+    try {
+      const r = await fetch(`${BASE}/api/quote/${token}/accept`, { method: "POST" });
+      const data = await r.json();
+      if (!r.ok) { setActionError(data.error || "Could not accept quote."); return; }
+      setQuote(data);
+      setShowChangeForm(false);
+    } catch {
+      setActionError("Could not accept quote. Please try again.");
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  async function submitChangeRequest() {
+    if (!token || submitting) return;
+    if (!changeMessage.trim()) { setActionError("Please describe the changes you'd like."); return; }
+    setSubmitting("changes"); setActionError(null);
+    try {
+      const r = await fetch(`${BASE}/api/quote/${token}/request-changes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: changeMessage.trim() }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setActionError(data.error || "Could not submit changes."); return; }
+      setQuote(data);
+      setShowChangeForm(false);
+      setChangeMessage("");
+    } catch {
+      setActionError("Could not submit changes. Please try again.");
+    } finally {
+      setSubmitting(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -262,11 +307,100 @@ export default function PublicQuote() {
           </div>
         )}
 
+        {/* Client response state */}
+        {quote.acceptedAt ? (
+          <div className="px-8 py-5 border-t border-border bg-emerald-50/60">
+            <div className="flex items-center gap-2 text-emerald-800">
+              <CheckCircle2 className="w-5 h-5" />
+              <p className="font-semibold">Quote accepted on {fmtDate(quote.acceptedAt)} — thank you!</p>
+            </div>
+            <p className="text-xs text-emerald-700/80 mt-1 ml-7">
+              We'll be in touch with next steps. Reach out anytime if anything changes.
+            </p>
+          </div>
+        ) : quote.changeRequestAt ? (
+          <div className="px-8 py-5 border-t border-border bg-amber-50/60">
+            <div className="flex items-center gap-2 text-amber-800">
+              <MessageSquare className="w-5 h-5" />
+              <p className="font-semibold">Changes requested on {fmtDate(quote.changeRequestAt)}</p>
+            </div>
+            {quote.changeRequestMessage && (
+              <p className="text-sm text-amber-900 mt-2 ml-7 whitespace-pre-wrap italic">"{quote.changeRequestMessage}"</p>
+            )}
+            <p className="text-xs text-amber-700/80 mt-2 ml-7">
+              We'll review and follow up shortly. You can still accept this quote below if you change your mind.
+            </p>
+          </div>
+        ) : null}
+
         {/* Actions */}
-        <div className="px-8 py-5 border-t border-border flex items-center justify-between flex-wrap gap-3">
-          <p className="text-xs text-muted-foreground">
-            Reply to your email or text to confirm or request changes.
-          </p>
+        {!quote.acceptedAt && (
+          <div className="px-8 py-5 border-t border-border space-y-3">
+            {!showChangeForm ? (
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Ready to move forward, or have a few tweaks in mind?
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowChangeForm(true); setActionError(null); }}
+                    disabled={submitting !== null}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-secondary text-foreground font-semibold rounded-xl hover:bg-border transition-colors text-sm disabled:opacity-50"
+                  >
+                    <MessageSquare className="w-4 h-4" /> Request Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={acceptQuote}
+                    disabled={submitting !== null}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors text-sm disabled:opacity-50"
+                  >
+                    {submitting === "accept" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    Accept Quote
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  What would you like to change?
+                </label>
+                <textarea
+                  value={changeMessage}
+                  onChange={(e) => setChangeMessage(e.target.value)}
+                  rows={4}
+                  maxLength={2000}
+                  placeholder="e.g., Could we swap the salad for the pasta tray? Also need to bump guest count to 35."
+                  className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-y"
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowChangeForm(false); setActionError(null); }}
+                    disabled={submitting !== null}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  >
+                    <X className="w-4 h-4" /> Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitChangeRequest}
+                    disabled={submitting !== null || !changeMessage.trim()}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors text-sm disabled:opacity-50"
+                  >
+                    {submitting === "changes" ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                    Send Request
+                  </button>
+                </div>
+              </div>
+            )}
+            {actionError && <p className="text-xs text-red-600">{actionError}</p>}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="px-8 py-5 border-t border-border flex items-center justify-end">
           <a
             href={pdfUrl}
             target="_blank"
