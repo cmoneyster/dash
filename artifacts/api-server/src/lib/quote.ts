@@ -97,22 +97,37 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     doc.text(`Valid until: ${fmtDate(inquiry.quoteExpiresAt)}`, metaX, metaTop + 28, { width: 165 });
   }
 
-  doc.moveDown(2);
+  doc.moveDown(1.2);
 
-  // Client block
-  doc.fontSize(11).fillColor("#666666").text("Prepared for");
-  doc.fontSize(13).fillColor("#111111").text(inquiry.clientName);
-  if (inquiry.organization) doc.fontSize(11).text(inquiry.organization);
-  if (inquiry.clientEmail) doc.fontSize(10).fillColor("#444").text(inquiry.clientEmail);
-  if (inquiry.clientPhone) doc.fontSize(10).fillColor("#444").text(inquiry.clientPhone);
+  // Client block — two columns to save vertical space
+  const clientTop = doc.y;
+  doc.fontSize(9).fillColor("#666666").text("Prepared for", 50, clientTop);
+  doc.fontSize(12).fillColor("#111111").text(inquiry.clientName, 50, doc.y);
+  if (inquiry.organization) doc.fontSize(10).text(inquiry.organization, 50, doc.y);
+  if (inquiry.clientEmail) doc.fontSize(9).fillColor("#444").text(inquiry.clientEmail, 50, doc.y);
+  if (inquiry.clientPhone) doc.fontSize(9).fillColor("#444").text(inquiry.clientPhone, 50, doc.y);
+  const leftBottom = doc.y;
+
+  // Event details on the right
+  let rightY = clientTop;
   if (inquiry.eventDate || inquiry.guestCount || inquiry.venueAddress) {
-    doc.moveDown(0.5);
-    if (inquiry.eventDate) doc.fontSize(10).fillColor("#444").text(`Event date: ${inquiry.eventDate}`);
-    if (inquiry.guestCount) doc.fontSize(10).fillColor("#444").text(`Guests: ${inquiry.guestCount}`);
-    if (inquiry.venueAddress) doc.fontSize(10).fillColor("#444").text(`Venue: ${inquiry.venueAddress}`);
+    doc.fontSize(9).fillColor("#666666").text("Event details", 320, rightY);
+    rightY = doc.y;
+    if (inquiry.eventDate) {
+      doc.fontSize(10).fillColor("#222").text(`Date: ${inquiry.eventDate}`, 320, rightY, { width: 240 });
+      rightY = doc.y;
+    }
+    if (inquiry.guestCount) {
+      doc.fontSize(10).fillColor("#222").text(`Guests: ${inquiry.guestCount}`, 320, rightY, { width: 240 });
+      rightY = doc.y;
+    }
+    if (inquiry.venueAddress) {
+      doc.fontSize(10).fillColor("#222").text(`Venue: ${inquiry.venueAddress}`, 320, rightY, { width: 240 });
+      rightY = doc.y;
+    }
   }
-
-  doc.moveDown(1);
+  doc.y = Math.max(leftBottom, rightY);
+  doc.moveDown(0.6);
 
   // Line items table
   const tableTop = doc.y;
@@ -140,11 +155,15 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     y += 16;
   }
 
+  // Reserve space for totals + footer so we only break to page 2 when truly full.
+  // Totals block is ~22pt header gap + ~16pt per row (subtotal + fees + discounts + 1 divider + TOTAL),
+  // notes block is ~30pt if present, footer sits at y=740. Cap line-item area at y=700 minus that.
+  const totalsRows = 1 + totals.fees.length + totals.discounts.length + 1; // subtotal + adj + TOTAL
+  const totalsHeight = 22 + totalsRows * 16 + 12;
+  const notesHeight = inquiry.quoteNotes?.trim() ? 36 : 0;
+  const lineItemMaxY = 740 - totalsHeight - notesHeight - 8;
+
   for (const li of totals.lineItems) {
-    if (y > 680) {
-      doc.addPage();
-      y = 50;
-    }
     // Build a small descriptor below the name from sizing/per-unit info.
     const descriptorParts: string[] = [];
     if (li.pricingTemplate === "pan_sizes" && li.sizeLabel) {
@@ -159,30 +178,48 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     const descriptor = descriptorParts.join(" · ");
 
     const itemWidth = 260;
-    doc.fillColor("#111").fontSize(10);
+    doc.fillColor("#111").fontSize(9.5);
     const nameH = doc.heightOfString(li.name, { width: itemWidth });
+    let descH = 0;
+    let notesH = 0;
+    if (descriptor) {
+      doc.fontSize(8.5);
+      descH = doc.heightOfString(descriptor, { width: itemWidth });
+    }
+    if (li.notes) {
+      doc.fontSize(8.5);
+      notesH = doc.heightOfString(li.notes, { width: itemWidth });
+    }
+    const blockH = nameH + descH + notesH;
+    const rowH = Math.max(blockH, 13) + 3;
+
+    // Page break only when this row would push us past the area reserved for totals
+    // on page 1, or past usable space on subsequent pages.
+    const onOverflowPage = doc.bufferedPageRange().count > 1;
+    const pageCap = onOverflowPage ? 720 : lineItemMaxY;
+    if (y + rowH > pageCap) {
+      doc.addPage();
+      y = 50;
+    }
+
+    doc.fillColor("#111").fontSize(9.5);
     doc.text(li.name, colItem, y, { width: itemWidth });
     let yCursor = y + nameH;
     if (descriptor) {
-      doc.fillColor("#666").fontSize(9);
-      const h = doc.heightOfString(descriptor, { width: itemWidth });
-      doc.text(descriptor, colItem, yCursor, { width: itemWidth });
-      yCursor += h;
-      doc.fontSize(10);
+      doc.fillColor("#666").fontSize(8.5)
+        .text(descriptor, colItem, yCursor, { width: itemWidth });
+      yCursor += descH;
     }
     if (li.notes) {
-      doc.fillColor("#888").fontSize(9);
-      const h = doc.heightOfString(li.notes, { width: itemWidth });
-      doc.text(li.notes, colItem, yCursor, { width: itemWidth });
-      yCursor += h;
-      doc.fontSize(10);
+      doc.fillColor("#888").fontSize(8.5)
+        .text(li.notes, colItem, yCursor, { width: itemWidth });
+      yCursor += notesH;
     }
-    doc.fillColor("#111").fontSize(10);
+    doc.fillColor("#111").fontSize(9.5);
     doc.text(String(li.quantity), colQty, y, { width: 50, align: "right" });
     doc.text(fmtUSD(li.unitPrice), colUnit, y, { width: 80, align: "right" });
     doc.text(fmtUSD(li.lineTotal), colTotal, y, { width: 80, align: "right" });
-    const blockH = yCursor - y;
-    y += Math.max(blockH, 14) + 6;
+    y += rowH;
   }
 
   // Totals block
@@ -219,12 +256,14 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     doc.fontSize(10).fillColor("#222").text(inquiry.quoteNotes, 50, doc.y, { width: 510 });
   }
 
-  // Footer
+  // Footer — pin clearly inside the bottom margin so pdfkit doesn't auto-paginate.
+  // Letter is 792pt tall with 50pt margins → maxY ≈ 742. Place footer at 728.
+  const footerY = doc.page.height - doc.page.margins.bottom - 14;
   doc.fontSize(8).fillColor("#888").text(
     "Thank you for considering Hollywood East Cafe for your event. Reply to this quote to confirm or request changes.",
     50,
-    740,
-    { width: 510, align: "center" },
+    footerY,
+    { width: 510, align: "center", lineBreak: false },
   );
 
   doc.end();
