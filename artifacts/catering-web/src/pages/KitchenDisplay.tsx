@@ -684,13 +684,13 @@ export default function KitchenDisplay() {
   }
 
   // Window (in ms) for treating a void as "fresh enough to alarm on the
-  // first poll after page load". Voids older than this on first sight
-  // are seeded silently so opening a kitchen display mid-shift doesn't
-  // flood it with chimes for ancient history; voids within this window
-  // still alarm so a cook who just opened a tablet seconds after a
-  // void hits actually hears it. After the first poll any newly-arrived
-  // unseen void chimes regardless of voidedAt.
-  const VOID_FIRST_POLL_FRESH_MS = 60_000;
+  // first poll after page load". Aligned with the server-side recent-voids
+  // cutoff so any void returned by the endpoint is eligible for a
+  // first-sighting alarm — voids older than 30 minutes never reach the
+  // client to begin with, so this acts as a defensive guard against
+  // clock skew rather than a tighter filter. After the first poll any
+  // newly-arrived unseen void chimes regardless of voidedAt.
+  const VOID_FIRST_POLL_FRESH_MS = 30 * 60 * 1000;
 
   const fetchVoids = useCallback(async (pwd: string) => {
     try {
