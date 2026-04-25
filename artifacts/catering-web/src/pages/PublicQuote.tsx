@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
-import { Loader2, Download, AlertCircle, CalendarDays, MapPin, Users, CreditCard, CheckCircle2, MessageSquare, Check, X } from "lucide-react";
+import { Loader2, Download, AlertCircle, CalendarDays, MapPin, Users, CreditCard, CheckCircle2, MessageSquare, Check, X, Mail, Phone } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { TAX_DISCLOSURE, TAX_DISCLOSURE_SHORT } from "@/lib/tax";
+import {
+  PAYMENT_TERMS_TITLE,
+  PAYMENT_TERMS_BULLETS,
+  NOT_PROVIDED,
+} from "@/lib/quote-copy";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -186,21 +191,40 @@ export default function PublicQuote() {
           </div>
         </div>
 
-        {/* Client block */}
-        <div className="px-8 py-5 border-b border-border">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Prepared for</p>
-          <p className="text-lg font-semibold">{quote.client.name}</p>
-          {quote.client.organization && <p className="text-sm">{quote.client.organization}</p>}
-          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
-            {quote.client.eventDate && (
-              <span className="inline-flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" />{quote.client.eventDate}</span>
-            )}
-            {quote.client.guestCount && (
-              <span className="inline-flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />{quote.client.guestCount} guests</span>
-            )}
-            {quote.client.venueAddress && (
-              <span className="inline-flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" />{quote.client.venueAddress}</span>
-            )}
+        {/* Client block — always renders contact + event rows with a
+            placeholder so missing fields don't collapse the layout. */}
+        <div className="px-8 py-5 border-b border-border grid gap-5 sm:grid-cols-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Prepared for</p>
+            <p className="text-lg font-semibold">{quote.client.name}</p>
+            {quote.client.organization && <p className="text-sm">{quote.client.organization}</p>}
+            <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+              <p className="flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{quote.client.email?.trim() || NOT_PROVIDED}</span>
+              </p>
+              <p className="flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{quote.client.phone?.trim() || NOT_PROVIDED}</span>
+              </p>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Event Details</p>
+            <div className="space-y-1 text-sm text-muted-foreground">
+              <p className="flex items-center gap-1.5">
+                <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{quote.client.eventDate?.trim() || NOT_PROVIDED}</span>
+              </p>
+              <p className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{quote.client.guestCount ? `${quote.client.guestCount} guests` : NOT_PROVIDED}</span>
+              </p>
+              <p className="flex items-start gap-1.5">
+                <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                <span>{quote.client.venueAddress?.trim() || NOT_PROVIDED}</span>
+              </p>
+            </div>
           </div>
         </div>
 
@@ -261,6 +285,21 @@ export default function PublicQuote() {
             </div>
             <p className="text-xs text-muted-foreground text-right pt-1">{TAX_DISCLOSURE}</p>
           </div>
+        </div>
+
+        {/* Payment Terms */}
+        <div className="px-8 py-5 border-t border-border bg-secondary/20">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+            {PAYMENT_TERMS_TITLE}
+          </p>
+          <ul className="space-y-1.5 text-sm">
+            {PAYMENT_TERMS_BULLETS.map((bullet) => (
+              <li key={bullet} className="flex gap-2">
+                <span className="text-muted-foreground" aria-hidden>•</span>
+                <span>{bullet}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
         {/* Notes */}

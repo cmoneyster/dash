@@ -19,6 +19,10 @@ import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
 import { sendMail } from "../lib/mail";
 import { computeQuoteTotals, renderQuotePdf, fmtUSD } from "../lib/quote";
 import { TAX_DISCLOSURE } from "../lib/tax";
+import {
+  PAYMENT_TERMS_TITLE,
+  PAYMENT_TERMS_BULLETS,
+} from "../lib/quote-copy";
 import { objectStorageClient } from "../lib/objectStorage";
 import {
   isSquareConfigured,
@@ -565,29 +569,51 @@ router.post("/admin/catering/:id/quote/email", async (req, res): Promise<void> =
         ? "Pay your remaining balance"
         : "Pay your invoice";
     const subject = `Your catering quote ${inquiry.quoteNumber ?? ""} from Hollywood East Cafe`.trim();
+    // Event-detail line for the email body (the recipient already knows their
+    // own email/phone, but they need the event date and venue to confirm).
+    const eventDetailParts: string[] = [];
+    if (inquiry.eventDate?.trim()) eventDetailParts.push(`Event date: ${inquiry.eventDate.trim()}`);
+    if (inquiry.venueAddress?.trim()) eventDetailParts.push(`Venue: ${inquiry.venueAddress.trim()}`);
+    if (inquiry.guestCount) eventDetailParts.push(`Guests: ${inquiry.guestCount}`);
     const text = [
       `Hi ${inquiry.clientName},`,
       ``,
       `Attached is your catering quote (${inquiry.quoteNumber ?? "draft"}) for a total of ${fmtUSD(totals.total)}.`,
       TAX_DISCLOSURE,
+      ...(eventDetailParts.length ? [``, ...eventDetailParts] : []),
       ``,
       `You can also view it online: ${link}`,
       ...(payUrl && payLabel ? [``, `${payLabel} securely with Square: ${payUrl}`] : []),
+      ``,
+      PAYMENT_TERMS_TITLE,
+      ...PAYMENT_TERMS_BULLETS.map((b) => `• ${b}`),
       ``,
       `Reply to this email with any questions or to confirm.`,
       ``,
       `— Hollywood East Cafe`,
     ].join("\n");
+    const escapeHtml = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const eventDetailsHtml = eventDetailParts.length
+      ? `<p style="margin:12px 0;color:#444;font-size:14px">${eventDetailParts
+          .map((p) => escapeHtml(p))
+          .join("<br/>")}</p>`
+      : "";
     const html = `
-      <p>Hi ${inquiry.clientName},</p>
-      <p>Attached is your catering quote <strong>${inquiry.quoteNumber ?? "(draft)"}</strong>
+      <p>Hi ${escapeHtml(inquiry.clientName)},</p>
+      <p>Attached is your catering quote <strong>${escapeHtml(inquiry.quoteNumber ?? "(draft)")}</strong>
          for a total of <strong>${fmtUSD(totals.total)}</strong>.<br/>
          <span style="color:#888;font-size:12px">${TAX_DISCLOSURE}</span></p>
+      ${eventDetailsHtml}
       <p><a href="${link}">View this quote online</a></p>
       ${payUrl && payLabel
-        ? `<p><a href="${payUrl}" style="display:inline-block;padding:10px 18px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">${payLabel}</a></p>`
+        ? `<p><a href="${payUrl}" style="display:inline-block;padding:10px 18px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">${escapeHtml(payLabel)}</a></p>`
         : ""}
-      <p>Reply to this email with any questions or to confirm.</p>
+      <p style="margin-top:18px"><strong>${PAYMENT_TERMS_TITLE}</strong></p>
+      <ul style="margin:6px 0 0 0;padding-left:20px;color:#222;font-size:14px;line-height:1.5">
+        ${PAYMENT_TERMS_BULLETS.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}
+      </ul>
+      <p style="margin-top:18px">Reply to this email with any questions or to confirm.</p>
       <p>— Hollywood East Cafe</p>
     `;
 

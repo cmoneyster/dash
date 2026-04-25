@@ -4,6 +4,12 @@ import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import type { CateringInquiry, QuoteAdjustment, QuoteLineItem } from "@workspace/db/schema";
 import { TAX_DISCLOSURE } from "./tax";
+import {
+  PAYMENT_TERMS_TITLE,
+  PAYMENT_TERMS_BULLETS,
+  QUOTE_FOOTER_THANKS,
+  NOT_PROVIDED,
+} from "./quote-copy";
 
 // Resolve the bundled CJK font path. In production (and `pnpm run dev`, which
 // does `build && start`), the bundle runs from `dist/index.mjs` with the font
@@ -128,33 +134,43 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
 
   doc.moveDown(1.2);
 
-  // Client block — two columns to save vertical space
+  // Client block — two columns to save vertical space. Always renders email
+  // and phone rows (with a placeholder when missing) so the layout stays
+  // stable and the contact info is easy to find.
   const clientTop = doc.y;
   doc.fontSize(9).fillColor("#666666").text("Prepared for", 50, clientTop);
   doc.fontSize(12).fillColor("#111111").text(inquiry.clientName, 50, doc.y);
   if (inquiry.organization) doc.fontSize(10).text(inquiry.organization, 50, doc.y);
-  if (inquiry.clientEmail) doc.fontSize(9).fillColor("#444").text(inquiry.clientEmail, 50, doc.y);
-  if (inquiry.clientPhone) doc.fontSize(9).fillColor("#444").text(inquiry.clientPhone, 50, doc.y);
+  doc
+    .fontSize(9)
+    .fillColor("#444")
+    .text(`Email: ${inquiry.clientEmail?.trim() || NOT_PROVIDED}`, 50, doc.y, { width: 260 });
+  doc
+    .fontSize(9)
+    .fillColor("#444")
+    .text(`Phone: ${inquiry.clientPhone?.trim() || NOT_PROVIDED}`, 50, doc.y, { width: 260 });
   const leftBottom = doc.y;
 
-  // Event details on the right
+  // Event details on the right — always render with placeholders so the
+  // venue line is consistently visible and prominent.
   let rightY = clientTop;
-  if (inquiry.eventDate || inquiry.guestCount || inquiry.venueAddress) {
-    doc.fontSize(9).fillColor("#666666").text("Event details", 320, rightY);
-    rightY = doc.y;
-    if (inquiry.eventDate) {
-      doc.fontSize(10).fillColor("#222").text(`Date: ${inquiry.eventDate}`, 320, rightY, { width: 240 });
-      rightY = doc.y;
-    }
-    if (inquiry.guestCount) {
-      doc.fontSize(10).fillColor("#222").text(`Guests: ${inquiry.guestCount}`, 320, rightY, { width: 240 });
-      rightY = doc.y;
-    }
-    if (inquiry.venueAddress) {
-      doc.fontSize(10).fillColor("#222").text(`Venue: ${inquiry.venueAddress}`, 320, rightY, { width: 240 });
-      rightY = doc.y;
-    }
-  }
+  doc.fontSize(9).fillColor("#666666").text("Event details", 320, rightY);
+  rightY = doc.y;
+  doc
+    .fontSize(10)
+    .fillColor("#222")
+    .text(`Date: ${inquiry.eventDate?.trim() || NOT_PROVIDED}`, 320, rightY, { width: 240 });
+  rightY = doc.y;
+  doc
+    .fontSize(10)
+    .fillColor("#222")
+    .text(`Guests: ${inquiry.guestCount ?? NOT_PROVIDED}`, 320, rightY, { width: 240 });
+  rightY = doc.y;
+  doc
+    .fontSize(10)
+    .fillColor("#222")
+    .text(`Venue: ${inquiry.venueAddress?.trim() || NOT_PROVIDED}`, 320, rightY, { width: 240 });
+  rightY = doc.y;
   doc.y = Math.max(leftBottom, rightY);
   doc.moveDown(0.6);
 
@@ -184,14 +200,19 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     y += 16;
   }
 
-  // Reserve space for totals + footer so we only break to page 2 when truly full.
-  // Totals block is ~22pt header gap + ~16pt per row (subtotal + fees + discounts + 1 divider + TOTAL),
-  // notes block is ~30pt if present, footer sits at y=740. Cap line-item area at y=700 minus that.
+  // Reserve space for totals + payment terms + notes + footer so we only break
+  // to page 2 when truly full. Totals block is ~22pt header gap + ~16pt per
+  // row (subtotal + fees + discounts + 1 divider + TOTAL); payment terms is
+  // a heading + 3 bullets that always renders; notes is optional; footer sits
+  // just inside the bottom margin.
   const totalsRows = 1 + totals.fees.length + totals.discounts.length + 1; // subtotal + adj + TOTAL
   // 12pt extra reserves room for the tax-disclosure line below TOTAL.
   const totalsHeight = 22 + totalsRows * 16 + 12 + 12;
+  // Payment terms: ~16pt heading + ~16pt per bullet line + 12pt padding.
+  // Bullets are short enough to render as one line each at width 510.
+  const paymentTermsHeight = 16 + PAYMENT_TERMS_BULLETS.length * 16 + 12;
   const notesHeight = inquiry.quoteNotes?.trim() ? 36 : 0;
-  const lineItemMaxY = 740 - totalsHeight - notesHeight - 8;
+  const lineItemMaxY = 740 - totalsHeight - paymentTermsHeight - notesHeight - 8;
 
   for (const li of totals.lineItems) {
     // Build a small descriptor below the name from sizing/per-unit info.
@@ -286,10 +307,22 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     .text(TAX_DISCLOSURE, 320, y, { width: 230, align: "right" });
   y += 12;
 
+  // Move the doc cursor below both the line-items area on the left and the
+  // totals block on the right so the Payment Terms / Notes blocks below can
+  // never overlap either.
+  doc.y = Math.max(doc.y, y + 8);
+
+  // Payment Terms — always present, renders below totals on the left.
+  doc.fontSize(10).fillColor("#666").text(PAYMENT_TERMS_TITLE, 50, doc.y);
+  doc
+    .fontSize(10)
+    .fillColor("#222")
+    .text(PAYMENT_TERMS_BULLETS.map((b) => `• ${b}`).join("\n"), 50, doc.y, { width: 510 });
+
   // Notes
   if (inquiry.quoteNotes?.trim()) {
-    doc.moveDown(2);
-    doc.fontSize(10).fillColor("#666").text("Notes", 50);
+    doc.moveDown(0.8);
+    doc.fontSize(10).fillColor("#666").text("Notes", 50, doc.y);
     doc.fontSize(10).fillColor("#222").text(inquiry.quoteNotes, 50, doc.y, { width: 510 });
   }
 
@@ -297,7 +330,7 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   // Letter is 792pt tall with 50pt margins → maxY ≈ 742. Place footer at 728.
   const footerY = doc.page.height - doc.page.margins.bottom - 14;
   doc.fontSize(8).fillColor("#888").text(
-    "Thank you for considering Hollywood East Cafe for your event. Reply to this quote to confirm or request changes.",
+    QUOTE_FOOTER_THANKS,
     50,
     footerY,
     { width: 510, align: "center", lineBreak: false },
