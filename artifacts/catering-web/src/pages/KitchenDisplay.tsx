@@ -1218,15 +1218,17 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   const nextLabel = nextLabelFor(order);
   const hasPlating = !!(order.plateGroups && order.plateGroups.length > 0);
   const progress = hasPlating ? deriveKitchenProgress(order) : null;
-  // Auto-collapse Fire totals once all are checked, but let the cook expand
-  // again with one tap. Resets implicitly via local state when checks change.
-  const [fireExpanded, setFireExpanded] = useState(false);
-  // Auto-collapse the Fire-totals list once every line is checked, but ONLY
-  // on plated tickets — there the cook's eye should snap to the plate cards
-  // below. On non-plated tickets the items list is the only place to see
-  // what to plate on the default single plate, so we keep it expanded so the
-  // cook doesn't have to tap to see it again.
-  const fireCollapsed = isTrackable && allChecked && !fireExpanded && order.items.length > 0 && hasPlating;
+  // Track whether the Fire-totals list is currently expanded. Auto-collapse
+  // (when allChecked first becomes true) only happens on plated tickets,
+  // because there the cook's eye should snap to the plate cards below.
+  // On non-plated tickets the items list is the only place to see what to
+  // plate on the default single plate, so we initialize this to `true`
+  // (expanded) — the cook never has to tap to re-open it after firing.
+  // The manual collapse/expand header tap below still works on both ticket
+  // types: tapping the expanded header (when allChecked) sets this to
+  // `false`, and tapping the collapsed header sets it back to `true`.
+  const [fireExpanded, setFireExpanded] = useState(!hasPlating);
+  const fireCollapsed = isTrackable && allChecked && !fireExpanded && order.items.length > 0;
 
   return (
     <div className={`bg-[#1a1a1a] border rounded-2xl overflow-hidden transition-all ${
