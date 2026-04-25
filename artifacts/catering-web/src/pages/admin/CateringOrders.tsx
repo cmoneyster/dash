@@ -1727,6 +1727,18 @@ function DetailPanel({
                 inputClassName={inputCls}
                 className="relative"
               />
+              {form.venueAddress?.trim() && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(form.venueAddress.trim())}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 mt-2 text-xs font-semibold text-primary hover:underline"
+                  title="Open this address in Google Maps in a new tab"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Open in Maps
+                </a>
+              )}
             </Field>
 
             <Field icon={FileText} label="Menu Notes">
