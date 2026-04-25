@@ -683,12 +683,29 @@ export default function KitchenDisplay() {
     });
   }
 
+  // Window (in ms) for treating a void as "fresh enough to alarm on the
+  // first poll after page load". Voids older than this on first sight
+  // are seeded silently so opening a kitchen display mid-shift doesn't
+  // flood it with chimes for ancient history; voids within this window
+  // still alarm so a cook who just opened a tablet seconds after a
+  // void hits actually hears it. After the first poll any newly-arrived
+  // unseen void chimes regardless of voidedAt.
+  const VOID_FIRST_POLL_FRESH_MS = 60_000;
+
   const fetchVoids = useCallback(async (pwd: string) => {
     try {
       const res = await fetch(`${BASE}/api/event-ordering/recent-voids`, {
         headers: { Authorization: `Bearer ${pwd}` },
         cache: "no-store",
       });
+      // Mirror fetchOrders: a 401 means the stored password is invalid,
+      // so clear the session and bounce back to the login screen instead
+      // of hammering an unauth'd endpoint forever.
+      if (res.status === 401) {
+        sessionStorage.removeItem(SESSION_KEY);
+        setAuthedPassword(null);
+        return;
+      }
       if (!res.ok) return;
       const data: RecentVoid[] = await res.json();
       const incomingIds = new Set(data.map(v => v.id));
@@ -698,8 +715,17 @@ export default function KitchenDisplay() {
       // intersect with ackedVoidIds, which would force this callback to
       // depend on it and tear down the polling interval on every ack.)
       const fresh = data.filter(v => !seenVoidIdsRef.current.has(v.id));
-      // First poll ever — silently seed the seen set + suppress chime.
+      // First poll ever — silently seed the seen set, but still chime
+      // for any fresh void within the recent window so a cook who just
+      // opened a tablet seconds after a void doesn't miss the alert.
       const isFirstPoll = !voidPollLoadedRef.current;
+      const now = Date.now();
+      const shouldAlarm = isFirstPoll
+        ? fresh.some(v => {
+            const t = new Date(v.voidedAt).getTime();
+            return Number.isFinite(t) && now - t <= VOID_FIRST_POLL_FRESH_MS;
+          })
+        : fresh.length > 0;
       // Add every incoming id to the seen set so the *next* poll only
       // alerts on rows that arrived in the meantime.
       seenVoidIdsRef.current = new Set([...seenVoidIdsRef.current, ...incomingIds]);
@@ -716,7 +742,7 @@ export default function KitchenDisplay() {
         return stillRelevant;
       });
       setRecentVoids(data);
-      if (!isFirstPoll && fresh.length > 0) {
+      if (shouldAlarm) {
         // Mute toggle silences both the alarm and the haptic so a "muted"
         // station is truly silent — cooks who muted on purpose don't want
         // a buzzing tablet either.
@@ -1285,7 +1311,15 @@ export default function KitchenDisplay() {
         {view === "orders" && (
           <>
             {unackedVoids.length > 0 && (
-              <div className="mb-6 space-y-3" data-testid="kitchen-void-banner">
+              // Sticky so the alert stays pinned just under the page header
+              // even when the cook has scrolled deep into a long order list.
+              // The header is `sticky top-0` with a ~73px height, so anchor
+              // this just below it. A solid background prevents order cards
+              // bleeding through as they scroll under.
+              <div
+                className="sticky top-[73px] z-20 -mx-4 px-4 py-3 mb-4 bg-[#111]/95 backdrop-blur-sm border-b border-rose-500/20 space-y-3"
+                data-testid="kitchen-void-banner"
+              >
                 {unackedVoids.map(v => (
                   <VoidAlertCard
                     key={v.id}
