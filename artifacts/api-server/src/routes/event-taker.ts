@@ -835,6 +835,32 @@ router.get("/event-taker/orders/active", verifyTakerPassword, async (req, res) =
   }
 });
 
+// Recent voids in the active event session — used by the cashier-side
+// Sent Orders panel so the staff can see who voided what without leaving
+// the register. Capped to a small recent window so the payload stays
+// small; the admin Sales Report is the source of truth for the full list.
+router.get("/event-taker/orders/recent-voids", verifyTakerPassword, async (req, res) => {
+  try {
+    const settings = await getSettings();
+    const activeId = settings?.activeEventSessionId ?? null;
+    const conditions = [
+      eq(eventOrdersTable.orderSource, "staff"),
+      sql`${eventOrdersTable.voidedAt} IS NOT NULL`,
+    ];
+    if (activeId != null) conditions.push(eq(eventOrdersTable.eventSessionId, activeId));
+    const rows = await db
+      .select()
+      .from(eventOrdersTable)
+      .where(and(...conditions))
+      .orderBy(desc(eventOrdersTable.voidedAt))
+      .limit(20);
+    res.json(rows.map(serializeOrder));
+  } catch (err) {
+    req.log.error({ err }, "Error listing recent voids");
+    res.status(500).json({ error: "Failed to load recent voids" });
+  }
+});
+
 // Soft-void a staff order that has already been sent to the kitchen.
 // Mirrors the gating of the existing Cancel DELETE (which hard-deletes
 // pure unpaid orders) but for orders the kitchen has actually seen —

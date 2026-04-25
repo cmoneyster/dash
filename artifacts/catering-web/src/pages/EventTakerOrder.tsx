@@ -180,6 +180,9 @@ export default function EventTakerOrder() {
   // "Sent orders" panel — staff orders already fired to the kitchen
   // (paid + override) that may need to be voided.
   const [sentOrders, setSentOrders] = useState<PendingOrder[]>([]);
+  // Recent voids in the active session, with each row's voidedBy/reason
+  // for attribution display in the Sent Orders panel.
+  const [recentVoids, setRecentVoids] = useState<PendingOrder[]>([]);
   const [showSentPanel, setShowSentPanel] = useState(false);
   // The order currently being voided, if any. Drives the VoidModal.
   const [voidTarget, setVoidTarget] = useState<PendingOrder | null>(null);
@@ -518,14 +521,30 @@ export default function EventTakerOrder() {
     } catch {}
   }
 
+  // Recent voids in the active session — surfaced inside the Sent Orders
+  // panel so cashiers can see who voided what right next to their void
+  // controls. Capped at 20 most-recent on the server.
+  async function loadRecentVoids(token: string) {
+    try {
+      const res = await fetch(`${BASE}/api/event-taker/orders/recent-voids`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRecentVoids(Array.isArray(data) ? data : []);
+    } catch {}
+  }
+
   // Poll the pending queue periodically so multiple devices stay in sync.
   useEffect(() => {
     if (!password) return;
     loadPending(password);
     loadSent(password);
+    loadRecentVoids(password);
     const t = setInterval(() => {
       loadPending(password);
       loadSent(password);
+      loadRecentVoids(password);
     }, 8000);
     return () => clearInterval(t);
   }, [password]);
@@ -655,11 +674,14 @@ export default function EventTakerOrder() {
         const err = await res.json().catch(() => ({}));
         return { ok: false, error: err.error ?? "Failed to void order" };
       }
-      // Drop the row locally; refresh both feeds in the background.
+      // Drop the row locally; refresh all three feeds in the background
+      // so the new void appears in the Sent Orders panel's "Recent voids"
+      // subsection without waiting for the next 8s poll.
       setPendingOrders(prev => prev.filter(o => o.id !== order.id));
       setSentOrders(prev => prev.filter(o => o.id !== order.id));
       loadPending(password);
       loadSent(password);
+      loadRecentVoids(password);
       return { ok: true };
     } catch {
       return { ok: false, error: "Could not reach the server" };
@@ -1363,6 +1385,7 @@ export default function EventTakerOrder() {
       {showSentPanel && (
         <SentOrdersPanel
           orders={sentOrders}
+          recentVoids={recentVoids}
           employee={employee}
           onClose={() => setShowSentPanel(false)}
           onVoid={(o) => setVoidTarget(o)}
@@ -2352,9 +2375,10 @@ function PendingPanel({
 // cashier can void one if it shouldn't have been sent. Mirrors PendingPanel
 // styling so it feels like a sibling drawer.
 function SentOrdersPanel({
-  orders, employee, onClose, onVoid,
+  orders, recentVoids, employee, onClose, onVoid,
 }: {
   orders: PendingOrder[];
+  recentVoids: PendingOrder[];
   employee: string | null;
   onClose: () => void;
   onVoid: (o: PendingOrder) => void;
@@ -2405,6 +2429,65 @@ function SentOrdersPanel({
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {orders.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-12">No active orders to void.</p>
+          )}
+          {/* Recent voids subsection — collapsible audit trail of who
+              processed each void in the active session. Source of truth
+              is the Sales Report; this is just a register-side glance so
+              cashiers don't have to leave the POS to check. */}
+          {recentVoids.length > 0 && orders.length === 0 && (
+            <div className="border-t border-border -mx-4 px-4 pt-3" />
+          )}
+          {recentVoids.length > 0 && (
+            <div data-testid="recent-voids-section" className="mt-2">
+              <div className="flex items-center gap-2 mb-2 text-xs uppercase tracking-wider text-muted-foreground font-bold">
+                <XIcon className="w-3.5 h-3.5 text-rose-600" />
+                Recent voids
+                <span className="ml-auto text-[11px] normal-case font-normal text-muted-foreground">
+                  who processed each
+                </span>
+              </div>
+              <div className="space-y-2">
+                {recentVoids.map(v => {
+                  const total = v.total ?? 0;
+                  const voidedDate = v.voidedAt ? new Date(v.voidedAt) : null;
+                  const ageMin = voidedDate ? Math.max(0, Math.round((Date.now() - voidedDate.getTime()) / 60000)) : null;
+                  return (
+                    <div
+                      key={v.id}
+                      className="border border-rose-200 bg-rose-50/40 rounded-xl p-2.5 text-xs"
+                      data-testid={`recent-void-row-${v.id}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-foreground text-sm truncate">
+                            #{v.id} · {v.guestName}
+                          </p>
+                          <p className="text-muted-foreground mt-0.5">
+                            <span className="font-semibold text-rose-800" data-testid={`recent-void-by-${v.id}`}>
+                              {v.voidedBy ?? "Unknown"}
+                            </span>
+                            {ageMin != null ? <> · {ageMin}m ago</> : null}
+                          </p>
+                          {v.voidReason && (
+                            <p className="italic text-muted-foreground mt-0.5 break-words">
+                              "{v.voidReason}"
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold text-foreground line-through">${total.toFixed(2)}</p>
+                          {v.refundRequired && (
+                            <span className="inline-block mt-0.5 text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                              Refund owed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
           {orders.map(o => {
             const total = o.total ?? 0;
