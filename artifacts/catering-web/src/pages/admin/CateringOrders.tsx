@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
 import { computeEffectivePriceDetail } from "@workspace/pricing";
 import { TAX_DISCLOSURE } from "@/lib/tax";
+import { VenueAutocomplete } from "@/components/VenueAutocomplete";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1719,7 +1720,13 @@ function DetailPanel({
             </div>
 
             <Field icon={MapPin} label="Venue / Address">
-              <input value={form.venueAddress ?? ""} onChange={e => set("venueAddress", e.target.value)} placeholder="Event location" className={inputCls} />
+              <VenueAutocomplete
+                value={form.venueAddress ?? ""}
+                onChange={(val) => set("venueAddress", val)}
+                placeholder="Event location"
+                inputClassName={inputCls}
+                className="relative"
+              />
             </Field>
 
             <Field icon={FileText} label="Menu Notes">

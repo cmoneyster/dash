@@ -1086,6 +1086,10 @@ components:
         deliveryNotes:
           type: string
           nullable: true
+        venueAddress:
+          type: string
+          nullable: true
+          description: Event venue / location, typically populated by the address autocomplete in the cart checkout form.
       required:
         - sessionId
         - customerName

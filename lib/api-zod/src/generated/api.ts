@@ -980,6 +980,12 @@ export const CreateOrderBody = zod.object({
       "Whether the customer wants standard drop-off catering or the On the Dash on-site food trailer experience.",
     ),
   deliveryNotes: zod.string().nullish(),
+  venueAddress: zod
+    .string()
+    .nullish()
+    .describe(
+      "Event venue \/ location, typically populated by the address autocomplete in the cart checkout form.",
+    ),
 });
 
 /**

@@ -24,6 +24,7 @@ import webhooksSquareRouter from "./webhooks-square";
 import verifyRouter from "./verify";
 import categoriesRouter from "./categories";
 import adminCategoriesRouter from "./admin-categories";
+import placesRouter from "./places";
 
 const router: IRouter = Router();
 
@@ -39,6 +40,7 @@ router.use(storageRouter);
 router.use(eventOrderingRouter);
 router.use(eventTakerRouter);
 router.use(verifyRouter);
+router.use(placesRouter);
 router.use(quotePublicRouter);
 // Public webhook — must be mounted BEFORE the admin auth middleware below.
 router.use(webhooksSquareRouter);

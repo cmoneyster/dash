@@ -219,6 +219,8 @@ export interface CreateOrderBody {
   /** Whether the customer wants standard drop-off catering or the On the Dash on-site food trailer experience. */
   serviceMode?: CreateOrderBodyServiceMode;
   deliveryNotes?: string | null;
+  /** Event venue / location, typically populated by the address autocomplete in the cart checkout form. */
+  venueAddress?: string | null;
 }
 
 export type UpdateOrderStatusBodyStatus =

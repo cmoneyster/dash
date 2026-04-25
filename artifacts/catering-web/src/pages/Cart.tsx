@@ -27,6 +27,7 @@ import {
   type OtdConfig,
 } from "@/lib/serviceMode";
 import { useToast } from "@/hooks/use-toast";
+import { VenueAutocomplete } from "@/components/VenueAutocomplete";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { format } from "date-fns";
@@ -155,6 +156,7 @@ const checkoutSchema = z.object({
   // but no longer surfaced in the UI — it's overwritten on submit with a
   // human label derived from the structured `serviceMode` toggle.
   serviceStyle: z.string().optional(),
+  venueAddress: z.string().optional(),
   deliveryNotes: z.string().optional()
 });
 
@@ -261,6 +263,7 @@ export default function Cart() {
 
   const phoneValue = watch("customerPhone") ?? "";
   const eventDateValue = watch("eventDate") ?? "";
+  const venueAddressValue = watch("venueAddress") ?? "";
 
   const handleSendCode = async () => {
     const phone = phoneValue.trim();
@@ -355,6 +358,7 @@ export default function Cart() {
       data: {
         sessionId,
         ...data,
+        venueAddress: data.venueAddress?.trim() || null,
         serviceStyle: styleLabel,
         serviceMode,
       },
@@ -667,6 +671,16 @@ export default function Cart() {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">Event Location</label>
+                    <VenueAutocomplete
+                      value={venueAddressValue}
+                      onChange={(val) => setValue("venueAddress", val)}
+                      placeholder="Search a venue or type an address…"
+                      className="relative"
+                    />
+                  </div>
+
                   {/* Service Mode toggle — replaces the legacy free-text dropdown */}
                   <div>
                     <label className="block text-sm font-semibold mb-2">How should we serve your event?</label>
@@ -788,7 +802,7 @@ export default function Cart() {
 
                   <div>
                     <label className="block text-sm font-semibold mb-1">Notes</label>
-                    <textarea {...register("deliveryNotes")} rows={3} className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none" placeholder="Dietary requirements, delivery instructions..." />
+                    <textarea {...register("deliveryNotes")} rows={3} className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none" placeholder="Dietary requirements, special instructions, etc." />
                   </div>
 
                   <div className="pt-6 border-t border-border mt-6">
