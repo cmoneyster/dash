@@ -45,15 +45,21 @@ router.post("/orders", async (req, res): Promise<void> => {
     } = req.body;
 
     // The cart now sends a dedicated `venueAddress` field populated by the
-    // address autocomplete. Older clients (and any future caller that
-    // doesn't include it) fall back to `deliveryNotes` so we don't lose
-    // location data the customer typed there before the field existed.
-    const venueAddress: string | null =
-      typeof rawVenueAddress === "string" && rawVenueAddress.trim().length > 0
+    // address autocomplete. Only fall back to `deliveryNotes` when the
+    // venue field is *absent* from the body (legacy clients that were
+    // built before the field existed). When a modern client sends
+    // `venueAddress: ""` we honor that as "intentionally cleared" rather
+    // than slurping the customer's dietary notes into the venue column.
+    let venueAddress: string | null;
+    if (rawVenueAddress === undefined) {
+      venueAddress = typeof deliveryNotes === "string" && deliveryNotes.trim().length > 0
+        ? deliveryNotes.trim()
+        : null;
+    } else {
+      venueAddress = typeof rawVenueAddress === "string" && rawVenueAddress.trim().length > 0
         ? rawVenueAddress.trim()
-        : (typeof deliveryNotes === "string" && deliveryNotes.trim().length > 0
-            ? deliveryNotes.trim()
-            : null);
+        : null;
+    }
 
     if (!sessionId || !customerName || !customerEmail) {
       res.status(400).json({ error: "sessionId, customerName, and customerEmail are required" });

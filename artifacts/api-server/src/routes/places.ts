@@ -25,6 +25,11 @@ function getKey(): string | null {
 // type-ahead use (autocomplete fires on every keystroke, debounced).
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 60;
+// Hard cap on tracked clients so a flood of unique (or spoofed) IPs can't
+// grow the map without bound. When exceeded we evict the oldest entry,
+// which at worst lets a legitimate client briefly slip its budget — much
+// safer than unbounded RAM use.
+const RATE_MAX_KEYS = 5_000;
 const hits = new Map<string, number[]>();
 function rateLimit(ip: string): boolean {
   const now = Date.now();
@@ -35,6 +40,11 @@ function rateLimit(ip: string): boolean {
   }
   arr.push(now);
   hits.set(ip, arr);
+  if (hits.size > RATE_MAX_KEYS) {
+    // Map iteration order is insertion order — the first key is the oldest.
+    const oldest = hits.keys().next().value;
+    if (oldest !== undefined) hits.delete(oldest);
+  }
   return true;
 }
 // Periodic GC so the map doesn't grow unbounded.
