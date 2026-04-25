@@ -653,21 +653,23 @@ export default function KitchenDisplay() {
   // acknowledges independently — the ack list lives in localStorage and
   // is keyed per-device so two stations can't dismiss for each other.
   const VOID_LS_KEY = "kitchen_acked_void_ids";
-  const [recentVoids, setRecentVoids] = useState<RecentVoid[]>([]);
-  const [ackedVoidIds, setAckedVoidIds] = useState<Set<number>>(() => {
+  function loadAckedVoidIdsFromStorage(): Set<number> {
     try {
       const raw = JSON.parse(localStorage.getItem(VOID_LS_KEY) ?? "[]");
       return new Set(Array.isArray(raw) ? raw.filter((x): x is number => typeof x === "number") : []);
     } catch {
       return new Set();
     }
-  });
-  // Track which void ids we've already seen on this device. Voids that
-  // appeared in the very first poll (i.e. were already there when the
-  // page loaded) seed this set silently so opening a kitchen display
-  // mid-shift doesn't dump a wall of alarms — only voids that arrive
-  // *while this device is open* will trigger a fresh chime.
-  const seenVoidIdsRef = useRef<Set<number>>(new Set());
+  }
+  const [recentVoids, setRecentVoids] = useState<RecentVoid[]>([]);
+  const [ackedVoidIds, setAckedVoidIds] = useState<Set<number>>(loadAckedVoidIdsFromStorage);
+  // Track which void ids we've already seen on this device. Hydrated
+  // from the persisted ack set on mount so a reload (or a tab kept open
+  // for hours that lost its in-memory state) can't re-chime voids the
+  // cook already acknowledged. Voids that appeared in the very first
+  // poll also seed this set silently so opening a kitchen display
+  // mid-shift doesn't dump a wall of alarms.
+  const seenVoidIdsRef = useRef<Set<number>>(loadAckedVoidIdsFromStorage());
   const voidPollLoadedRef = useRef(false);
 
   function persistAckedVoidIds(s: Set<number>) {
@@ -709,12 +711,16 @@ export default function KitchenDisplay() {
       if (!res.ok) return;
       const data: RecentVoid[] = await res.json();
       const incomingIds = new Set(data.map(v => v.id));
-      // Detect fresh voids: ones we haven't seen on this device before.
-      // (Acks happen *after* the void is shown, so any "fresh" void is by
-      // definition not yet acknowledged on this device — no need to also
-      // intersect with ackedVoidIds, which would force this callback to
-      // depend on it and tear down the polling interval on every ack.)
-      const fresh = data.filter(v => !seenVoidIdsRef.current.has(v.id));
+      // Detect fresh voids: ones we haven't seen on this device before
+      // and that haven't been acknowledged here. seenVoidIdsRef is
+      // hydrated from the persisted ack set on mount so reloads can't
+      // re-chime old voids; we also re-read the persisted set here as
+      // a defensive guard against an ack that landed after this poll
+      // started. Reading from localStorage (not via the ackedVoidIds
+      // state) lets this callback stay stable so the polling interval
+      // doesn't reset every time a cook clicks Acknowledge.
+      const persistedAcked = loadAckedVoidIdsFromStorage();
+      const fresh = data.filter(v => !seenVoidIdsRef.current.has(v.id) && !persistedAcked.has(v.id));
       // First poll ever — silently seed the seen set, but still chime
       // for any fresh void within the recent window so a cook who just
       // opened a tablet seconds after a void doesn't miss the alert.
