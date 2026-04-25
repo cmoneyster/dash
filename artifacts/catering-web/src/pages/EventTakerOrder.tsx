@@ -2348,6 +2348,14 @@ function SentOrdersPanel({
                     <p className="text-xs text-muted-foreground">
                       #{o.id} · {ageMin}m ago{o.phoneNumber ? ` · ${o.phoneNumber}` : ""}
                     </p>
+                    {!isPaid && o.paymentOverrideReason && (
+                      <p
+                        className="text-[11px] italic text-amber-900 mt-0.5 break-words"
+                        data-testid={`sent-override-reason-${o.id}`}
+                      >
+                        Override reason: {o.paymentOverrideReason}
+                      </p>
+                    )}
                   </div>
                   <p className="font-bold text-base shrink-0">${total.toFixed(2)}</p>
                 </div>
