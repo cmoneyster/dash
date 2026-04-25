@@ -97,12 +97,22 @@ interface PendingOrder {
   taxAmount: number | null;
   total: number | null;
   createdAt: string;
+  // Kitchen-state, only populated for the "Sent orders" panel which surfaces
+  // already-fired tickets that staff may need to void. The pending payments
+  // queue does not depend on it (those rows are always pending/unpaid).
+  status?: "pending" | "preparing" | "ready" | "done" | "picked_up" | string | null;
   paymentStatus?: "unpaid" | "paid" | "override" | string | null;
   paymentMethod?: PaymentMethod | null;
   cashReceived?: number | null;
   changeDue?: number | null;
   paymentOverrideReason?: string | null;
   plateGroups?: PlateGroup[] | null;
+  // Void audit fields — only meaningful after a void; voided orders are
+  // filtered out of every active queue, so these are mostly here for
+  // type-completeness and the optimistic post-void receipt fallback.
+  voidedAt?: string | null;
+  voidReason?: string | null;
+  refundRequired?: boolean | null;
 }
 
 function getStoredPassword(): string | null {
@@ -143,6 +153,12 @@ export default function EventTakerOrder() {
   const [paymentOrder, setPaymentOrder] = useState<PendingOrder | null>(null);
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [showPendingPanel, setShowPendingPanel] = useState(false);
+  // "Sent orders" panel — staff orders already fired to the kitchen
+  // (paid + override) that may need to be voided.
+  const [sentOrders, setSentOrders] = useState<PendingOrder[]>([]);
+  const [showSentPanel, setShowSentPanel] = useState(false);
+  // The order currently being voided, if any. Drives the VoidModal.
+  const [voidTarget, setVoidTarget] = useState<PendingOrder | null>(null);
   // Transient warning shown when staff tries to add more than the remaining
   // event stock (or tap a sold-out item). Auto-clears after a few seconds.
   const [stockWarning, setStockWarning] = useState<string>("");
@@ -465,11 +481,28 @@ export default function EventTakerOrder() {
     } catch {}
   }
 
+  // "Sent orders" feed — paid/override staff orders sitting on the kitchen
+  // display. Used by the void panel.
+  async function loadSent(token: string) {
+    try {
+      const res = await fetch(`${BASE}/api/event-taker/orders/active`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setSentOrders(Array.isArray(data) ? data : []);
+    } catch {}
+  }
+
   // Poll the pending queue periodically so multiple devices stay in sync.
   useEffect(() => {
     if (!password) return;
     loadPending(password);
-    const t = setInterval(() => loadPending(password), 8000);
+    loadSent(password);
+    const t = setInterval(() => {
+      loadPending(password);
+      loadSent(password);
+    }, 8000);
     return () => clearInterval(t);
   }, [password]);
 
@@ -577,6 +610,34 @@ export default function EventTakerOrder() {
       wasOverride: !!updated.wasOverride,
     });
     if (password) loadPending(password);
+  }
+
+  // Soft-void a staff order that has already been sent to the kitchen.
+  // Called from VoidModal once the cashier confirms with a reason. On
+  // success, both queues refresh — the row drops from pending payments
+  // (override case) or sent orders (paid/override case) on the next poll,
+  // but we also remove it locally so the UI feels instant.
+  async function handleVoidConfirmed(order: PendingOrder, reason: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (!password) return { ok: false, error: "Not signed in" };
+    try {
+      const res = await fetch(`${BASE}/api/event-taker/orders/${order.id}/void`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return { ok: false, error: err.error ?? "Failed to void order" };
+      }
+      // Drop the row locally; refresh both feeds in the background.
+      setPendingOrders(prev => prev.filter(o => o.id !== order.id));
+      setSentOrders(prev => prev.filter(o => o.id !== order.id));
+      loadPending(password);
+      loadSent(password);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Could not reach the server" };
+    }
   }
 
   // Override directly from the pending panel — same effect as the modal's
@@ -903,6 +964,24 @@ export default function EventTakerOrder() {
               <span className="hidden sm:inline">Pending payments:</span>
               <span className="font-bold">{pendingOrders.length}</span>
             </button>
+            {/* Sent orders panel — for voiding tickets already on the kitchen
+                line. Stays muted unless there's actually something to void
+                so the header doesn't add visual noise during slow shifts. */}
+            <button
+              type="button"
+              onClick={() => setShowSentPanel(true)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                sentOrders.length > 0
+                  ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                  : "bg-secondary text-muted-foreground border-transparent hover:text-foreground"
+              }`}
+              title="Orders already sent to the kitchen — void if needed"
+              data-testid="button-sent-orders"
+            >
+              <ChefHat className="w-4 h-4" />
+              <span className="hidden sm:inline">Sent orders:</span>
+              <span className="font-bold">{sentOrders.length}</span>
+            </button>
             <label
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-semibold transition-colors border cursor-pointer ${
                 autoPrintMode !== "off"
@@ -1208,6 +1287,27 @@ export default function EventTakerOrder() {
           onResume={(o) => { setShowPendingPanel(false); setPaymentOrder(o); }}
           onCancel={(id) => handleCancelOrder(id)}
           onOverride={(o, reason) => handleOverrideFromPanel(o, reason)}
+          onVoid={(o) => setVoidTarget(o)}
+        />
+      )}
+
+      {showSentPanel && (
+        <SentOrdersPanel
+          orders={sentOrders}
+          onClose={() => setShowSentPanel(false)}
+          onVoid={(o) => setVoidTarget(o)}
+        />
+      )}
+
+      {voidTarget && (
+        <VoidModal
+          order={voidTarget}
+          onClose={() => setVoidTarget(null)}
+          onConfirm={async (reason) => {
+            const result = await handleVoidConfirmed(voidTarget, reason);
+            if (result.ok) setVoidTarget(null);
+            return result;
+          }}
         />
       )}
     </div>
@@ -1991,13 +2091,14 @@ function PlatingModal({
 
 // ── Pending payments side panel ────────────────────────────────────────
 function PendingPanel({
-  orders, onClose, onResume, onCancel, onOverride,
+  orders, onClose, onResume, onCancel, onOverride, onVoid,
 }: {
   orders: PendingOrder[];
   onClose: () => void;
   onResume: (o: PendingOrder) => void;
   onCancel: (id: number) => void;
   onOverride: (o: PendingOrder, reason: string) => void;
+  onVoid: (o: PendingOrder) => void;
 }) {
   // Per-row reason capture for the inline Override-and-send action.
   const [overrideForId, setOverrideForId] = useState<number | null>(null);
@@ -2109,6 +2210,19 @@ function PendingPanel({
                       </button>
                     </>
                   )}
+                  {isOverride && (
+                    // Override rows have already been fired to the kitchen.
+                    // Cancel is gone (use Void instead) so the cashier has
+                    // a clear path to back the order out without payment.
+                    <button
+                      onClick={() => onVoid(o)}
+                      className="px-3 py-2 text-sm font-semibold text-rose-700 border border-rose-300 rounded-lg hover:bg-rose-50"
+                      title="Void — pull this order back from the kitchen"
+                      data-testid={`button-void-${o.id}`}
+                    >
+                      <XIcon className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
                 {overrideForId === o.id && !isOverride && (
                   <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5 space-y-2">
@@ -2146,6 +2260,249 @@ function PendingPanel({
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Sent orders side panel ─────────────────────────────────────────────
+// Lists staff orders already on the kitchen line (paid / override) so the
+// cashier can void one if it shouldn't have been sent. Mirrors PendingPanel
+// styling so it feels like a sibling drawer.
+function SentOrdersPanel({
+  orders, onClose, onVoid,
+}: {
+  orders: PendingOrder[];
+  onClose: () => void;
+  onVoid: (o: PendingOrder) => void;
+}) {
+  // Friendlier label per kitchen status. The server only returns active
+  // statuses (pending / preparing / ready) so the fallback is a safety net.
+  function statusLabel(s?: string | null): string {
+    if (s === "preparing") return "Preparing";
+    if (s === "ready") return "Ready";
+    if (s === "pending") return "Queued";
+    return s ?? "—";
+  }
+  function statusTone(s?: string | null): string {
+    if (s === "preparing") return "bg-amber-100 text-amber-800 border-amber-200";
+    if (s === "ready") return "bg-emerald-100 text-emerald-800 border-emerald-200";
+    return "bg-secondary text-muted-foreground border-border"; // queued / unknown
+  }
+  return (
+    <div className="fixed inset-0 z-[65] flex justify-end bg-foreground/30 backdrop-blur-sm print:hidden" onClick={onClose}>
+      <div
+        className="bg-card w-full max-w-md h-full shadow-2xl flex flex-col"
+        onClick={e => e.stopPropagation()}
+        data-testid="sent-orders-panel"
+      >
+        <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+          <ChefHat className="w-5 h-5 text-rose-600" />
+          <h2 className="font-display font-bold text-lg">Sent orders</h2>
+          <span className="ml-auto text-sm text-muted-foreground">{orders.length}</span>
+          <button onClick={onClose} className="p-1.5 hover:bg-secondary rounded-lg ml-2">
+            <XIcon className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="px-5 py-3 border-b border-border bg-secondary/20">
+          <p className="text-xs text-muted-foreground leading-snug">
+            Orders already on the kitchen line. Voiding pulls the ticket back —
+            stock is <strong>not</strong> restored. Paid orders flag a manual
+            refund for you.
+          </p>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {orders.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-12">No active orders to void.</p>
+          )}
+          {orders.map(o => {
+            const total = o.total ?? 0;
+            const ageMin = Math.max(0, Math.round((Date.now() - new Date(o.createdAt).getTime()) / 60000));
+            const isPaid = o.paymentStatus === "paid";
+            return (
+              <div
+                key={o.id}
+                className="border border-border rounded-2xl p-3 bg-secondary/10"
+                data-testid={`sent-row-${o.id}`}
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-bold text-sm truncate">{o.guestName}</p>
+                      <span
+                        className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${statusTone(o.status)}`}
+                      >
+                        {statusLabel(o.status)}
+                      </span>
+                      {isPaid ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                          Paid · {o.paymentMethod ?? "?"}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full">
+                          Override · owed
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      #{o.id} · {ageMin}m ago{o.phoneNumber ? ` · ${o.phoneNumber}` : ""}
+                    </p>
+                  </div>
+                  <p className="font-bold text-base shrink-0">${total.toFixed(2)}</p>
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-0.5 mb-3">
+                  {o.items.slice(0, 4).map(i => (
+                    <li key={i.itemId}>{i.quantity}× {i.name}</li>
+                  ))}
+                  {o.items.length > 4 && <li>+ {o.items.length - 4} more…</li>}
+                </ul>
+                <button
+                  onClick={() => onVoid(o)}
+                  className="w-full px-3 py-2 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg flex items-center justify-center gap-1.5"
+                  data-testid={`button-void-${o.id}`}
+                >
+                  <XIcon className="w-4 h-4" />
+                  Void order
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Void confirmation modal ────────────────────────────────────────────
+// Captures a required reason and (for paid orders) a mandatory
+// "I will refund manually" acknowledgement so the cashier can't
+// accidentally erase a charge without remembering to refund it. Shows a
+// warning when the kitchen has already started cooking the ticket.
+function VoidModal({
+  order, onClose, onConfirm,
+}: {
+  order: PendingOrder;
+  onClose: () => void;
+  onConfirm: (reason: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+}) {
+  const [reason, setReason] = useState("");
+  const [ack, setAck] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const isPaid = order.paymentStatus === "paid";
+  const total = order.total ?? 0;
+  // Both "preparing" and "ready" mean the cook has touched the ticket; the
+  // warning escalates so the cashier double-checks before pulling it back.
+  const cookingStarted = order.status === "preparing" || order.status === "ready";
+  const trimmed = reason.trim();
+  const canSubmit = trimmed.length > 0 && (!isPaid || ack) && !submitting;
+
+  async function submit() {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError("");
+    const result = await onConfirm(trimmed);
+    if (!result.ok) {
+      setError(result.error);
+      setSubmitting(false);
+    }
+    // On success the parent unmounts this modal — no need to reset state.
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm print:hidden">
+      <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden" data-testid="void-modal">
+        <div className="px-6 py-4 border-b border-border bg-rose-50 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-rose-700 font-semibold">Void order #{order.id}</p>
+            <h2 className="font-display font-bold text-xl mt-0.5 text-foreground">{order.guestName}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {order.items.reduce((s, i) => s + i.quantity, 0)} item(s) · ${total.toFixed(2)}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-rose-100 rounded-lg" disabled={submitting}>
+            <XIcon className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {cookingStarted && (
+            <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <p>
+                The kitchen is already <strong>{order.status === "ready" ? "plating this order" : "cooking this order"}</strong>.
+                Confirm with them before voiding — food may have to be discarded.
+              </p>
+            </div>
+          )}
+
+          <div className="text-sm text-muted-foreground">
+            <p>Stock is <strong>not</strong> restored — the kitchen has effectively consumed these items.</p>
+          </div>
+
+          <label className="block">
+            <span className="text-sm font-semibold text-foreground">Reason (required)</span>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              rows={3}
+              autoFocus
+              placeholder="e.g. customer canceled, wrong order, allergy"
+              className="mt-1 w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-rose-400"
+              data-testid="input-void-reason"
+              disabled={submitting}
+            />
+          </label>
+
+          {isPaid && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+              <div className="flex items-start gap-2 text-sm text-rose-800">
+                <DollarSign className="w-4 h-4 mt-0.5 shrink-0" />
+                <p>
+                  <strong>${total.toFixed(2)}</strong> was charged to {order.paymentMethod ?? "the customer"}.
+                  Voiding does <strong>not</strong> automatically refund — you must process the refund out of band.
+                </p>
+              </div>
+              <label className="flex items-start gap-2 text-sm text-rose-900 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={ack}
+                  onChange={e => setAck(e.target.checked)}
+                  className="mt-0.5"
+                  data-testid="checkbox-refund-ack"
+                  disabled={submitting}
+                />
+                <span>I will refund the customer manually.</span>
+              </label>
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <p>{error}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-border bg-secondary/20 flex gap-2">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="flex-1 px-3 py-2.5 text-sm font-semibold border border-border rounded-lg hover:bg-card disabled:opacity-50"
+          >
+            Keep order
+          </button>
+          <button
+            onClick={submit}
+            disabled={!canSubmit}
+            className="flex-1 px-3 py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+            data-testid="button-confirm-void"
+          >
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <XIcon className="w-4 h-4" />}
+            {submitting ? "Voiding…" : "Void order"}
+          </button>
         </div>
       </div>
     </div>

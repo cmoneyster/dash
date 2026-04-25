@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, serial, text, jsonb, timestamp, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, jsonb, timestamp, integer, numeric, boolean } from "drizzle-orm/pg-core";
 
 export type EventOrderItem = {
   itemId: number;
@@ -77,6 +77,16 @@ export const eventOrdersTable = pgTable("event_orders", {
   // Used by Sales Reports to compute time-to-pickup metrics.
   readyAt: timestamp("ready_at"),
   pickedUpAt: timestamp("picked_up_at"),
+  // Soft-void audit trail for orders that were sent to the kitchen and then
+  // pulled back by staff (paid or override). Setting `voidedAt` removes the
+  // order from every active queue (kitchen feed, pending payments, sent
+  // orders) without deleting the row, so paid revenue / payment records
+  // stay intact for reconciliation. `refundRequired` is true when the
+  // customer was actually charged (paid + paymentMethod set), telling the
+  // cashier they owe a manual refund.
+  voidedAt: timestamp("voided_at"),
+  voidReason: text("void_reason"),
+  refundRequired: boolean("refund_required").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

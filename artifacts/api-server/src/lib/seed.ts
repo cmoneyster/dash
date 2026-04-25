@@ -265,6 +265,16 @@ async function runStandaloneMigrations(): Promise<void> {
     ALTER TABLE event_orders
       ADD COLUMN IF NOT EXISTS fired_item_ids jsonb NOT NULL DEFAULT '[]'::jsonb
   `);
+  // Soft-void audit trail for orders pulled back by staff after they were
+  // sent to the kitchen (paid or override). Voided orders are filtered out
+  // of every active queue but the row stays for reconciliation. Safe to
+  // re-run; existing rows simply remain non-voided.
+  await db.execute(sql`
+    ALTER TABLE event_orders
+      ADD COLUMN IF NOT EXISTS voided_at timestamp,
+      ADD COLUMN IF NOT EXISTS void_reason text,
+      ADD COLUMN IF NOT EXISTS refund_required boolean NOT NULL DEFAULT false
+  `);
 
   // ── On the Dash Experience (food trailer / on-site cooking) ──────────────
   // Per-item eligibility flag — drop-off-only by default so the migration

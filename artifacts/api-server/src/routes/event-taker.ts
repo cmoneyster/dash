@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { menuItemsTable, eventOrdersTable, eventSettingsTable } from "@workspace/db/schema";
-import { eq, sql, inArray, and, desc } from "drizzle-orm";
+import { eq, sql, inArray, and, desc, isNull } from "drizzle-orm";
 import { sendOrderConfirmation } from "../lib/sms";
 import { getOrderingChannelStates } from "./event-ordering";
 import { detectAndMarkLowStockCrossings, fireLowStockAlertIfAny, DEFAULT_LOW_STOCK_THRESHOLD } from "../lib/lowStockAlerts";
@@ -415,6 +415,10 @@ router.patch("/event-taker/orders/:id/plate-groups", verifyTakerPassword, async 
       res.status(400).json({ error: "Only staff (POS) orders accept plating" });
       return;
     }
+    if (existing.voidedAt) {
+      res.status(409).json({ error: "Order has been voided" });
+      return;
+    }
     if (existing.paymentStatus !== "unpaid") {
       res.status(409).json({ error: "Plating is locked — order has already been sent to the kitchen" });
       return;
@@ -476,6 +480,9 @@ router.get("/event-taker/orders/pending", verifyTakerPassword, async (req, res) 
     const conditions = [
       eq(eventOrdersTable.orderSource, "staff"),
       inArray(eventOrdersTable.paymentStatus, ["unpaid", "override"]),
+      // Voided orders stay in the database for reconciliation but should
+      // not surface in any active queue.
+      sql`${eventOrdersTable.voidedAt} IS NULL`,
     ];
     if (activeId != null) conditions.push(eq(eventOrdersTable.eventSessionId, activeId));
     const rows = await db
@@ -525,6 +532,10 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
     }
     if (existing.orderSource !== "staff") {
       res.status(400).json({ error: "Only staff (POS) orders accept payment recording" });
+      return;
+    }
+    if (existing.voidedAt) {
+      res.status(409).json({ error: "Order has been voided" });
       return;
     }
     if (existing.paymentStatus === "paid") {
@@ -579,6 +590,7 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
         eq(eventOrdersTable.id, id),
         eq(eventOrdersTable.orderSource, "staff"),
         eq(eventOrdersTable.paymentStatus, "unpaid"),
+        isNull(eventOrdersTable.voidedAt),
       ))
       .returning())[0];
     let wasOverride = false;
@@ -590,6 +602,7 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
           eq(eventOrdersTable.id, id),
           eq(eventOrdersTable.orderSource, "staff"),
           eq(eventOrdersTable.paymentStatus, "override"),
+          isNull(eventOrdersTable.voidedAt),
         ))
         .returning();
       updated = overrideRows[0];
@@ -661,6 +674,10 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
       res.status(400).json({ error: "Only staff (POS) orders can be overridden" });
       return;
     }
+    if (existing.voidedAt) {
+      res.status(409).json({ error: "Order has been voided" });
+      return;
+    }
     if (existing.paymentStatus !== "unpaid") {
       res.json(serializeOrder(existing));
       return;
@@ -681,6 +698,7 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
         eq(eventOrdersTable.id, id),
         eq(eventOrdersTable.orderSource, "staff"),
         eq(eventOrdersTable.paymentStatus, "unpaid"),
+        isNull(eventOrdersTable.voidedAt),
       ))
       .returning();
     if (updatedRows.length === 0) {
@@ -785,6 +803,110 @@ router.delete("/event-taker/orders/:id", verifyTakerPassword, async (req, res) =
     }
     req.log.error({ err }, "Error cancelling unpaid order");
     res.status(500).json({ error: "Failed to cancel order" });
+  }
+});
+
+// ── Active kitchen orders (for the Sent-orders / void panel) ──────────
+// Returns staff orders that are currently sitting on the kitchen display:
+// paid or override (the kitchen has actually seen them), status in the
+// active set (pending / preparing / ready), not yet voided, scoped to
+// the active event session. The Cashier-side "Sent orders" panel uses
+// this to surface orders that need to be voided after they were fired.
+router.get("/event-taker/orders/active", verifyTakerPassword, async (req, res) => {
+  try {
+    const settings = await getSettings();
+    const activeId = settings?.activeEventSessionId ?? null;
+    const conditions = [
+      eq(eventOrdersTable.orderSource, "staff"),
+      inArray(eventOrdersTable.paymentStatus, ["paid", "override"]),
+      inArray(eventOrdersTable.status, ["pending", "preparing", "ready"]),
+      sql`${eventOrdersTable.voidedAt} IS NULL`,
+    ];
+    if (activeId != null) conditions.push(eq(eventOrdersTable.eventSessionId, activeId));
+    const rows = await db
+      .select()
+      .from(eventOrdersTable)
+      .where(and(...conditions))
+      .orderBy(desc(eventOrdersTable.createdAt));
+    res.json(rows.map(serializeOrder));
+  } catch (err) {
+    req.log.error({ err }, "Error listing active orders");
+    res.status(500).json({ error: "Failed to load active orders" });
+  }
+});
+
+// Soft-void a staff order that has already been sent to the kitchen.
+// Mirrors the gating of the existing Cancel DELETE (which hard-deletes
+// pure unpaid orders) but for orders the kitchen has actually seen —
+// override (sent unpaid) or paid. Sets `voidedAt`, captures the staff
+// reason, and (for paid orders only) flags `refundRequired` so the
+// cashier knows they must process a manual refund. Stock is intentionally
+// NOT restored — by the time the kitchen has the ticket, the line items
+// have been consumed and adding stock back would over-count availability.
+router.post("/event-taker/orders/:id/void", verifyTakerPassword, async (req, res) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid order id" });
+      return;
+    }
+    const reasonRaw = (req.body ?? {}).reason;
+    const reason = typeof reasonRaw === "string" ? reasonRaw.trim() : "";
+    if (!reason) {
+      res.status(400).json({ error: "A reason is required to void an order" });
+      return;
+    }
+    const settings = await getSettings();
+    const activeId = settings?.activeEventSessionId ?? null;
+    const updated = await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(eventOrdersTable)
+        .where(eq(eventOrdersTable.id, id))
+        .for("update");
+      if (!existing) throw Object.assign(new Error("Order not found"), { status: 404 });
+      if (activeId != null && existing.eventSessionId !== activeId) {
+        throw Object.assign(new Error("Order belongs to a different event session"), { status: 409 });
+      }
+      if (existing.orderSource !== "staff") {
+        throw Object.assign(new Error("Only staff orders can be voided here"), { status: 400 });
+      }
+      if (existing.voidedAt) {
+        throw Object.assign(new Error("Order is already voided"), { status: 409 });
+      }
+      if (existing.paymentStatus === "unpaid") {
+        // Pure unpaid tabs use the existing Cancel path which hard-deletes
+        // and replenishes stock — the kitchen never saw the order.
+        throw Object.assign(
+          new Error("Use Cancel to remove an unpaid order before it has been sent to the kitchen"),
+          { status: 409 },
+        );
+      }
+      if (existing.status === "done" || existing.status === "picked_up") {
+        throw Object.assign(new Error("Completed orders cannot be voided here"), { status: 409 });
+      }
+      // Refund is owed only when money actually changed hands. Override
+      // orders haven't collected payment yet, so no manual-refund flag.
+      const refundRequired = existing.paymentStatus === "paid" && existing.paymentMethod != null;
+      const [row] = await tx
+        .update(eventOrdersTable)
+        .set({
+          voidedAt: new Date(),
+          voidReason: reason,
+          refundRequired,
+        })
+        .where(eq(eventOrdersTable.id, id))
+        .returning();
+      return row;
+    });
+    res.json(serializeOrder(updated));
+  } catch (err: any) {
+    if (err?.status === 404 || err?.status === 400 || err?.status === 409) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    req.log.error({ err }, "Error voiding order");
+    res.status(500).json({ error: "Failed to void order" });
   }
 });
 

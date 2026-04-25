@@ -386,7 +386,8 @@ router.get("/event-ordering/orders", verifyKitchenPassword, async (req, res) => 
     const orders = await db
       .select()
       .from(eventOrdersTable)
-      .where(sql`NOT (${eventOrdersTable.orderSource} = 'staff' AND ${eventOrdersTable.paymentStatus} = 'unpaid')`)
+      .where(sql`NOT (${eventOrdersTable.orderSource} = 'staff' AND ${eventOrdersTable.paymentStatus} = 'unpaid')
+                 AND ${eventOrdersTable.voidedAt} IS NULL`)
       .orderBy(desc(eventOrdersTable.createdAt));
 
     // Collect all unique itemIds across all orders
@@ -470,6 +471,11 @@ router.patch("/event-ordering/orders/:id/status", verifyKitchenPassword, async (
         .where(eq(eventOrdersTable.id, id))
         .for("update");
       if (!existing) throw Object.assign(new Error("Order not found"), { status: 404 });
+      // Soft-voided orders are dead to the kitchen — refuse stale taps so
+      // a kitchen device that hadn't polled yet can't resurrect the row.
+      if (existing.voidedAt) {
+        throw Object.assign(new Error("Order has been voided"), { status: 409 });
+      }
       // Plated orders advance preparing→ready exclusively through the
       // per-plate packing endpoint. Reject a manual Mark-Ready unless the
       // packing UI is fully checked, otherwise tickets can sneak past
@@ -654,6 +660,9 @@ router.patch("/event-ordering/orders/:id/kitchen-progress", verifyKitchenPasswor
         .where(eq(eventOrdersTable.id, id))
         .for("update");
       if (!row) throw Object.assign(new Error("Order not found"), { status: 404 });
+      if (row.voidedAt) {
+        throw Object.assign(new Error("Order has been voided"), { status: 409 });
+      }
       if (row.status !== "preparing" && row.status !== "pending") {
         throw Object.assign(new Error(`Order is ${row.status}; progress is locked`), { status: 409 });
       }
@@ -771,6 +780,9 @@ router.patch("/event-ordering/orders/:id/fired", verifyKitchenPassword, async (r
         .where(eq(eventOrdersTable.id, id))
         .for("update");
       if (!row) throw Object.assign(new Error("Order not found"), { status: 404 });
+      if (row.voidedAt) {
+        throw Object.assign(new Error("Order has been voided"), { status: 409 });
+      }
       if (row.status !== "preparing" && row.status !== "pending") {
         throw Object.assign(new Error(`Order is ${row.status}; fire totals are locked`), { status: 409 });
       }
