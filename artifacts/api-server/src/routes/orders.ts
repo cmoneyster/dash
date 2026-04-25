@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, orderItemsTable, cartItemsTable, menuItemsTable, cateringInquiriesTable, eventSettingsTable } from "@workspace/db/schema";
-import { computeEffectivePrice, computeEffectivePriceDetail } from "@workspace/pricing";
+import { computeEffectivePriceDetail } from "@workspace/pricing";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { sendNewInquiryAlert } from "../lib/sms";
