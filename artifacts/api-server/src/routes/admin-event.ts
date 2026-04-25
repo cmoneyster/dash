@@ -653,10 +653,10 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
 
     if (type === "items") {
       // Aggregated per-item CSV — one row per item across all orders in range.
-      // Voided rows do not contribute to item revenue/quantity.
+      // Existing CSV behavior preserved (per Task #122 out-of-scope rule);
+      // void-aware reporting lives in the dedicated `type=voids` CSV below.
       const agg = new Map<string, { quantity: number; revenue: number }>();
       for (const o of orders) {
-        if (o.voidedAt != null) continue;
         const items = (o.items ?? []) as SnapshotItem[];
         for (const i of items) {
           const unit = i.unitPrice != null ? Number(i.unitPrice) : Number(i.price) || 0;
@@ -705,14 +705,13 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
         ].map(escape).join(","));
       }
     } else {
-      // Order-level CSV — one row per order. Voided rows are listed for
-      // chronological context but tagged in the Voided / Voided By / Void
-      // Reason columns so they can be filtered out in a spreadsheet.
+      // Order-level CSV — one row per order. Existing column shape preserved
+      // (per Task #122 out-of-scope rule); use the dedicated `type=voids`
+      // CSV for void-specific attribution columns.
       rows.push([
         "Order ID", "Created", "Source", "Guest Name", "Phone", "Status",
         "payment_method", "Items", "Subtotal", "Tax Rate (%)", "Tax", "Total",
         "Ready At", "Picked Up At", "Time to Ready (min)", "Ready to Pickup (min)", "Time to Pickup (min)",
-        "Voided", "Voided At", "Voided By", "Void Reason", "Refund Owed",
       ].join(","));
       for (const o of orders) {
         const items = (o.items ?? []) as SnapshotItem[];
@@ -749,11 +748,6 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
           prepMin,
           readyToPickupMin,
           pickupMin,
-          o.voidedAt ? "yes" : "no",
-          o.voidedAt ? o.voidedAt.toISOString() : "",
-          o.voidedBy ?? "",
-          o.voidReason ?? "",
-          o.voidedAt && o.refundRequired ? "yes" : "",
         ].map(escape).join(","));
       }
     }
