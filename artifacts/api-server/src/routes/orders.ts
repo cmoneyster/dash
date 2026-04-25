@@ -215,6 +215,7 @@ router.post("/orders", async (req, res): Promise<void> => {
         guestCount: guestCount ?? null,
         total: orderTotalStr,
         clientPhone: customerPhone ?? null,
+        venueAddress,
         link,
       }).catch(() => {});
     } catch (inquiryErr) {

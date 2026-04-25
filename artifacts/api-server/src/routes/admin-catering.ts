@@ -283,6 +283,9 @@ router.post("/admin/catering", async (req, res): Promise<void> => {
       guestCount: typeof body.guestCount === "number" ? body.guestCount : null,
       total: inquiry.total ? `$${Number(inquiry.total).toFixed(2)}` : null,
       clientPhone: asString(body.clientPhone)?.trim() || null,
+      // Use the persisted (normalized) value so the alert mirrors what the
+      // admin will see on the inquiry record itself.
+      venueAddress: inquiry.venueAddress,
       link: `${publicBaseUrl(req)}/admin/catering?inquiry=${inquiry.id}`,
     }).catch(() => {});
 

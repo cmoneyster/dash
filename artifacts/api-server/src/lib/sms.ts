@@ -55,6 +55,7 @@ export async function sendNewInquiryAlert(opts: {
   guestCount?: number | null;
   total?: string | null;       // pre-formatted, e.g. "$123.45"
   clientPhone?: string | null;
+  venueAddress?: string | null;
   link?: string | null;        // deep link to admin inquiry editor
 }): Promise<void> {
   const ownerPhone = process.env.OWNER_PHONE;
@@ -71,6 +72,10 @@ export async function sendNewInquiryAlert(opts: {
   if (opts.guestCount)  detail.push(`${opts.guestCount} guests`);
   if (detail.length)    lines.push(detail.join(" · "));
   if (opts.total)       lines.push(`Total: ${opts.total} (excl. tax)`);
+  // Venue gets its own line — addresses are long and would blow out the
+  // compact "Event · Guests" detail row. Omitted entirely when blank so
+  // the alert stays clean for older inquiries without a venue on file.
+  if (opts.venueAddress?.trim()) lines.push(`Venue: ${opts.venueAddress.trim()}`);
   if (opts.clientPhone) lines.push(`Phone: ${opts.clientPhone}`);
   if (opts.link)        lines.push(`View: ${opts.link}`);
   await sendSms(ownerPhone, lines.join("\n"));
