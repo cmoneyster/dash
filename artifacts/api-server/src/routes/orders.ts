@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, orderItemsTable, cartItemsTable, menuItemsTable, cateringInquiriesTable, eventSettingsTable } from "@workspace/db/schema";
-import { computeEffectivePrice } from "@workspace/pricing";
+import { computeEffectivePrice, computeEffectivePriceDetail } from "@workspace/pricing";
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { sendNewInquiryAlert } from "../lib/sms";
 
@@ -102,12 +103,16 @@ router.post("/orders", async (req, res): Promise<void> => {
       }
     }
 
-    // Per-line effective price snapshot — reused for subtotal, order
-    // items insert, and the inquiry summary so the three sources stay
-    // consistent.
-    const lineEffectivePrices = cartItems.map(row =>
-      computeEffectivePrice(row.menu_items, row.cart_items.quantity, row.cart_items.sizePrice ?? null),
+    // Per-line effective price + tier detail snapshot — reused for
+    // subtotal, order items insert, the inquiry summary, and the
+    // server-seeded quote line items so all five sources stay consistent.
+    // Computing detail (not just price) lets us mark seeded quote lines
+    // with `tierApplied` so the Quote Builder shows the same "Tier price
+    // applied" hint admins see when they manually pick the same item.
+    const lineEffectiveDetails = cartItems.map(row =>
+      computeEffectivePriceDetail(row.menu_items, row.cart_items.quantity, row.cart_items.sizePrice ?? null),
     );
+    const lineEffectivePrices = lineEffectiveDetails.map(d => d.price);
     const subtotal = cartItems.reduce(
       (sum, row, i) => sum + lineEffectivePrices[i] * row.cart_items.quantity,
       0,
@@ -171,11 +176,67 @@ router.post("/orders", async (req, res): Promise<void> => {
 
     // Dual-write: create a catering inquiry for this cart order
     try {
+      // Snapshot the sizing/unit info the guest actually picked so the
+      // admin Cart Order Items table can show "Medium Pan · 30 servings"
+      // (or "tray of 12") next to each line instead of just the bare
+      // item name. For pan-size items we read the slot-specific servings
+      // straight off the joined menu item using the slot the cart row
+      // recorded; sizeLabel preferentially comes from the cart row
+      // (frozen at add-to-cart) and falls back to the live menu label.
+      const itemDescriptors = cartItems.map(row => {
+        const m = row.menu_items;
+        const isPan = m.pricingTemplate === "pan_sizes";
+        const slot = row.cart_items.sizeSlot ?? null;
+        let sizeLabel: string | null = null;
+        let sizeServings: number | null = null;
+        if (isPan && slot != null) {
+          const labelKey = `size${slot}Label` as keyof typeof m;
+          const servingsKey = `size${slot}Servings` as keyof typeof m;
+          sizeLabel = (row.cart_items.sizeLabel ?? (m[labelKey] as string | null)) ?? null;
+          const s = m[servingsKey] as number | null | undefined;
+          sizeServings = s ?? null;
+        }
+        return {
+          pricingTemplate: (m.pricingTemplate as "per_unit" | "pan_sizes" | null) ?? null,
+          sizeSlot: isPan ? slot : null,
+          sizeLabel,
+          sizeServings,
+          unit: !isPan ? m.unit ?? null : null,
+          servingSize: !isPan ? m.servingSize ?? null : null,
+        };
+      });
+
       const orderItemsForInquiry = cartItems.map((row, i) => ({
         name: row.menu_items.name,
         quantity: row.cart_items.quantity,
         price: lineEffectivePrices[i],
+        ...itemDescriptors[i],
       }));
+
+      // Server-seed the editable Quote Builder lines from the cart so
+      // staff don't have to delete each row and re-pick the menu item
+      // just to recover the size info. Each line carries the real
+      // menuItemId (so re-pricing tier breaks still work in the editor),
+      // the effective per-unit price the guest saw, the auto-tier flag
+      // when a tier break was hit, and the same descriptor fields the
+      // read-only cart table renders. The legacy client-side fallback
+      // in CateringOrders.tsx stays in place for inquiries created
+      // before this change.
+      const seededLineItems = cartItems.map((row, i) => {
+        const tier = lineEffectiveDetails[i].tier;
+        return {
+          id: randomUUID(),
+          menuItemId: row.menu_items.id,
+          name: row.menu_items.name,
+          quantity: row.cart_items.quantity,
+          unitPrice: lineEffectivePrices[i],
+          notes: null,
+          ...itemDescriptors[i],
+          tierApplied: tier === "tier2" || tier === "tier3",
+          priceMode: "auto" as const,
+        };
+      });
+
       const orderTotalStr = `$${total.toFixed(2)}`;
 
       const [inquiryRow] = await db.insert(cateringInquiriesTable).values({
@@ -187,6 +248,7 @@ router.post("/orders", async (req, res): Promise<void> => {
         venueAddress,
         source: "cart",
         orderItems: orderItemsForInquiry,
+        lineItems: seededLineItems,
         orderTotal: orderTotalStr,
         status: "inquiry",
         // Service mode + per-inquiry fee snapshot (see comment in

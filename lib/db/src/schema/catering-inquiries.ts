@@ -5,6 +5,17 @@ export type CateringOrderItem = {
   name: string;
   quantity: number;
   price: number;
+  // Optional sizing/unit snapshot captured from the cart at submission
+  // time so the admin's read-only Cart Order Items table can show what
+  // the guest actually picked (e.g. "Medium Pan · 30 servings", "tray
+  // of 12"). All optional + nullable so legacy rows (pre-snapshot)
+  // continue to validate and render with just the bare name.
+  pricingTemplate?: "per_unit" | "pan_sizes" | null;
+  sizeSlot?: number | null;
+  sizeLabel?: string | null;
+  sizeServings?: number | null;
+  unit?: string | null;
+  servingSize?: number | null;
 };
 
 export type QuoteLineItem = {

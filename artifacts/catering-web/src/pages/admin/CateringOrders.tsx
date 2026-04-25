@@ -32,7 +32,20 @@ function getStatusMeta(key: string) {
   return STATUSES.find(s => s.key === key) ?? { key, label: key, color: "bg-secondary text-muted-foreground" };
 }
 
-type OrderItem = { name: string; quantity: number; price: number };
+type OrderItem = {
+  name: string;
+  quantity: number;
+  price: number;
+  // Optional sizing/unit snapshot the server captures from the cart at
+  // checkout. Older inquiries created before this snapshot was added
+  // leave these undefined and render with just the bare name.
+  pricingTemplate?: "per_unit" | "pan_sizes" | null;
+  sizeSlot?: number | null;
+  sizeLabel?: string | null;
+  sizeServings?: number | null;
+  unit?: string | null;
+  servingSize?: number | null;
+};
 
 type QuoteLineItem = {
   id: string;
@@ -223,14 +236,27 @@ function OrderItemsTable({ items, total }: { items: OrderItem[]; total: string |
           </tr>
         </thead>
         <tbody>
-          {items.map((item, i) => (
-            <tr key={i} className="border-b border-border/50 last:border-0">
-              <td className="px-4 py-2.5 font-medium">{item.name}</td>
-              <td className="px-4 py-2.5 text-center">{item.quantity}</td>
-              <td className="px-4 py-2.5 text-right text-muted-foreground">{formatCurrency(item.price)}</td>
-              <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(item.price * item.quantity)}</td>
-            </tr>
-          ))}
+          {items.map((item, i) => {
+            // Reuse the same descriptor helper the editable Quote
+            // Builder rows use so "Medium Pan · 30 servings" / "tray
+            // of 12" reads identically to the cook on both surfaces.
+            // Older inquiries (pre-snapshot) return null here and just
+            // render the item name on its own — no layout change.
+            const descriptor = lineItemDescriptor(item);
+            return (
+              <tr key={i} className="border-b border-border/50 last:border-0">
+                <td className="px-4 py-2.5 font-medium">
+                  <div>{item.name}</div>
+                  {descriptor && (
+                    <div className="text-xs font-normal text-muted-foreground mt-0.5">{descriptor}</div>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-center align-top">{item.quantity}</td>
+                <td className="px-4 py-2.5 text-right align-top text-muted-foreground">{formatCurrency(item.price)}</td>
+                <td className="px-4 py-2.5 text-right align-top font-semibold">{formatCurrency(item.price * item.quantity)}</td>
+              </tr>
+            );
+          })}
         </tbody>
         {total && (
           <tfoot>
@@ -250,8 +276,19 @@ function OrderItemsTable({ items, total }: { items: OrderItem[]; total: string |
 
 // ── Quote Editor section ─────────────────────────────────────────────────────
 
-// Build the descriptor shown under a line item name (admin + public).
-function lineItemDescriptor(li: QuoteLineItem): string | null {
+// Build the descriptor shown under a line item name (admin Cart Order
+// Items table, admin Quote Editor row, and the public quote page). The
+// parameter is the structural subset of fields we read so the same
+// helper handles both QuoteLineItem (editable quote line) and OrderItem
+// (read-only cart snapshot) without one type having to import the
+// other.
+function lineItemDescriptor(li: {
+  pricingTemplate?: "per_unit" | "pan_sizes" | null;
+  sizeLabel?: string | null;
+  sizeServings?: number | null;
+  unit?: string | null;
+  servingSize?: number | null;
+}): string | null {
   if (li.pricingTemplate === "pan_sizes" && li.sizeLabel) {
     return li.sizeServings != null
       ? `${li.sizeLabel} · ${li.sizeServings} servings`
@@ -1397,6 +1434,12 @@ function DetailPanel({
   useEffect(() => {
     // Legacy migration: if a cart-source inquiry has orderItems but no lineItems
     // yet, prefill the quote editor from the cart so admins can edit/send.
+    // New cart inquiries are seeded server-side (orders.ts) with full
+    // sizing + tier info so this fallback only runs for inquiries created
+    // before that change. We still forward any descriptor fields the
+    // snapshot carries so the seeded line shows the right "Medium Pan"
+    // / "tray of 12" descriptor right away — falling back to a bare
+    // line is the worst case, never the default.
     let next: Partial<Inquiry> = inquiry;
     const hasNoLines = !Array.isArray(inquiry.lineItems) || (inquiry.lineItems?.length ?? 0) === 0;
     const cartItems = Array.isArray(inquiry.orderItems) ? inquiry.orderItems : null;
@@ -1410,6 +1453,12 @@ function DetailPanel({
           quantity: Number(c.quantity) || 0,
           unitPrice: Number(c.price) || 0,
           notes: null,
+          pricingTemplate: c.pricingTemplate ?? null,
+          sizeSlot: c.sizeSlot ?? null,
+          sizeLabel: c.sizeLabel ?? null,
+          sizeServings: c.sizeServings ?? null,
+          unit: c.unit ?? null,
+          servingSize: c.servingSize ?? null,
         })),
       };
     }
