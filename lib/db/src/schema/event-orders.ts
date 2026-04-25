@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { pgTable, serial, text, jsonb, timestamp, integer, numeric } from "drizzle-orm/pg-core";
 
 export type EventOrderItem = {
@@ -46,6 +47,12 @@ export const eventOrdersTable = pgTable("event_orders", {
   // Cleared when the order moves backward (preparing→pending or ready→
   // preparing) so re-cooking starts from a clean slate.
   kitchenProgress: jsonb("kitchen_progress").$type<EventOrderKitchenProgress>(),
+  // Server-synced "Fire totals" check-off state. Each entry is the itemId
+  // of a cart line the cook has tapped on the kitchen ticket. Mirrored
+  // across all kitchen devices via polling so two cooks see the same
+  // checkmarks. Cleared when the order leaves the active queue (advance
+  // to ready/done/picked_up) or when staff revert preparing→pending.
+  firedItemIds: jsonb("fired_item_ids").$type<number[]>().notNull().default(sql`'[]'::jsonb`),
   status: text("status").notNull().default("pending"),
   eventSessionId: integer("event_session_id"),
   // 'guest' = self-service /event page; 'staff' = /event-taker POS

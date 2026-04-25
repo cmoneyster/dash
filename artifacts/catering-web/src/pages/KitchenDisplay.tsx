@@ -5,7 +5,6 @@ const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const POLL_INTERVAL = 6000;
 const STOCK_POLL_INTERVAL = 15000;
-const LS_KEY = "kitchen_item_checks";
 const LOW_STOCK_LS_KEY = "kitchen_low_stock_seen";
 const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 const LOW_STOCK_THRESHOLD_MIN = 1;
@@ -60,6 +59,9 @@ type EventOrder = {
   total?: number | null;
   plateGroups?: PlateGroup[] | null;
   kitchenProgress?: KitchenProgress | null;
+  // Server-synced "Fire totals" check-off state. Mirrored across all
+  // kitchen devices via the 6 s poll. Empty until the cook starts firing.
+  firedItemIds?: number[] | null;
 };
 
 // Local mirror of the server's buildEmptyKitchenProgress — used to derive
@@ -125,14 +127,6 @@ function unassignedItems(order: EventOrder): { itemId: number; name: string; qua
 type PrintJob = { order: EventOrder; mode: "receipt" | "kitchen" };
 
 const COMPLETED_STATUSES = new Set(["done", "picked_up"]);
-
-// localStorage helpers — persist checked item sets across polls
-function loadChecked(): Record<number, number[]> {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) ?? "{}"); } catch { return {}; }
-}
-function saveChecked(data: Record<number, number[]>) {
-  localStorage.setItem(LS_KEY, JSON.stringify(data));
-}
 
 const STATUS_CONFIG = {
   pending:   { label: "New",       color: "bg-red-100 text-red-700 border-red-200",     ring: "ring-2 ring-red-300"  },
@@ -565,32 +559,9 @@ export default function KitchenDisplay() {
     }
   }
 
-  // checkedItems: orderId → Set of itemIds that have been individually marked
-  const [checkedItems, setCheckedItems] = useState<Record<number, Set<number>>>(() => {
-    const raw = loadChecked();
-    const result: Record<number, Set<number>> = {};
-    for (const [k, v] of Object.entries(raw)) result[Number(k)] = new Set(v);
-    return result;
-  });
-
-  // Sync checkedItems to localStorage whenever it changes
-  useEffect(() => {
-    const serializable: Record<number, number[]> = {};
-    for (const [k, v] of Object.entries(checkedItems)) serializable[Number(k)] = [...v];
-    saveChecked(serializable);
-  }, [checkedItems]);
-
-  // Clean up checked state for orders that have moved past preparing (ready/done)
-  useEffect(() => {
-    const activeIds = new Set(orders.filter(o => o.status === "pending" || o.status === "preparing").map(o => o.id));
-    setCheckedItems(prev => {
-      const cleaned: Record<number, Set<number>> = {};
-      for (const [k, v] of Object.entries(prev)) {
-        if (activeIds.has(Number(k))) cleaned[Number(k)] = v;
-      }
-      return cleaned;
-    });
-  }, [orders]);
+  // "Fire totals" check-off state lives on the server (event_orders.fired_item_ids)
+  // and is mirrored across all kitchen devices via the 6 s poll. The OrderCard
+  // derives its Set<number> directly from order.firedItemIds — no local mirror.
 
   const fetchOrders = useCallback(async (pwd: string) => {
     try {
@@ -670,9 +641,9 @@ export default function KitchenDisplay() {
       if (res.ok) {
         const updated: EventOrder = await res.json();
         setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
-        // Reset Fire-totals checks so staff can re-mark from scratch
-        // (server already wiped kitchen_progress in the same transaction)
-        setCheckedItems(prev => ({ ...prev, [order.id]: new Set() }));
+        // Server wiped fired_item_ids + kitchen_progress in the same
+        // transaction; the next poll (and the optimistic merge above)
+        // already reflect that, so nothing to do client-side.
       }
     } finally {
       setUpdating(s => { const n = new Set(s); n.delete(order.id); return n; });
@@ -739,14 +710,9 @@ export default function KitchenDisplay() {
       if (res.ok) {
         const updated: EventOrder = await res.json();
         setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
-        // Clear checked state once order has advanced past pending
-        if (order.status === "pending") {
-          setCheckedItems(prev => {
-            const next = { ...prev };
-            delete next[order.id];
-            return next;
-          });
-        }
+        // Server already wiped fired_item_ids in the same transaction
+        // when the new status is ready / done / picked_up, so nothing
+        // for the client to clean up.
       }
     } finally {
       setUpdating(s => { const n = new Set(s); n.delete(order.id); return n; });
@@ -772,27 +738,44 @@ export default function KitchenDisplay() {
     setPrintJob({ order, mode });
   }
 
-  function toggleItemCheck(orderId: number, itemId: number, allItemIds: number[]) {
-    setCheckedItems(prev => {
-      const current = new Set(prev[orderId] ?? []);
-      if (current.has(itemId)) {
-        current.delete(itemId);
-      } else {
-        current.add(itemId);
+  // Server-synced "Fire totals" tap. Optimistically toggles the itemId in
+  // the order's firedItemIds array, then PATCHes the server which is the
+  // source of truth for auto-advancing pending → preparing once every line
+  // is fired (so two cooks tapping in parallel can't double-advance). On
+  // network failure we roll back to the pre-tap snapshot so the UI always
+  // reflects the server's state.
+  async function patchItemFired(orderId: number, itemId: number) {
+    if (!authedPassword) return;
+    const snapshot = orders.find(o => o.id === orderId);
+    if (!snapshot) return;
+    const wasFired = (snapshot.firedItemIds ?? []).includes(itemId);
+    const fired = !wasFired;
+    setOrders(prev => prev.map(o => {
+      if (o.id !== orderId) return o;
+      const set = new Set(o.firedItemIds ?? []);
+      if (fired) set.add(itemId); else set.delete(itemId);
+      return { ...o, firedItemIds: [...set] };
+    }));
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/orders/${orderId}/fired`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
+        body: JSON.stringify({ itemId, fired }),
+      });
+      if (!res.ok) {
+        setOrders(prev => prev.map(o => o.id === orderId ? snapshot : o));
+        return;
       }
-      const updated = { ...prev, [orderId]: current };
-
-      // Auto-advance when all items are checked
-      if (current.size === allItemIds.length) {
-        const order = orders.find(o => o.id === orderId);
-        if (order && order.status === "pending") {
-          // Small delay so the last checkmark is visible before advancing
-          setTimeout(() => advanceStatus(order), 500);
-        }
+      const updated = await res.json() as Pick<EventOrder, "id" | "status" | "firedItemIds">;
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updated } : o));
+      // Server may have auto-advanced pending → preparing; clear the
+      // "new" red ring so the freshly-Preparing card looks settled.
+      if (updated.status && updated.status !== "pending") {
+        setNewOrderIds(s => { const n = new Set(s); n.delete(orderId); return n; });
       }
-
-      return updated;
-    });
+    } catch {
+      setOrders(prev => prev.map(o => o.id === orderId ? snapshot : o));
+    }
   }
 
   if (!authedPassword) {
@@ -1174,8 +1157,8 @@ export default function KitchenDisplay() {
                           order={order}
                           isNew={newOrderIds.has(order.id)}
                           isUpdating={updating.has(order.id)}
-                          checkedItemIds={checkedItems[order.id] ?? new Set()}
-                          onToggleItem={(itemId) => toggleItemCheck(order.id, itemId, order.items.map(i => i.itemId))}
+                          checkedItemIds={new Set(order.firedItemIds ?? [])}
+                          onToggleItem={(itemId) => patchItemFired(order.id, itemId)}
                           onAdvance={() => advanceStatus(order)}
                           onRevert={() => revertStatus(order)}
                           onPrint={(mode) => printOrder(order, mode)}

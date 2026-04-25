@@ -256,6 +256,15 @@ async function runStandaloneMigrations(): Promise<void> {
     ALTER TABLE event_orders
       ADD COLUMN IF NOT EXISTS kitchen_progress jsonb
   `);
+  // Server-synced "Fire totals" check-off state for non-plated kitchen
+  // tickets (and the totals header on plated tickets). Holds the itemIds
+  // of cart lines the cook has tapped so all kitchen devices see the same
+  // checkmarks. Cleared by the routes when the order leaves the active
+  // queue. Defaults to empty array so existing rows are valid. Safe to re-run.
+  await db.execute(sql`
+    ALTER TABLE event_orders
+      ADD COLUMN IF NOT EXISTS fired_item_ids jsonb NOT NULL DEFAULT '[]'::jsonb
+  `);
 
   // ── On the Dash Experience (food trailer / on-site cooking) ──────────────
   // Per-item eligibility flag — drop-off-only by default so the migration

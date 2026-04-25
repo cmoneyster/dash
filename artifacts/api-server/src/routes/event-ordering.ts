@@ -411,6 +411,7 @@ router.get("/event-ordering/orders", verifyKitchenPassword, async (req, res) => 
       total: order.total != null ? parseFloat(order.total) : null,
       plateGroups: order.plateGroups ?? null,
       kitchenProgress: order.kitchenProgress ?? null,
+      firedItemIds: order.firedItemIds ?? [],
       items: (order.items as { itemId: number }[]).map(item => ({
         ...item,
         internalNotes: notesMap[item.itemId] ?? null,
@@ -503,6 +504,16 @@ router.patch("/event-ordering/orders/:id/status", verifyKitchenPassword, async (
         (status === "preparing" && existing.status === "ready")
       ) {
         updates.kitchenProgress = null;
+      }
+      // Server-synced "Fire totals" check-off state lives only while the
+      // order is in the active queue. Wipe it when the cook sends the
+      // order forward (preparing→ready, or any jump to done/picked_up)
+      // so a re-opened ticket starts clean. Also wipe on a back-revert
+      // to pending so the next fire pass is fresh.
+      if (status === "ready" || status === "done" || status === "picked_up") {
+        updates.firedItemIds = [];
+      } else if (status === "pending" && existing.status !== "pending") {
+        updates.firedItemIds = [];
       }
       const wasReady = existing.status === "ready";
       const [updated] = await tx
@@ -685,6 +696,9 @@ router.patch("/event-ordering/orders/:id/kitchen-progress", verifyKitchenPasswor
       if (row.status === "preparing" && isFullyPacked(progress)) {
         updates.status = "ready";
         if (!row.readyAt) updates.readyAt = new Date();
+        // Fire totals belong to the active queue — wipe so a re-opened
+        // ticket via Undo on Ready starts fresh.
+        updates.firedItemIds = [];
         advanced = true;
       }
       const [updated] = await tx
@@ -713,6 +727,7 @@ router.patch("/event-ordering/orders/:id/kitchen-progress", verifyKitchenPasswor
       total: result.updated.total != null ? parseFloat(result.updated.total) : null,
       plateGroups: result.updated.plateGroups ?? null,
       kitchenProgress: result.updated.kitchenProgress ?? null,
+      firedItemIds: result.updated.firedItemIds ?? [],
     });
   } catch (err: any) {
     if (err?.status) {
@@ -721,6 +736,85 @@ router.patch("/event-ordering/orders/:id/kitchen-progress", verifyKitchenPasswor
     }
     req.log.error({ err }, "Error updating kitchen progress");
     res.status(500).json({ error: "Failed to update kitchen progress" });
+  }
+});
+
+// Server-synced "Fire totals" tap. Toggle a single cart-line itemId in
+// the order's firedItemIds set; when the resulting set covers every cart
+// line AND the order is still pending, auto-advance to "preparing" in
+// the same transaction so all kitchen devices see the status flip on
+// the next poll. Mutations are rejected (409) once the order leaves the
+// active queue so a stale tap can't reset a Ready ticket.
+router.patch("/event-ordering/orders/:id/fired", verifyKitchenPassword, async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(String(req.params.id));
+    if (!Number.isFinite(id)) {
+      res.status(400).json({ error: "Invalid order id" });
+      return;
+    }
+    const body = (req.body ?? {}) as { itemId?: unknown; fired?: unknown };
+    const itemId = Number(body.itemId);
+    if (!Number.isInteger(itemId)) {
+      res.status(400).json({ error: "itemId must be an integer" });
+      return;
+    }
+    if (typeof body.fired !== "boolean") {
+      res.status(400).json({ error: "fired must be a boolean" });
+      return;
+    }
+    const fired = body.fired;
+
+    const updated = await db.transaction(async tx => {
+      const [row] = await tx
+        .select()
+        .from(eventOrdersTable)
+        .where(eq(eventOrdersTable.id, id))
+        .for("update");
+      if (!row) throw Object.assign(new Error("Order not found"), { status: 404 });
+      if (row.status !== "preparing" && row.status !== "pending") {
+        throw Object.assign(new Error(`Order is ${row.status}; fire totals are locked`), { status: 409 });
+      }
+      const items = (row.items as EventOrderItem[]) ?? [];
+      const validIds = new Set(items.map(i => i.itemId));
+      if (!validIds.has(itemId)) {
+        throw Object.assign(new Error("Item not on this order"), { status: 400 });
+      }
+      const current = new Set((row.firedItemIds as number[] | null) ?? []);
+      if (fired) current.add(itemId); else current.delete(itemId);
+      // Only keep itemIds that still exist on the cart so a later cart
+      // edit can't leave dangling ids in the set.
+      const next = [...current].filter(x => validIds.has(x));
+
+      const updates: Record<string, unknown> = { firedItemIds: next };
+      // Auto-advance pending → preparing when every cart line is fired.
+      // Plated orders advance to ready exclusively via /kitchen-progress,
+      // so we never auto-advance preparing → ready here.
+      if (row.status === "pending" && next.length === validIds.size && validIds.size > 0) {
+        updates.status = "preparing";
+      }
+      const [out] = await tx
+        .update(eventOrdersTable)
+        .set(updates)
+        .where(eq(eventOrdersTable.id, id))
+        .returning();
+      return out;
+    });
+
+    // Return only the fields the kitchen UI merges in; leave items[]
+    // alone so the frontend keeps the per-item internalNotes it already
+    // hydrated from /orders.
+    res.json({
+      id: updated.id,
+      status: updated.status,
+      firedItemIds: updated.firedItemIds ?? [],
+    });
+  } catch (err: any) {
+    if (err?.status) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    req.log.error({ err }, "Error updating fired items");
+    res.status(500).json({ error: "Failed to update fired items" });
   }
 });
 
