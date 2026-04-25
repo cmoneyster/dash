@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TAX_DISCLOSURE, TAX_INCLUDED_NOTE } from "@/lib/tax";
-import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers } from "lucide-react";
+import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers, Pencil } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
@@ -125,7 +125,7 @@ export default function EventTakerOrder() {
   const [guestName, setGuestName] = useState("");
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [confirmation, setConfirmation] = useState<null | { id: string; total: number; phoneSent: boolean }>(null);
+  const [confirmation, setConfirmation] = useState<null | { id: string; total: number; phoneSent: boolean; wasOverride: boolean }>(null);
   const [submitError, setSubmitError] = useState("");
   const [lastReceipt, setLastReceipt] = useState<null | {
     id: string; guestName: string; phone: string; items: CartLine[];
@@ -240,13 +240,27 @@ export default function EventTakerOrder() {
 
   // Auto-print: when a fresh confirmation appears, print whichever document(s)
   // the cashier selected — both, kitchen only, receipt only, or off.
+  // Special case: on an override→paid transition (server flags `wasOverride`),
+  // the kitchen ticket was already printed at override time — possibly from
+  // another device or before a page reload. We skip the kitchen leg of
+  // auto-print so we never double-fire the kitchen ticket. The customer
+  // receipt still prints because that's actually new (they just paid).
   useEffect(() => {
     if (autoPrintMode === "off") return;
     if (!confirmation || !lastReceipt) return;
     if (autoPrintedFor.current === lastReceipt.id) return;
     autoPrintedFor.current = lastReceipt.id;
+    const wasOverride = confirmation.wasOverride;
     // Tiny delay so the confirmation screen has rendered the printable nodes.
     const t = setTimeout(() => {
+      if (wasOverride) {
+        // Suppress kitchen, only print receipt — and only if the cashier
+        // had any kind of receipt printing on at all.
+        if (autoPrintMode === "receipt" || autoPrintMode === "both") {
+          handlePrint("receipt");
+        }
+        return;
+      }
       if (autoPrintMode === "both") void printBoth();
       else handlePrint(autoPrintMode); // "kitchen" | "receipt"
     }, 200);
@@ -550,13 +564,17 @@ export default function EventTakerOrder() {
 
   // Step 2: payment confirmed. Promotes the order to "paid" or "override",
   // then shows the receipt screen which triggers auto-print as before.
-  async function handlePaymentComplete(updated: PendingOrder) {
+  async function handlePaymentComplete(updated: PendingOrder & { wasOverride?: boolean }) {
     setPaymentOrder(null);
     setLastReceipt(receiptFromOrder(updated));
     setConfirmation({
       id: String(updated.id),
       total: updated.total ?? 0,
       phoneSent: !!updated.phoneNumber,
+      // Server tells us if this was an override→paid transition. When true,
+      // the kitchen already received its ticket at override time so we must
+      // not auto-print it again from this device.
+      wasOverride: !!updated.wasOverride,
     });
     if (password) loadPending(password);
   }
@@ -603,6 +621,46 @@ export default function EventTakerOrder() {
         return;
       }
       if (paymentOrder?.id === orderId) setPaymentOrder(null);
+      loadPending(password);
+      loadMenu(password);
+    } catch {
+      alert("Could not reach the server");
+    }
+  }
+
+  // Edit Order: cancel the in‑progress (unpaid) order on the backend so its
+  // stock is restored, rehydrate the cart with the order's items / guest
+  // details, and close the payment modal so the cashier lands back on the
+  // ordering screen ready to adjust. Only valid while the kitchen has not
+  // yet seen the order (paymentStatus === 'unpaid'); the modal disables the
+  // button once the order is in override state.
+  async function handleEditOrder(order: PendingOrder) {
+    if (!password) return;
+    if (order.paymentStatus && order.paymentStatus !== "unpaid") return;
+    try {
+      const res = await fetch(`${BASE}/api/event-taker/orders/${order.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${password}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "Failed to open order for editing");
+        return;
+      }
+      // Pre-load the cart with the canceled order's items so the cashier can
+      // adjust quantities/items in place. unitPrice survives unchanged so a
+      // priced item edited back into the cart keeps the price the customer
+      // was originally quoted.
+      setCart(order.items.map(i => ({
+        itemId: i.itemId,
+        name: i.name,
+        unitPrice: i.unitPrice,
+        quantity: i.quantity,
+      })));
+      setGuestName(order.guestName ?? "");
+      setPhone(order.phoneNumber ?? "");
+      setPaymentOrder(null);
+      setSubmitError("");
       loadPending(password);
       loadMenu(password);
     } catch {
@@ -1129,6 +1187,7 @@ export default function EventTakerOrder() {
           venmoQrImageUrl={settings?.venmoQrImageUrl ?? null}
           onHold={() => { setPaymentOrder(null); if (password) loadPending(password); }}
           onCancel={() => handleCancelOrder(paymentOrder.id)}
+          onEdit={() => handleEditOrder(paymentOrder)}
           onComplete={handlePaymentComplete}
           onPlatingChanged={(plateGroups) => {
             // Keep the in-memory payment order + pending queue in sync so the
@@ -1214,7 +1273,7 @@ function PrintStatusRow({
 // confirm action. "Hold for later" leaves the order in the pending queue.
 function PaymentModal({
   order, password, venmoHandle, venmoQrImageUrl,
-  onHold, onCancel, onComplete, onPlatingChanged,
+  onHold, onCancel, onEdit, onComplete, onPlatingChanged,
 }: {
   order: PendingOrder;
   password: string;
@@ -1222,9 +1281,15 @@ function PaymentModal({
   venmoQrImageUrl: string | null;
   onHold: () => void;
   onCancel: () => void;
+  onEdit: () => void;
   onComplete: (updated: PendingOrder) => void;
   onPlatingChanged?: (plateGroups: PlateGroup[] | null) => void;
 }) {
+  // Once the order is in override the kitchen has already seen + started
+  // it, so editing it would mean re-ringing items that may already be on
+  // the line. We disable Edit Order in that case (and the in-modal override
+  // option, since you can't override what's already overridden).
+  const isOverride = order.paymentStatus === "override";
   const [step, setStep] = useState<"method" | "cash" | "card" | "venmo">("method");
   const [cashStr, setCashStr] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -1316,14 +1381,32 @@ function PaymentModal({
             <h2 className="font-display font-bold text-xl mt-0.5">{order.guestName}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">{order.items.reduce((s, i) => s + i.quantity, 0)} item(s) · ${total.toFixed(2)}</p>
           </div>
-          <button
-            onClick={onHold}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-secondary"
-            title="Save this order to the Pending payments queue"
-          >
-            <Clock className="w-3.5 h-3.5" />
-            Hold
-          </button>
+          {isOverride ? (
+            // Once fired to the kitchen, editing the cart would mean
+            // re-ringing items already on the line. Show the disabled
+            // affordance with a clear explanation.
+            <button
+              type="button"
+              disabled
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-secondary text-muted-foreground cursor-not-allowed"
+              title="The kitchen has already seen this order — edit it by canceling and re-ringing instead."
+              data-testid="button-edit-order"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Edit order not available
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-secondary"
+              title="Back out and reload the cart so you can adjust items before sending"
+              data-testid="button-edit-order"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Edit Order
+            </button>
+          )}
         </div>
 
         {step === "method" && (
@@ -1400,7 +1483,16 @@ function PaymentModal({
               >
                 Hold for later
               </button>
-              {!overrideOpen ? (
+              {isOverride ? (
+                // Already overridden — fold into a status note instead of
+                // re-offering the override action.
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <p>
+                    Already sent to kitchen unpaid. Recording payment will close the tab without re-firing the order or re-texting the customer.
+                  </p>
+                </div>
+              ) : !overrideOpen ? (
                 <button
                   onClick={() => setOverrideOpen(true)}
                   className="w-full text-xs text-muted-foreground hover:text-amber-700 underline"
@@ -1437,12 +1529,17 @@ function PaymentModal({
                   </div>
                 </div>
               )}
-              <button
-                onClick={onCancel}
-                className="w-full text-xs text-destructive hover:underline"
-              >
-                Cancel order (restore stock)
-              </button>
+              {!isOverride && (
+                // Override orders have already left the kitchen — server
+                // refuses DELETE on them, so hide the option entirely to
+                // avoid a confusing error toast.
+                <button
+                  onClick={onCancel}
+                  className="w-full text-xs text-destructive hover:underline"
+                >
+                  Cancel order (restore stock)
+                </button>
+              )}
             </div>
 
             {error && <p className="text-sm text-destructive flex items-center gap-1.5"><AlertCircle className="w-4 h-4" />{error}</p>}
@@ -1506,9 +1603,11 @@ function PaymentModal({
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               Confirm cash payment
             </button>
-            <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
-              Override — send to kitchen unpaid
-            </button>
+            {!isOverride && (
+              <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
+                Override — send to kitchen unpaid
+              </button>
+            )}
           </div>
         )}
 
@@ -1543,9 +1642,11 @@ function PaymentModal({
                 Approved
               </button>
             </div>
-            <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
-              Override — send to kitchen unpaid
-            </button>
+            {!isOverride && (
+              <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
+                Override — send to kitchen unpaid
+              </button>
+            )}
           </div>
         )}
 
@@ -1581,9 +1682,11 @@ function PaymentModal({
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               Mark Venmo received
             </button>
-            <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
-              Override — send to kitchen unpaid
-            </button>
+            {!isOverride && (
+              <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
+                Override — send to kitchen unpaid
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1920,12 +2023,43 @@ function PendingPanel({
           {orders.map(o => {
             const total = o.total ?? 0;
             const ageMin = Math.max(0, Math.round((Date.now() - new Date(o.createdAt).getTime()) / 60000));
+            // Override rows are visually distinct: they've already been
+            // fired to the kitchen ("Sent · owed") and cannot be canceled
+            // or re-overridden — only Resume to take payment.
+            const isOverride = o.paymentStatus === "override";
             return (
-              <div key={o.id} className="border border-border rounded-2xl p-3 bg-secondary/20">
+              <div
+                key={o.id}
+                className={`border rounded-2xl p-3 ${
+                  isOverride
+                    ? "border-amber-300 bg-amber-50/60"
+                    : "border-border bg-secondary/20"
+                }`}
+                data-testid={`pending-row-${o.id}`}
+              >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="min-w-0">
-                    <p className="font-bold text-sm truncate">{o.guestName}</p>
-                    <p className="text-xs text-muted-foreground">#{o.id} · {ageMin}m ago{o.phoneNumber ? ` · ${o.phoneNumber}` : ""}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-bold text-sm truncate">{o.guestName}</p>
+                      {isOverride && (
+                        <span
+                          className="text-[10px] font-bold uppercase tracking-wider bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full whitespace-nowrap inline-flex items-center gap-0.5"
+                          data-testid={`badge-override-${o.id}`}
+                          title="Order has been fired to the kitchen but is still awaiting payment"
+                        >
+                          <ChefHat className="w-3 h-3" />
+                          Sent · owed
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      #{o.id} · {ageMin}m ago{o.phoneNumber ? ` · ${o.phoneNumber}` : ""}
+                    </p>
+                    {isOverride && o.paymentOverrideReason && (
+                      <p className="text-[11px] italic text-amber-800 mt-0.5 truncate" title={o.paymentOverrideReason}>
+                        Reason: {o.paymentOverrideReason}
+                      </p>
+                    )}
                   </div>
                   <p className="font-bold text-base text-amber-700 shrink-0">${total.toFixed(2)}</p>
                 </div>
@@ -1938,33 +2072,45 @@ function PendingPanel({
                 <div className="flex gap-2">
                   <button
                     onClick={() => onResume(o)}
-                    className="flex-1 px-3 py-2 text-sm font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                  >
-                    Resume
-                  </button>
-                  <button
-                    onClick={() => {
-                      setOverrideForId(overrideForId === o.id ? null : o.id);
-                      setOverrideReason("");
-                    }}
-                    className={`px-3 py-2 text-sm font-semibold rounded-lg border ${
-                      overrideForId === o.id
-                        ? "bg-amber-100 border-amber-300 text-amber-800"
-                        : "border-amber-300 text-amber-700 hover:bg-amber-50"
+                    className={`flex-1 px-3 py-2 text-sm font-bold text-white rounded-lg ${
+                      isOverride
+                        ? "bg-amber-600 hover:bg-amber-700"
+                        : "bg-indigo-600 hover:bg-indigo-700"
                     }`}
-                    title="Send to kitchen unpaid"
+                    data-testid={`button-resume-${o.id}`}
                   >
-                    <AlertTriangle className="w-4 h-4" />
+                    {isOverride ? "Take payment" : "Resume"}
                   </button>
-                  <button
-                    onClick={() => onCancel(o.id)}
-                    className="px-3 py-2 text-sm font-semibold text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/10"
-                    title="Cancel & restore stock"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {!isOverride && (
+                    // Override + cancel only apply to parked unpaid tabs.
+                    // Override rows are already in the kitchen, so the
+                    // server refuses both — hiding here matches reality.
+                    <>
+                      <button
+                        onClick={() => {
+                          setOverrideForId(overrideForId === o.id ? null : o.id);
+                          setOverrideReason("");
+                        }}
+                        className={`px-3 py-2 text-sm font-semibold rounded-lg border ${
+                          overrideForId === o.id
+                            ? "bg-amber-100 border-amber-300 text-amber-800"
+                            : "border-amber-300 text-amber-700 hover:bg-amber-50"
+                        }`}
+                        title="Send to kitchen unpaid"
+                      >
+                        <AlertTriangle className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => onCancel(o.id)}
+                        className="px-3 py-2 text-sm font-semibold text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/10"
+                        title="Cancel & restore stock"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
                 </div>
-                {overrideForId === o.id && (
+                {overrideForId === o.id && !isOverride && (
                   <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5 space-y-2">
                     <div className="flex items-start gap-1.5 text-amber-800 text-xs">
                       <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />

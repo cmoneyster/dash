@@ -468,9 +468,13 @@ router.get("/event-taker/orders/pending", verifyTakerPassword, async (req, res) 
     // events don't leak into the current POS queue.
     const settings = await getSettings();
     const activeId = settings?.activeEventSessionId ?? null;
+    // Include both 'unpaid' (parked off the kitchen) and 'override' (already
+    // fired to the kitchen but still owed) so staff can come back later and
+    // record real payment on either. Override rows are tagged in the UI so
+    // they're visually distinct from parked tabs.
     const conditions = [
       eq(eventOrdersTable.orderSource, "staff"),
-      eq(eventOrdersTable.paymentStatus, "unpaid"),
+      inArray(eventOrdersTable.paymentStatus, ["unpaid", "override"]),
     ];
     if (activeId != null) conditions.push(eq(eventOrdersTable.eventSessionId, activeId));
     const rows = await db
@@ -523,8 +527,15 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       return;
     }
     if (existing.paymentStatus === "paid") {
-      // Idempotent — already recorded; just return current state.
-      res.json(serializeOrder(existing));
+      // Idempotent — already recorded; just return current state. We
+      // surface wasOverride: false here because any auto-print should
+      // already have happened the first time payment was recorded; the
+      // client shouldn't reprint from this idempotent reply.
+      res.json({ ...serializeOrder(existing), wasOverride: false });
+      return;
+    }
+    if (existing.paymentStatus !== "unpaid" && existing.paymentStatus !== "override") {
+      res.status(409).json({ error: "Order is not awaiting payment" });
       return;
     }
 
@@ -535,7 +546,8 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       paymentRecordedAt: new Date(),
       cashReceived: null,
       changeDue: null,
-      paymentOverrideReason: null,
+      // Preserve paymentOverrideReason when transitioning override→paid so the
+      // audit trail of why the order was fired unpaid stays on the row.
     };
 
     if (method === "cash") {
@@ -553,10 +565,13 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       updates.changeDue = String(change.toFixed(2));
     }
 
-    // Atomic transition: only succeeds if the row is still 'unpaid'. This
-    // prevents a race where two cashiers on different devices both PATCH the
-    // same order and double-fire SMS / overwrite each other's payment data.
-    const updatedRows = await db
+    // Race-safe two-phase atomic transition. We try 'unpaid' → 'paid' first,
+    // and only if that fails fall back to 'override' → 'paid'. Whichever
+    // WHERE clause actually matched tells us the *true* prior status at the
+    // moment of the write, with no read-then-update window. We use this to
+    // decide whether SMS should fire (override orders already SMS'd at
+    // override time, so we must not double-text).
+    let updated = (await db
       .update(eventOrdersTable)
       .set(updates)
       .where(and(
@@ -564,8 +579,22 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
         eq(eventOrdersTable.orderSource, "staff"),
         eq(eventOrdersTable.paymentStatus, "unpaid"),
       ))
-      .returning();
-    if (updatedRows.length === 0) {
+      .returning())[0];
+    let wasOverride = false;
+    if (!updated) {
+      const overrideRows = await db
+        .update(eventOrdersTable)
+        .set(updates)
+        .where(and(
+          eq(eventOrdersTable.id, id),
+          eq(eventOrdersTable.orderSource, "staff"),
+          eq(eventOrdersTable.paymentStatus, "override"),
+        ))
+        .returning();
+      updated = overrideRows[0];
+      if (updated) wasOverride = true;
+    }
+    if (!updated) {
       // Lost the race. If the row still exists and is already finalized,
       // return it idempotently (no extra SMS). If it's gone (e.g. canceled
       // concurrently), surface a 409 so the client doesn't print a receipt.
@@ -574,14 +603,15 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
         res.status(409).json({ error: "Order no longer exists (was it canceled?)" });
         return;
       }
-      res.json(serializeOrder(current));
+      res.json({ ...serializeOrder(current), wasOverride: false });
       return;
     }
-    const updated = updatedRows[0];
 
     // Fire SMS confirmation now that payment is recorded — same shape as the
-    // original POST flow, but only after the customer has actually paid.
-    if (updated.phoneNumber) {
+    // original POST flow, but only after the customer has actually paid. When
+    // the order was already in override state the SMS already fired at the
+    // time of override, so we don't re-send and double-text the customer.
+    if (updated.phoneNumber && !wasOverride) {
       const settings = await getSettings();
       const orderStatusUrl = statusUrlBase
         ? `${statusUrlBase}/event/order/${updated.id}`
@@ -595,7 +625,10 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       }).catch(() => {});
     }
 
-    res.json(serializeOrder(updated));
+    // Surface wasOverride so the client can suppress kitchen-ticket
+    // auto-print on override→paid transitions (kitchen already got the
+    // ticket when the order was overridden).
+    res.json({ ...serializeOrder(updated), wasOverride });
   } catch (err) {
     req.log.error({ err }, "Error recording payment");
     res.status(500).json({ error: "Failed to record payment" });
