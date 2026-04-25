@@ -275,6 +275,12 @@ async function runStandaloneMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS void_reason text,
       ADD COLUMN IF NOT EXISTS refund_required boolean NOT NULL DEFAULT false
   `);
+  // Self-reported employee name captured at void time so the Sales Report
+  // can attribute each void. Nullable; existing voids stay anonymous.
+  await db.execute(sql`
+    ALTER TABLE event_orders
+      ADD COLUMN IF NOT EXISTS voided_by text
+  `);
 
   // ── On the Dash Experience (food trailer / on-site cooking) ──────────────
   // Per-item eligibility flag — drop-off-only by default so the migration

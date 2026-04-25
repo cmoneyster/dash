@@ -856,6 +856,20 @@ router.post("/event-taker/orders/:id/void", verifyTakerPassword, async (req, res
       res.status(400).json({ error: "A reason is required to void an order" });
       return;
     }
+    // Self-reported employee name from the per-device localStorage prompt.
+    // Required so the Sales Report can attribute the void to a specific
+    // cashier — the POS uses a single shared password so we have no other
+    // way to identify who pulled the ticket back.
+    const voidedByRaw = (req.body ?? {}).voidedBy;
+    const voidedBy = typeof voidedByRaw === "string" ? voidedByRaw.trim() : "";
+    if (!voidedBy) {
+      res.status(400).json({ error: "Employee name is required to void an order" });
+      return;
+    }
+    if (voidedBy.length > 80) {
+      res.status(400).json({ error: "Employee name is too long (max 80 characters)" });
+      return;
+    }
     const settings = await getSettings();
     const activeId = settings?.activeEventSessionId ?? null;
     const updated = await db.transaction(async (tx) => {
@@ -893,6 +907,7 @@ router.post("/event-taker/orders/:id/void", verifyTakerPassword, async (req, res
         .set({
           voidedAt: new Date(),
           voidReason: reason,
+          voidedBy,
           refundRequired,
         })
         .where(eq(eventOrdersTable.id, id))

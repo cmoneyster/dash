@@ -4,6 +4,7 @@ import { getAdminToken } from "@/components/AdminGuard";
 import {
   Loader2, Download, BarChart3, Users, ShoppingBag, DollarSign,
   Receipt, Package, ChevronDown, ChevronRight, Wallet, Timer,
+  Ban, AlertCircle,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -21,6 +22,13 @@ interface ReportOrder {
   items: ReportOrderLine[]; subtotal: number; taxRate: number | null; tax: number; total: number;
   readyAt: string | null; pickedUpAt: string | null;
   timeToReadySec: number | null; timeReadyToPickupSec: number | null; timeToPickupSec: number | null;
+  // Voided rows are kept in the orders array for chronological context but
+  // are excluded from every aggregate. Rendered dimmed with a "Voided" badge.
+  voided: boolean;
+  voidedAt: string | null;
+  voidedBy: string | null;
+  voidReason: string | null;
+  refundRequired: boolean;
 }
 interface PaymentMethodTotal { method: PaymentMethod; orderCount: number; revenue: number }
 interface PickupStats {
@@ -28,11 +36,19 @@ interface PickupStats {
   prepCount: number; avgPrepSec: number | null; medianPrepSec: number | null;
   readyToPickupCount: number; avgReadyToPickupSec: number | null; medianReadyToPickupSec: number | null;
 }
+interface ReportVoidRow {
+  id: number; createdAt: string; voidedAt: string; voidedBy: string | null; voidReason: string | null;
+  guestName: string; source: string; paymentMethod: PaymentMethod; total: number; refundRequired: boolean;
+}
+interface ReportVoids {
+  count: number; totalAmount: number; refundOwedAmount: number; list: ReportVoidRow[];
+}
 interface ReportTotals {
   orderCount: number; itemCount: number; subtotal: number; tax: number;
   revenue: number; avgOrderValue: number; items: ReportItem[]; orders: ReportOrder[];
   byPaymentMethod: PaymentMethodTotal[];
   pickupStats: PickupStats;
+  voids: ReportVoids;
 }
 interface Report {
   from: string; to: string; source: SourceFilter;
@@ -124,7 +140,7 @@ export default function SalesReports() {
 
   useEffect(() => { loadReport(); /* eslint-disable-next-line */ }, [from, to, source, status]);
 
-  async function downloadCsv(type: "orders" | "items") {
+  async function downloadCsv(type: "orders" | "items" | "voids") {
     const params = new URLSearchParams({ from, to, source, status, type });
     const res = await fetch(`${BASE}/api/admin/sales-reports.csv?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -249,6 +265,14 @@ export default function SalesReports() {
             >
               <Download className="w-4 h-4" /> Items CSV
             </button>
+            <button
+              onClick={() => downloadCsv("voids")}
+              disabled={loading || !report || (report?.totals.voids.count ?? 0) === 0}
+              className="px-4 py-2 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 disabled:opacity-50 flex items-center gap-2 text-sm"
+              data-testid="button-download-voids-csv"
+            >
+              <Download className="w-4 h-4" /> Voids CSV
+            </button>
           </div>
         </div>
       </div>
@@ -259,12 +283,13 @@ export default function SalesReports() {
 
       {report && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
             <Kpi label="Revenue" value={fmt(report.totals.revenue)} icon={<DollarSign className="w-5 h-5" />} accent="text-emerald-600 bg-emerald-50" />
             <Kpi label="Orders" value={String(report.totals.orderCount)} icon={<ShoppingBag className="w-5 h-5" />} accent="text-indigo-600 bg-indigo-50" />
             <Kpi label="Items Sold" value={String(report.totals.itemCount)} icon={<Package className="w-5 h-5" />} accent="text-amber-600 bg-amber-50" />
             <Kpi label="Avg Order" value={fmt(report.totals.avgOrderValue)} icon={<Users className="w-5 h-5" />} accent="text-sky-600 bg-sky-50" />
             <Kpi label="Tax Collected" value={fmt(report.totals.tax)} icon={<Receipt className="w-5 h-5" />} accent="text-rose-600 bg-rose-50" />
+            <VoidsKpi voids={report.totals.voids} />
           </div>
 
           <PickupTimeCard stats={report.totals.pickupStats} totalOrders={report.totals.orderCount} />
@@ -278,6 +303,7 @@ export default function SalesReports() {
 
           <PaymentMethodBreakdown totals={report.totals} />
 
+          <VoidsSection voids={report.totals.voids} />
 
           {/* Order-level table with expandable line details */}
           <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden mb-6">
@@ -310,16 +336,31 @@ export default function SalesReports() {
                   <tbody>
                     {orders.map(o => {
                       const isOpen = expanded.has(o.id);
+                      // Voided rows render dimmed with a strike-through total
+                      // and a "Voided" badge so they're easy to spot in the
+                      // chronological list, but they're already excluded from
+                      // every aggregate above.
+                      const rowClass = o.voided
+                        ? "border-b border-border/50 cursor-pointer bg-rose-50/40 hover:bg-rose-50/60 text-muted-foreground"
+                        : "border-b border-border/50 hover:bg-secondary/30 cursor-pointer";
                       return (
                         <Fragment key={o.id}>
                           <tr
-                            className="border-b border-border/50 hover:bg-secondary/30 cursor-pointer"
+                            className={rowClass}
                             onClick={() => toggleExpanded(o.id)}
+                            data-testid={o.voided ? `voided-row-${o.id}` : undefined}
                           >
                             <td className="px-3 py-2.5 text-muted-foreground">
                               {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                             </td>
-                            <td className="px-3 py-2.5 font-mono text-xs">#{o.id}</td>
+                            <td className="px-3 py-2.5 font-mono text-xs">
+                              #{o.id}
+                              {o.voided && (
+                                <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                                  <Ban className="w-3 h-3" /> Voided
+                                </span>
+                              )}
+                            </td>
                             <td className="px-3 py-2.5 text-xs text-muted-foreground">
                               {new Date(o.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                             </td>
@@ -332,7 +373,7 @@ export default function SalesReports() {
                             <td className="px-3 py-2.5"><PaymentBadge method={o.paymentMethod} /></td>
                             <td className="px-3 py-2.5 text-right">{fmt(o.subtotal)}</td>
                             <td className="px-3 py-2.5 text-right text-muted-foreground">{fmt(o.tax)}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold">{fmt(o.total)}</td>
+                            <td className={`px-3 py-2.5 text-right font-semibold ${o.voided ? "line-through" : ""}`}>{fmt(o.total)}</td>
                             <td className="px-3 py-2.5 text-right text-xs">
                               {o.timeToPickupSec != null ? (
                                 <span className="font-medium">{fmtDuration(o.timeToPickupSec)}</span>
@@ -596,6 +637,109 @@ function PaymentMethodBreakdown({ totals }: { totals: ReportTotals }) {
             <p className="text-2xl font-bold mt-1">{fmt(b.revenue)}</p>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// Voids KPI tile — slots into the top KPI strip. Stays muted (gray text on
+// a neutral card) when there are no voids in the range so it doesn't add
+// alarm signal to a clean shift; flips to a red accent when there are
+// voids, and surfaces "refund owed" as a sub-line for the cashier.
+function VoidsKpi({ voids }: { voids: ReportVoids }) {
+  const hasVoids = voids.count > 0;
+  const accent = hasVoids ? "text-rose-700 bg-rose-100" : "text-muted-foreground bg-secondary";
+  return (
+    <div className="bg-card border border-border rounded-2xl p-4 shadow-sm" data-testid="kpi-voids">
+      <div className={`inline-flex items-center justify-center w-9 h-9 rounded-xl mb-2 ${accent}`}>
+        <Ban className="w-5 h-5" />
+      </div>
+      <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Voids</p>
+      <p className="text-2xl font-bold mt-0.5">
+        {voids.count}
+        <span className="text-base font-medium text-muted-foreground"> · {fmt(voids.totalAmount)}</span>
+      </p>
+      {voids.refundOwedAmount > 0 && (
+        <p className="text-[11px] text-rose-700 font-semibold mt-1 flex items-center gap-1">
+          <AlertCircle className="w-3 h-3" />
+          {fmt(voids.refundOwedAmount)} refund owed
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Voids section — one row per void with order #, when placed, customer,
+// dollar amount, payment method, who voided it, when, reason, and a clear
+// "Refund owed" badge for paid voids. Already sorted by voided-at desc on
+// the server. Hidden when there are no voids in the range so the page
+// doesn't grow an empty card.
+function VoidsSection({ voids }: { voids: ReportVoids }) {
+  if (voids.count === 0) return null;
+  return (
+    <div className="bg-card border border-rose-200 rounded-2xl shadow-sm overflow-hidden mb-6" data-testid="voids-section">
+      <div className="px-5 py-4 border-b border-rose-200 bg-rose-50 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Ban className="w-5 h-5 text-rose-700" />
+          <div>
+            <h2 className="font-display font-bold text-lg">Voids</h2>
+            <p className="text-xs text-muted-foreground">
+              Excluded from revenue and item totals above. Refund-owed voids need a manual refund.
+            </p>
+          </div>
+        </div>
+        <div className="text-right text-xs">
+          <p className="text-muted-foreground">{voids.count} void{voids.count === 1 ? "" : "s"} · {fmt(voids.totalAmount)}</p>
+          {voids.refundOwedAmount > 0 && (
+            <p className="text-rose-700 font-semibold mt-0.5">{fmt(voids.refundOwedAmount)} refund owed</p>
+          )}
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="border-b border-border bg-secondary/20">
+            <tr className="text-left text-xs text-muted-foreground uppercase tracking-wider">
+              <th className="px-3 py-2.5 font-semibold">Order #</th>
+              <th className="px-3 py-2.5 font-semibold">Placed</th>
+              <th className="px-3 py-2.5 font-semibold">Customer</th>
+              <th className="px-3 py-2.5 font-semibold">Payment</th>
+              <th className="px-3 py-2.5 font-semibold text-right">Amount</th>
+              <th className="px-3 py-2.5 font-semibold">Voided By</th>
+              <th className="px-3 py-2.5 font-semibold">Voided At</th>
+              <th className="px-3 py-2.5 font-semibold">Reason</th>
+              <th className="px-3 py-2.5 font-semibold">Refund</th>
+            </tr>
+          </thead>
+          <tbody>
+            {voids.list.map(v => (
+              <tr key={v.id} className="border-b border-border/50 last:border-0" data-testid={`void-row-${v.id}`}>
+                <td className="px-3 py-2.5 font-mono text-xs">#{v.id}</td>
+                <td className="px-3 py-2.5 text-xs text-muted-foreground">
+                  {new Date(v.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </td>
+                <td className="px-3 py-2.5">{v.guestName}</td>
+                <td className="px-3 py-2.5"><PaymentBadge method={v.paymentMethod} /></td>
+                <td className="px-3 py-2.5 text-right font-semibold">{fmt(v.total)}</td>
+                <td className="px-3 py-2.5 text-sm">
+                  {v.voidedBy ? v.voidedBy : <span className="text-muted-foreground italic">—</span>}
+                </td>
+                <td className="px-3 py-2.5 text-xs text-muted-foreground">
+                  {new Date(v.voidedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </td>
+                <td className="px-3 py-2.5 text-xs max-w-[280px] break-words">{v.voidReason ?? ""}</td>
+                <td className="px-3 py-2.5">
+                  {v.refundRequired ? (
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                      Refund owed
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

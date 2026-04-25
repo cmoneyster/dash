@@ -367,12 +367,24 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
     timeToReadySec: number | null;
     timeReadyToPickupSec: number | null;
     timeToPickupSec: number | null;
+    // True for soft-voided rows. Voids are listed in the orders array so
+    // admins can see them in chronological context, but they are excluded
+    // from every aggregate (revenue, items, payment buckets, time stats).
+    voided: boolean;
+    voidedAt: string | null;
+    voidedBy: string | null;
+    voidReason: string | null;
+    refundRequired: boolean;
   }> = [];
   // Collect per-order durations (seconds) for averaging across the report.
   const prepDurations: number[] = [];
   const readyToPickupDurations: number[] = [];
   const pickupDurations: number[] = [];
 
+  // Track non-voided orders separately for the orderCount / avgOrderValue
+  // numbers — voided rows are listed for context but never count toward
+  // revenue, items, or service-time aggregates.
+  let activeOrderCount = 0;
   for (const o of orders) {
     const items = (o.items ?? []) as SnapshotItem[];
     const lineSnapshots = items.map(i => {
@@ -384,50 +396,86 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
     const orderSubtotal = o.subtotal != null ? parseFloat(o.subtotal) : computedSubtotal;
     const orderTax = o.taxAmount != null ? parseFloat(o.taxAmount) : 0;
     const orderTotal = o.total != null ? parseFloat(o.total) : orderSubtotal + orderTax;
-    revenue += orderTotal;
-    subtotal += orderSubtotal;
-    tax += orderTax;
     const bucket = paymentBucket(o);
-    paymentBuckets[bucket].orderCount += 1;
-    paymentBuckets[bucket].revenue += orderTotal;
-    for (const i of lineSnapshots) {
-      itemCount += i.quantity;
-      const key = `${i.itemId}::${i.name}`;
-      if (!itemBreakdown[key]) itemBreakdown[key] = { name: i.name, quantity: 0, revenue: 0 };
-      itemBreakdown[key].quantity += i.quantity;
-      itemBreakdown[key].revenue += i.lineTotal;
+    const isVoided = o.voidedAt != null;
+    if (!isVoided) {
+      activeOrderCount += 1;
+      revenue += orderTotal;
+      subtotal += orderSubtotal;
+      tax += orderTax;
+      paymentBuckets[bucket].orderCount += 1;
+      paymentBuckets[bucket].revenue += orderTotal;
+      for (const i of lineSnapshots) {
+        itemCount += i.quantity;
+        const key = `${i.itemId}::${i.name}`;
+        if (!itemBreakdown[key]) itemBreakdown[key] = { name: i.name, quantity: 0, revenue: 0 };
+        itemBreakdown[key].quantity += i.quantity;
+        itemBreakdown[key].revenue += i.lineTotal;
+      }
+      const timeToReadySec = o.readyAt
+        ? Math.max(0, Math.round((o.readyAt.getTime() - o.createdAt.getTime()) / 1000))
+        : null;
+      const timeReadyToPickupSec = o.readyAt && o.pickedUpAt
+        ? Math.max(0, Math.round((o.pickedUpAt.getTime() - o.readyAt.getTime()) / 1000))
+        : null;
+      const timeToPickupSec = o.pickedUpAt
+        ? Math.max(0, Math.round((o.pickedUpAt.getTime() - o.createdAt.getTime()) / 1000))
+        : null;
+      if (timeToReadySec != null) prepDurations.push(timeToReadySec);
+      if (timeReadyToPickupSec != null) readyToPickupDurations.push(timeReadyToPickupSec);
+      if (timeToPickupSec != null) pickupDurations.push(timeToPickupSec);
+      orderRows.push({
+        id: o.id,
+        createdAt: o.createdAt.toISOString(),
+        source: o.orderSource ?? "guest",
+        guestName: o.guestName,
+        phoneNumber: o.phoneNumber ?? null,
+        status: o.status,
+        paymentMethod: bucket,
+        items: lineSnapshots,
+        subtotal: round2(orderSubtotal),
+        taxRate: o.taxRate != null ? parseFloat(o.taxRate) : null,
+        tax: round2(orderTax),
+        total: round2(orderTotal),
+        readyAt: o.readyAt ? o.readyAt.toISOString() : null,
+        pickedUpAt: o.pickedUpAt ? o.pickedUpAt.toISOString() : null,
+        timeToReadySec,
+        timeReadyToPickupSec,
+        timeToPickupSec,
+        voided: false,
+        voidedAt: null,
+        voidedBy: null,
+        voidReason: null,
+        refundRequired: false,
+      });
+    } else {
+      // Voided: include in the orders array so the UI can render it dimmed
+      // in chronological context, but skip every aggregate above.
+      orderRows.push({
+        id: o.id,
+        createdAt: o.createdAt.toISOString(),
+        source: o.orderSource ?? "guest",
+        guestName: o.guestName,
+        phoneNumber: o.phoneNumber ?? null,
+        status: o.status,
+        paymentMethod: bucket,
+        items: lineSnapshots,
+        subtotal: round2(orderSubtotal),
+        taxRate: o.taxRate != null ? parseFloat(o.taxRate) : null,
+        tax: round2(orderTax),
+        total: round2(orderTotal),
+        readyAt: o.readyAt ? o.readyAt.toISOString() : null,
+        pickedUpAt: o.pickedUpAt ? o.pickedUpAt.toISOString() : null,
+        timeToReadySec: null,
+        timeReadyToPickupSec: null,
+        timeToPickupSec: null,
+        voided: true,
+        voidedAt: o.voidedAt ? o.voidedAt.toISOString() : null,
+        voidedBy: o.voidedBy ?? null,
+        voidReason: o.voidReason ?? null,
+        refundRequired: !!o.refundRequired,
+      });
     }
-    const timeToReadySec = o.readyAt
-      ? Math.max(0, Math.round((o.readyAt.getTime() - o.createdAt.getTime()) / 1000))
-      : null;
-    const timeReadyToPickupSec = o.readyAt && o.pickedUpAt
-      ? Math.max(0, Math.round((o.pickedUpAt.getTime() - o.readyAt.getTime()) / 1000))
-      : null;
-    const timeToPickupSec = o.pickedUpAt
-      ? Math.max(0, Math.round((o.pickedUpAt.getTime() - o.createdAt.getTime()) / 1000))
-      : null;
-    if (timeToReadySec != null) prepDurations.push(timeToReadySec);
-    if (timeReadyToPickupSec != null) readyToPickupDurations.push(timeReadyToPickupSec);
-    if (timeToPickupSec != null) pickupDurations.push(timeToPickupSec);
-    orderRows.push({
-      id: o.id,
-      createdAt: o.createdAt.toISOString(),
-      source: o.orderSource ?? "guest",
-      guestName: o.guestName,
-      phoneNumber: o.phoneNumber ?? null,
-      status: o.status,
-      paymentMethod: bucket,
-      items: lineSnapshots,
-      subtotal: round2(orderSubtotal),
-      taxRate: o.taxRate != null ? parseFloat(o.taxRate) : null,
-      tax: round2(orderTax),
-      total: round2(orderTotal),
-      readyAt: o.readyAt ? o.readyAt.toISOString() : null,
-      pickedUpAt: o.pickedUpAt ? o.pickedUpAt.toISOString() : null,
-      timeToReadySec,
-      timeReadyToPickupSec,
-      timeToPickupSec,
-    });
   }
 
   // Service-time aggregates. Prep = placed → ready (kitchen flow).
@@ -446,13 +494,48 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
   const readyToPickupAgg = aggregate(readyToPickupDurations);
   const pickupAgg = aggregate(pickupDurations);
 
+  // Voids summary — separate from `totals` so the UI can show count and
+  // dollar amount voided without re-walking the orders array. Excluded
+  // from every aggregate above by design.
+  const voidedRows = orders
+    .filter(o => o.voidedAt != null)
+    .map(o => {
+      const items = (o.items ?? []) as SnapshotItem[];
+      const computedSubtotal = items.reduce((s, i) => {
+        const unit = i.unitPrice != null ? Number(i.unitPrice) : Number(i.price) || 0;
+        return s + (i.lineTotal != null ? Number(i.lineTotal) : round2(unit * i.quantity));
+      }, 0);
+      const orderSubtotal = o.subtotal != null ? parseFloat(o.subtotal) : computedSubtotal;
+      const orderTax = o.taxAmount != null ? parseFloat(o.taxAmount) : 0;
+      const orderTotal = o.total != null ? parseFloat(o.total) : orderSubtotal + orderTax;
+      return {
+        id: o.id,
+        createdAt: o.createdAt.toISOString(),
+        voidedAt: o.voidedAt!.toISOString(),
+        voidedBy: o.voidedBy ?? null,
+        voidReason: o.voidReason ?? null,
+        guestName: o.guestName,
+        source: o.orderSource ?? "guest",
+        paymentMethod: paymentBucket(o),
+        total: round2(orderTotal),
+        refundRequired: !!o.refundRequired,
+      };
+    })
+    .sort((a, b) => b.voidedAt.localeCompare(a.voidedAt));
+  const voidedTotalAmount = voidedRows.reduce((s, v) => s + v.total, 0);
+  const refundOwedAmount = voidedRows
+    .filter(v => v.refundRequired)
+    .reduce((s, v) => s + v.total, 0);
+
   return {
-    orderCount: orders.length,
+    // `orderCount` excludes voids so the headline number lines up with the
+    // cash drawer at end of day. The voids sub-card surfaces them separately.
+    orderCount: activeOrderCount,
     itemCount,
     subtotal: round2(subtotal),
     tax: round2(tax),
     revenue: round2(revenue),
-    avgOrderValue: orders.length ? round2(revenue / orders.length) : 0,
+    avgOrderValue: activeOrderCount ? round2(revenue / activeOrderCount) : 0,
     pickupStats: {
       pickedUpCount: pickupAgg.count,
       avgPickupSec: pickupAgg.avgSec,
@@ -470,6 +553,12 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
     orders: orderRows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     byPaymentMethod: (Object.entries(paymentBuckets) as Array<[PaymentBucket, { orderCount: number; revenue: number }]>)
       .map(([method, t]) => ({ method, orderCount: t.orderCount, revenue: round2(t.revenue) })),
+    voids: {
+      count: voidedRows.length,
+      totalAmount: round2(voidedTotalAmount),
+      refundOwedAmount: round2(refundOwedAmount),
+      list: voidedRows,
+    },
   };
 }
 
@@ -537,7 +626,7 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
     const source = typeof req.query.source === "string" ? req.query.source : "all";
     const rawStatus = typeof req.query.status === "string" ? req.query.status : "all";
     const statusFilter = rawStatus === "completed" ? "completed" : "all";
-    const type = (typeof req.query.type === "string" ? req.query.type : "orders") as "orders" | "items";
+    const type = (typeof req.query.type === "string" ? req.query.type : "orders") as "orders" | "items" | "voids";
 
     const fromStart = new Date(from); fromStart.setHours(0, 0, 0, 0);
     const toEnd = new Date(to); toEnd.setHours(0, 0, 0, 0); toEnd.setDate(toEnd.getDate() + 1);
@@ -563,9 +652,11 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
     const filenameBase = `sales-report_${type}_${fromStart.toISOString().slice(0, 10)}_to_${toEnd.toISOString().slice(0, 10)}`;
 
     if (type === "items") {
-      // Aggregated per-item CSV — one row per item across all orders in range
+      // Aggregated per-item CSV — one row per item across all orders in range.
+      // Voided rows do not contribute to item revenue/quantity.
       const agg = new Map<string, { quantity: number; revenue: number }>();
       for (const o of orders) {
+        if (o.voidedAt != null) continue;
         const items = (o.items ?? []) as SnapshotItem[];
         for (const i of items) {
           const unit = i.unitPrice != null ? Number(i.unitPrice) : Number(i.price) || 0;
@@ -580,9 +671,49 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
       for (const [name, totals] of [...agg.entries()].sort((a, b) => b[1].quantity - a[1].quantity)) {
         rows.push([name, totals.quantity, totals.revenue.toFixed(2)].map(escape).join(","));
       }
+    } else if (type === "voids") {
+      // Voids-only CSV — mirrors the on-page Voids table. Sorted by voided
+      // timestamp descending so the most recent voids float to the top, just
+      // like the UI.
+      rows.push([
+        "Order ID", "Created", "Voided At", "Voided By", "Reason",
+        "Source", "Guest Name", "Payment Method", "Total", "Refund Owed",
+      ].join(","));
+      const voids = orders
+        .filter(o => o.voidedAt != null)
+        .sort((a, b) => (b.voidedAt!.getTime() - a.voidedAt!.getTime()));
+      for (const o of voids) {
+        const items = (o.items ?? []) as SnapshotItem[];
+        const computedSubtotal = items.reduce((s, i) => {
+          const unit = i.unitPrice != null ? Number(i.unitPrice) : Number(i.price) || 0;
+          return s + (i.lineTotal != null ? Number(i.lineTotal) : round2(unit * i.quantity));
+        }, 0);
+        const orderSubtotal = o.subtotal != null ? parseFloat(o.subtotal) : computedSubtotal;
+        const orderTax = o.taxAmount != null ? parseFloat(o.taxAmount) : 0;
+        const total = o.total != null ? parseFloat(o.total) : orderSubtotal + orderTax;
+        rows.push([
+          o.id,
+          o.createdAt.toISOString(),
+          o.voidedAt!.toISOString(),
+          o.voidedBy ?? "",
+          o.voidReason ?? "",
+          o.orderSource,
+          o.guestName,
+          paymentBucket(o),
+          total.toFixed(2),
+          o.refundRequired ? "yes" : "no",
+        ].map(escape).join(","));
+      }
     } else {
-      // Order-level CSV — one row per order
-      rows.push(["Order ID", "Created", "Source", "Guest Name", "Phone", "Status", "payment_method", "Items", "Subtotal", "Tax Rate (%)", "Tax", "Total", "Ready At", "Picked Up At", "Time to Ready (min)", "Ready to Pickup (min)", "Time to Pickup (min)"].join(","));
+      // Order-level CSV — one row per order. Voided rows are listed for
+      // chronological context but tagged in the Voided / Voided By / Void
+      // Reason columns so they can be filtered out in a spreadsheet.
+      rows.push([
+        "Order ID", "Created", "Source", "Guest Name", "Phone", "Status",
+        "payment_method", "Items", "Subtotal", "Tax Rate (%)", "Tax", "Total",
+        "Ready At", "Picked Up At", "Time to Ready (min)", "Ready to Pickup (min)", "Time to Pickup (min)",
+        "Voided", "Voided At", "Voided By", "Void Reason", "Refund Owed",
+      ].join(","));
       for (const o of orders) {
         const items = (o.items ?? []) as SnapshotItem[];
         const itemsStr = items.map(i => `${i.quantity}× ${i.name}`).join("; ");
@@ -618,6 +749,11 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
           prepMin,
           readyToPickupMin,
           pickupMin,
+          o.voidedAt ? "yes" : "no",
+          o.voidedAt ? o.voidedAt.toISOString() : "",
+          o.voidedBy ?? "",
+          o.voidReason ?? "",
+          o.voidedAt && o.refundRequired ? "yes" : "",
         ].map(escape).join(","));
       }
     }

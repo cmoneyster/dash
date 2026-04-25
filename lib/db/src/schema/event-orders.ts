@@ -86,6 +86,11 @@ export const eventOrdersTable = pgTable("event_orders", {
   // cashier they owe a manual refund.
   voidedAt: timestamp("voided_at"),
   voidReason: text("void_reason"),
+  // Self-reported employee name from the per-device localStorage prompt on
+  // /event-taker. Not authenticated — the POS uses a single shared password —
+  // but lets us hold a specific cashier accountable for each void on the
+  // Sales Report. Only populated when the order is voided; null otherwise.
+  voidedBy: text("voided_by"),
   refundRequired: boolean("refund_required").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

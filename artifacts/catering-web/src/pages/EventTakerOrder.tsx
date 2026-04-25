@@ -5,6 +5,23 @@ import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
 const AUTO_PRINT_KEY = "event_taker_auto_print";
+// Per-device self-reported employee name shown in the header and required
+// when voiding an order. Persisted in localStorage (not sessionStorage) so
+// a register that's logged in stays attributed across page reloads.
+const EMPLOYEE_KEY = "event_taker_employee_name";
+const EMPLOYEE_MAX_LEN = 80;
+function getStoredEmployee(): string | null {
+  try {
+    const v = localStorage.getItem(EMPLOYEE_KEY);
+    return v && v.trim() ? v.trim() : null;
+  } catch { return null; }
+}
+function setStoredEmployee(v: string | null) {
+  try {
+    if (v && v.trim()) localStorage.setItem(EMPLOYEE_KEY, v.trim());
+    else localStorage.removeItem(EMPLOYEE_KEY);
+  } catch {}
+}
 
 // Auto-print mode: which document(s) print automatically when an order is
 // placed. "off" = no auto-print, "both" = kitchen + receipt, or print just
@@ -112,6 +129,7 @@ interface PendingOrder {
   // type-completeness and the optimistic post-void receipt fallback.
   voidedAt?: string | null;
   voidReason?: string | null;
+  voidedBy?: string | null;
   refundRequired?: boolean | null;
 }
 
@@ -127,6 +145,12 @@ export default function EventTakerOrder() {
   const [pwInput, setPwInput] = useState("");
   const [pwError, setPwError] = useState("");
   const [pwSubmitting, setPwSubmitting] = useState(false);
+  // Self-reported employee name. After password verify, if this is null we
+  // show the "Who's on the register?" gate before letting the cashier ring
+  // anything up. The header surfaces it with a Switch button so a different
+  // staffer taking over can change it without re-typing the password.
+  const [employee, setEmployee] = useState<string | null>(getStoredEmployee());
+  const [showEmployeeSwitch, setShowEmployeeSwitch] = useState(false);
 
   const [settings, setSettings] = useState<TakerSettings | null>(null);
   const [menu, setMenu] = useState<MenuItem[] | null>(null);
@@ -617,13 +641,15 @@ export default function EventTakerOrder() {
   // success, both queues refresh — the row drops from pending payments
   // (override case) or sent orders (paid/override case) on the next poll,
   // but we also remove it locally so the UI feels instant.
-  async function handleVoidConfirmed(order: PendingOrder, reason: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  async function handleVoidConfirmed(order: PendingOrder, reason: string, voidedBy: string): Promise<{ ok: true } | { ok: false; error: string }> {
     if (!password) return { ok: false, error: "Not signed in" };
+    const trimmedBy = voidedBy.trim();
+    if (!trimmedBy) return { ok: false, error: "Employee name is required" };
     try {
       const res = await fetch(`${BASE}/api/event-taker/orders/${order.id}/void`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ reason, voidedBy: trimmedBy }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -769,6 +795,28 @@ export default function EventTakerOrder() {
           </form>
         </div>
       </div>
+    );
+  }
+
+  // ── Employee gate ────────────────────────────────────────────────
+  // Fires once after password verify (and again if the cashier hits
+  // "Switch"). The name is per-device, not per-session — so it persists
+  // across browser refreshes but stays sane if a different cashier takes
+  // over the same iPad.
+  if (!employee || showEmployeeSwitch) {
+    return (
+      <EmployeeGate
+        initial={employee ?? ""}
+        switching={!!employee && showEmployeeSwitch}
+        onCancel={employee ? () => setShowEmployeeSwitch(false) : undefined}
+        onSubmit={(name) => {
+          const trimmed = name.trim();
+          if (!trimmed) return;
+          setStoredEmployee(trimmed);
+          setEmployee(trimmed);
+          setShowEmployeeSwitch(false);
+        }}
+      />
     );
   }
 
@@ -1003,6 +1051,27 @@ export default function EventTakerOrder() {
                 <option value="receipt">Receipt only</option>
               </select>
             </label>
+            {/* Employee chip — who's currently on this register. Click to
+                switch without re-typing the staff password. The name is
+                attached to every void this device records. */}
+            {employee && (
+              <div
+                className="hidden sm:flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-lg bg-secondary text-xs font-semibold border border-border"
+                data-testid="chip-employee"
+              >
+                <span className="text-muted-foreground">On register:</span>
+                <span className="text-foreground" data-testid="text-employee-name">{employee}</span>
+                <button
+                  type="button"
+                  onClick={() => setShowEmployeeSwitch(true)}
+                  className="ml-1 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-background transition-colors"
+                  title="Switch employee"
+                  data-testid="button-switch-employee"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             <button
               onClick={handleLogout}
               className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
@@ -1294,6 +1363,7 @@ export default function EventTakerOrder() {
       {showSentPanel && (
         <SentOrdersPanel
           orders={sentOrders}
+          employee={employee}
           onClose={() => setShowSentPanel(false)}
           onVoid={(o) => setVoidTarget(o)}
         />
@@ -1302,10 +1372,21 @@ export default function EventTakerOrder() {
       {voidTarget && (
         <VoidModal
           order={voidTarget}
+          defaultVoidedBy={employee ?? ""}
           onClose={() => setVoidTarget(null)}
-          onConfirm={async (reason) => {
-            const result = await handleVoidConfirmed(voidTarget, reason);
-            if (result.ok) setVoidTarget(null);
+          onConfirm={async (reason, voidedBy) => {
+            const result = await handleVoidConfirmed(voidTarget, reason, voidedBy);
+            if (result.ok) {
+              // The cashier can self-correct an empty/wrong header chip
+              // right inside the void modal — persist whatever they used so
+              // subsequent voids on this device are pre-filled.
+              const trimmed = voidedBy.trim();
+              if (trimmed && trimmed !== employee) {
+                setStoredEmployee(trimmed);
+                setEmployee(trimmed);
+              }
+              setVoidTarget(null);
+            }
             return result;
           }}
         />
@@ -2271,9 +2352,10 @@ function PendingPanel({
 // cashier can void one if it shouldn't have been sent. Mirrors PendingPanel
 // styling so it feels like a sibling drawer.
 function SentOrdersPanel({
-  orders, onClose, onVoid,
+  orders, employee, onClose, onVoid,
 }: {
   orders: PendingOrder[];
+  employee: string | null;
   onClose: () => void;
   onVoid: (o: PendingOrder) => void;
 }) {
@@ -2310,6 +2392,14 @@ function SentOrdersPanel({
             Orders already on the kitchen line. Voiding pulls the ticket back —
             stock is <strong>not</strong> restored. Paid orders flag a manual
             refund for you.
+          </p>
+          {/* Surface the device's current employee here so it's obvious whose
+              name will be attached to any void initiated from this panel. */}
+          <p className="text-[11px] text-muted-foreground mt-1.5" data-testid="text-sent-panel-employee">
+            Voids will be attributed to:{" "}
+            {employee
+              ? <span className="font-semibold text-foreground">{employee}</span>
+              : <span className="italic">no employee set — you'll be prompted</span>}
           </p>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -2383,18 +2473,91 @@ function SentOrdersPanel({
 }
 
 // ── Void confirmation modal ────────────────────────────────────────────
-// Captures a required reason and (for paid orders) a mandatory
-// "I will refund manually" acknowledgement so the cashier can't
-// accidentally erase a charge without remembering to refund it. Shows a
-// warning when the kitchen has already started cooking the ticket.
+// Self-reported "who's on the register?" gate. Renders full-screen on
+// first sign-in for the device, and again when the cashier explicitly
+// chooses to switch via the header chip. Persisted via localStorage on
+// success. Single shared password — this is bookkeeping, not auth.
+function EmployeeGate({
+  initial, switching, onCancel, onSubmit,
+}: {
+  initial: string;
+  switching: boolean;
+  onCancel?: () => void;
+  onSubmit: (name: string) => void;
+}) {
+  const [name, setName] = useState(initial);
+  const trimmed = name.trim();
+  const valid = trimmed.length > 0 && trimmed.length <= EMPLOYEE_MAX_LEN;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (valid) onSubmit(trimmed);
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-background to-amber-50 flex items-center justify-center p-4">
+      <div className="bg-card border border-border rounded-3xl shadow-xl p-8 w-full max-w-md" data-testid="employee-gate">
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-600 mb-4">
+            <Pencil className="w-7 h-7" />
+          </div>
+          <h1 className="font-display font-bold text-2xl">
+            {switching ? "Switch employee" : "Who's on the register?"}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Your name will be recorded on every void you process from this device.
+          </p>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="text"
+            autoFocus
+            value={name}
+            onChange={e => setName(e.target.value.slice(0, EMPLOYEE_MAX_LEN))}
+            placeholder="First name or full name"
+            maxLength={EMPLOYEE_MAX_LEN}
+            className="w-full px-4 py-3 border border-border rounded-xl bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+            data-testid="input-employee-name"
+          />
+          <div className="flex gap-2">
+            {onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="flex-1 px-5 py-3 border border-border text-foreground font-semibold rounded-xl hover:bg-secondary"
+                data-testid="button-cancel-employee"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={!valid}
+              className="flex-1 px-5 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 disabled:opacity-50"
+              data-testid="button-save-employee"
+            >
+              {switching ? "Switch" : "Continue"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function VoidModal({
-  order, onClose, onConfirm,
+  order, defaultVoidedBy, onClose, onConfirm,
 }: {
   order: PendingOrder;
+  defaultVoidedBy: string;
   onClose: () => void;
-  onConfirm: (reason: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  onConfirm: (reason: string, voidedBy: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [reason, setReason] = useState("");
+  // Pre-filled with the device's currently-signed-in employee (from the
+  // header chip). Editable so a peer staffer covering for someone else can
+  // record the actual person who voided.
+  const [voidedBy, setVoidedBy] = useState(defaultVoidedBy);
   const [ack, setAck] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -2404,13 +2567,14 @@ function VoidModal({
   // warning escalates so the cashier double-checks before pulling it back.
   const cookingStarted = order.status === "preparing" || order.status === "ready";
   const trimmed = reason.trim();
-  const canSubmit = trimmed.length > 0 && (!isPaid || ack) && !submitting;
+  const trimmedBy = voidedBy.trim();
+  const canSubmit = trimmed.length > 0 && trimmedBy.length > 0 && trimmedBy.length <= EMPLOYEE_MAX_LEN && (!isPaid || ack) && !submitting;
 
   async function submit() {
     if (!canSubmit) return;
     setSubmitting(true);
     setError("");
-    const result = await onConfirm(trimmed);
+    const result = await onConfirm(trimmed, trimmedBy);
     if (!result.ok) {
       setError(result.error);
       setSubmitting(false);
@@ -2461,6 +2625,23 @@ function VoidModal({
               data-testid="input-void-reason"
               disabled={submitting}
             />
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-semibold text-foreground">Your name (required)</span>
+            <input
+              type="text"
+              value={voidedBy}
+              onChange={e => setVoidedBy(e.target.value.slice(0, EMPLOYEE_MAX_LEN))}
+              placeholder="Who is voiding this order?"
+              className="mt-1 w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-rose-400"
+              data-testid="input-voided-by"
+              disabled={submitting}
+              maxLength={EMPLOYEE_MAX_LEN}
+            />
+            <span className="block text-[11px] text-muted-foreground mt-1">
+              Recorded on the void and shown in the Sales Report.
+            </span>
           </label>
 
           {isPaid && (
