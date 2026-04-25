@@ -1221,11 +1221,12 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   // Auto-collapse Fire totals once all are checked, but let the cook expand
   // again with one tap. Resets implicitly via local state when checks change.
   const [fireExpanded, setFireExpanded] = useState(false);
-  // Auto-collapse the Fire-totals list once every line is checked so the
-  // cook's eye snaps to whatever's left (plate cards on plated orders,
-  // or a clean "all fired" header on non-plated tickets). Tap the
-  // collapsed header to expand again.
-  const fireCollapsed = isTrackable && allChecked && !fireExpanded && order.items.length > 0;
+  // Auto-collapse the Fire-totals list once every line is checked, but ONLY
+  // on plated tickets — there the cook's eye should snap to the plate cards
+  // below. On non-plated tickets the items list is the only place to see
+  // what to plate on the default single plate, so we keep it expanded so the
+  // cook doesn't have to tap to see it again.
+  const fireCollapsed = isTrackable && allChecked && !fireExpanded && order.items.length > 0 && hasPlating;
 
   return (
     <div className={`bg-[#1a1a1a] border rounded-2xl overflow-hidden transition-all ${
@@ -1269,9 +1270,11 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
         </div>
       </div>
 
-      {/* Items — tappable when pending or preparing. On plated orders we
-          collapse the Fire-totals list once everything is checked so the
-          plate cards below stay the focus; tap the header to expand. */}
+      {/* Items — tappable when pending or preparing. On plated orders only
+          we collapse the Fire-totals list once everything is checked so the
+          plate cards below stay the focus; tap the header to expand. On
+          non-plated orders the list stays expanded so the cook can see what
+          to plate without an extra tap. */}
       <div className="px-4 py-3 space-y-1">
         {isTrackable && (
           fireCollapsed ? (
