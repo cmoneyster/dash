@@ -64,6 +64,26 @@ type EventOrder = {
   firedItemIds?: number[] | null;
 };
 
+// Recently voided orders, fetched alongside the active queue so the
+// kitchen can render an attention-grabbing banner when staff pull a
+// ticket back. Carries the items snapshot + per-item fire state at void
+// time, plus the per-plate packing progress, so the cook can see which
+// items to stop cooking and which assembled plates to remove.
+type RecentVoid = {
+  id: number;
+  guestName: string;
+  orderSource: "guest" | "staff" | string;
+  status: "pending" | "preparing" | "ready" | "done" | "picked_up" | string;
+  voidedAt: string;
+  voidedBy: string | null;
+  voidReason: string | null;
+  refundRequired: boolean;
+  items: OrderItem[];
+  firedItemIds: number[];
+  plateGroups: PlateGroup[] | null;
+  kitchenProgress: KitchenProgress | null;
+};
+
 // Local mirror of the server's buildEmptyKitchenProgress — used to derive
 // per-plate / per-line packed state when the server hasn't materialized
 // kitchen_progress yet (e.g. cook hasn't tapped anything). Keeps the UI
@@ -175,6 +195,32 @@ function playChime() {
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
       osc.start(t);
       osc.stop(t + 0.7);
+    });
+  } catch { /* AudioContext blocked — silently skip */ }
+}
+
+// Distinct alarm pattern for void notifications. Markedly different from
+// the new-order chime (lower pitched, sawtooth, two-note alternating
+// alarm repeated three times) so cooks can tell new-order vs void-alert
+// apart by ear alone without looking at the screen.
+function playVoidAlarm() {
+  try {
+    const ctx = new AudioContext();
+    // Two alternating low tones — D3 → A2 — pulsed three times.
+    const notes = [146.83, 110.0, 146.83, 110.0, 146.83, 110.0];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sawtooth";
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.16;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.22, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+      osc.start(t);
+      osc.stop(t + 0.16);
     });
   } catch { /* AudioContext blocked — silently skip */ }
 }
@@ -598,6 +644,108 @@ export default function KitchenDisplay() {
     const id = setInterval(() => fetchOrders(authedPassword), POLL_INTERVAL);
     return () => clearInterval(id);
   }, [authedPassword, fetchOrders]);
+
+  // ── Void notifications ────────────────────────────────────────────
+  // Voided orders disappear from the active /orders feed silently. We
+  // poll a separate kitchen-auth endpoint that returns recently voided
+  // tickets in the active session and surface them as a sticky banner so
+  // the cook actually notices when staff pull a ticket back. Each device
+  // acknowledges independently — the ack list lives in localStorage and
+  // is keyed per-device so two stations can't dismiss for each other.
+  const VOID_LS_KEY = "kitchen_acked_void_ids";
+  const [recentVoids, setRecentVoids] = useState<RecentVoid[]>([]);
+  const [ackedVoidIds, setAckedVoidIds] = useState<Set<number>>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(VOID_LS_KEY) ?? "[]");
+      return new Set(Array.isArray(raw) ? raw.filter((x): x is number => typeof x === "number") : []);
+    } catch {
+      return new Set();
+    }
+  });
+  // Track which void ids we've already seen on this device. Voids that
+  // appeared in the very first poll (i.e. were already there when the
+  // page loaded) seed this set silently so opening a kitchen display
+  // mid-shift doesn't dump a wall of alarms — only voids that arrive
+  // *while this device is open* will trigger a fresh chime.
+  const seenVoidIdsRef = useRef<Set<number>>(new Set());
+  const voidPollLoadedRef = useRef(false);
+
+  function persistAckedVoidIds(s: Set<number>) {
+    try { localStorage.setItem(VOID_LS_KEY, JSON.stringify([...s])); } catch { /* quota — silent */ }
+  }
+  function acknowledgeVoid(id: number) {
+    setAckedVoidIds(prev => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      persistAckedVoidIds(next);
+      return next;
+    });
+  }
+
+  const fetchVoids = useCallback(async (pwd: string) => {
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/recent-voids`, {
+        headers: { Authorization: `Bearer ${pwd}` },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data: RecentVoid[] = await res.json();
+      const incomingIds = new Set(data.map(v => v.id));
+      // Detect fresh voids: ones we haven't seen on this device before.
+      // (Acks happen *after* the void is shown, so any "fresh" void is by
+      // definition not yet acknowledged on this device — no need to also
+      // intersect with ackedVoidIds, which would force this callback to
+      // depend on it and tear down the polling interval on every ack.)
+      const fresh = data.filter(v => !seenVoidIdsRef.current.has(v.id));
+      // First poll ever — silently seed the seen set + suppress chime.
+      const isFirstPoll = !voidPollLoadedRef.current;
+      // Add every incoming id to the seen set so the *next* poll only
+      // alerts on rows that arrived in the meantime.
+      seenVoidIdsRef.current = new Set([...seenVoidIdsRef.current, ...incomingIds]);
+      // Prune ack ids that the server has aged out so the localStorage
+      // entry doesn't grow unbounded across long shifts. We only drop
+      // ids that have completely fallen off the recent-voids window —
+      // ids still in the window stay acked.
+      setAckedVoidIds(prev => {
+        if (prev.size === 0) return prev;
+        const stillRelevant = new Set<number>();
+        for (const id of prev) if (incomingIds.has(id)) stillRelevant.add(id);
+        if (stillRelevant.size === prev.size) return prev;
+        persistAckedVoidIds(stillRelevant);
+        return stillRelevant;
+      });
+      setRecentVoids(data);
+      if (!isFirstPoll && fresh.length > 0) {
+        // Mute toggle silences both the alarm and the haptic so a "muted"
+        // station is truly silent — cooks who muted on purpose don't want
+        // a buzzing tablet either.
+        if (soundEnabledRef.current) {
+          playVoidAlarm();
+          if ("vibrate" in navigator) navigator.vibrate([300, 100, 300, 100, 300]);
+        }
+      }
+      voidPollLoadedRef.current = true;
+    } catch { /* silent — next poll will retry */ }
+  }, []);
+
+  useEffect(() => {
+    if (!authedPassword) return;
+    fetchVoids(authedPassword);
+    const id = setInterval(() => fetchVoids(authedPassword), POLL_INTERVAL);
+    return () => clearInterval(id);
+  }, [authedPassword, fetchVoids]);
+
+  // Reset the seen-set when the device signs out so the next sign-in
+  // treats voids as a fresh first-poll and doesn't fire historical alerts.
+  useEffect(() => {
+    if (authedPassword) return;
+    seenVoidIdsRef.current = new Set();
+    voidPollLoadedRef.current = false;
+    setRecentVoids([]);
+  }, [authedPassword]);
+
+  const unackedVoids = recentVoids.filter(v => !ackedVoidIds.has(v.id));
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -1136,6 +1284,18 @@ export default function KitchenDisplay() {
         )}
         {view === "orders" && (
           <>
+            {unackedVoids.length > 0 && (
+              <div className="mb-6 space-y-3" data-testid="kitchen-void-banner">
+                {unackedVoids.map(v => (
+                  <VoidAlertCard
+                    key={v.id}
+                    voided={v}
+                    tickNow={tickNow}
+                    onAcknowledge={() => acknowledgeVoid(v.id)}
+                  />
+                ))}
+              </div>
+            )}
             {orders.length === 0 ? (
               <div className="text-center py-24 text-white/30">
                 <ChefHat className="w-12 h-12 mx-auto mb-4 opacity-30" />
@@ -1685,6 +1845,184 @@ function LowStockThresholdControl({
         ? <p className="text-rose-400 text-xs">{error}</p>
         : <p className="text-white/30 text-[10px] uppercase tracking-wider">Saved for everyone</p>
       }
+    </div>
+  );
+}
+
+// Sticky kitchen-side alert for an order that staff voided after sending
+// it to the line. The cook sees: who voided it + reason + time-since,
+// the items list with a "fired" badge on items the cook had already
+// started on, and (for plated tickets) a per-plate pack-status summary
+// so they know which assembled plates to physically remove. Tapping
+// Acknowledge dismisses on this device only — every station acks
+// independently.
+function VoidAlertCard({
+  voided, tickNow, onAcknowledge,
+}: {
+  voided: RecentVoid;
+  tickNow: number;
+  onAcknowledge: () => void;
+}) {
+  // Re-derive seconds-ago from tickNow so the "Xs ago" label updates live
+  // between polls instead of freezing for 6 seconds at a stretch.
+  void tickNow;
+  const ago = timeAgo(voided.voidedAt);
+  const hasPlating = !!(voided.plateGroups && voided.plateGroups.length > 0);
+  const firedSet = new Set(voided.firedItemIds ?? []);
+  const sourceLabel = voided.orderSource === "staff" ? "Staff" : "Guest";
+  // Re-use the existing helper to compute per-plate packed counts at
+  // void time. We synthesize a faux EventOrder so deriveKitchenProgress
+  // / plateAllPacked can read out without duplicating the logic.
+  const fauxOrder = {
+    id: voided.id,
+    guestName: voided.guestName,
+    tableNumber: null,
+    phoneNumber: null,
+    items: voided.items,
+    status: voided.status as EventOrder["status"],
+    createdAt: voided.voidedAt,
+    plateGroups: voided.plateGroups,
+    kitchenProgress: voided.kitchenProgress,
+    firedItemIds: voided.firedItemIds,
+  } satisfies EventOrder;
+  const progress = hasPlating ? deriveKitchenProgress(fauxOrder) : null;
+  const plateSummary = hasPlating && voided.plateGroups
+    ? voided.plateGroups.map((plate, idx) => {
+        const total = plate.items.length;
+        const packed = progress?.plates[idx]?.items.filter(l => l.packed >= l.quantity).length ?? 0;
+        const allDone = plateAllPacked(progress, idx);
+        const partial = packed > 0 && !allDone;
+        return {
+          label: plate.label || `Plate ${idx + 1}`,
+          status: allDone ? "packed" as const : partial ? "in-progress" as const : "not-started" as const,
+          packed,
+          total,
+        };
+      })
+    : [];
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      className="rounded-2xl border border-rose-400/60 bg-rose-500/15 shadow-lg shadow-rose-900/30 backdrop-blur-sm overflow-hidden"
+      data-testid={`kitchen-void-${voided.id}`}
+    >
+      <div className="flex items-stretch">
+        <div className="bg-rose-500/30 flex items-center justify-center px-4">
+          <Ban className="w-6 h-6 text-rose-200" />
+        </div>
+        <div className="flex-1 p-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md bg-rose-500 text-white">
+                  Voided
+                </span>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/10 text-white/70 border border-white/15">
+                  {sourceLabel}
+                </span>
+                {voided.refundRequired && (
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md bg-amber-500 text-black" title="Customer was charged — cashier owes a refund">
+                    Refund owed
+                  </span>
+                )}
+              </div>
+              <p className="font-bold text-base text-white mt-1">
+                #{voided.id} · {voided.guestName}
+              </p>
+              <p className="text-xs text-rose-100/85 mt-0.5">
+                Voided by <span className="font-semibold text-white">{voided.voidedBy ?? "—"}</span>
+                {" · "}<span className="text-rose-200/80">{ago}</span>
+              </p>
+              {voided.voidReason && (
+                <p className="text-sm text-white/90 mt-1.5 italic">
+                  "{voided.voidReason}"
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={onAcknowledge}
+              className="shrink-0 px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-sm font-bold transition-colors active:scale-[0.98]"
+              data-testid={`kitchen-void-${voided.id}-ack`}
+            >
+              Acknowledge
+            </button>
+          </div>
+
+          {/* Items list — cook needs to know exactly what to stop preparing. */}
+          {voided.items.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-rose-200/80 mb-1.5">
+                Stop preparing
+              </p>
+              <ul className="space-y-1">
+                {voided.items.map(item => {
+                  const wasFired = firedSet.has(item.itemId);
+                  return (
+                    <li
+                      key={item.itemId}
+                      className={`flex items-center justify-between gap-3 rounded-lg px-3 py-1.5 text-sm ${
+                        wasFired
+                          ? "bg-amber-500/20 border border-amber-400/40 text-amber-100"
+                          : "bg-white/5 border border-white/10 text-white/85"
+                      }`}
+                    >
+                      <span className="font-medium">
+                        <span className="font-bold tabular-nums">{item.quantity}×</span> {item.name}
+                      </span>
+                      {wasFired && (
+                        <span
+                          className="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500 text-black"
+                          title="The kitchen had already marked this item as fired — pull it from the heat / pass"
+                        >
+                          🔥 Fired
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* Per-plate pack status — only when the order had a plating layout
+              configured. Tells the cook which assembled plates to physically
+              remove from the line. */}
+          {plateSummary.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-rose-200/80 mb-1.5">
+                Plates on the line
+              </p>
+              <ul className="flex flex-wrap gap-1.5">
+                {plateSummary.map((p, i) => {
+                  const cls =
+                    p.status === "packed"
+                      ? "bg-amber-500/25 border-amber-400/50 text-amber-100"
+                      : p.status === "in-progress"
+                        ? "bg-amber-500/15 border-amber-400/30 text-amber-200/90"
+                        : "bg-white/5 border-white/10 text-white/60";
+                  const label =
+                    p.status === "packed"
+                      ? "packed · remove"
+                      : p.status === "in-progress"
+                        ? `in progress (${p.packed}/${p.total})`
+                        : "not started";
+                  return (
+                    <li
+                      key={i}
+                      className={`text-xs px-2 py-1 rounded-md border ${cls}`}
+                    >
+                      <span className="font-bold">{p.label}</span>
+                      <span className="opacity-80"> · {label}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

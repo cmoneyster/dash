@@ -426,6 +426,57 @@ router.get("/event-ordering/orders", verifyKitchenPassword, async (req, res) => 
   }
 });
 
+// Recently voided orders surfaced to every kitchen device so the cooks
+// notice when a sent ticket is pulled back. Scoped to the active event
+// session and the last 30 minutes (capped at 50 rows) so a long-running
+// kitchen tab doesn't accumulate unbounded history. Each row carries the
+// full items snapshot, the cook's "fired" check-off state at void time,
+// and (for plated orders) the per-plate packing progress so the kitchen
+// can react precisely — pulling the right items off the heat and
+// removing the right assembled plates from the line.
+router.get("/event-ordering/recent-voids", verifyKitchenPassword, async (req, res) => {
+  try {
+    const settings = await getEventSettings();
+    const activeId = settings?.activeEventSessionId ?? null;
+    // Strict active-session scoping. With no active session there's no
+    // event in progress, so don't surface stale voids from a previous
+    // event — return empty so the kitchen banner stays clean.
+    if (activeId == null) {
+      res.json([]);
+      return;
+    }
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+    const conditions = [
+      sql`${eventOrdersTable.voidedAt} IS NOT NULL`,
+      sql`${eventOrdersTable.voidedAt} >= ${cutoff}`,
+      eq(eventOrdersTable.eventSessionId, activeId),
+    ];
+    const rows = await db
+      .select()
+      .from(eventOrdersTable)
+      .where(and(...conditions))
+      .orderBy(desc(eventOrdersTable.voidedAt))
+      .limit(50);
+    res.json(rows.map(o => ({
+      id: o.id,
+      guestName: o.guestName,
+      orderSource: o.orderSource,
+      status: o.status,
+      voidedAt: o.voidedAt,
+      voidedBy: o.voidedBy,
+      voidReason: o.voidReason,
+      refundRequired: o.refundRequired,
+      items: o.items,
+      firedItemIds: o.firedItemIds ?? [],
+      plateGroups: o.plateGroups ?? null,
+      kitchenProgress: o.kitchenProgress ?? null,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "Error fetching kitchen recent voids");
+    res.status(500).json({ error: "Failed to fetch recent voids" });
+  }
+});
+
 // Public endpoint — no auth required — to check a single order's status
 router.get("/event-ordering/orders/:id/public", async (req, res): Promise<void> => {
   try {
