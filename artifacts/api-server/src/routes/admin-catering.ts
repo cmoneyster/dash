@@ -521,7 +521,8 @@ router.put("/admin/catering/:id", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Inquiry not found" });
       return;
     }
-    res.json(updated);
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    res.json({ ...updated, supplementals: suppMap.get(id) ?? [] });
   } catch (err) {
     req.log.error({ err }, "Error updating catering inquiry");
     res.status(500).json({ error: "Failed to update inquiry" });
@@ -1181,6 +1182,24 @@ router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<v
         .select()
         .from(cateringSupplementalInvoicesTable)
         .where(eq(cateringSupplementalInvoicesTable.cateringInquiryId, id));
+
+      // Refuse if a previous attempt is still in flight or unreconciled.
+      // PENDING means another phase-2 publish is racing right now (the
+      // FOR UPDATE lock above would normally serialize us, but a
+      // crashed/abandoned phase-2 leaves a PENDING orphan that needs
+      // a janitor or admin reset). AWAITING_RECONCILE means the previous
+      // publish DID send a Square invoice but our snapshot was not
+      // rolled forward — the SAME delta is still positive, so a naive
+      // retry here would publish a SECOND invoice for the same charges
+      // and double-bill the customer. Block until admin runs Refresh
+      // or Cancel on the unreconciled row first.
+      const blocking = existingSupps.find(s => {
+        const st = (s.squareInvoiceStatus ?? "").toUpperCase();
+        return st === "PENDING" || st === "AWAITING_RECONCILE";
+      });
+      if (blocking) {
+        return { kind: "blocked" as const, status: blocking.squareInvoiceStatus, seq: blocking.seq };
+      }
       const nextSeq = existingSupps.reduce((m, s) => Math.max(m, s.seq), 0) + 1;
 
       const priorSnapshotLineItems = JSON.parse(JSON.stringify(inq.primarySnapshotLineItems ?? [])) as QuoteLineItem[];
@@ -1235,6 +1254,13 @@ router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<v
     if (prep.kind === "no_primary") { res.status(409).json({ error: "Issue the primary Square invoice before sending a supplemental." }); return; }
     if (prep.kind === "no_email") { res.status(400).json({ error: "Client must have an email on file" }); return; }
     if (prep.kind === "no_delta") { res.status(400).json({ error: "No new charges since the primary invoice — nothing to bill." }); return; }
+    if (prep.kind === "blocked") {
+      const verb = prep.status === "PENDING" ? "is still publishing" : "needs reconciliation";
+      res.status(409).json({
+        error: `Supplemental #${prep.seq} ${verb}. Refresh or cancel it before issuing a new one.`,
+      });
+      return;
+    }
 
     reservation = prep;
   } catch (err) {
@@ -1582,7 +1608,8 @@ router.post("/admin/catering/:id/square/refresh", async (req, res): Promise<void
       .set(updates)
       .where(eq(cateringInquiriesTable.id, id))
       .returning();
-    res.json({ ok: true, inquiry: updated });
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    res.json({ ok: true, inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] } });
   } catch (err) {
     if (err instanceof SquareApiError) {
       req.log.error({ status: err.status, errors: err.errors }, "Square invoice refresh failed");

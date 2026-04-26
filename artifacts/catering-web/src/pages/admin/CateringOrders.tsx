@@ -1377,6 +1377,35 @@ function SquarePanel({
   const hasInvoice = !!inquiry.squareInvoiceId;
   const status = inquiry.squareInvoiceStatus ?? null;
   const isPaid = !!inquiry.squarePaidInFullAt || status === "PAID";
+
+  // Consolidated totals strip ("Billed · Supplemental · Uninvoiced"):
+  //   - Billed primary  = whatever Square recorded for the primary
+  //     invoice (paid + still-due), independent of any later supps.
+  //   - Supplemental    = sum of every supplemental that actually
+  //     billed the customer (excludes CANCELED + FAILED + transient
+  //     PENDING reservation rows).
+  //   - Uninvoiced      = current delta vs. the rolled-forward snapshot
+  //     (i.e. what a NEW supplemental would bill right now).
+  const billedPrimary = (Number(inquiry.squareAmountPaid ?? 0))
+    + (Number(inquiry.squareBalanceDue ?? 0));
+  const supplementalBilled = (inquiry.supplementals ?? [])
+    .filter(s => {
+      const st = (s.squareInvoiceStatus ?? "").toUpperCase();
+      return st !== "CANCELED" && st !== "FAILED" && st !== "PENDING";
+    })
+    .reduce((sum, s) => sum + Number(s.amountTotal ?? 0), 0);
+  const totalsDelta = useMemo(() => computeUninvoicedDelta({
+    currentLineItems: inquiry.lineItems ?? [],
+    currentFees: inquiry.fees ?? [],
+    currentDiscounts: inquiry.discounts ?? [],
+    snapshotLineItems: inquiry.primarySnapshotLineItems ?? [],
+    snapshotFees: inquiry.primarySnapshotFees ?? [],
+    snapshotDiscounts: inquiry.primarySnapshotDiscounts ?? [],
+  }), [
+    inquiry.lineItems, inquiry.fees, inquiry.discounts,
+    inquiry.primarySnapshotLineItems, inquiry.primarySnapshotFees, inquiry.primarySnapshotDiscounts,
+  ]);
+  const uninvoicedDelta = inquiry.primarySnapshotLineItems != null ? totalsDelta.deltaTotal : 0;
   // "Open" supplementals block primary cancel. Mirrors OPEN_SUPP_STATUSES
   // server-side in admin-catering.ts. Two groups:
   //   1) Live Square statuses still chargeable to the customer:
@@ -1536,6 +1565,27 @@ function SquarePanel({
                 {inquiry.squarePaidInFullAt && <p>Paid in full {formatDateTime(inquiry.squarePaidInFullAt)}</p>}
               </div>
             )}
+            <div className="rounded-xl bg-secondary/40 border border-border px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span>
+                <span className="text-muted-foreground">Billed:</span>{" "}
+                <span className="font-semibold tabular-nums">{formatCurrency(billedPrimary)}</span>
+              </span>
+              <span className="text-muted-foreground/50">·</span>
+              <span>
+                <span className="text-muted-foreground">Supplemental:</span>{" "}
+                <span className="font-semibold tabular-nums">{formatCurrency(supplementalBilled)}</span>
+              </span>
+              <span className="text-muted-foreground/50">·</span>
+              <span>
+                <span className="text-muted-foreground">Uninvoiced:</span>{" "}
+                <span className={cn(
+                  "font-semibold tabular-nums",
+                  uninvoicedDelta > 0 && "text-emerald-700",
+                )}>
+                  {formatCurrency(uninvoicedDelta)}
+                </span>
+              </span>
+            </div>
             <div className="flex flex-wrap gap-2">
               {inquiry.squareHostedUrl && (
                 <a
