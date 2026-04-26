@@ -30,6 +30,20 @@ const FONT_PATH = (() => {
   }
 })();
 
+// Font names registered on the doc. Helvetica is built-in to pdfkit; "CJK" is
+// our bundled Noto Sans SC, only registered when the font file is present.
+const FONT_LATIN = "Helvetica";
+const FONT_CJK = "CJK";
+const NON_ASCII_RE = /[^\x00-\x7F]/;
+// Pick the right font for a given string. CJK font is heavier and renders
+// Latin glyphs less crisply, so only use it when the string actually contains
+// non-ASCII characters (typically Chinese in item names / notes / addresses).
+// If the CJK font isn't bundled, always fall back to Helvetica.
+function pickFont(text: string | null | undefined): string {
+  if (!FONT_PATH) return FONT_LATIN;
+  return text && NON_ASCII_RE.test(text) ? FONT_CJK : FONT_LATIN;
+}
+
 export type ComputedAdjustment = QuoteAdjustment & { computed: number };
 
 export type ComputedTotals = {
@@ -102,13 +116,14 @@ export function fmtDate(d: Date | string | null | undefined): string {
 export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> {
   const totals = computeQuoteTotals(inquiry.lineItems, inquiry.fees, inquiry.discounts);
   const doc = new PDFDocument({ size: "LETTER", margin: 50 });
-  // Register a Unicode font with CJK coverage so menu items / notes containing
-  // Chinese characters render correctly. Falls back silently to Helvetica
-  // (Latin-only) if the font wasn't bundled, to avoid breaking PDF generation.
+  // Default everything to Helvetica (built-in, crisp Latin glyphs). Register
+  // the bundled Noto Sans SC under the name "CJK" so we can swap to it
+  // per-string only when the text contains non-ASCII characters. Falls back
+  // silently to Helvetica everywhere if the font file wasn't bundled.
   if (FONT_PATH) {
-    doc.registerFont("Default", FONT_PATH);
-    doc.font("Default");
+    doc.registerFont(FONT_CJK, FONT_PATH);
   }
+  doc.font(FONT_LATIN);
   const chunks: Buffer[] = [];
   doc.on("data", (c) => chunks.push(c as Buffer));
 
@@ -139,38 +154,51 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   // and phone rows (with a placeholder when missing) so the layout stays
   // stable and the contact info is easy to find.
   const clientTop = doc.y;
-  doc.fontSize(9).fillColor("#666666").text("Prepared for", 50, clientTop);
-  doc.fontSize(12).fillColor("#111111").text(inquiry.clientName, 50, doc.y);
-  if (inquiry.organization) doc.fontSize(10).text(inquiry.organization, 50, doc.y);
+  doc.font(FONT_LATIN).fontSize(9).fillColor("#666666").text("Prepared for", 50, clientTop);
+  doc.font(pickFont(inquiry.clientName)).fontSize(12).fillColor("#111111")
+    .text(inquiry.clientName, 50, doc.y);
+  if (inquiry.organization) {
+    doc.font(pickFont(inquiry.organization)).fontSize(10)
+      .text(inquiry.organization, 50, doc.y);
+  }
+  const emailLine = `Email: ${inquiry.clientEmail?.trim() || NOT_PROVIDED}`;
   doc
+    .font(pickFont(emailLine))
     .fontSize(9)
     .fillColor("#444")
-    .text(`Email: ${inquiry.clientEmail?.trim() || NOT_PROVIDED}`, 50, doc.y, { width: 260 });
+    .text(emailLine, 50, doc.y, { width: 260 });
+  const phoneLine = `Phone: ${inquiry.clientPhone?.trim() || NOT_PROVIDED}`;
   doc
+    .font(pickFont(phoneLine))
     .fontSize(9)
     .fillColor("#444")
-    .text(`Phone: ${inquiry.clientPhone?.trim() || NOT_PROVIDED}`, 50, doc.y, { width: 260 });
+    .text(phoneLine, 50, doc.y, { width: 260 });
   const leftBottom = doc.y;
 
   // Event details on the right — always render with placeholders so the
   // venue line is consistently visible and prominent.
   let rightY = clientTop;
-  doc.fontSize(9).fillColor("#666666").text("Event details", 320, rightY);
+  doc.font(FONT_LATIN).fontSize(9).fillColor("#666666").text("Event details", 320, rightY);
   rightY = doc.y;
+  const dateLine = `Date: ${inquiry.eventDate?.trim() || NOT_PROVIDED}`;
   doc
+    .font(pickFont(dateLine))
     .fontSize(10)
     .fillColor("#222")
-    .text(`Date: ${inquiry.eventDate?.trim() || NOT_PROVIDED}`, 320, rightY, { width: 240 });
+    .text(dateLine, 320, rightY, { width: 240 });
   rightY = doc.y;
   doc
+    .font(FONT_LATIN)
     .fontSize(10)
     .fillColor("#222")
     .text(`Guests: ${inquiry.guestCount ?? NOT_PROVIDED}`, 320, rightY, { width: 240 });
   rightY = doc.y;
+  const venueLine = `Venue: ${inquiry.venueAddress?.trim() || NOT_PROVIDED}`;
   doc
+    .font(pickFont(venueLine))
     .fontSize(10)
     .fillColor("#222")
-    .text(`Venue: ${inquiry.venueAddress?.trim() || NOT_PROVIDED}`, 320, rightY, { width: 240 });
+    .text(venueLine, 320, rightY, { width: 240 });
   rightY = doc.y;
   doc.y = Math.max(leftBottom, rightY);
   doc.moveDown(0.6);
@@ -182,7 +210,7 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   const colUnit = 380;
   const colTotal = 470;
 
-  doc.fontSize(10).fillColor("#666");
+  doc.font(FONT_LATIN).fontSize(10).fillColor("#666");
   doc.text("Item", colItem, tableTop);
   doc.text("Qty", colQty, tableTop, { width: 50, align: "right" });
   doc.text("Unit", colUnit, tableTop, { width: 80, align: "right" });
@@ -194,35 +222,75 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     .stroke();
 
   let y = tableTop + 22;
-  doc.fillColor("#111").fontSize(10);
+  doc.font(FONT_LATIN).fillColor("#111").fontSize(10);
 
   if (totals.lineItems.length === 0) {
-    doc.fillColor("#999").text("(no items)", colItem, y);
+    doc.font(FONT_LATIN).fillColor("#999").text("(no items)", colItem, y);
     y += 16;
   }
 
   // Reserve space for totals + payment terms + notes + footer so we only break
   // to page 2 when truly full. Totals block is ~22pt header gap + ~16pt per
   // row (subtotal + fees + discounts + 1 divider + TOTAL); payment terms is
-  // a heading + 3 bullets that always renders; notes is optional; footer sits
-  // just inside the bottom margin.
+  // a heading + measured bullet height + padding; notes is optional and
+  // measured at the actual render fontSize/width; footer sits just inside the
+  // bottom margin. Heights are then re-checked after the line items loop and
+  // the totals block is broken to a fresh page if it can't fit.
   const otdWaivedDisplay = computeOtdSetupFeeWaivedDisplay(
     inquiry.serviceMode,
     inquiry.otdSetupFee != null ? Number(inquiry.otdSetupFee) : null,
     inquiry.otdFeeWaiverThreshold != null ? Number(inquiry.otdFeeWaiverThreshold) : null,
     totals.subtotal,
   );
-  // +1 for the ghost waived row (struck-through original amount + caption).
-  // The caption renders inline under the row, so reserve a touch of extra
-  // height by counting it as a row in the totals block height calc.
-  const totalsRows = 1 + totals.fees.length + totals.discounts.length + 1
-    + (otdWaivedDisplay ? 1 : 0); // subtotal + adj + waived ghost? + TOTAL
-  // 12pt extra reserves room for the tax-disclosure line below TOTAL.
-  const totalsHeight = 22 + totalsRows * 16 + 12 + 12;
-  // Payment terms: ~16pt heading + ~16pt per bullet line + 12pt padding.
-  // Bullets are short enough to render as one line each at width 510.
-  const paymentTermsHeight = 16 + PAYMENT_TERMS_BULLETS.length * 16 + 12;
-  const notesHeight = inquiry.quoteNotes?.trim() ? 36 : 0;
+  // The waived ghost row is taller than a normal totals row: it renders the
+  // label + strike-through amount on the strike line, then a 10pt caption +
+  // 4pt padding below. The strike line itself is the max of (12pt, the
+  // measured label height at the 140pt label-column width) so a long label
+  // that wraps to two lines (the live label "On the Dash — on-site setup
+  // fee" wraps at fontSize 10 / width 140) doesn't collide with the caption.
+  // The render block below uses the same `waivedRowHeight` so reservation
+  // and render stay in sync.
+  let waivedRowHeight = 0;
+  let waivedLabelHeight = 0;
+  if (otdWaivedDisplay) {
+    doc.font(FONT_LATIN).fontSize(10);
+    waivedLabelHeight = doc.heightOfString(otdWaivedDisplay.label, { width: 140 });
+    waivedRowHeight = Math.max(12, waivedLabelHeight) + 10 + 4; // strike + caption + padding
+  }
+  // Derive `totalsHeight` from the same constants the render block below uses
+  // (NORMAL_ROW = 14pt advance per non-bold totalRow, TOTAL_ROW = 18pt for the
+  // bold TOTAL row, fixed +12 above the totals divider, +4 +6 around the
+  // pre-TOTAL divider, +12 for the tax disclosure, +8 post-totals padding) so
+  // reservation and paint stay in sync. Over-reserving here would cause the
+  // page-break safety net below to break to a fresh page even when the totals
+  // block would have fit; under-reserving would clip into the footer.
+  const NORMAL_TOTAL_ROW = 14;
+  const BOLD_TOTAL_ROW = 18;
+  const numNormalRows = 1 + totals.fees.length + totals.discounts.length; // subtotal + fees + discounts
+  const totalsHeight = 12 // y += 12 after the divider above the totals block
+    + numNormalRows * NORMAL_TOTAL_ROW
+    + waivedRowHeight
+    + 4 + 6 // y += 4 padding then y += 6 after the pre-TOTAL divider
+    + BOLD_TOTAL_ROW
+    + 12 // tax disclosure line
+    + 8; // doc.y = Math.max(doc.y, y + 8) padding before payment terms
+  // Measure each payment-terms bullet at the real render width so a future
+  // copy edit that wraps a bullet to two lines doesn't silently overflow.
+  doc.font(FONT_LATIN).fontSize(10);
+  const paymentBulletsHeight = PAYMENT_TERMS_BULLETS.reduce(
+    (sum, b) => sum + doc.heightOfString(`• ${b}`, { width: 510 }),
+    0,
+  );
+  const paymentTermsHeight = 16 + paymentBulletsHeight + 12;
+  // Measure notes at the real render fontSize/width with the right font for
+  // the text so multi-line / CJK notes don't get under-reserved.
+  const trimmedNotes = inquiry.quoteNotes?.trim() ?? "";
+  let notesHeight = 0;
+  if (trimmedNotes) {
+    doc.font(pickFont(trimmedNotes)).fontSize(10);
+    const notesBodyHeight = doc.heightOfString(trimmedNotes, { width: 510 });
+    notesHeight = 16 + notesBodyHeight + 12; // heading + body + padding
+  }
   const lineItemMaxY = 740 - totalsHeight - paymentTermsHeight - notesHeight - 8;
 
   for (const li of totals.lineItems) {
@@ -240,16 +308,19 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     const descriptor = descriptorParts.join(" · ");
 
     const itemWidth = 260;
-    doc.fillColor("#111").fontSize(9.5);
+    // Measure each text block with the same font we'll render it with so the
+    // measured heights line up with the painted output (CJK glyphs are taller
+    // than Latin, so picking the wrong font here would mis-size the row).
+    doc.font(pickFont(li.name)).fillColor("#111").fontSize(9.5);
     const nameH = doc.heightOfString(li.name, { width: itemWidth });
     let descH = 0;
     let notesH = 0;
     if (descriptor) {
-      doc.fontSize(8.5);
+      doc.font(pickFont(descriptor)).fontSize(8.5);
       descH = doc.heightOfString(descriptor, { width: itemWidth });
     }
     if (li.notes) {
-      doc.fontSize(8.5);
+      doc.font(pickFont(li.notes)).fontSize(8.5);
       notesH = doc.heightOfString(li.notes, { width: itemWidth });
     }
     const blockH = nameH + descH + notesH;
@@ -264,24 +335,37 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
       y = 50;
     }
 
-    doc.fillColor("#111").fontSize(9.5);
+    doc.font(pickFont(li.name)).fillColor("#111").fontSize(9.5);
     doc.text(li.name, colItem, y, { width: itemWidth });
     let yCursor = y + nameH;
     if (descriptor) {
-      doc.fillColor("#666").fontSize(8.5)
+      doc.font(pickFont(descriptor)).fillColor("#666").fontSize(8.5)
         .text(descriptor, colItem, yCursor, { width: itemWidth });
       yCursor += descH;
     }
     if (li.notes) {
-      doc.fillColor("#888").fontSize(8.5)
+      doc.font(pickFont(li.notes)).fillColor("#888").fontSize(8.5)
         .text(li.notes, colItem, yCursor, { width: itemWidth });
       yCursor += notesH;
     }
-    doc.fillColor("#111").fontSize(9.5);
+    doc.font(FONT_LATIN).fillColor("#111").fontSize(9.5);
     doc.text(String(li.quantity), colQty, y, { width: 50, align: "right" });
     doc.text(fmtUSD(li.unitPrice), colUnit, y, { width: 80, align: "right" });
     doc.text(fmtUSD(li.lineTotal), colTotal, y, { width: 80, align: "right" });
     y += rowH;
+  }
+
+  // Safety net: even though `lineItemMaxY` reserves space on page 1 and the
+  // overflow `pageCap` reserves space on subsequent pages, the totals +
+  // payment terms + notes blocks can still butt up against the bottom margin
+  // when the last few items barely fit. If the remaining vertical space on
+  // the current page can't hold all three blocks plus the divider/padding,
+  // break to a fresh page now and reset the cursor.
+  const SAFE_BOTTOM = 720; // leave room for footer at 728
+  const remainingNeeded = totalsHeight + paymentTermsHeight + notesHeight + 8;
+  if (y + remainingNeeded > SAFE_BOTTOM) {
+    doc.addPage();
+    y = 50;
   }
 
   // Totals block
@@ -290,10 +374,11 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
 
   function totalRow(label: string, amount: string, opts: { bold?: boolean; color?: string } = {}) {
     doc
+      .font(pickFont(label))
       .fillColor(opts.color ?? "#111")
       .fontSize(opts.bold ? 12 : 10)
       .text(label, 320, y, { width: 140, align: "right" });
-    doc.text(amount, 470, y, { width: 80, align: "right" });
+    doc.font(FONT_LATIN).text(amount, 470, y, { width: 80, align: "right" });
     y += opts.bold ? 18 : 14;
   }
 
@@ -310,7 +395,7 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   if (otdWaivedDisplay) {
     const amountXStart = 470; // left edge of amount column (470..550, width 80)
     const amountText = fmtUSD(otdWaivedDisplay.originalAmount);
-    doc.fillColor("#888").fontSize(10);
+    doc.font(FONT_LATIN).fillColor("#888").fontSize(10);
     doc.text(otdWaivedDisplay.label, 320, y, { width: 140, align: "right" });
     doc.text(amountText, amountXStart, y, { width: 80, align: "right" });
     // Manual strike-through over the amount text so we don't pull in any
@@ -326,8 +411,14 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
       .lineWidth(0.7)
       .strokeColor("#888")
       .stroke();
-    y += 12;
+    // Advance past the (possibly wrapped) label rather than a fixed 12pt so
+    // the caption never collides with a wrapped label tail. The live label
+    // "On the Dash — on-site setup fee" wraps to 2 lines at fontSize 10 in
+    // the 140pt column, so without this guard the wrapped "fee" tail sits
+    // exactly where the caption would render.
+    y += Math.max(12, waivedLabelHeight);
     doc
+      .font(FONT_LATIN)
       .fillColor("#888")
       .fontSize(8)
       .text(
@@ -336,7 +427,9 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
         y,
         { width: 230, align: "right" },
       );
-    y += 10;
+    // 10pt caption + 4pt padding. Combined with the strike line above this
+    // matches `waivedRowHeight` reserved in the page-break math.
+    y += 10 + 4;
     // Restore default font size for any subsequent rows.
     doc.fontSize(10);
   }
@@ -351,6 +444,7 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
 
   // Tax disclosure — Square adds sales tax on the invoice itself.
   doc
+    .font(FONT_LATIN)
     .fillColor("#888")
     .fontSize(8.5)
     .text(TAX_DISCLOSURE, 320, y, { width: 230, align: "right" });
@@ -362,23 +456,25 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   doc.y = Math.max(doc.y, y + 8);
 
   // Payment Terms — always present, renders below totals on the left.
-  doc.fontSize(10).fillColor("#666").text(PAYMENT_TERMS_TITLE, 50, doc.y);
+  doc.font(FONT_LATIN).fontSize(10).fillColor("#666").text(PAYMENT_TERMS_TITLE, 50, doc.y);
   doc
+    .font(FONT_LATIN)
     .fontSize(10)
     .fillColor("#222")
     .text(PAYMENT_TERMS_BULLETS.map((b) => `• ${b}`).join("\n"), 50, doc.y, { width: 510 });
 
   // Notes
-  if (inquiry.quoteNotes?.trim()) {
+  if (trimmedNotes) {
     doc.moveDown(0.8);
-    doc.fontSize(10).fillColor("#666").text("Notes", 50, doc.y);
-    doc.fontSize(10).fillColor("#222").text(inquiry.quoteNotes, 50, doc.y, { width: 510 });
+    doc.font(FONT_LATIN).fontSize(10).fillColor("#666").text("Notes", 50, doc.y);
+    doc.font(pickFont(trimmedNotes)).fontSize(10).fillColor("#222")
+      .text(trimmedNotes, 50, doc.y, { width: 510 });
   }
 
   // Footer — pin clearly inside the bottom margin so pdfkit doesn't auto-paginate.
   // Letter is 792pt tall with 50pt margins → maxY ≈ 742. Place footer at 728.
   const footerY = doc.page.height - doc.page.margins.bottom - 14;
-  doc.fontSize(8).fillColor("#888").text(
+  doc.font(FONT_LATIN).fontSize(8).fillColor("#888").text(
     QUOTE_FOOTER_THANKS,
     50,
     footerY,
