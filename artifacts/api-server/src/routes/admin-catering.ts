@@ -732,7 +732,8 @@ router.post("/admin/catering/:id/quote/email", async (req, res): Promise<void> =
       .set({ quoteLastEmailedAt: new Date(), updatedAt: new Date() })
       .where(eq(cateringInquiriesTable.id, id))
       .returning();
-    res.json({ ok: true, inquiry: updated, sentTo: to });
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    res.json({ ok: true, inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] }, sentTo: to });
   } catch (err) {
     req.log.error({ err }, "Error emailing quote");
     res.status(500).json({ error: "Failed to email quote" });
@@ -788,7 +789,8 @@ router.post("/admin/catering/:id/quote/sms", async (req, res): Promise<void> => 
       .set({ quoteLastTextedAt: new Date(), updatedAt: new Date() })
       .where(eq(cateringInquiriesTable.id, id))
       .returning();
-    res.json({ ok: true, inquiry: updated, sentTo: to });
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    res.json({ ok: true, inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] }, sentTo: to });
   } catch (err) {
     req.log.error({ err }, "Error texting quote");
     res.status(500).json({ error: "Failed to text quote" });
@@ -897,7 +899,8 @@ router.post("/admin/catering/:id/change-request/reply", async (req, res): Promis
       .where(eq(cateringInquiriesTable.id, id))
       .returning();
 
-    res.json({ ok: true, inquiry: updated, sentTo });
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    res.json({ ok: true, inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] }, sentTo });
   } catch (err) {
     req.log.error({ err }, "Error sending change-request reply");
     res.status(500).json({ error: "Failed to send reply" });
@@ -928,7 +931,8 @@ router.post("/admin/catering/:id/change-request/dismiss", async (req, res): Prom
       })
       .where(eq(cateringInquiriesTable.id, id))
       .returning();
-    res.json({ ok: true, inquiry: updated });
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    res.json({ ok: true, inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] } });
   } catch (err) {
     req.log.error({ err }, "Error dismissing change request");
     res.status(500).json({ error: "Failed to dismiss" });
