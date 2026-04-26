@@ -35,6 +35,30 @@ export function useCategories(opts: { includeHidden?: boolean } = {}) {
   });
 }
 
+// ── Display helpers ──────────────────────────────────────────────────────────
+// The category naming convention is "Parent - Child" (e.g.
+// "Entrées - Vegetables"). The cart and planner pages render the parent as a
+// big bold heading with the child as a smaller subtitle next to it. Splitting
+// on " - " keeps that display contract working for any category an admin adds
+// in the Category Manager — no source edits required.
+
+export function splitCategoryName(name: string): { label: string; sub?: string } {
+  const idx = name.indexOf(" - ");
+  if (idx === -1) return { label: name };
+  return { label: name.slice(0, idx), sub: name.slice(idx + 3) };
+}
+
+// Build a fast lookup from category name → plannerGroup. Used by the planner
+// page to decide whether an item is a savory bite, sweet bite, entrée, or
+// other — without hardcoding any specific category names.
+export function buildPlannerGroupMap(
+  categories: Category[] | undefined,
+): Map<string, PlannerGroup> {
+  const m = new Map<string, PlannerGroup>();
+  for (const c of categories ?? []) m.set(c.name, c.plannerGroup);
+  return m;
+}
+
 export function useAdminCategories() {
   return useQuery<AdminCategory[]>({
     queryKey: ADMIN_CATEGORIES_QUERY_KEY,

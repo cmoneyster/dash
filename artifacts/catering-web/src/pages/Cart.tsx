@@ -18,6 +18,7 @@ import { computeEffectivePriceDetail } from "@workspace/pricing";
 import { formatCurrency } from "@/lib/utils";
 import { TAX_DISCLOSURE } from "@/lib/tax";
 import { parseDateLocal } from "@/lib/date";
+import { useCategories, splitCategoryName } from "@/lib/categories";
 import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw, CalendarDays, X as XIcon, Truck, Flame, AlertTriangle } from "lucide-react";
 import {
   SERVICE_MODE_KEY,
@@ -124,23 +125,6 @@ function DatePickerField({
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-// ── Category constants (mirrors Plan.tsx) ────────────────────────────────────
-const CAT_ORDER = [
-  "Small Bites - Savory",
-  "Small Bites - Sweet",
-  "Entrées - Meat",
-  "Entrées - Seafood",
-  "Entrées - Noodles & Rice",
-];
-
-const CAT_LABELS: Record<string, { label: string; sub?: string }> = {
-  "Small Bites - Savory": { label: "Small Bites", sub: "Savory" },
-  "Small Bites - Sweet":  { label: "Small Bites", sub: "Sweet"  },
-  "Entrées - Meat":       { label: "Entrées",      sub: "Meat"  },
-  "Entrées - Seafood":    { label: "Entrées",      sub: "Seafood" },
-  "Entrées - Noodles & Rice": { label: "Entrées",  sub: "Noodles & Rice" },
-};
-
 const checkoutSchema = z.object({
   customerName: z.string().min(2, "Name is required"),
   customerEmail: z.string().email("Valid email is required"),
@@ -211,7 +195,7 @@ export default function Cart() {
       .catch(() => {});
   }, []);
 
-  const { data: cart, isLoading } = useGetCart({ sessionId });
+  const { data: cart, isLoading: cartLoading } = useGetCart({ sessionId });
   
   const handleClearCart = async () => {
     setClearing(true);
@@ -363,11 +347,21 @@ export default function Cart() {
 
   const isEmpty = !cart?.items.length;
 
-  // Group cart items by category in canonical order, pan sizes sorted by slot index
+  // Categories drive both the header label/subtitle split and the row order on
+  // the cart. Including hidden categories means an item whose category was
+  // hidden after it was added still groups under its real header rather than
+  // collapsing into the "Other" fallback bucket. Loading is folded into the
+  // page-level spinner so the rows never render in the wrong order.
+  const { data: categoryRows, isLoading: categoriesLoading } = useCategories({ includeHidden: true });
+  const isLoading = cartLoading || categoriesLoading;
+
+  // Group cart items by category in the order returned by the API, pan sizes
+  // sorted by slot index. Items whose category is no longer in the API list
+  // (deleted, etc.) appear at the end in insertion order.
   const groupedItems = useMemo(() => {
     if (!cart?.items.length) return [];
     const map = new Map<string, typeof cart.items>();
-    CAT_ORDER.forEach(cat => map.set(cat, []));
+    (categoryRows ?? []).forEach(c => map.set(c.name, []));
     for (const item of cart.items) {
       const cat = (item.menuItem as any).category ?? "Other";
       if (!map.has(cat)) map.set(cat, []);
@@ -384,7 +378,7 @@ export default function Cart() {
           return sa - sb;
         }),
       ] as [string, typeof cart.items]);
-  }, [cart?.items]);
+  }, [cart?.items, categoryRows]);
 
   return (
     <Layout>
@@ -439,7 +433,7 @@ export default function Cart() {
             {/* Cart Items — categorized */}
             <div className="lg:col-span-7 space-y-10">
               {groupedItems.map(([cat, items]) => {
-                const catInfo = CAT_LABELS[cat] ?? { label: cat };
+                const catInfo = splitCategoryName(cat);
                 const catSubtotal = items.reduce((s, i) => {
                   const ep: number = (i as any).effectivePrice ?? i.menuItem.price;
                   return s + ep * i.quantity;

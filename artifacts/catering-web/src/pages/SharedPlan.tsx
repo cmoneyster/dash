@@ -12,23 +12,7 @@ import { ImageLightbox } from "@/components/ImageLightbox";
 import { useToast } from "@/hooks/use-toast";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
 import { saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
-
-// ── Category helpers ──────────────────────────────────────────────────────────
-
-const SAVORY_CAT  = "Small Bites - Savory";
-const SWEET_CAT   = "Small Bites - Sweet";
-const ENTREE_CATS = new Set(["Entrées - Meat", "Entrées - Seafood", "Entrées - Noodles & Rice"]);
-
-const CAT_ORDER = [
-  SAVORY_CAT,
-  SWEET_CAT,
-  "Entrées - Meat",
-  "Entrées - Seafood",
-  "Entrées - Noodles & Rice",
-];
-
-function isSmallBite(cat: string) { return cat === SAVORY_CAT || cat === SWEET_CAT; }
-function isEntree(cat: string)    { return ENTREE_CATS.has(cat); }
+import { useCategories, buildPlannerGroupMap, splitCategoryName, type PlannerGroup } from "@/lib/categories";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -233,6 +217,33 @@ export default function SharedPlan() {
   const [allMenuItems, setAllMenuItems] = useState<MenuItemData[]>([]);
   const [addingId, setAddingId] = useState<number | null>(null);
 
+  // ── Categories ──
+  // Source of truth for both the order of category sections and the
+  // savory/sweet/entrée classification used by the planner. Hidden categories
+  // are included so a category an admin hides after items are added still
+  // gets the correct planner-group treatment instead of falling back to
+  // "other" and collapsing into a generic bucket.
+  const { data: categoryRows, isLoading: categoriesLoading } = useCategories({ includeHidden: true });
+  const plannerGroupMap = useMemo(
+    () => buildPlannerGroupMap(categoryRows),
+    [categoryRows],
+  );
+  const groupOf = useCallback(
+    (cat: string): PlannerGroup => plannerGroupMap.get(cat) ?? "other",
+    [plannerGroupMap],
+  );
+  const isSmallBite = useCallback(
+    (cat: string) => {
+      const g = groupOf(cat);
+      return g === "savory" || g === "sweet";
+    },
+    [groupOf],
+  );
+  const isEntree = useCallback(
+    (cat: string) => groupOf(cat) === "entree",
+    [groupOf],
+  );
+
   // ── Planner state ──
   const [plannerState, setPlannerState] = useState<PlannerState>(DEFAULT_PLANNER);
   const [guestRaw, setGuestRaw] = useState(String(DEFAULT_PLANNER.guests));
@@ -307,7 +318,7 @@ export default function SharedPlan() {
       });
       return seeded ? { ...prev, piecesMap, servingsMap, panQtys } : prev;
     });
-  }, [plan?.items]);
+  }, [plan?.items, isSmallBite, isEntree]);
 
   // Load menu items for add panel
   useEffect(() => {
@@ -351,8 +362,8 @@ export default function SharedPlan() {
   // Sync guestRaw when guests changes externally (poll / initial load)
   useEffect(() => { setGuestRaw(String(guests)); }, [guests]);
 
-  const smallBiteItems = useMemo(() => plan?.items.filter(i => isSmallBite(i.menuItem.category)) ?? [], [plan]);
-  const entreeItems    = useMemo(() => plan?.items.filter(i => isEntree(i.menuItem.category)) ?? [], [plan]);
+  const smallBiteItems = useMemo(() => plan?.items.filter(i => isSmallBite(i.menuItem.category)) ?? [], [plan, isSmallBite]);
+  const entreeItems    = useMemo(() => plan?.items.filter(i => isEntree(i.menuItem.category)) ?? [], [plan, isEntree]);
 
   // ── Category grouping ──
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
@@ -362,14 +373,14 @@ export default function SharedPlan() {
   const groupedItems = useMemo(() => {
     if (!plan?.items) return [];
     const map = new Map<string, typeof plan.items>();
-    CAT_ORDER.forEach(cat => map.set(cat, []));
+    (categoryRows ?? []).forEach(c => map.set(c.name, []));
     plan.items.forEach(item => {
       const cat = item.menuItem.category;
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(item);
     });
     return Array.from(map.entries()).filter(([, items]) => items.length > 0);
-  }, [plan?.items]);
+  }, [plan?.items, categoryRows]);
   const hasSmallBites  = smallBiteItems.length > 0;
   const hasEntrees     = entreeItems.length > 0;
   const showPlanner    = hasSmallBites || hasEntrees;
@@ -378,7 +389,7 @@ export default function SharedPlan() {
   const needSweet   = guests * sweetPPG;
   const needEntrees = guests * servingsPPG;
 
-  const haveSavory  = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SAVORY_CAT).reduce((s, i) => {
+  const haveSavory  = useMemo(() => smallBiteItems.filter(i => groupOf(i.menuItem.category) === "savory").reduce((s, i) => {
     if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
       const slots = panQtys[String(i.id)] ?? {};
       return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
@@ -387,8 +398,8 @@ export default function SharedPlan() {
       }, 0);
     }
     return s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1);
-  }, 0), [smallBiteItems, piecesMap, panQtys]);
-  const haveSweet   = useMemo(() => smallBiteItems.filter(i => i.menuItem.category === SWEET_CAT).reduce((s, i) => {
+  }, 0), [smallBiteItems, piecesMap, panQtys, groupOf]);
+  const haveSweet   = useMemo(() => smallBiteItems.filter(i => groupOf(i.menuItem.category) === "sweet").reduce((s, i) => {
     if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
       const slots = panQtys[String(i.id)] ?? {};
       return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
@@ -397,7 +408,7 @@ export default function SharedPlan() {
       }, 0);
     }
     return s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1);
-  }, 0), [smallBiteItems, piecesMap, panQtys]);
+  }, 0), [smallBiteItems, piecesMap, panQtys, groupOf]);
   const haveEntrees = useMemo(() => entreeItems.reduce((s, i) => {
     const isPanSizes = (i.menuItem as any).pricingTemplate === "pan_sizes";
     if (isPanSizes) {
@@ -476,7 +487,9 @@ export default function SharedPlan() {
   };
 
   // ── Loading / error states ──
-  if (loading) {
+  // Wait for both the plan and the categories list — otherwise category
+  // sections render in the wrong order for a frame and then reflow.
+  if (loading || categoriesLoading) {
     return (
       <Layout>
         <div className="h-96 flex items-center justify-center text-muted-foreground gap-3">
@@ -766,8 +779,18 @@ export default function SharedPlan() {
                       className="w-full flex items-center gap-3 px-5 py-4 hover:bg-secondary/40 transition-colors text-left"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <span className="font-display font-bold text-base">{cat}</span>
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          {(() => {
+                            const { label, sub } = splitCategoryName(cat);
+                            return (
+                              <>
+                                <span className="font-display font-bold text-base">{label}</span>
+                                {sub && (
+                                  <span className="text-xs font-semibold text-muted-foreground">{sub}</span>
+                                )}
+                              </>
+                            );
+                          })()}
                           <span className="text-xs text-muted-foreground">
                             {items.length} item{items.length !== 1 ? "s" : ""}
                           </span>
