@@ -356,10 +356,8 @@ export default function MenuManager() {
   // default with no source edits.
   React.useEffect(() => {
     if (!watchedCategory) return;
-    if (!adminCategories) return;
-    const picked = adminCategories.find(c => c.name === String(watchedCategory));
-    if (!picked) return;
-    const isEntreeCat = picked.plannerGroup === "entree";
+    const picked = adminCategories?.find(c => c.name === String(watchedCategory));
+    const isEntreeCat = picked?.plannerGroup === "entree";
     setValue("pricingTemplate", isEntreeCat ? "pan_sizes" : "per_unit");
   }, [watchedCategory, adminCategories, setValue]);
 
