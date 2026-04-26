@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Plus, Heart, HeartOff, Info, ChevronRight, Flame } from "lucide-react";
 import type { MenuItem } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
-import { isPanSizesItem, getPanSizesFromPrice } from "@/lib/menu-types";
+import { isPanSizesItem, getPanSizesFromPrice, formatServingsLine } from "@/lib/menu-types";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -119,7 +119,7 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan, serviceMod
           <div className="flex items-center gap-4 text-xs font-medium text-foreground/70 mb-4">
             <div className="flex items-center gap-1.5">
               <Info className="w-4 h-4 text-primary" />
-              Serves {item.servingSize} ({item.unit})
+              {formatServingsLine(item)}
             </div>
             {item.allergens?.length > 0 && (
               <div className="flex flex-wrap gap-1">
@@ -237,7 +237,7 @@ export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan, ser
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/60">
           <span className="flex items-center gap-1">
             <Info className="w-3 h-3 text-primary/70" />
-            Serves {item.servingSize} ({item.unit})
+            {formatServingsLine(item)}
           </span>
           {hasTiers && (
             <span className="text-primary font-semibold">Volume pricing available</span>
