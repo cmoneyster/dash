@@ -351,9 +351,9 @@ export default function MenuManager() {
 
   // Auto-set pricing template when category changes. Drive the default from
   // the picked category's structured plannerGroup ("entree" → pan sizes,
-  // anything else → per unit) instead of matching the literal "Entrées"
-  // prefix, so any future entrée-group parent (e.g. "Mains - Beef") gets the
-  // correct default with no source edits.
+  // anything else → per unit) rather than from the category name itself, so
+  // any future entrée-group parent (e.g. "Mains - Beef") gets the correct
+  // default with no source edits.
   React.useEffect(() => {
     if (!watchedCategory) return;
     if (!adminCategories) return;
