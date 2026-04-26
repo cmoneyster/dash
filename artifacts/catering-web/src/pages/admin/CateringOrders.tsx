@@ -16,6 +16,7 @@ import {
   OTD_SETUP_FEE_ID,
 } from "@workspace/pricing";
 import { TAX_DISCLOSURE } from "@/lib/tax";
+import { formatLocalDate, isDateOnlyString } from "@/lib/date";
 import { VenueAutocomplete } from "@/components/VenueAutocomplete";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -173,6 +174,9 @@ function emptyForm(): Partial<Inquiry> {
 function formatDate(d: string | null | undefined) {
   if (!d) return null;
   try {
+    if (isDateOnlyString(d)) {
+      return formatLocalDate(d);
+    }
     const date = new Date(d);
     if (isNaN(date.getTime())) return d;
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });

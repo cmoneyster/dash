@@ -5,6 +5,7 @@ import { DayPicker, type DayButtonProps } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { Loader2, CalendarRange, Users, MapPin, Phone, Mail, ShoppingCart } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseDateLocal } from "@/lib/date";
 import { format } from "date-fns";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -38,11 +39,6 @@ type BlackoutDate = {
   date: string;
   reason: string | null;
 };
-
-function parseDateLocal(dateStr: string): Date {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
 
 function formatDate(d: string | null | undefined) {
   if (!d) return null;

@@ -5,6 +5,7 @@ import "react-day-picker/dist/style.css";
 import { getAdminToken } from "@/components/AdminGuard";
 import { Loader2, Save, X, Plus, Trash2, CalendarDays, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseDateLocal } from "@/lib/date";
 import { format } from "date-fns";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -15,11 +16,6 @@ function authHeaders() {
 }
 
 type BlackoutDate = { id: number; date: string; reason: string | null };
-
-function parseDateLocal(dateStr: string): Date {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
 
 function toDateStr(date: Date): string {
   return format(date, "yyyy-MM-dd");

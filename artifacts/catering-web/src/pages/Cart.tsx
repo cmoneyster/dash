@@ -17,6 +17,7 @@ import { getSessionId } from "@/lib/session";
 import { computeEffectivePriceDetail } from "@workspace/pricing";
 import { formatCurrency } from "@/lib/utils";
 import { TAX_DISCLOSURE } from "@/lib/tax";
+import { parseDateLocal } from "@/lib/date";
 import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw, CalendarDays, X as XIcon, Truck, Flame, AlertTriangle } from "lucide-react";
 import {
   SERVICE_MODE_KEY,
@@ -33,11 +34,6 @@ import "react-day-picker/dist/style.css";
 import { format } from "date-fns";
 
 type BlackoutDate = { id: number; date: string; reason: string | null };
-
-function parseDateLocal(dateStr: string): Date {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
 
 function DatePickerField({
   value,
