@@ -1267,7 +1267,11 @@ router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<v
         linesSnapshot,
         deltaLineItems, deltaFees, deltaDiscounts,
         primaryCustomerId: inq.squareCustomerId!,
-        primaryInvoiceNumber: inq.squareInvoiceId,
+        // Use the customer-facing quote number (e.g. "Q-202604-0001")
+        // rather than the opaque Square invoice object id, so the
+        // supplemental description reads naturally to the customer
+        // (matches the title prefix on both invoice emails).
+        primaryInvoiceNumber: inq.quoteNumber,
       };
     });
 
