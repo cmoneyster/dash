@@ -136,18 +136,14 @@ export function otdSetupFeeRowEquals(
  * Display-only "ghost" row for the OTD on-site setup fee, returned ONLY when
  * the fee was suppressed purely because the food subtotal met/exceeded the
  * waiver threshold. Renderers (admin Quote Builder totals, public quote page,
- * quote PDF, and the Square primary-invoice line-item list) use this to show
- * the original fee with a strikethrough plus a "waived (minimum met)" caption,
- * so customers and admins can see that a setup fee existed and was waived
- * because the order qualified.
+ * and the quote PDF) use this to show the original fee with a strikethrough
+ * plus a "waived (minimum met)" caption, so customers and admins can see
+ * that a setup fee existed and was waived because the order qualified.
  *
- * Returns null when no ghost row should render:
- *   - serviceMode is not "on_the_dash"
- *   - the snapshot setup fee is missing or non-positive
- *   - the waiver threshold is missing/non-positive (no threshold = nothing to
- *     waive against, so a missing fee row is not a waiver event)
- *   - the subtotal has not yet reached the threshold (the real fee row from
- *     `computeOtdSetupFeeRow` is what should render in that case)
+ * The activation guards are deliberately the inverse of `computeOtdSetupFeeRow`:
+ * whenever that helper returns null *because of waiver* (not because the fee
+ * itself is missing), this helper returns a non-null display row, and vice
+ * versa. The two are mutually exclusive at every input.
  *
  * The label intentionally reuses `OTD_SETUP_FEE_LABEL` and the threshold
  * comes back unchanged so callers can format the "waived: order met $X
@@ -166,19 +162,12 @@ export function computeOtdSetupFeeWaivedDisplay(
 ): OtdWaivedSetupFeeDisplay | null {
   if (serviceMode !== "on_the_dash") return null;
   if (setupFee == null || !Number.isFinite(setupFee) || setupFee <= 0) return null;
-  if (
-    waiverThreshold == null
-    || !Number.isFinite(waiverThreshold)
-    || waiverThreshold <= 0
-  ) {
-    return null;
-  }
-  // Treat non-finite subtotals as "fee still active, not waived" so this
-  // helper stays mutually exclusive with `computeOtdSetupFeeRow` — that
-  // function returns the fee row when `subtotal >= threshold` is false
-  // (which a NaN compare always is). Without this guard, a NaN subtotal
-  // would cause both helpers to return non-null and the totals card would
-  // double-render the row (struck-through ghost AND a real fee line).
+  // Mirror `computeOtdSetupFeeRow`'s waiver branch *exactly* so the two
+  // helpers stay mutually exclusive at every input (including the
+  // degenerate threshold === 0 case and the NaN-subtotal edge case where
+  // `subtotal >= waiverThreshold` is false even though the comparison
+  // operands are pathological).
+  if (waiverThreshold == null || !Number.isFinite(waiverThreshold)) return null;
   if (!Number.isFinite(subtotal) || subtotal < waiverThreshold) return null;
   return {
     label: OTD_SETUP_FEE_LABEL,
