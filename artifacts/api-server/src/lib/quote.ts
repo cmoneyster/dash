@@ -304,15 +304,21 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     const notesBodyHeight = doc.heightOfString(trimmedNotes, { width: 510 });
     notesHeight = 16 + notesBodyHeight + 12; // heading + body + padding
   }
-  // For the page-1 line-items cap we clamp the notes contribution so a
-  // pathologically long notes field doesn't push items off page 1
-  // unnecessarily — the SAFE_BOTTOM safety net after the line-items loop will
-  // page-break to a fresh page if the totals + measured-full notes don't fit
-  // on the current page anyway. We still use the unclamped `notesHeight` for
-  // that check below; this clamp only affects when the items loop chooses to
-  // break.
-  const NOTES_RESERVATION_CAP = 80; // ~5 lines of 10pt notes, the typical case
-  const notesHeightForReservation = Math.min(notesHeight, NOTES_RESERVATION_CAP);
+  // Clamp the notes contribution to whatever space is actually available on
+  // page 1 once the table-header position, totals block, payment terms, and
+  // a one-row item floor are accounted for. This way a pathologically long
+  // notes field can't drive `lineItemMaxY` below the items start (which would
+  // force every item onto page 2 unnecessarily). The SAFE_BOTTOM safety net
+  // after the items loop still uses the unclamped `notesHeight` so the
+  // actual fit is validated against full notes before drawing the totals
+  // block; this cap only affects when the items loop chooses to break.
+  const itemsStartY = y; // y at the top of the first item row, computed above
+  const MIN_ITEMS_AREA = 30; // floor of one item row so page 1 never starves
+  const availableForNotesOnPage1 = Math.max(
+    0,
+    740 - itemsStartY - totalsHeight - paymentTermsHeight - 8 - MIN_ITEMS_AREA,
+  );
+  const notesHeightForReservation = Math.min(notesHeight, availableForNotesOnPage1);
   const lineItemMaxY = 740 - totalsHeight - paymentTermsHeight - notesHeightForReservation - 8;
 
   for (const li of totals.lineItems) {
