@@ -19,7 +19,6 @@ import type {
   QuoteAdjustment,
   QuoteLineItem,
 } from "@workspace/db/schema";
-import { computeOtdSetupFeeWaivedDisplay } from "@workspace/pricing";
 import { computeQuoteTotals } from "./quote";
 
 const SQUARE_VERSION = "2024-12-18";
@@ -145,16 +144,11 @@ async function createOrderFromRows(
     discounts: QuoteAdjustment[] | null;
     fallbackName: string;
     idempotencyKey: string;
-    // Optional informational $0 line items appended after the real items.
-    // Used by the primary invoice path to surface a "waived setup fee"
-    // marker on the Square hosted invoice; supplemental invoices never
-    // pass this so they stay strictly delta-only.
-    extraDisplayLineItems?: SquareLineItem[];
   },
 ): Promise<string> {
   const totals = computeQuoteTotals(opts.lineItems, opts.fees, opts.discounts);
 
-  const realLineItems: SquareLineItem[] = totals.lineItems.length > 0
+  const lineItems: SquareLineItem[] = totals.lineItems.length > 0
     ? totals.lineItems.map(li => ({
         name: li.name || "Item",
         quantity: String(Math.max(1, Math.floor(li.quantity || 1))),
@@ -166,10 +160,6 @@ async function createOrderFromRows(
         quantity: "1",
         base_price_money: moneyUSD(totals.subtotal || 0),
       }];
-  const lineItems: SquareLineItem[] = [
-    ...realLineItems,
-    ...(opts.extraDisplayLineItems ?? []),
-  ];
 
   // Combine fees / discounts as a single net adjustment so the Square total
   // matches our computed total to the cent.
@@ -202,32 +192,6 @@ async function createOrderFromRows(
 }
 
 async function createOrderForInquiry(cfg: SquareConfig, inquiry: CateringInquiry): Promise<string> {
-  // When the OTD on-site setup fee was waived because the food subtotal
-  // crossed the per-inquiry threshold, append a $0 informational line item
-  // to the Square order so the customer can see on the hosted invoice that
-  // a setup fee existed and was waived. The fee was already stripped from
-  // `inquiry.fees` by the shared pricing helper, so this $0 line does not
-  // affect totals — Square's order total still matches our computed total.
-  // Supplemental invoices intentionally skip this (they're delta-only).
-  const totals = computeQuoteTotals(
-    inquiry.lineItems as QuoteLineItem[] | null,
-    inquiry.fees as QuoteAdjustment[] | null,
-    inquiry.discounts as QuoteAdjustment[] | null,
-  );
-  const waivedDisplay = computeOtdSetupFeeWaivedDisplay(
-    inquiry.serviceMode,
-    inquiry.otdSetupFee != null ? Number(inquiry.otdSetupFee) : null,
-    inquiry.otdFeeWaiverThreshold != null ? Number(inquiry.otdFeeWaiverThreshold) : null,
-    totals.subtotal,
-  );
-  const extraDisplayLineItems: SquareLineItem[] = waivedDisplay
-    ? [{
-        name: `${waivedDisplay.label} — waived`,
-        quantity: "1",
-        base_price_money: moneyUSD(0),
-        note: `Original fee: $${waivedDisplay.originalAmount.toFixed(2)} — waived because order met $${waivedDisplay.waiverThreshold.toFixed(2)} minimum.`,
-      }]
-    : [];
   return createOrderFromRows(cfg, {
     referenceId: `inquiry-${inquiry.id}`,
     lineItems: inquiry.lineItems as QuoteLineItem[] | null,
@@ -235,7 +199,6 @@ async function createOrderForInquiry(cfg: SquareConfig, inquiry: CateringInquiry
     discounts: inquiry.discounts as QuoteAdjustment[] | null,
     fallbackName: `Catering — Quote ${inquiry.quoteNumber ?? `#${inquiry.id}`}`,
     idempotencyKey: `order-inq-${inquiry.id}-${Date.now()}-${randomUUID()}`,
-    extraDisplayLineItems,
   });
 }
 
