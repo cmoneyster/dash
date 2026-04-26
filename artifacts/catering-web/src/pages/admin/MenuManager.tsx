@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import {
   useAdminListMenuItems,
@@ -9,11 +9,29 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon, Upload } from "lucide-react";
+import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon, Upload, GripVertical, Search } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { getAdminToken } from "@/components/AdminGuard";
 import { useAdminCategories, ADMIN_CATEGORIES_QUERY_KEY } from "@/lib/categories";
+import { adminReorderMenuItems } from "@/lib/admin-menu";
 import { MenuCsvDialog, ExportMenuButton, AppliedToast } from "./MenuCsvDialog";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface ImageRecord {
   id: number;
@@ -117,6 +135,55 @@ function ImagePickerModal({
   );
 }
 
+function SortableMenuRow({
+  itemId,
+  isDirty,
+  dragDisabled,
+  children,
+}: {
+  itemId: number;
+  isDirty: boolean;
+  dragDisabled: boolean;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: itemId,
+    disabled: dragDisabled,
+  });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: isDragging ? "relative" : undefined,
+    zIndex: isDragging ? 10 : undefined,
+    background: isDragging ? "var(--card)" : undefined,
+  };
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={`border-b border-border/50 transition-colors ${isDirty ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}
+      data-testid={`row-menu-item-${itemId}`}
+    >
+      <td className="px-2 py-2 w-8 align-middle">
+        <button
+          type="button"
+          {...attributes}
+          {...(dragDisabled ? {} : listeners)}
+          disabled={dragDisabled}
+          title={dragDisabled ? "Clear search to reorder" : "Drag to reorder within category"}
+          aria-label={dragDisabled ? "Reordering disabled while searching" : "Drag to reorder"}
+          className={`p-1 rounded transition-colors ${dragDisabled ? "text-muted-foreground/30 cursor-not-allowed" : "text-muted-foreground hover:text-foreground hover:bg-secondary cursor-grab active:cursor-grabbing"}`}
+          data-testid={`drag-handle-menu-item-${itemId}`}
+        >
+          <GripVertical className="w-4 h-4" />
+        </button>
+      </td>
+      {children}
+    </tr>
+  );
+}
+
 export default function MenuManager() {
   const queryClient = useQueryClient();
   const { data: items, isLoading } = useAdminListMenuItems();
@@ -135,9 +202,65 @@ export default function MenuManager() {
   type InlineEdit = { name: string; description: string; price: string; available: boolean; eventActive: boolean; eventTakerVisible: boolean; eventStock: string };
   const [localEdits, setLocalEdits] = useState<Record<number, InlineEdit>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
 
   const dirtyIds = Object.keys(localEdits).map(Number);
   const hasDirty = dirtyIds.length > 0;
+  const isSearching = searchQuery.trim().length > 0;
+
+  const filteredItems = useMemo(() => {
+    if (!items) return [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it: any) =>
+      String(it.name ?? "").toLowerCase().includes(q) ||
+      String(it.description ?? "").toLowerCase().includes(q) ||
+      String(it.category ?? "").toLowerCase().includes(q)
+    );
+  }, [items, searchQuery]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !items) return;
+    const activeId = Number(active.id);
+    const overId = Number(over.id);
+    const activeItem = items.find((it: any) => it.id === activeId);
+    const overItem = items.find((it: any) => it.id === overId);
+    if (!activeItem || !overItem) return;
+    // Cross-category drags are not persisted — Menu Manager moves items
+    // within their own category only. To change category use the edit dialog.
+    if (activeItem.category !== overItem.category) return;
+    const catItems = items
+      .filter((it: any) => it.category === activeItem.category)
+      .slice()
+      .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id - b.id);
+    const oldIndex = catItems.findIndex((it: any) => it.id === activeId);
+    const newIndex = catItems.findIndex((it: any) => it.id === overId);
+    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+    const reordered = arrayMove(catItems, oldIndex, newIndex);
+    const updates = reordered.map((it: any, idx: number) => ({ id: it.id, sortOrder: (idx + 1) * 10 }));
+    const updateMap = new Map(updates.map(u => [u.id, u.sortOrder]));
+    const previous = queryClient.getQueryData(getAdminListMenuItemsQueryKey());
+    queryClient.setQueryData(getAdminListMenuItemsQueryKey(), (old: any) => {
+      if (!Array.isArray(old)) return old;
+      return old
+        .map((it: any) => updateMap.has(it.id) ? { ...it, sortOrder: updateMap.get(it.id)! } : it)
+        .slice()
+        .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id - b.id);
+    });
+    try {
+      await adminReorderMenuItems(updates);
+      queryClient.invalidateQueries({ queryKey: getAdminListMenuItemsQueryKey() });
+    } catch (err) {
+      queryClient.setQueryData(getAdminListMenuItemsQueryKey(), previous);
+      alert("Failed to save new order. Please try again.");
+    }
+  }, [items, queryClient]);
 
   function patchEdit(id: number, item: any, patch: Partial<InlineEdit>) {
     setLocalEdits(prev => {
@@ -351,11 +474,36 @@ export default function MenuManager() {
       )}
       {applyResult && <AppliedToast result={applyResult} onDone={() => setApplyResult(null)} />}
 
+      <div className="mb-4 relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search items by name, description, or category…"
+          className="w-full pl-10 pr-9 py-2.5 bg-card border border-border rounded-xl text-sm focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+          data-testid="input-menu-search"
+        />
+        {isSearching && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            title="Clear search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary"
+            data-testid="button-clear-search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
       <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-secondary/50 text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="px-2 py-3 font-semibold w-8"></th>
                 <th className="px-3 py-3 font-semibold w-12"></th>
                 <th className="px-3 py-3 font-semibold">Name &amp; Description</th>
                 <th className="px-3 py-3 font-semibold w-20">Price</th>
@@ -368,21 +516,35 @@ export default function MenuManager() {
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
+                <tr><td colSpan={9} className="px-6 py-12 text-center text-muted-foreground">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                 </td></tr>
               )}
+              {!isLoading && items && isSearching && filteredItems.length === 0 && (
+                <tr><td colSpan={9} className="px-6 py-12 text-center text-muted-foreground">
+                  <Search className="w-6 h-6 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">No items match "{searchQuery}".</p>
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="text-xs text-primary hover:underline mt-2"
+                  >
+                    Clear search
+                  </button>
+                </td></tr>
+              )}
               {items && existingCategories.map(cat => {
-                const catItems = items.filter((item: any) => item.category === cat);
+                const catItems = filteredItems.filter((item: any) => item.category === cat);
                 if (!catItems.length) return null;
                 return (
                   <React.Fragment key={cat}>
                     <tr className="bg-secondary/40 border-y border-border">
-                      <td colSpan={8} className="px-6 py-2">
+                      <td colSpan={9} className="px-6 py-2">
                         <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{cat}</span>
                         <span className="ml-2 text-xs text-muted-foreground/50">{catItems.length} item{catItems.length !== 1 ? "s" : ""}</span>
                       </td>
                     </tr>
+                    <SortableContext items={catItems.map((it: any) => it.id)} strategy={verticalListSortingStrategy}>
                     {catItems.map((item: any) => {
                       const edit = localEdits[item.id];
                       const isDirty = !!edit;
@@ -390,7 +552,7 @@ export default function MenuManager() {
                       const cur = edit ?? { name: item.name, description: item.description, price: String(item.price), available: item.available, eventActive: item.eventActive ?? false, eventTakerVisible: item.eventTakerVisible ?? false, eventStock: item.eventStock == null ? "" : String(item.eventStock) };
 
                       return (
-                        <tr key={item.id} className={`border-b border-border/50 transition-colors ${isDirty ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}>
+                        <SortableMenuRow key={item.id} itemId={item.id} isDirty={isDirty} dragDisabled={isSearching}>
                           <td className="px-3 py-2">
                             <div className="w-8 h-8 rounded-lg bg-secondary overflow-hidden shrink-0">
                               {item.imageUrl
@@ -521,14 +683,16 @@ export default function MenuManager() {
                               </>
                             )}
                           </td>
-                        </tr>
+                        </SortableMenuRow>
                       );
                     })}
+                    </SortableContext>
                   </React.Fragment>
                 );
               })}
             </tbody>
           </table>
+          </DndContext>
         </div>
       </div>
 

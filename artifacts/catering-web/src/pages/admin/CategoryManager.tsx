@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, ArrowUp, ArrowDown, Eye, EyeOff, Edit2, Trash2, X, Check } from "lucide-react";
+import { Loader2, Plus, GripVertical, Eye, EyeOff, Edit2, Trash2, X, Check } from "lucide-react";
 import {
   useAdminCategories,
   adminCreateCategory,
@@ -13,6 +13,23 @@ import {
   type AdminCategory,
   type PlannerGroup,
 } from "@/lib/categories";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const PLANNER_GROUPS: PlannerGroup[] = ["savory", "sweet", "entree", "other"];
 const PLANNER_GROUP_LABEL: Record<PlannerGroup, string> = {
@@ -21,6 +38,48 @@ const PLANNER_GROUP_LABEL: Record<PlannerGroup, string> = {
   entree: "Entrée",
   other: "Other (no target)",
 };
+
+function SortableCategoryRow({
+  categoryId,
+  busy,
+  children,
+}: {
+  categoryId: number;
+  busy: boolean;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: categoryId,
+    disabled: busy,
+  });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    background: isDragging ? "var(--card)" : undefined,
+    position: isDragging ? "relative" : undefined,
+    zIndex: isDragging ? 10 : undefined,
+  };
+  return (
+    <tr ref={setNodeRef} style={style} data-testid={`row-category-${categoryId}`}>
+      <td className="px-3 py-3 w-10">
+        <button
+          type="button"
+          {...attributes}
+          {...(busy ? {} : listeners)}
+          disabled={busy}
+          title={busy ? "Saving…" : "Drag to reorder"}
+          aria-label="Drag to reorder"
+          className={`p-1 rounded transition-colors ${busy ? "text-muted-foreground/30 cursor-not-allowed" : "text-muted-foreground hover:text-foreground hover:bg-secondary cursor-grab active:cursor-grabbing"}`}
+          data-testid={`drag-handle-category-${categoryId}`}
+        >
+          <GripVertical className="w-4 h-4" />
+        </button>
+      </td>
+      {children}
+    </tr>
+  );
+}
 
 export default function CategoryManager() {
   const queryClient = useQueryClient();
@@ -80,22 +139,39 @@ export default function CategoryManager() {
     }
   }
 
-  async function move(c: AdminCategory, direction: -1 | 1) {
-    const idx = sorted.findIndex((x) => x.id === c.id);
-    const swapIdx = idx + direction;
-    if (swapIdx < 0 || swapIdx >= sorted.length) return;
-    const other = sorted[swapIdx];
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = sorted.findIndex((x) => x.id === Number(active.id));
+    const newIndex = sorted.findIndex((x) => x.id === Number(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(sorted, oldIndex, newIndex);
+    const updates = reordered.map((c, i) => ({ id: c.id, sortOrder: (i + 1) * 10 }));
+    const updateMap = new Map(updates.map((u) => [u.id, u.sortOrder]));
+    const previous = queryClient.getQueryData(ADMIN_CATEGORIES_QUERY_KEY);
+    queryClient.setQueryData(ADMIN_CATEGORIES_QUERY_KEY, (old: AdminCategory[] | undefined) => {
+      if (!Array.isArray(old)) return old;
+      return old
+        .map((c) => updateMap.has(c.id) ? { ...c, sortOrder: updateMap.get(c.id)! } : c)
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    });
     setBusy(true);
     try {
-      await adminReorderCategories([
-        { id: c.id, sortOrder: other.sortOrder },
-        { id: other.id, sortOrder: c.sortOrder },
-      ]);
+      await adminReorderCategories(updates);
       invalidate();
+    } catch (err: any) {
+      queryClient.setQueryData(ADMIN_CATEGORIES_QUERY_KEY, previous);
+      setError(err?.message ?? "Failed to save new order");
     } finally {
       setBusy(false);
     }
-  }
+  }, [sorted, queryClient]);
 
   async function addCategory(e: React.FormEvent) {
     e.preventDefault();
@@ -200,10 +276,11 @@ export default function CategoryManager() {
           <div className="text-center text-muted-foreground py-12">No categories yet.</div>
         ) : (
           <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <table className="w-full text-sm">
               <thead className="bg-secondary/50 text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-3 text-left w-20">Order</th>
+                  <th className="px-3 py-3 text-left w-10"></th>
                   <th className="px-3 py-3 text-left">Name</th>
                   <th className="px-3 py-3 text-left">Planner Group</th>
                   <th className="px-3 py-3 text-center">Items</th>
@@ -212,30 +289,11 @@ export default function CategoryManager() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {sorted.map((c, idx) => {
+                <SortableContext items={sorted.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                {sorted.map((c) => {
                   const isEditing = editingId === c.id;
                   return (
-                    <tr key={c.id} data-testid={`row-category-${c.id}`}>
-                      <td className="px-3 py-3">
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => move(c, -1)}
-                            disabled={busy || idx === 0}
-                            className="p-1 rounded hover:bg-secondary disabled:opacity-30"
-                            data-testid={`button-up-${c.id}`}
-                          >
-                            <ArrowUp className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => move(c, 1)}
-                            disabled={busy || idx === sorted.length - 1}
-                            className="p-1 rounded hover:bg-secondary disabled:opacity-30"
-                            data-testid={`button-down-${c.id}`}
-                          >
-                            <ArrowDown className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
+                    <SortableCategoryRow key={c.id} categoryId={c.id} busy={busy}>
                       <td className="px-3 py-3 font-medium">
                         {isEditing ? (
                           <input
@@ -326,11 +384,13 @@ export default function CategoryManager() {
                           )}
                         </div>
                       </td>
-                    </tr>
+                    </SortableCategoryRow>
                   );
                 })}
+                </SortableContext>
               </tbody>
             </table>
+            </DndContext>
           </div>
         )}
 

@@ -5,8 +5,25 @@ import {
   Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
-  ArrowUp, ArrowDown, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck,
+  GripVertical, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck,
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -506,6 +523,29 @@ function MenuPicker({ menu, onPick }: {
 // from manually-added fees with the same label.
 const OTD_EXTRA_HOURS_FEE_ID = "otd-extra-hours";
 
+function SortableLineItem({
+  id,
+  children,
+}: {
+  id: string;
+  children: (handle: { listeners: any; attributes: any; isDragging: boolean }) => React.ReactNode;
+}) {
+  const { setNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    background: isDragging ? "var(--card)" : undefined,
+    position: isDragging ? "relative" : undefined,
+    zIndex: isDragging ? 10 : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className="space-y-1" data-testid={`line-item-${id}`}>
+      {children({ listeners: listeners ?? {}, attributes, isDragging })}
+    </div>
+  );
+}
+
 function QuoteEditor({
   lineItems, fees, discounts, quoteNotes, quoteExpiresAt,
   onChange, menu,
@@ -611,14 +651,17 @@ function QuoteEditor({
   function removeItem(id: string) {
     onChange({ lineItems: lineItems.filter(li => li.id !== id) });
   }
-  function moveItem(id: string, dir: -1 | 1) {
-    const idx = lineItems.findIndex(li => li.id === id);
-    if (idx < 0) return;
-    const next = idx + dir;
-    if (next < 0 || next >= lineItems.length) return;
-    const arr = lineItems.slice();
-    [arr[idx], arr[next]] = [arr[next], arr[idx]];
-    onChange({ lineItems: arr });
+  const lineItemSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  function handleLineItemsDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = lineItems.findIndex(li => li.id === active.id);
+    const newIndex = lineItems.findIndex(li => li.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    onChange({ lineItems: arrayMove(lineItems, oldIndex, newIndex) });
   }
   function addAdj(kind: "fee" | "discount") {
     const newRow: QuoteAdjustment = { id: uid(), label: kind === "fee" ? "Fee" : "Discount", kind: "fixed", amount: 0 };
@@ -737,34 +780,33 @@ function QuoteEditor({
           <p className="text-sm text-muted-foreground text-center py-4 italic">No line items yet.</p>
         ) : (
           <div className="space-y-3">
-            {lineItems.map((li, idx) => {
+            <DndContext
+              sensors={lineItemSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleLineItemsDragEnd}
+            >
+              <SortableContext items={lineItems.map(li => li.id)} strategy={verticalListSortingStrategy}>
+            {lineItems.map((li) => {
               const lineTotal = (Number(li.quantity) || 0) * (Number(li.unitPrice) || 0);
               const m = li.menuItemId != null ? menuById.get(li.menuItemId) : undefined;
               const descriptor = lineItemDescriptor(li);
               const isPan = li.pricingTemplate === "pan_sizes" && m && m.sizes.length > 0;
               return (
-                <div key={li.id} className="space-y-1">
+                <SortableLineItem key={li.id} id={li.id}>
+                  {(handle) => (
+                  <>
                   <div className="grid grid-cols-[36px_1fr_60px_90px_80px_28px] gap-2 items-center">
-                    <div className="flex flex-col items-center -my-1">
-                      <button
-                        type="button"
-                        onClick={() => moveItem(li.id, -1)}
-                        disabled={idx === 0}
-                        className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
-                        title="Move up"
-                      >
-                        <ArrowUp className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveItem(li.id, 1)}
-                        disabled={idx === lineItems.length - 1}
-                        className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
-                        title="Move down"
-                      >
-                        <ArrowDown className="w-3 h-3" />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      {...handle.attributes}
+                      {...handle.listeners}
+                      title="Drag to reorder"
+                      aria-label="Drag to reorder"
+                      className="p-1 mx-auto rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-grab active:cursor-grabbing"
+                      data-testid={`drag-handle-line-${li.id}`}
+                    >
+                      <GripVertical className="w-4 h-4" />
+                    </button>
                     <input
                       value={li.name}
                       onChange={e => updateItem(li.id, { name: e.target.value })}
@@ -822,9 +864,13 @@ function QuoteEditor({
                       ) : null}
                     </div>
                   )}
-                </div>
+                  </>
+                  )}
+                </SortableLineItem>
               );
             })}
+              </SortableContext>
+            </DndContext>
           </div>
         )}
 
