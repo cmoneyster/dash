@@ -389,17 +389,55 @@ router.put("/admin/catering/:id", async (req, res): Promise<void> => {
         updates.otdIncludedHours = cfg.includedHours.toFixed(2);
         updates.otdAdditionalHourRate = cfg.additionalHourRate.toFixed(2);
         updates.otdMaxAdditionalHours = cfg.maxAdditionalHours;
+
+        // Synthesize the OTD setup-fee row so a programmatic mode flip
+        // (without re-opening the editor — e.g. via API or a future
+        // bulk action) still produces a fee array that bills the setup
+        // fee. The amount tracks the snapshot, zeroed out / omitted
+        // once the food subtotal hits the waiver threshold so the
+        // orange info card and the totals always agree. Mirrors the
+        // QuoteEditor synthesizer (OTD_SETUP_FEE_ID = "otd-setup-fee").
+        const baseFees = (updates.fees as QuoteAdjustment[] | undefined) ?? current.fees ?? [];
+        const baseSubtotalNum = updates.subtotal != null
+          ? parseFloat(updates.subtotal as string)
+          : (current.subtotal != null ? parseFloat(current.subtotal) : 0);
+        const subtotalForWaiver = Number.isFinite(baseSubtotalNum) ? baseSubtotalNum : 0;
+        const waived = subtotalForWaiver >= cfg.feeWaiverThreshold;
+        const otherFees = baseFees.filter((f) => f.id !== "otd-setup-fee");
+        const nextFees = waived || cfg.setupFee <= 0
+          ? otherFees
+          : [
+              ...otherFees,
+              {
+                id: "otd-setup-fee",
+                label: "On the Dash — on-site setup fee",
+                kind: "fixed" as const,
+                amount: Math.round(cfg.setupFee * 100) / 100,
+              },
+            ];
+        // Only write back if something changed, to avoid pointless
+        // totals churn when an existing OTD inquiry is re-saved.
+        if (
+          nextFees.length !== baseFees.length
+          || nextFees.some((f, i) => f !== baseFees[i])
+        ) {
+          updates.fees = nextFees;
+          applyTotalsToUpdates(updates);
+        }
       } else {
         updates.otdSetupFee = null;
         updates.otdFeeWaiverThreshold = null;
         updates.otdIncludedHours = null;
         updates.otdAdditionalHourRate = null;
         updates.otdMaxAdditionalHours = null;
-        // Strip the synthesized OTD extra-hours fee row (if any) so a
-        // hidden upcharge doesn't carry over after switching to Drop-Off.
-        // Mirror the QuoteEditor's stable id so this stays in sync.
+        // Strip both synthesized OTD fee rows (extra-hours upcharge +
+        // on-site setup fee) so neither carries over as a hidden
+        // upcharge after switching to Drop-Off. Mirrors the
+        // QuoteEditor's stable ids so this stays in sync.
         const baseFees = (updates.fees as QuoteAdjustment[] | undefined) ?? current.fees ?? [];
-        const cleanedFees = baseFees.filter((f) => f.id !== "otd-extra-hours");
+        const cleanedFees = baseFees.filter(
+          (f) => f.id !== "otd-extra-hours" && f.id !== "otd-setup-fee",
+        );
         if (cleanedFees.length !== baseFees.length) {
           updates.fees = cleanedFees;
           applyTotalsToUpdates(updates);

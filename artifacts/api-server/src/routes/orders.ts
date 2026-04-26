@@ -5,6 +5,7 @@ import { computeEffectivePriceDetail } from "@workspace/pricing";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { sendNewInquiryAlert } from "../lib/sms";
+import { computeQuoteTotals } from "../lib/quote";
 
 const router: IRouter = Router();
 
@@ -239,6 +240,37 @@ router.post("/orders", async (req, res): Promise<void> => {
 
       const orderTotalStr = `$${total.toFixed(2)}`;
 
+      // Seed the editable Quote Builder fee array with the synthesized
+      // OTD setup-fee row when this cart was placed as On the Dash so
+      // the very first PDF the client receives bills the setup fee
+      // (matching what the cart already added to `total`). The row uses
+      // the same stable id the QuoteEditor + admin-catering toggle path
+      // use ("otd-setup-fee") so flips and re-saves stay deduped.
+      // Omitted when the food subtotal already cleared the waiver
+      // threshold so the row and the orange info card always agree.
+      const seededFees = isOtd
+        && subtotal < otdConfig.feeWaiverThreshold
+        && otdConfig.setupFee > 0
+        ? [
+            {
+              id: "otd-setup-fee",
+              label: "On the Dash — on-site setup fee",
+              kind: "fixed" as const,
+              amount: Math.round(otdConfig.setupFee * 100) / 100,
+            },
+          ]
+        : [];
+
+      // Seed the canonical quote totals (subtotal/feesTotal/discountsTotal/
+      // total) at insert time so every downstream consumer — the admin
+      // detail panel's orange OTD info card (whose waiver badge falls back
+      // to orderTotal when subtotal is null, double-counting the setup
+      // fee), the public quote PDF/JSON, and the Square invoice flow —
+      // sees the same numbers without first requiring an admin to open
+      // and re-save the Quote Builder. Mirrors the totals calc admin
+      // updates use (computeQuoteTotals).
+      const seededTotals = computeQuoteTotals(seededLineItems, seededFees, []);
+
       const [inquiryRow] = await db.insert(cateringInquiriesTable).values({
         clientName: customerName,
         clientEmail: customerEmail ?? null,
@@ -249,6 +281,12 @@ router.post("/orders", async (req, res): Promise<void> => {
         source: "cart",
         orderItems: orderItemsForInquiry,
         lineItems: seededLineItems,
+        fees: seededFees,
+        discounts: [],
+        subtotal: seededTotals.subtotal.toFixed(2),
+        feesTotal: seededTotals.feesTotal.toFixed(2),
+        discountsTotal: seededTotals.discountsTotal.toFixed(2),
+        total: seededTotals.total.toFixed(2),
         orderTotal: orderTotalStr,
         status: "inquiry",
         // Service mode + per-inquiry fee snapshot (see comment in

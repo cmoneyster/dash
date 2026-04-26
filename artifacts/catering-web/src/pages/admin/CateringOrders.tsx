@@ -462,11 +462,42 @@ function MenuPicker({ menu, onPick }: {
 // when staff bumps the stepper, and keeps the line easily distinguishable
 // from manually-added fees with the same label.
 const OTD_EXTRA_HOURS_FEE_ID = "otd-extra-hours";
+// Stable id for the synthesized OTD on-site setup fee row. Mirrors the
+// extra-hours pattern: kept out of the manual Fees editor (so admins can't
+// drift it from the snapshot) and stripped automatically when the inquiry
+// switches back to Drop-Off. The row's amount tracks the snapshot setup
+// fee, zeroed out (and removed) once the food subtotal hits the waiver
+// threshold so the orange info card and the quote totals always agree.
+const OTD_SETUP_FEE_ID = "otd-setup-fee";
+
+// Compute what the OTD setup-fee row should look like for a given snapshot
+// + subtotal, or null when no row should be present (Drop-Off, missing
+// snapshot, or subtotal at/above the waiver threshold). The label is
+// stable so persisted rows don't churn between renders.
+function computeOtdSetupFeeRow(
+  serviceMode: string | null,
+  setupFee: number | null,
+  waiverThreshold: number | null,
+  subtotal: number,
+): QuoteAdjustment | null {
+  if (serviceMode !== "on_the_dash") return null;
+  if (setupFee == null || !Number.isFinite(setupFee) || setupFee <= 0) return null;
+  if (waiverThreshold != null && Number.isFinite(waiverThreshold) && subtotal >= waiverThreshold) {
+    return null;
+  }
+  return {
+    id: OTD_SETUP_FEE_ID,
+    label: "On the Dash — on-site setup fee",
+    kind: "fixed",
+    amount: round2(setupFee),
+  };
+}
 
 function QuoteEditor({
   lineItems, fees, discounts, quoteNotes, quoteExpiresAt,
   onChange, menu,
-  serviceMode, otdAdditionalHourRate, otdMaxAdditionalHours,
+  serviceMode, otdSetupFee, otdFeeWaiverThreshold,
+  otdAdditionalHourRate, otdMaxAdditionalHours,
 }: {
   lineItems: QuoteLineItem[];
   fees: QuoteAdjustment[];
@@ -482,6 +513,8 @@ function QuoteEditor({
   }) => void;
   menu: AdminMenuItem[];
   serviceMode: string | null;
+  otdSetupFee: number | null;
+  otdFeeWaiverThreshold: number | null;
   otdAdditionalHourRate: number | null;
   otdMaxAdditionalHours: number | null;
 }) {
@@ -591,6 +624,14 @@ function QuoteEditor({
     ? Math.max(0, Math.floor(otdMaxAdditionalHours))
     : null;
   const otdExtraHoursRow = fees.find(f => f.id === OTD_EXTRA_HOURS_FEE_ID) ?? null;
+  // Capture every synthesized OTD row that lives outside the editable
+  // Fees list. Manual fee edit/remove handlers must re-attach these so
+  // a save flush can never serialize a fees array missing them — we
+  // can't rely on the auto-sync useEffect re-running before the patch
+  // gets debounced to the server.
+  const synthesizedOtdRows = fees.filter(f =>
+    f.id === OTD_EXTRA_HOURS_FEE_ID || f.id === OTD_SETUP_FEE_ID,
+  );
   const otdExtraHours = (() => {
     if (!otdExtraHoursRow || otdRate == null || otdRate <= 0) return 0;
     const n = Math.round(Number(otdExtraHoursRow.amount) / otdRate);
@@ -615,10 +656,38 @@ function QuoteEditor({
     };
     onChange({ fees: [...otherFees, row] });
   }
-  // Hide the synthesized OTD row from the regular Fees editor so it can't be
-  // hand-edited (any manual edit would drift from the stepper). Totals + PDF
-  // still pull from the full `fees` array.
-  const editableFees = fees.filter(f => f.id !== OTD_EXTRA_HOURS_FEE_ID);
+  // Hide the synthesized OTD rows from the regular Fees editor so they
+  // can't be hand-edited (any manual edit would drift from the snapshot
+  // / stepper). Totals + PDF still pull from the full `fees` array.
+  const editableFees = fees.filter(f =>
+    f.id !== OTD_EXTRA_HOURS_FEE_ID && f.id !== OTD_SETUP_FEE_ID,
+  );
+
+  // Auto-sync the synthesized OTD setup-fee row against the snapshot +
+  // current subtotal. The row is created when the inquiry is OTD and the
+  // subtotal is below the waiver threshold; removed (or kept absent)
+  // otherwise. Runs after every meaningful change so toggling service
+  // mode, editing line items across the waiver threshold, or loading an
+  // inquiry that pre-dates this synthesizer all converge on the right
+  // shape without admin intervention. Loop guard: we only call onChange
+  // when the desired row actually differs from what's stored.
+  useEffect(() => {
+    const desired = computeOtdSetupFeeRow(
+      serviceMode,
+      otdSetupFee,
+      otdFeeWaiverThreshold,
+      totals.subtotal,
+    );
+    const existing = fees.find(f => f.id === OTD_SETUP_FEE_ID) ?? null;
+    const sameAmount = desired != null && existing != null
+      && Math.abs(desired.amount - Number(existing.amount)) < 0.005
+      && desired.label === existing.label
+      && desired.kind === existing.kind;
+    if (!desired && !existing) return;
+    if (sameAmount) return;
+    const otherFees = fees.filter(f => f.id !== OTD_SETUP_FEE_ID);
+    onChange({ fees: desired ? [...otherFees, desired] : otherFees });
+  }, [serviceMode, otdSetupFee, otdFeeWaiverThreshold, totals.subtotal, fees, onChange]);
   function updateAdj(arr: QuoteAdjustment[], id: string, patch: Partial<QuoteAdjustment>, target: "fee" | "discount") {
     const next = arr.map(a => a.id === id ? { ...a, ...patch } : a);
     if (target === "fee") onChange({ fees: next });
@@ -804,11 +873,11 @@ function QuoteEditor({
           onAdd={() => addAdj("fee")}
           onUpdate={(id, patch) => {
             const nextEditable = editableFees.map(a => a.id === id ? { ...a, ...patch } : a);
-            onChange({ fees: otdExtraHoursRow ? [...nextEditable, otdExtraHoursRow] : nextEditable });
+            onChange({ fees: [...nextEditable, ...synthesizedOtdRows] });
           }}
           onRemove={(id) => {
             const nextEditable = editableFees.filter(a => a.id !== id);
-            onChange({ fees: otdExtraHoursRow ? [...nextEditable, otdExtraHoursRow] : nextEditable });
+            onChange({ fees: [...nextEditable, ...synthesizedOtdRows] });
           }}
         />
 
@@ -1920,6 +1989,8 @@ function DetailPanel({
                 onChange={(p) => patch(p as Partial<Inquiry>)}
                 menu={menu}
                 serviceMode={form.serviceMode ?? null}
+                otdSetupFee={form.otdSetupFee != null ? Number(form.otdSetupFee) : null}
+                otdFeeWaiverThreshold={form.otdFeeWaiverThreshold != null ? Number(form.otdFeeWaiverThreshold) : null}
                 otdAdditionalHourRate={form.otdAdditionalHourRate != null ? Number(form.otdAdditionalHourRate) : null}
                 otdMaxAdditionalHours={form.otdMaxAdditionalHours ?? null}
               />
