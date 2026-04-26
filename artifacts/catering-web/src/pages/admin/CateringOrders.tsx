@@ -12,6 +12,7 @@ import { formatCurrency } from "@/lib/utils";
 import {
   computeEffectivePriceDetail,
   computeOtdSetupFeeRow,
+  computeOtdSetupFeeWaivedDisplay,
   otdSetupFeeRowEquals,
   OTD_SETUP_FEE_ID,
   computeUninvoicedDelta,
@@ -912,6 +913,35 @@ function QuoteEditor({
               <span className="tabular-nums">{formatCurrency(f.computed)}</span>
             </div>
           ))}
+          {(() => {
+            // Ghost row for the OTD setup fee when the food subtotal cleared
+            // the per-inquiry waiver threshold. The fee was already stripped
+            // from `fees` (and therefore `totals.feesArr`) by the auto-sync
+            // effect above, so the admin sees no signal in the persisted
+            // fees array — render the original amount crossed out + a small
+            // "Waived (minimum met)" caption so they can confirm the waiver
+            // is actually in effect.
+            const waived = computeOtdSetupFeeWaivedDisplay(
+              serviceMode,
+              otdSetupFee,
+              otdFeeWaiverThreshold,
+              totals.subtotal,
+            );
+            if (!waived) return null;
+            return (
+              <div key="otd-waived-display" className="text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground truncate pr-2">{waived.label}</span>
+                  <span className="text-muted-foreground line-through tabular-nums">
+                    {formatCurrency(waived.originalAmount)}
+                  </span>
+                </div>
+                <div className="text-right text-emerald-700 text-[10px]">
+                  Waived — order met {formatCurrency(waived.waiverThreshold)} minimum
+                </div>
+              </div>
+            );
+          })()}
           {totals.discArr.map(d => (
             <div key={d.id} className="flex justify-between text-xs text-emerald-700">
               <span className="truncate pr-2">{d.label}{d.kind === "percent" ? ` (${d.amount}%)` : ""}</span>

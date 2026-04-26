@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
 import { Loader2, Download, AlertCircle, CalendarDays, MapPin, Users, CreditCard, CheckCircle2, MessageSquare, Check, X, Mail, Phone } from "lucide-react";
+import { computeOtdSetupFeeWaivedDisplay } from "@workspace/pricing";
 import { formatCurrency } from "@/lib/utils";
 import { TAX_DISCLOSURE, TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import {
@@ -71,6 +72,12 @@ type Quote = {
   discounts: Adjustment[];
   discountsTotal: number;
   total: number;
+  // OTD snapshot fields — used to render a struck-through "setup fee
+  // waived (minimum met)" ghost row in the totals block when the food
+  // subtotal cleared the per-inquiry waiver threshold.
+  serviceMode: string | null;
+  otdSetupFee: number | null;
+  otdFeeWaiverThreshold: number | null;
   square: {
     status: string | null;
     hostedUrl: string | null;
@@ -273,6 +280,34 @@ export default function PublicQuote() {
                 <span>{formatCurrency(f.computed)}</span>
               </div>
             ))}
+            {(() => {
+              // Ghost row for the OTD setup fee when it was waived because
+              // the food subtotal cleared the per-inquiry threshold. The fee
+              // is already absent from `quote.fees` (the shared pricing helper
+              // strips it), so this is purely informational — the original
+              // amount is shown crossed out with a small "Waived" caption so
+              // the customer can see what they saved.
+              const waived = computeOtdSetupFeeWaivedDisplay(
+                quote.serviceMode,
+                quote.otdSetupFee,
+                quote.otdFeeWaiverThreshold,
+                quote.subtotal,
+              );
+              if (!waived) return null;
+              return (
+                <div key="otd-waived-display" className="py-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{waived.label}</span>
+                    <span className="text-muted-foreground line-through">
+                      {formatCurrency(waived.originalAmount)}
+                    </span>
+                  </div>
+                  <div className="text-right text-xs text-emerald-700">
+                    Waived — order met {formatCurrency(waived.waiverThreshold)} minimum
+                  </div>
+                </div>
+              );
+            })()}
             {quote.discounts.map((d) => (
               <div key={d.id} className="flex justify-between py-1 text-emerald-700">
                 <span>{d.label}{d.kind === "percent" ? ` (${d.amount}%)` : ""}</span>

@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import type { CateringInquiry, QuoteAdjustment, QuoteLineItem } from "@workspace/db/schema";
+import { computeOtdSetupFeeWaivedDisplay } from "@workspace/pricing";
 import { TAX_DISCLOSURE } from "./tax";
 import {
   PAYMENT_TERMS_TITLE,
@@ -205,7 +206,17 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   // row (subtotal + fees + discounts + 1 divider + TOTAL); payment terms is
   // a heading + 3 bullets that always renders; notes is optional; footer sits
   // just inside the bottom margin.
-  const totalsRows = 1 + totals.fees.length + totals.discounts.length + 1; // subtotal + adj + TOTAL
+  const otdWaivedDisplay = computeOtdSetupFeeWaivedDisplay(
+    inquiry.serviceMode,
+    inquiry.otdSetupFee != null ? Number(inquiry.otdSetupFee) : null,
+    inquiry.otdFeeWaiverThreshold != null ? Number(inquiry.otdFeeWaiverThreshold) : null,
+    totals.subtotal,
+  );
+  // +1 for the ghost waived row (struck-through original amount + caption).
+  // The caption renders inline under the row, so reserve a touch of extra
+  // height by counting it as a row in the totals block height calc.
+  const totalsRows = 1 + totals.fees.length + totals.discounts.length + 1
+    + (otdWaivedDisplay ? 1 : 0); // subtotal + adj + waived ghost? + TOTAL
   // 12pt extra reserves room for the tax-disclosure line below TOTAL.
   const totalsHeight = 22 + totalsRows * 16 + 12 + 12;
   // Payment terms: ~16pt heading + ~16pt per bullet line + 12pt padding.
@@ -290,6 +301,44 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   for (const f of totals.fees) {
     const lab = f.kind === "percent" ? `${f.label} (${f.amount}%)` : f.label;
     totalRow(lab, fmtUSD(f.computed));
+  }
+  // Ghost row: when the OTD setup fee was waived because the food subtotal
+  // crossed the per-inquiry threshold, render the original fee with a
+  // strikethrough so the customer can see what they saved. The waived fee
+  // does NOT count toward the total — only the strikethrough text + a small
+  // grey "Waived (minimum met)" caption render here.
+  if (otdWaivedDisplay) {
+    const amountXStart = 470; // left edge of amount column (470..550, width 80)
+    const amountText = fmtUSD(otdWaivedDisplay.originalAmount);
+    doc.fillColor("#888").fontSize(10);
+    doc.text(otdWaivedDisplay.label, 320, y, { width: 140, align: "right" });
+    doc.text(amountText, amountXStart, y, { width: 80, align: "right" });
+    // Manual strike-through over the amount text so we don't pull in any
+    // pdfkit text-decoration deps. Amount is right-aligned in an 80pt
+    // column, so the right edge is fixed and we draw leftward by the
+    // measured glyph width.
+    const amountWidth = doc.widthOfString(amountText);
+    const amountRight = amountXStart + 80;
+    const strikeY = y + 5; // mid-height of a 10pt line
+    doc
+      .moveTo(amountRight - amountWidth, strikeY)
+      .lineTo(amountRight, strikeY)
+      .lineWidth(0.7)
+      .strokeColor("#888")
+      .stroke();
+    y += 12;
+    doc
+      .fillColor("#888")
+      .fontSize(8)
+      .text(
+        `Waived — order met ${fmtUSD(otdWaivedDisplay.waiverThreshold)} minimum`,
+        320,
+        y,
+        { width: 230, align: "right" },
+      );
+    y += 10;
+    // Restore default font size for any subsequent rows.
+    doc.fontSize(10);
   }
   for (const d of totals.discounts) {
     const lab = d.kind === "percent" ? `${d.label} (${d.amount}%)` : d.label;
@@ -386,6 +435,16 @@ export function publicQuoteFromInquiry(inquiry: CateringInquiry) {
     discounts: totals.discounts,
     discountsTotal: totals.discountsTotal,
     total: totals.total,
+    // OTD snapshot fields — exposed so the public quote page can render a
+    // crossed-out "On the Dash setup fee — waived (minimum met)" ghost row
+    // when the food subtotal cleared the per-inquiry waiver threshold. The
+    // shared `computeOtdSetupFeeWaivedDisplay` helper in @workspace/pricing
+    // is the source of truth for whether to render and what amount to show.
+    serviceMode: inquiry.serviceMode ?? null,
+    otdSetupFee: inquiry.otdSetupFee != null ? Number(inquiry.otdSetupFee) : null,
+    otdFeeWaiverThreshold: inquiry.otdFeeWaiverThreshold != null
+      ? Number(inquiry.otdFeeWaiverThreshold)
+      : null,
     // Square — exposed only when an invoice has been issued, so the public
     // quote page can render a "Pay deposit / Pay balance" CTA.
     square: inquiry.squareInvoiceId
