@@ -161,31 +161,42 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     doc.font(pickFont(inquiry.organization)).fontSize(10)
       .text(inquiry.organization, 50, doc.y);
   }
-  const emailLine = `Email: ${inquiry.clientEmail?.trim() || NOT_PROVIDED}`;
+  // Render label + value as two runs so the static "Email: " / "Phone: " /
+  // "Date: " / "Venue: " prefixes always stay in Helvetica and only the
+  // user-controlled value swaps to the CJK font when needed. `continued: true`
+  // keeps both runs on the same baseline.
+  const emailValue = inquiry.clientEmail?.trim() || NOT_PROVIDED;
   doc
-    .font(pickFont(emailLine))
+    .font(FONT_LATIN)
     .fontSize(9)
     .fillColor("#444")
-    .text(emailLine, 50, doc.y, { width: 260 });
-  const phoneLine = `Phone: ${inquiry.clientPhone?.trim() || NOT_PROVIDED}`;
+    .text("Email: ", 50, doc.y, { width: 260, continued: true })
+    .font(pickFont(emailValue))
+    .text(emailValue);
+  const phoneValue = inquiry.clientPhone?.trim() || NOT_PROVIDED;
   doc
-    .font(pickFont(phoneLine))
+    .font(FONT_LATIN)
     .fontSize(9)
     .fillColor("#444")
-    .text(phoneLine, 50, doc.y, { width: 260 });
+    .text("Phone: ", 50, doc.y, { width: 260, continued: true })
+    .font(pickFont(phoneValue))
+    .text(phoneValue);
   const leftBottom = doc.y;
 
   // Event details on the right — always render with placeholders so the
-  // venue line is consistently visible and prominent.
+  // venue line is consistently visible and prominent. Same label/value split
+  // as the client block above so static prefixes stay Helvetica.
   let rightY = clientTop;
   doc.font(FONT_LATIN).fontSize(9).fillColor("#666666").text("Event details", 320, rightY);
   rightY = doc.y;
-  const dateLine = `Date: ${inquiry.eventDate?.trim() || NOT_PROVIDED}`;
+  const dateValue = inquiry.eventDate?.trim() || NOT_PROVIDED;
   doc
-    .font(pickFont(dateLine))
+    .font(FONT_LATIN)
     .fontSize(10)
     .fillColor("#222")
-    .text(dateLine, 320, rightY, { width: 240 });
+    .text("Date: ", 320, rightY, { width: 240, continued: true })
+    .font(pickFont(dateValue))
+    .text(dateValue);
   rightY = doc.y;
   doc
     .font(FONT_LATIN)
@@ -193,12 +204,14 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     .fillColor("#222")
     .text(`Guests: ${inquiry.guestCount ?? NOT_PROVIDED}`, 320, rightY, { width: 240 });
   rightY = doc.y;
-  const venueLine = `Venue: ${inquiry.venueAddress?.trim() || NOT_PROVIDED}`;
+  const venueValue = inquiry.venueAddress?.trim() || NOT_PROVIDED;
   doc
-    .font(pickFont(venueLine))
+    .font(FONT_LATIN)
     .fontSize(10)
     .fillColor("#222")
-    .text(venueLine, 320, rightY, { width: 240 });
+    .text("Venue: ", 320, rightY, { width: 240, continued: true })
+    .font(pickFont(venueValue))
+    .text(venueValue);
   rightY = doc.y;
   doc.y = Math.max(leftBottom, rightY);
   doc.moveDown(0.6);
@@ -291,7 +304,16 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     const notesBodyHeight = doc.heightOfString(trimmedNotes, { width: 510 });
     notesHeight = 16 + notesBodyHeight + 12; // heading + body + padding
   }
-  const lineItemMaxY = 740 - totalsHeight - paymentTermsHeight - notesHeight - 8;
+  // For the page-1 line-items cap we clamp the notes contribution so a
+  // pathologically long notes field doesn't push items off page 1
+  // unnecessarily — the SAFE_BOTTOM safety net after the line-items loop will
+  // page-break to a fresh page if the totals + measured-full notes don't fit
+  // on the current page anyway. We still use the unclamped `notesHeight` for
+  // that check below; this clamp only affects when the items loop chooses to
+  // break.
+  const NOTES_RESERVATION_CAP = 80; // ~5 lines of 10pt notes, the typical case
+  const notesHeightForReservation = Math.min(notesHeight, NOTES_RESERVATION_CAP);
+  const lineItemMaxY = 740 - totalsHeight - paymentTermsHeight - notesHeightForReservation - 8;
 
   for (const li of totals.lineItems) {
     // Build a small descriptor below the name from sizing/per-unit info.
