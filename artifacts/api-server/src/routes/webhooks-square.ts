@@ -1,6 +1,9 @@
 import { Router, type IRouter, type Request } from "express";
 import { db } from "@workspace/db";
-import { cateringInquiriesTable } from "@workspace/db/schema";
+import {
+  cateringInquiriesTable,
+  cateringSupplementalInvoicesTable,
+} from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import {
   getSquareConfig,
@@ -82,13 +85,23 @@ router.post("/webhooks/square", async (req, res): Promise<void> => {
     return;
   }
 
-  // Look up our matching inquiry. If none, ack & ignore (could be a stale or
-  // unrelated invoice from the same Square account).
+  // Look up the matching row. The invoice id may belong to either the
+  // primary invoice (mirror cols on `catering_inquiries`) or to a
+  // supplemental invoice (`catering_supplemental_invoices`). We check
+  // both; if neither matches, ack & ignore (could be stale or unrelated
+  // to this app).
   const [inquiry] = await db
     .select()
     .from(cateringInquiriesTable)
     .where(eq(cateringInquiriesTable.squareInvoiceId, invoiceId));
-  if (!inquiry) {
+  const [supplemental] = inquiry
+    ? [null]
+    : await db
+        .select()
+        .from(cateringSupplementalInvoicesTable)
+        .where(eq(cateringSupplementalInvoicesTable.squareInvoiceId, invoiceId));
+
+  if (!inquiry && !supplemental) {
     res.json({ ok: true, ignored: true });
     return;
   }
@@ -104,33 +117,52 @@ router.post("/webhooks/square", async (req, res): Promise<void> => {
     return;
   }
 
-  const updates: Record<string, unknown> = {
-    squareInvoiceVersion: snap.invoiceVersion,
-    squareInvoiceStatus: snap.status,
-    squareHostedUrl: snap.hostedUrl,
-    squareAmountPaid: snap.amountPaidDollars.toFixed(2),
-    squareBalanceDue: snap.balanceDueDollars.toFixed(2),
-    updatedAt: new Date(),
-  };
-
-  // Stamp deposit/paid timestamps once on the appropriate transitions.
   const now = new Date();
-  if (snap.status === "PARTIALLY_PAID" && !inquiry.squareDepositPaidAt) {
-    updates.squareDepositPaidAt = now;
-    if (inquiry.status !== "confirmed") updates.status = "confirmed";
-  }
-  if (snap.status === "PAID") {
-    if (!inquiry.squareDepositPaidAt) updates.squareDepositPaidAt = now;
-    if (!inquiry.squarePaidInFullAt) updates.squarePaidInFullAt = now;
-    if (inquiry.status !== "confirmed" && inquiry.status !== "completed") {
-      updates.status = "confirmed";
-    }
-  }
 
-  await db
-    .update(cateringInquiriesTable)
-    .set(updates)
-    .where(eq(cateringInquiriesTable.id, inquiry.id));
+  if (inquiry) {
+    const updates: Record<string, unknown> = {
+      squareInvoiceVersion: snap.invoiceVersion,
+      squareInvoiceStatus: snap.status,
+      squareHostedUrl: snap.hostedUrl,
+      squareAmountPaid: snap.amountPaidDollars.toFixed(2),
+      squareBalanceDue: snap.balanceDueDollars.toFixed(2),
+      updatedAt: new Date(),
+    };
+    if (snap.status === "PARTIALLY_PAID" && !inquiry.squareDepositPaidAt) {
+      updates.squareDepositPaidAt = now;
+      if (inquiry.status !== "confirmed") updates.status = "confirmed";
+    }
+    if (snap.status === "PAID") {
+      if (!inquiry.squareDepositPaidAt) updates.squareDepositPaidAt = now;
+      if (!inquiry.squarePaidInFullAt) updates.squarePaidInFullAt = now;
+      if (inquiry.status !== "confirmed" && inquiry.status !== "completed") {
+        updates.status = "confirmed";
+      }
+    }
+    await db
+      .update(cateringInquiriesTable)
+      .set(updates)
+      .where(eq(cateringInquiriesTable.id, inquiry.id));
+  } else if (supplemental) {
+    // Supplementals have no deposit / inquiry-status side effects — they
+    // are pure additional charges. Just mirror the Square fields and
+    // stamp paid-in-full when it lands.
+    const updates: Record<string, unknown> = {
+      squareInvoiceVersion: snap.invoiceVersion,
+      squareInvoiceStatus: snap.status,
+      squareHostedUrl: snap.hostedUrl,
+      squareAmountPaid: snap.amountPaidDollars.toFixed(2),
+      squareBalanceDue: snap.balanceDueDollars.toFixed(2),
+      updatedAt: new Date(),
+    };
+    if (snap.status === "PAID" && !supplemental.squarePaidInFullAt) {
+      updates.squarePaidInFullAt = now;
+    }
+    await db
+      .update(cateringSupplementalInvoicesTable)
+      .set(updates)
+      .where(eq(cateringSupplementalInvoicesTable.id, supplemental.id));
+  }
 
   res.json({ ok: true });
 });

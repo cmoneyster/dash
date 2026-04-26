@@ -122,6 +122,16 @@ export const cateringInquiriesTable = pgTable("catering_inquiries", {
   squareDueAt: timestamp("square_due_at"),
   squareDepositPaidAt: timestamp("square_deposit_paid_at"),
   squarePaidInFullAt: timestamp("square_paid_in_full_at"),
+  // Frozen copy of the quote arrays at the moment the **primary** invoice
+  // was published. Used as the baseline for the "uninvoiced delta"
+  // computation in the supplemental-invoice flow (task #137). Re-issuing
+  // the primary after a cancel re-snapshots; clearing the primary on
+  // cancel also clears these. Inquiries whose primary was published
+  // before this column existed have NULL here and the supplemental flow
+  // stays disabled until/unless the primary is re-issued.
+  primarySnapshotLineItems: jsonb("primary_snapshot_line_items").$type<QuoteLineItem[]>(),
+  primarySnapshotFees: jsonb("primary_snapshot_fees").$type<QuoteAdjustment[]>(),
+  primarySnapshotDiscounts: jsonb("primary_snapshot_discounts").$type<QuoteAdjustment[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

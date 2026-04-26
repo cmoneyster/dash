@@ -127,12 +127,26 @@ type SquareOrderResponse = {
   };
 };
 
-async function createOrderForInquiry(cfg: SquareConfig, inquiry: CateringInquiry): Promise<string> {
-  const totals = computeQuoteTotals(
-    inquiry.lineItems as QuoteLineItem[] | null,
-    inquiry.fees as QuoteAdjustment[] | null,
-    inquiry.discounts as QuoteAdjustment[] | null,
-  );
+// Build a Square order from arbitrary line-item / fee / discount arrays.
+// Used by both the primary invoice path (rows pulled from the inquiry) and
+// the supplemental invoice path (rows = uninvoiced delta).
+//
+// `referenceId` lands on the Square order and is what shows up in the Square
+// dashboard search; `fallbackName` is the single-line description we use
+// when the caller passes an empty `lineItems` (only the primary path ever
+// hits this — the supplemental handler refuses to publish on empty rows).
+async function createOrderFromRows(
+  cfg: SquareConfig,
+  opts: {
+    referenceId: string;
+    lineItems: QuoteLineItem[] | null;
+    fees: QuoteAdjustment[] | null;
+    discounts: QuoteAdjustment[] | null;
+    fallbackName: string;
+    idempotencyKey: string;
+  },
+): Promise<string> {
+  const totals = computeQuoteTotals(opts.lineItems, opts.fees, opts.discounts);
 
   const lineItems: SquareLineItem[] = totals.lineItems.length > 0
     ? totals.lineItems.map(li => ({
@@ -142,7 +156,7 @@ async function createOrderForInquiry(cfg: SquareConfig, inquiry: CateringInquiry
         note: li.notes ?? undefined,
       }))
     : [{
-        name: `Catering — Quote ${inquiry.quoteNumber ?? `#${inquiry.id}`}`,
+        name: opts.fallbackName,
         quantity: "1",
         base_price_money: moneyUSD(totals.subtotal || 0),
       }];
@@ -158,12 +172,11 @@ async function createOrderForInquiry(cfg: SquareConfig, inquiry: CateringInquiry
     });
   }
 
-  const idempotencyKey = `order-inq-${inquiry.id}-${Date.now()}-${randomUUID()}`;
   const body: Record<string, unknown> = {
-    idempotency_key: idempotencyKey,
+    idempotency_key: opts.idempotencyKey,
     order: {
       location_id: cfg.locationId,
-      reference_id: `inquiry-${inquiry.id}`,
+      reference_id: opts.referenceId,
       line_items: lineItems,
       ...(adjustments.length > 0 && netAdjustmentDollars >= 0
         ? { service_charges: adjustments.map(a => ({ ...a, calculation_phase: "TOTAL_PHASE" })) }
@@ -176,6 +189,17 @@ async function createOrderForInquiry(cfg: SquareConfig, inquiry: CateringInquiry
 
   const resp = await squareFetch<SquareOrderResponse>(cfg, "/v2/orders", { method: "POST", body });
   return resp.order.id;
+}
+
+async function createOrderForInquiry(cfg: SquareConfig, inquiry: CateringInquiry): Promise<string> {
+  return createOrderFromRows(cfg, {
+    referenceId: `inquiry-${inquiry.id}`,
+    lineItems: inquiry.lineItems as QuoteLineItem[] | null,
+    fees: inquiry.fees as QuoteAdjustment[] | null,
+    discounts: inquiry.discounts as QuoteAdjustment[] | null,
+    fallbackName: `Catering — Quote ${inquiry.quoteNumber ?? `#${inquiry.id}`}`,
+    idempotencyKey: `order-inq-${inquiry.id}-${Date.now()}-${randomUUID()}`,
+  });
 }
 
 // ── Invoice create + publish ──────────────────────────────────────────────────
@@ -306,6 +330,112 @@ export async function createAndPublishInvoiceForInquiry(opts: {
   });
 
   // 5) Publish — this triggers Square to email the customer
+  const published = await squareFetch<SquareInvoiceResponse>(
+    cfg,
+    `/v2/invoices/${encodeURIComponent(created.invoice.id)}/publish`,
+    {
+      method: "POST",
+      body: {
+        version: created.invoice.version,
+        idempotency_key: `inv-pub-${created.invoice.id}-${Date.now()}`,
+      },
+    },
+  );
+
+  return {
+    invoiceId: published.invoice.id,
+    invoiceVersion: published.invoice.version,
+    orderId: published.invoice.order_id,
+    status: published.invoice.status,
+    hostedUrl: published.invoice.public_url ?? null,
+    balanceDueCents: published.invoice.next_payment_amount_money?.amount ?? dollarsToCents(totals.total),
+  };
+}
+
+// ── Supplemental invoice (post-event extras) ─────────────────────────────────
+//
+// Issues an additional Square invoice billed to the same customer as the
+// inquiry's primary invoice, containing only the delta rows the caller
+// supplies (the "uninvoiced delta"). Single BALANCE payment_request due
+// today — there is no second deposit/balance schedule.
+//
+// The primary invoice is never touched: this is purely additive. The caller
+// is responsible for computing the delta (use `computeUninvoicedDelta`
+// from `@workspace/pricing`) and persisting the resulting child row to
+// `cateringSupplementalInvoicesTable`.
+
+export async function createAndPublishSupplementalInvoice(opts: {
+  inquiry: CateringInquiry;
+  lineItems: QuoteLineItem[];
+  fees: QuoteAdjustment[];
+  discounts: QuoteAdjustment[];
+  // Per-inquiry monotonic sequence used in the Square invoice title /
+  // description so the merchant + customer can tell supplementals apart
+  // ("Supplemental #1", "#2", …).
+  supplementSeq: number;
+}): Promise<CreatedInvoice> {
+  const cfg = getSquareConfig();
+  if (!cfg) throw new Error("Square is not configured");
+
+  const { inquiry, lineItems, fees, discounts, supplementSeq } = opts;
+
+  if (!inquiry.clientEmail?.trim()) {
+    throw new Error("Square invoices require the client to have an email on file");
+  }
+
+  const totals = computeQuoteTotals(lineItems, fees, discounts);
+  if (totals.total <= 0) {
+    throw new Error("Supplemental invoice total must be greater than $0");
+  }
+
+  // 1) Customer (find-or-create by email — same Square customer as primary)
+  const customerId = await ensureCustomer(cfg, {
+    email: inquiry.clientEmail.trim(),
+    givenName: inquiry.clientName,
+    phone: inquiry.clientPhone,
+    organization: inquiry.organization,
+  });
+
+  // 2) Order built from the delta rows
+  const orderId = await createOrderFromRows(cfg, {
+    referenceId: `inquiry-${inquiry.id}-supp-${supplementSeq}`,
+    lineItems,
+    fees,
+    discounts,
+    fallbackName: `Supplemental #${supplementSeq} — Quote ${inquiry.quoteNumber ?? `#${inquiry.id}`}`,
+    idempotencyKey: `order-inq-${inquiry.id}-supp-${supplementSeq}-${Date.now()}-${randomUUID()}`,
+  });
+
+  // 3) Single BALANCE payment_request due today.
+  const todayIsoDate = new Date().toISOString().slice(0, 10);
+  const paymentRequests = [{
+    request_type: "BALANCE",
+    due_date: todayIsoDate,
+    automatic_payment_source: "NONE",
+  }];
+
+  // 4) Create invoice (draft)
+  const titleSuffix = `Supplemental #${supplementSeq}`;
+  const createBody = {
+    idempotency_key: `inv-create-supp-${inquiry.id}-${supplementSeq}-${Date.now()}-${randomUUID()}`,
+    invoice: {
+      location_id: cfg.locationId,
+      order_id: orderId,
+      primary_recipient: { customer_id: customerId },
+      payment_requests: paymentRequests,
+      delivery_method: "EMAIL",
+      accepted_payment_methods: { card: true, square_gift_card: false, bank_account: false },
+      title: `Catering ${inquiry.quoteNumber ?? `Quote #${inquiry.id}`} — ${titleSuffix}`,
+      description: `Additional charges for your catering order${inquiry.eventDate ? ` on ${inquiry.eventDate}` : ""}.`,
+      scheduled_at: undefined,
+    },
+  };
+  const created = await squareFetch<SquareInvoiceResponse>(cfg, "/v2/invoices", {
+    method: "POST",
+    body: createBody,
+  });
+
+  // 5) Publish — Square emails the customer.
   const published = await squareFetch<SquareInvoiceResponse>(
     cfg,
     `/v2/invoices/${encodeURIComponent(created.invoice.id)}/publish`,

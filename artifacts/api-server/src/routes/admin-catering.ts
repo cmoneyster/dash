@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request } from "express";
 import { db } from "@workspace/db";
 import {
   cateringInquiriesTable,
+  cateringSupplementalInvoicesTable,
   sharedPlansTable,
   planItemsTable,
   menuItemsTable,
@@ -9,12 +10,19 @@ import {
 } from "@workspace/db/schema";
 import type {
   CateringInquiry,
+  CateringSupplementalInvoice,
   QuoteAdjustment,
   QuoteLineItem,
   QuoteReply,
+  SupplementalLinesSnapshot,
 } from "@workspace/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
-import { computeOtdSetupFeeRow, otdSetupFeeRowEquals, OTD_SETUP_FEE_ID } from "@workspace/pricing";
+import { and, eq, desc, ne, sql, inArray } from "drizzle-orm";
+import {
+  computeOtdSetupFeeRow,
+  otdSetupFeeRowEquals,
+  OTD_SETUP_FEE_ID,
+  computeUninvoicedDelta,
+} from "@workspace/pricing";
 import { sendNewInquiryAlert } from "../lib/sms";
 import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
 import { sendMail } from "../lib/mail";
@@ -28,12 +36,59 @@ import { objectStorageClient } from "../lib/objectStorage";
 import {
   isSquareConfigured,
   createAndPublishInvoiceForInquiry,
+  createAndPublishSupplementalInvoice,
   cancelInvoice,
   getInvoiceSnapshot,
   SquareApiError,
   type DepositSpec,
 } from "../lib/square";
 import { randomUUID } from "crypto";
+
+// Supplemental statuses that block primary-invoice cancellation. Two
+// groups:
+//   1) Live Square statuses where the customer can still be charged:
+//      DRAFT / UNPAID / SCHEDULED / PARTIALLY_PAID.
+//   2) In-product transient/recovery states for the two-phase issuance:
+//      - PENDING:             phase-1 reservation; phase-2 publish may
+//                             still land a live Square invoice. Blocking
+//                             primary cancel here closes the race where
+//                             cancel slips between reservation and publish.
+//      - AWAITING_RECONCILE:  phase-2 published to Square but the finalize
+//                             txn failed mid-flight. The Square invoice
+//                             is live; the row holds its IDs but the
+//                             primary snapshot was not rolled forward.
+//                             Admin must reconcile (refresh/cancel)
+//                             before primary cancel is safe.
+// Terminal statuses (PAID / REFUNDED / CANCELED / FAILED) do NOT block.
+const OPEN_SUPP_STATUSES = new Set([
+  "DRAFT", "UNPAID", "SCHEDULED", "PARTIALLY_PAID",
+  "PENDING", "AWAITING_RECONCILE",
+]);
+
+function isOpenSupplemental(s: CateringSupplementalInvoice): boolean {
+  return OPEN_SUPP_STATUSES.has((s.squareInvoiceStatus ?? "").toUpperCase());
+}
+
+// Embed supplementals on inquiry GET responses so the admin UI can render
+// the supplemental sub-panel (delta preview, list, cancel guard) without
+// an extra round-trip per inquiry.
+async function loadSupplementalsByInquiryIds(
+  inquiryIds: number[],
+): Promise<Map<number, CateringSupplementalInvoice[]>> {
+  const map = new Map<number, CateringSupplementalInvoice[]>();
+  if (inquiryIds.length === 0) return map;
+  const rows = await db
+    .select()
+    .from(cateringSupplementalInvoicesTable)
+    .where(inArray(cateringSupplementalInvoicesTable.cateringInquiryId, inquiryIds))
+    .orderBy(cateringSupplementalInvoicesTable.cateringInquiryId, cateringSupplementalInvoicesTable.seq);
+  for (const r of rows) {
+    const arr = map.get(r.cateringInquiryId) ?? [];
+    arr.push(r);
+    map.set(r.cateringInquiryId, arr);
+  }
+  return map;
+}
 
 const router: IRouter = Router();
 
@@ -222,7 +277,8 @@ router.get("/admin/catering", async (req, res) => {
       .select()
       .from(cateringInquiriesTable)
       .orderBy(desc(cateringInquiriesTable.createdAt));
-    res.json(inquiries);
+    const suppMap = await loadSupplementalsByInquiryIds(inquiries.map(i => i.id));
+    res.json(inquiries.map(i => ({ ...i, supplementals: suppMap.get(i.id) ?? [] })));
   } catch (err) {
     req.log.error({ err }, "Error listing catering inquiries");
     res.status(500).json({ error: "Failed to fetch inquiries" });
@@ -237,7 +293,8 @@ router.get("/admin/catering/:id", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Inquiry not found" });
       return;
     }
-    res.json(inquiry);
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    res.json({ ...inquiry, supplementals: suppMap.get(id) ?? [] });
   } catch (err) {
     req.log.error({ err }, "Error fetching catering inquiry");
     res.status(500).json({ error: "Failed to fetch inquiry" });
@@ -925,6 +982,14 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
       dueDate,
     });
 
+    // Deep-copy the live quote arrays into the primary snapshot columns so
+    // the supplemental-invoice flow has a stable "what we already billed"
+    // baseline. JSON round-trip is the simplest safe deep clone for the
+    // jsonb shape (no Dates, no functions, only primitives + arrays).
+    const snapshotLineItems = JSON.parse(JSON.stringify(inquiry.lineItems ?? [])) as QuoteLineItem[];
+    const snapshotFees = JSON.parse(JSON.stringify(inquiry.fees ?? [])) as QuoteAdjustment[];
+    const snapshotDiscounts = JSON.parse(JSON.stringify(inquiry.discounts ?? [])) as QuoteAdjustment[];
+
     const updates: Record<string, unknown> = {
       squareInvoiceId: created.invoiceId,
       squareInvoiceVersion: created.invoiceVersion,
@@ -936,6 +1001,9 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
       squareDepositKind: deposit.kind === "none" ? null : deposit.kind,
       squareDepositValue: deposit.kind === "none" ? null : String(deposit.value),
       squareDueAt: dueDate ? new Date(`${dueDate}T00:00:00`) : null,
+      primarySnapshotLineItems: snapshotLineItems,
+      primarySnapshotFees: snapshotFees,
+      primarySnapshotDiscounts: snapshotDiscounts,
       updatedAt: new Date(),
     };
 
@@ -944,7 +1012,8 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
       .set(updates)
       .where(eq(cateringInquiriesTable.id, id))
       .returning();
-    res.json({ ok: true, inquiry: updated });
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    res.json({ ok: true, inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] } });
   } catch (err) {
     if (err instanceof SquareApiError) {
       req.log.error({ status: err.status, errors: err.errors }, "Square invoice create failed");
@@ -965,43 +1034,85 @@ router.post("/admin/catering/:id/square/cancel", async (req, res): Promise<void>
       res.status(503).json({ error: "Square is not configured" });
       return;
     }
-    const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-    if (!inquiry) {
-      res.status(404).json({ error: "Inquiry not found" });
-      return;
-    }
-    if (!inquiry.squareInvoiceId || inquiry.squareInvoiceVersion == null) {
-      res.status(400).json({ error: "No Square invoice to cancel" });
-      return;
-    }
-    if (inquiry.squareInvoiceStatus === "PAID" || inquiry.squarePaidInFullAt) {
-      res.status(400).json({ error: "Cannot cancel a paid invoice" });
-      return;
-    }
+    // To close the cancel-vs-supplement race we hold the FOR UPDATE
+    // inquiry-row lock across the entire critical section: validation,
+    // the Square cancel call, AND the local clear UPDATE. That way a
+    // concurrent supplement-phase-1 either:
+    //   (a) blocks on FOR UPDATE until this txn commits, then reads
+    //       the cleared primary (squareInvoiceId NULL) and bails on
+    //       "no_primary"; or
+    //   (b) committed its PENDING reservation row before us, in which
+    //       case our open-supps check sees PENDING (now in
+    //       OPEN_SUPP_STATUSES) and we 409 here.
+    // We deliberately accept holding the row lock across Square's HTTP
+    // call: cancel is admin-only, low-frequency, and the alternative
+    // (a separate "cancel-in-flight" guard column) requires schema
+    // churn for no real benefit. If Square cancel throws the txn rolls
+    // back atomically and the inquiry stays exactly as it was.
+    const result = await db.transaction(async (tx) => {
+      const [inquiry] = await tx
+        .select()
+        .from(cateringInquiriesTable)
+        .where(eq(cateringInquiriesTable.id, id))
+        .for("update");
+      if (!inquiry) return { kind: "not_found" as const };
+      if (!inquiry.squareInvoiceId || inquiry.squareInvoiceVersion == null) {
+        return { kind: "no_invoice" as const };
+      }
+      if (inquiry.squareInvoiceStatus === "PAID" || inquiry.squarePaidInFullAt) {
+        return { kind: "paid" as const };
+      }
+      const existingSupps = await tx
+        .select()
+        .from(cateringSupplementalInvoicesTable)
+        .where(eq(cateringSupplementalInvoicesTable.cateringInquiryId, id));
+      const openSupps = existingSupps.filter(isOpenSupplemental);
+      if (openSupps.length > 0) {
+        return { kind: "open_supps" as const, count: openSupps.length };
+      }
 
-    await cancelInvoice(inquiry.squareInvoiceId, inquiry.squareInvoiceVersion);
+      await cancelInvoice(inquiry.squareInvoiceId, inquiry.squareInvoiceVersion);
 
-    // Clear Square fields so a fresh invoice can be issued.
-    const [updated] = await db
-      .update(cateringInquiriesTable)
-      .set({
-        squareInvoiceId: null,
-        squareInvoiceVersion: null,
-        squareOrderId: null,
-        squareInvoiceStatus: "CANCELED",
-        squareHostedUrl: null,
-        squareAmountPaid: null,
-        squareBalanceDue: null,
-        squareDepositKind: null,
-        squareDepositValue: null,
-        squareDueAt: null,
-        squareDepositPaidAt: null,
-        squarePaidInFullAt: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(cateringInquiriesTable.id, id))
-      .returning();
-    res.json({ ok: true, inquiry: updated });
+      // Clear Square fields + the primary snapshot so a fresh invoice
+      // can be issued cleanly. Re-issuing the primary will re-snapshot
+      // from the (possibly further-edited) live arrays.
+      const [updated] = await tx
+        .update(cateringInquiriesTable)
+        .set({
+          squareInvoiceId: null,
+          squareInvoiceVersion: null,
+          squareOrderId: null,
+          squareInvoiceStatus: "CANCELED",
+          squareHostedUrl: null,
+          squareAmountPaid: null,
+          squareBalanceDue: null,
+          squareDepositKind: null,
+          squareDepositValue: null,
+          squareDueAt: null,
+          squareDepositPaidAt: null,
+          squarePaidInFullAt: null,
+          primarySnapshotLineItems: null,
+          primarySnapshotFees: null,
+          primarySnapshotDiscounts: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(cateringInquiriesTable.id, id))
+        .returning();
+      return { kind: "ok" as const, updated };
+    });
+
+    if (result.kind === "not_found") { res.status(404).json({ error: "Inquiry not found" }); return; }
+    if (result.kind === "no_invoice") { res.status(400).json({ error: "No Square invoice to cancel" }); return; }
+    if (result.kind === "paid") { res.status(400).json({ error: "Cannot cancel a paid invoice" }); return; }
+    if (result.kind === "open_supps") {
+      res.status(409).json({
+        error: `Cancel the ${result.count} outstanding supplemental invoice${result.count === 1 ? "" : "s"} first.`,
+      });
+      return;
+    }
+    const updated = result.updated;
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    res.json({ ok: true, inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] } });
   } catch (err) {
     if (err instanceof SquareApiError) {
       req.log.error({ status: err.status, errors: err.errors }, "Square invoice cancel failed");
@@ -1010,6 +1121,422 @@ router.post("/admin/catering/:id/square/cancel", async (req, res): Promise<void>
     }
     req.log.error({ err }, "Error cancelling Square invoice");
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to cancel invoice" });
+  }
+});
+
+// ── Square: supplemental invoice (post-event extras) ─────────────────────────
+//
+// Creates a *second* Square invoice for the uninvoiced delta since the
+// primary was published. The primary invoice is never modified.
+
+router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (!isSquareConfigured()) {
+    res.status(503).json({
+      error: "Square is not configured. Add SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID.",
+    });
+    return;
+  }
+
+  // ── Phase 1: reserve a seq slot. Inside a single transaction we lock
+  // the inquiry row, recompute the delta, decide nextSeq, and INSERT a
+  // PENDING child row that claims (cateringInquiryId, seq) via the
+  // unique index. Any concurrent request will then either wait on the
+  // FOR UPDATE lock or fail at insert time on the unique index — we
+  // can never publish two Square invoices for the same seq.
+  let reservation: {
+    suppRowId: number;
+    nextSeq: number;
+    inquiry: typeof cateringInquiriesTable.$inferSelect;
+    delta: ReturnType<typeof computeUninvoicedDelta>;
+    linesSnapshot: SupplementalLinesSnapshot;
+    deltaLineItems: QuoteLineItem[];
+    deltaFees: QuoteAdjustment[];
+    deltaDiscounts: QuoteAdjustment[];
+  };
+  try {
+    const prep = await db.transaction(async (tx) => {
+      const [inq] = await tx
+        .select()
+        .from(cateringInquiriesTable)
+        .where(eq(cateringInquiriesTable.id, id))
+        .for("update");
+      if (!inq) return { kind: "not_found" as const };
+      if (!inq.squareInvoiceId || !inq.primarySnapshotLineItems) {
+        return { kind: "no_primary" as const };
+      }
+      if (!inq.clientEmail?.trim()) return { kind: "no_email" as const };
+
+      const delta = computeUninvoicedDelta({
+        currentLineItems: (inq.lineItems ?? []) as QuoteLineItem[],
+        currentFees: (inq.fees ?? []) as QuoteAdjustment[],
+        currentDiscounts: (inq.discounts ?? []) as QuoteAdjustment[],
+        snapshotLineItems: (inq.primarySnapshotLineItems ?? []) as QuoteLineItem[],
+        snapshotFees: (inq.primarySnapshotFees ?? []) as QuoteAdjustment[],
+        snapshotDiscounts: (inq.primarySnapshotDiscounts ?? []) as QuoteAdjustment[],
+      });
+      if (delta.deltaTotal <= 0) return { kind: "no_delta" as const };
+
+      const existingSupps = await tx
+        .select()
+        .from(cateringSupplementalInvoicesTable)
+        .where(eq(cateringSupplementalInvoicesTable.cateringInquiryId, id));
+      const nextSeq = existingSupps.reduce((m, s) => Math.max(m, s.seq), 0) + 1;
+
+      const priorSnapshotLineItems = JSON.parse(JSON.stringify(inq.primarySnapshotLineItems ?? [])) as QuoteLineItem[];
+      const priorSnapshotFees = JSON.parse(JSON.stringify(inq.primarySnapshotFees ?? [])) as QuoteAdjustment[];
+      const priorSnapshotDiscounts = JSON.parse(JSON.stringify(inq.primarySnapshotDiscounts ?? [])) as QuoteAdjustment[];
+
+      const deltaLineItems = delta.deltaLineItems as unknown as QuoteLineItem[];
+      const deltaFees = delta.deltaFees as unknown as QuoteAdjustment[];
+      const deltaDiscounts = delta.deltaDiscounts as unknown as QuoteAdjustment[];
+      const linesSnapshot: SupplementalLinesSnapshot = {
+        lineItems: deltaLineItems,
+        fees: deltaFees,
+        discounts: deltaDiscounts,
+      };
+
+      // Reservation INSERT — claims the (inquiryId, seq) unique slot.
+      // squareInvoiceId is null until phase 2 finalizes; status PENDING
+      // is included in OPEN_SUPP_STATUSES so a concurrent primary
+      // cancel that races in between this commit and phase 2 will see
+      // the PENDING row and 409. The UI hides PENDING rows so this
+      // brief reservation window does not flicker into the admin list.
+      const [reserved] = await tx.insert(cateringSupplementalInvoicesTable).values({
+        cateringInquiryId: id,
+        seq: nextSeq,
+        squareInvoiceId: null,
+        squareInvoiceVersion: null,
+        squareOrderId: null,
+        squareInvoiceStatus: "PENDING",
+        squareHostedUrl: null,
+        squareAmountPaid: "0.00",
+        squareBalanceDue: delta.deltaTotal.toFixed(2),
+        squareDueAt: new Date(),
+        linesSnapshot,
+        amountTotal: delta.deltaTotal.toFixed(2),
+        priorSnapshotLineItems,
+        priorSnapshotFees,
+        priorSnapshotDiscounts,
+      }).returning();
+
+      return {
+        kind: "ok" as const,
+        suppRowId: reserved.id,
+        nextSeq,
+        inquiry: inq,
+        delta,
+        linesSnapshot,
+        deltaLineItems, deltaFees, deltaDiscounts,
+      };
+    });
+
+    if (prep.kind === "not_found") { res.status(404).json({ error: "Inquiry not found" }); return; }
+    if (prep.kind === "no_primary") { res.status(409).json({ error: "Issue the primary Square invoice before sending a supplemental." }); return; }
+    if (prep.kind === "no_email") { res.status(400).json({ error: "Client must have an email on file" }); return; }
+    if (prep.kind === "no_delta") { res.status(400).json({ error: "No new charges since the primary invoice — nothing to bill." }); return; }
+
+    reservation = prep;
+  } catch (err) {
+    req.log.error({ err }, "Error reserving supplemental seq");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to reserve supplemental seq" });
+    return;
+  }
+
+  // ── Phase 2a: publish to Square (no DB lock held). If this throws,
+  // nothing was sent to the customer — mark the reservation row FAILED
+  // and bail. The seq stays claimed; the next issuance picks seq+1.
+  let created: Awaited<ReturnType<typeof createAndPublishSupplementalInvoice>>;
+  try {
+    created = await createAndPublishSupplementalInvoice({
+      inquiry: reservation.inquiry,
+      lineItems: reservation.deltaLineItems,
+      fees: reservation.deltaFees,
+      discounts: reservation.deltaDiscounts,
+      supplementSeq: reservation.nextSeq,
+    });
+  } catch (err) {
+    try {
+      await db
+        .update(cateringSupplementalInvoicesTable)
+        .set({ squareInvoiceStatus: "FAILED", updatedAt: new Date() })
+        .where(eq(cateringSupplementalInvoicesTable.id, reservation.suppRowId));
+    } catch (cleanupErr) {
+      req.log.error(
+        { err: cleanupErr, suppRowId: reservation.suppRowId },
+        "Failed to mark supplemental reservation FAILED after Square publish error",
+      );
+    }
+    if (err instanceof SquareApiError) {
+      req.log.error({ status: err.status, errors: err.errors, suppRowId: reservation.suppRowId },
+        "Square supplemental invoice create failed");
+      res.status(502).json({ error: err.message });
+      return;
+    }
+    req.log.error({ err, suppRowId: reservation.suppRowId },
+      "Error publishing Square supplemental invoice");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create supplemental invoice" });
+    return;
+  }
+
+  // Log the Square ids BEFORE any DB writes so a freak DB failure
+  // between publish and the finalize step can still be reconciled
+  // by hand from the pino logs.
+  req.log.info(
+    { suppRowId: reservation.suppRowId, invoiceId: created.invoiceId, orderId: created.orderId },
+    "Square supplemental published; finalizing DB row",
+  );
+
+  // ── Phase 2b: finalize. Single txn that (1) UPDATEs the reservation
+  // row with the live Square ids/status and (2) rolls the inquiry's
+  // primary snapshot forward so the next computeUninvoicedDelta returns
+  // zero until the admin makes further edits.
+  //
+  // If this txn fails the Square invoice is already live and chargeable.
+  // Recovery: persist the Square ids on the row in a minimal UPDATE and
+  // flip status to AWAITING_RECONCILE so:
+  //   - the webhook can match the row by squareInvoiceId,
+  //   - refresh / cancel handlers can address it,
+  //   - it blocks primary cancel via OPEN_SUPP_STATUSES,
+  //   - it surfaces in the admin UI for manual follow-up.
+  // The snapshot is intentionally NOT rolled forward — the next
+  // supplement issuance would otherwise re-bill the same delta.
+  try {
+    const updated = await db.transaction(async (tx) => {
+      await tx
+        .update(cateringSupplementalInvoicesTable)
+        .set({
+          squareInvoiceId: created.invoiceId,
+          squareInvoiceVersion: created.invoiceVersion,
+          squareOrderId: created.orderId,
+          squareInvoiceStatus: created.status,
+          squareHostedUrl: created.hostedUrl,
+          squareBalanceDue: (created.balanceDueCents / 100).toFixed(2),
+          updatedAt: new Date(),
+        })
+        .where(eq(cateringSupplementalInvoicesTable.id, reservation.suppRowId));
+
+      const newSnapshotLineItems = JSON.parse(JSON.stringify(reservation.inquiry.lineItems ?? [])) as QuoteLineItem[];
+      const newSnapshotFees = JSON.parse(JSON.stringify(reservation.inquiry.fees ?? [])) as QuoteAdjustment[];
+      const newSnapshotDiscounts = JSON.parse(JSON.stringify(reservation.inquiry.discounts ?? [])) as QuoteAdjustment[];
+      const [u] = await tx
+        .update(cateringInquiriesTable)
+        .set({
+          primarySnapshotLineItems: newSnapshotLineItems,
+          primarySnapshotFees: newSnapshotFees,
+          primarySnapshotDiscounts: newSnapshotDiscounts,
+          updatedAt: new Date(),
+        })
+        .where(eq(cateringInquiriesTable.id, id))
+        .returning();
+      return u;
+    });
+
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    const insertedSupp = (suppMap.get(id) ?? []).find(s => s.id === reservation.suppRowId);
+    res.json({
+      ok: true,
+      inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] },
+      supplemental: insertedSupp,
+    });
+  } catch (err) {
+    try {
+      await db
+        .update(cateringSupplementalInvoicesTable)
+        .set({
+          squareInvoiceId: created.invoiceId,
+          squareInvoiceVersion: created.invoiceVersion,
+          squareOrderId: created.orderId,
+          squareInvoiceStatus: "AWAITING_RECONCILE",
+          squareHostedUrl: created.hostedUrl,
+          squareBalanceDue: (created.balanceDueCents / 100).toFixed(2),
+          updatedAt: new Date(),
+        })
+        .where(eq(cateringSupplementalInvoicesTable.id, reservation.suppRowId));
+    } catch (cleanupErr) {
+      req.log.error(
+        { err: cleanupErr, suppRowId: reservation.suppRowId,
+          invoiceId: created.invoiceId, orderId: created.orderId },
+        "AWAITING_RECONCILE persist failed; orphaned supplemental — see logged Square ids",
+      );
+    }
+    req.log.error({ err, suppRowId: reservation.suppRowId, invoiceId: created.invoiceId },
+      "Finalize txn failed after Square publish; row marked AWAITING_RECONCILE");
+    res.status(500).json({
+      error: "Supplemental invoice published to Square but local finalize failed. The row is marked AWAITING_RECONCILE — please refresh from the admin panel.",
+    });
+  }
+});
+
+// ── Square: supplemental refresh ─────────────────────────────────────────────
+
+router.post("/admin/catering/:id/square/supplement/:supplementId/refresh", async (req, res): Promise<void> => {
+  try {
+    const inquiryId = parseInt(req.params.id);
+    const supplementId = parseInt(req.params.supplementId);
+    if (!isSquareConfigured()) {
+      res.status(503).json({ error: "Square is not configured" });
+      return;
+    }
+    const [supp] = await db
+      .select()
+      .from(cateringSupplementalInvoicesTable)
+      .where(eq(cateringSupplementalInvoicesTable.id, supplementId));
+    if (!supp || supp.cateringInquiryId !== inquiryId) {
+      res.status(404).json({ error: "Supplemental invoice not found" });
+      return;
+    }
+    // PENDING reservations and FAILED publishes have no Square invoice
+    // to refresh — there's no remote object to query.
+    if (!supp.squareInvoiceId) {
+      res.status(400).json({ error: "Supplemental was never published to Square" });
+      return;
+    }
+
+    const snap = await getInvoiceSnapshot(supp.squareInvoiceId);
+    const updates: Record<string, unknown> = {
+      squareInvoiceVersion: snap.invoiceVersion,
+      squareInvoiceStatus: snap.status,
+      squareHostedUrl: snap.hostedUrl,
+      squareAmountPaid: snap.amountPaidDollars.toFixed(2),
+      squareBalanceDue: snap.balanceDueDollars.toFixed(2),
+      updatedAt: new Date(),
+    };
+    if (snap.status === "PAID" && !supp.squarePaidInFullAt) {
+      updates.squarePaidInFullAt = new Date();
+    }
+
+    await db
+      .update(cateringSupplementalInvoicesTable)
+      .set(updates)
+      .where(eq(cateringSupplementalInvoicesTable.id, supplementId));
+
+    const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, inquiryId));
+    const suppMap = await loadSupplementalsByInquiryIds([inquiryId]);
+    res.json({ ok: true, inquiry: { ...inquiry, supplementals: suppMap.get(inquiryId) ?? [] } });
+  } catch (err) {
+    if (err instanceof SquareApiError) {
+      req.log.error({ status: err.status, errors: err.errors }, "Square supplemental refresh failed");
+      res.status(502).json({ error: err.message });
+      return;
+    }
+    req.log.error({ err }, "Error refreshing Square supplemental invoice");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to refresh supplemental" });
+  }
+});
+
+// ── Square: supplemental cancel ──────────────────────────────────────────────
+
+router.post("/admin/catering/:id/square/supplement/:supplementId/cancel", async (req, res): Promise<void> => {
+  try {
+    const inquiryId = parseInt(req.params.id);
+    const supplementId = parseInt(req.params.supplementId);
+    if (!isSquareConfigured()) {
+      res.status(503).json({ error: "Square is not configured" });
+      return;
+    }
+    // Mirror primary-cancel: hold FOR UPDATE on the inquiry row across
+    // validation + Square cancel + rollback decision + snapshot restore.
+    // This closes the race where a concurrent supplement-issue could slip
+    // a newer non-canceled supp in between our laterNonCanceled check
+    // and our snapshot rollback (which would otherwise silently undo the
+    // newer supp's billed delta and let it be re-billed). The supplement
+    // issuance handler also takes FOR UPDATE on the inquiry row in its
+    // phase 1, so the two paths serialize cleanly.
+    const result = await db.transaction(async (tx) => {
+      // Lock the inquiry row first — this is the serialization point.
+      const [inq] = await tx
+        .select({ id: cateringInquiriesTable.id })
+        .from(cateringInquiriesTable)
+        .where(eq(cateringInquiriesTable.id, inquiryId))
+        .for("update");
+      if (!inq) return { kind: "not_found" as const };
+
+      const [supp] = await tx
+        .select()
+        .from(cateringSupplementalInvoicesTable)
+        .where(eq(cateringSupplementalInvoicesTable.id, supplementId));
+      if (!supp || supp.cateringInquiryId !== inquiryId) {
+        return { kind: "not_found" as const };
+      }
+      // PENDING reservations and FAILED publishes have no live Square
+      // invoice — there's nothing to cancel on Square's side.
+      if (!supp.squareInvoiceId || supp.squareInvoiceVersion == null) {
+        return { kind: "not_published" as const };
+      }
+      if (supp.squareInvoiceStatus === "PAID" || supp.squarePaidInFullAt) {
+        return { kind: "paid" as const };
+      }
+      if ((supp.squareInvoiceStatus ?? "").toUpperCase() === "CANCELED") {
+        return { kind: "already_canceled" as const };
+      }
+
+      // Decide rollback eligibility under the same lock that protects
+      // against concurrent issuance. We only roll back if this supp is
+      // still the most-recent non-canceled one — restoring an older
+      // supp's prior snapshot would silently undo the deltas that later
+      // supps already billed.
+      const allSupps = await tx
+        .select()
+        .from(cateringSupplementalInvoicesTable)
+        .where(eq(cateringSupplementalInvoicesTable.cateringInquiryId, inquiryId));
+      // FAILED rows never published to Square (publish error in phase 2a)
+      // and never rolled the snapshot forward, so they don't block our
+      // rollback. Only later non-canceled, non-FAILED supps mean a real
+      // billed delta we'd be undoing.
+      const laterNonCanceled = allSupps.some(s => {
+        if (s.id === supplementId) return false;
+        if (s.seq <= supp.seq) return false;
+        const st = (s.squareInvoiceStatus ?? "").toUpperCase();
+        return st !== "CANCELED" && st !== "FAILED";
+      });
+      const canRollback = !laterNonCanceled && supp.priorSnapshotLineItems != null;
+
+      // Square cancel happens inside the txn so any failure rolls back
+      // both the snapshot restore and the supp-row update atomically.
+      await cancelInvoice(supp.squareInvoiceId, supp.squareInvoiceVersion);
+
+      await tx
+        .update(cateringSupplementalInvoicesTable)
+        .set({
+          squareInvoiceStatus: "CANCELED",
+          squareHostedUrl: null,
+          squareBalanceDue: "0.00",
+          updatedAt: new Date(),
+        })
+        .where(eq(cateringSupplementalInvoicesTable.id, supplementId));
+
+      if (canRollback) {
+        await tx
+          .update(cateringInquiriesTable)
+          .set({
+            primarySnapshotLineItems: supp.priorSnapshotLineItems,
+            primarySnapshotFees: supp.priorSnapshotFees,
+            primarySnapshotDiscounts: supp.priorSnapshotDiscounts,
+            updatedAt: new Date(),
+          })
+          .where(eq(cateringInquiriesTable.id, inquiryId));
+      }
+
+      return { kind: "ok" as const };
+    });
+
+    if (result.kind === "not_found") { res.status(404).json({ error: "Supplemental invoice not found" }); return; }
+    if (result.kind === "not_published") { res.status(400).json({ error: "Supplemental was never published to Square" }); return; }
+    if (result.kind === "paid") { res.status(400).json({ error: "Cannot cancel a paid supplemental invoice" }); return; }
+    if (result.kind === "already_canceled") { res.status(400).json({ error: "Supplemental is already canceled" }); return; }
+
+    const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, inquiryId));
+    const suppMap = await loadSupplementalsByInquiryIds([inquiryId]);
+    res.json({ ok: true, inquiry: { ...inquiry, supplementals: suppMap.get(inquiryId) ?? [] } });
+  } catch (err) {
+    if (err instanceof SquareApiError) {
+      req.log.error({ status: err.status, errors: err.errors }, "Square supplemental cancel failed");
+      res.status(502).json({ error: err.message });
+      return;
+    }
+    req.log.error({ err }, "Error cancelling Square supplemental invoice");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to cancel supplemental" });
   }
 });
 

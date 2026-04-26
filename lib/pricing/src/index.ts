@@ -131,3 +131,211 @@ export function otdSetupFeeRowEquals(
     && Math.abs(Number(a.amount) - Number(b.amount)) < 0.005
   );
 }
+
+// ============================================================================
+// Supplemental-invoice "uninvoiced delta" — shared between admin Quote Builder
+// (catering-web) and the Square supplemental publish handler (api-server) so
+// the previewed delta and the actual billed delta cannot drift.
+// ============================================================================
+
+// Minimal shape of a quote line item, redeclared locally so this package
+// stays free of `@workspace/db`. Mirrors `QuoteLineItem` from
+// `@workspace/db/schema` (only the fields the delta needs).
+export type DeltaQuoteLineItem = {
+  id: string;
+  name: string;
+  quantity: number | string;
+  unitPrice: number | string;
+  notes?: string | null;
+  // Sizing/unit descriptor fields — passed through unchanged so the
+  // supplemental Square order line keeps the same name/notes the
+  // primary used.
+  pricingTemplate?: "per_unit" | "pan_sizes" | null;
+  sizeSlot?: number | null;
+  sizeLabel?: string | null;
+  sizeServings?: number | null;
+  unit?: string | null;
+  servingSize?: number | null;
+};
+
+export type UninvoicedDelta = {
+  // The exact rows that should be billed on the supplemental invoice.
+  // Quantities/amounts are already the **delta** amounts, so the caller
+  // can plug them straight into a Square order without re-subtracting.
+  deltaLineItems: Array<DeltaQuoteLineItem & { quantity: number; unitPrice: number }>;
+  deltaFees: OtdQuoteAdjustment[];
+  deltaDiscounts: OtdQuoteAdjustment[];
+  // Total dollar value of the delta after applying discounts. Always >= 0.
+  // Use this to enable/disable the "Issue supplemental invoice" button and
+  // to refuse server-side issuance when the delta is zero.
+  deltaTotal: number;
+};
+
+function toNumber(v: number | string | null | undefined): number {
+  if (v == null) return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Compute the uninvoiced delta between the live quote arrays and the
+ * snapshot taken at the time the primary invoice was published.
+ *
+ * Matching / billing rules:
+ *  - Line items match by stable `id`. Delta quantity = max(0, current −
+ *    snapshot). New ids count their full quantity. Negative changes
+ *    (quantity reductions) are ignored — refunds/write-downs are out of
+ *    scope and must be handled in Square directly.
+ *  - Fees and discounts also match by stable `id` (including the
+ *    synthesized `otd-extra-hours` and `otd-setup-fee` rows from task
+ *    #136). Their **dollar contribution** is computed under the full
+ *    current quote vs the snapshot quote (percent rows are evaluated
+ *    against the same base each pricing engine elsewhere uses: subtotal
+ *    for fees, subtotal+fees for discounts). The supplemental bills the
+ *    positive dollar difference, materialized as a `fixed` adjustment
+ *    row so Square's invoice math is independent of the supplemental's
+ *    own line-item subtotal. New rows / kind-changed rows count their
+ *    full current dollar contribution as new.
+ *
+ * Returns deltaTotal = max(0, deltaSubtotal + deltaFeesTotal − deltaDiscountsTotal).
+ *
+ * Pure function: no DB, no Square calls, no rounding errors above 1¢.
+ */
+export function computeUninvoicedDelta(opts: {
+  currentLineItems: DeltaQuoteLineItem[] | null | undefined;
+  currentFees: OtdQuoteAdjustment[] | null | undefined;
+  currentDiscounts: OtdQuoteAdjustment[] | null | undefined;
+  snapshotLineItems: DeltaQuoteLineItem[] | null | undefined;
+  snapshotFees: OtdQuoteAdjustment[] | null | undefined;
+  snapshotDiscounts: OtdQuoteAdjustment[] | null | undefined;
+}): UninvoicedDelta {
+  const cur = opts.currentLineItems ?? [];
+  const snap = opts.snapshotLineItems ?? [];
+  const snapById = new Map<string, DeltaQuoteLineItem>();
+  for (const r of snap) {
+    if (r && typeof r.id === "string") snapById.set(r.id, r);
+  }
+
+  const deltaLineItems: Array<DeltaQuoteLineItem & { quantity: number; unitPrice: number }> = [];
+  for (const row of cur) {
+    if (!row || typeof row.id !== "string") continue;
+    const curQty = toNumber(row.quantity);
+    const curUnit = toNumber(row.unitPrice);
+    const prev = snapById.get(row.id);
+    const prevQty = prev ? toNumber(prev.quantity) : 0;
+    const deltaQty = round2(curQty - prevQty);
+    if (deltaQty <= 0 || curUnit <= 0) continue;
+    deltaLineItems.push({
+      ...row,
+      quantity: deltaQty,
+      unitPrice: curUnit,
+    });
+  }
+
+  // Dollar contribution of one adjustment row against a given base.
+  // Mirrors the engine used everywhere else in the app: fixed = literal
+  // dollars; percent = base * pct/100. Returns 0 for non-finite inputs.
+  function rowDollars(
+    row: OtdQuoteAdjustment | undefined,
+    base: number,
+  ): number {
+    if (!row) return 0;
+    const amt = toNumber(row.amount);
+    if (row.kind === "percent") return round2(base * (amt / 100));
+    return round2(amt);
+  }
+
+  // Build "delta-as-fixed-dollars" for fees or discounts. We evaluate
+  // each row's dollar contribution under (current quote, current base)
+  // vs (snapshot quote, snapshot base), then bill the positive
+  // difference as a `fixed` row. This handles all three real scenarios
+  // correctly:
+  //   - new line items only (rate unchanged) → percent fee scales up,
+  //     the increase is billed.
+  //   - rate changed (no new line items) → dollar increase against the
+  //     unchanged base is billed.
+  //   - kind change (percent ↔ fixed) → the previous contribution is
+  //     treated as the snapshot dollars, the current as the new dollars,
+  //     and the positive difference is billed.
+  // Removed rows (snapshot-only) intentionally do not produce charges —
+  // a removed discount that should claw money back must be handled by
+  // explicit re-billing in Square, not implicit here.
+  function adjustmentDollarDelta(
+    current: OtdQuoteAdjustment[] | null | undefined,
+    snapshot: OtdQuoteAdjustment[] | null | undefined,
+    currentBase: number,
+    snapshotBase: number,
+  ): { rows: OtdQuoteAdjustment[]; total: number } {
+    const snapMap = new Map<string, OtdQuoteAdjustment>();
+    for (const r of snapshot ?? []) {
+      if (r && typeof r.id === "string") snapMap.set(r.id, r);
+    }
+    const rows: OtdQuoteAdjustment[] = [];
+    let total = 0;
+    for (const row of current ?? []) {
+      if (!row || typeof row.id !== "string") continue;
+      const curDollars = rowDollars(row, currentBase);
+      const prev = snapMap.get(row.id);
+      const prevDollars = rowDollars(prev, snapshotBase);
+      const deltaDollars = round2(curDollars - prevDollars);
+      if (deltaDollars <= 0) continue;
+      // Always emit as a fixed-dollar row so Square's invoice total
+      // never depends on the supplemental's own line-item subtotal.
+      rows.push({ id: row.id, label: row.label, kind: "fixed", amount: deltaDollars });
+      total = round2(total + deltaDollars);
+    }
+    return { rows, total };
+  }
+
+  const deltaSubtotal = round2(
+    deltaLineItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0),
+  );
+
+  // Bases used to evaluate percent rows. The current/snapshot subtotals
+  // include *all* line items (not just the delta) because the rate
+  // applies to the whole quote, not the delta slice.
+  const currentSubtotal = round2(
+    (opts.currentLineItems ?? []).reduce(
+      (s, li) => s + toNumber(li?.quantity) * toNumber(li?.unitPrice), 0,
+    ),
+  );
+  const snapshotSubtotal = round2(
+    (opts.snapshotLineItems ?? []).reduce(
+      (s, li) => s + toNumber(li?.quantity) * toNumber(li?.unitPrice), 0,
+    ),
+  );
+
+  const fees = adjustmentDollarDelta(
+    opts.currentFees, opts.snapshotFees,
+    currentSubtotal, snapshotSubtotal,
+  );
+
+  // Discounts apply on subtotal+fees, in both worlds. Use the *full*
+  // current/snapshot fee dollar values (not the delta), since a
+  // percent discount's base is the whole post-fee total.
+  const currentFeesDollars = round2(
+    (opts.currentFees ?? []).reduce(
+      (s, f) => s + rowDollars(f, currentSubtotal), 0,
+    ),
+  );
+  const snapshotFeesDollars = round2(
+    (opts.snapshotFees ?? []).reduce(
+      (s, f) => s + rowDollars(f, snapshotSubtotal), 0,
+    ),
+  );
+  const discounts = adjustmentDollarDelta(
+    opts.currentDiscounts, opts.snapshotDiscounts,
+    round2(currentSubtotal + currentFeesDollars),
+    round2(snapshotSubtotal + snapshotFeesDollars),
+  );
+
+  const deltaTotal = round2(Math.max(0, deltaSubtotal + fees.total - discounts.total));
+
+  return {
+    deltaLineItems,
+    deltaFees: fees.rows,
+    deltaDiscounts: discounts.rows,
+    deltaTotal,
+  };
+}

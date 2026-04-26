@@ -14,6 +14,7 @@ import {
   computeOtdSetupFeeRow,
   otdSetupFeeRowEquals,
   OTD_SETUP_FEE_ID,
+  computeUninvoicedDelta,
 } from "@workspace/pricing";
 import { TAX_DISCLOSURE } from "@/lib/tax";
 import { formatLocalDate, isDateOnlyString } from "@/lib/date";
@@ -135,6 +136,38 @@ type Inquiry = {
   squareDueAt: string | null;
   squareDepositPaidAt: string | null;
   squarePaidInFullAt: string | null;
+  // Snapshot of the quote arrays as of the moment the primary invoice was
+  // published. Used as the baseline for the supplemental "uninvoiced delta"
+  // computation. Null when no primary has ever been issued (or when the
+  // primary was issued before this column existed).
+  primarySnapshotLineItems: QuoteLineItem[] | null;
+  primarySnapshotFees: QuoteAdjustment[] | null;
+  primarySnapshotDiscounts: QuoteAdjustment[] | null;
+  // Server-embedded child rows for the supplemental-invoice flow.
+  supplementals: SupplementalInvoice[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+type SupplementalInvoice = {
+  id: number;
+  cateringInquiryId: number;
+  seq: number;
+  squareInvoiceId: string;
+  squareInvoiceVersion: number | null;
+  squareOrderId: string | null;
+  squareInvoiceStatus: string | null;
+  squareHostedUrl: string | null;
+  squareAmountPaid: string | null;
+  squareBalanceDue: string | null;
+  squareDueAt: string | null;
+  squarePaidInFullAt: string | null;
+  linesSnapshot: {
+    lineItems: QuoteLineItem[];
+    fees: QuoteAdjustment[];
+    discounts: QuoteAdjustment[];
+  };
+  amountTotal: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -1344,7 +1377,22 @@ function SquarePanel({
   const hasInvoice = !!inquiry.squareInvoiceId;
   const status = inquiry.squareInvoiceStatus ?? null;
   const isPaid = !!inquiry.squarePaidInFullAt || status === "PAID";
-  const canCancel = hasInvoice && !isPaid;
+  // "Open" supplementals block primary cancel. Mirrors OPEN_SUPP_STATUSES
+  // server-side in admin-catering.ts. Two groups:
+  //   1) Live Square statuses still chargeable to the customer:
+  //      DRAFT / UNPAID / SCHEDULED / PARTIALLY_PAID.
+  //   2) In-product transient/recovery states from two-phase issuance:
+  //      PENDING (publish in flight) and AWAITING_RECONCILE (publish
+  //      succeeded but the DB finalize step failed and the row needs
+  //      manual cleanup before the primary can be safely canceled).
+  // Terminal statuses (PAID / REFUNDED / CANCELED / FAILED) do not block.
+  const openSupplementals = (inquiry.supplementals ?? []).filter(s => {
+    const st = (s.squareInvoiceStatus ?? "").toUpperCase();
+    return st === "DRAFT" || st === "UNPAID" || st === "SCHEDULED"
+      || st === "PARTIALLY_PAID" || st === "PENDING" || st === "AWAITING_RECONCILE";
+  });
+  const hasOpenSupplementals = openSupplementals.length > 0;
+  const canCancel = hasInvoice && !isPaid && !hasOpenSupplementals;
 
   async function sendInvoice() {
     if (!inquiry.clientEmail) { setMsg("Client must have an email on file."); return; }
@@ -1519,9 +1567,267 @@ function SquarePanel({
                   Cancel Invoice
                 </button>
               )}
+              {hasInvoice && !isPaid && hasOpenSupplementals && (
+                <button
+                  type="button"
+                  disabled
+                  title={`Cancel the ${openSupplementals.length} outstanding supplemental${openSupplementals.length === 1 ? "" : "s"} first`}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-50/40 text-destructive/50 text-sm font-semibold rounded-xl cursor-not-allowed"
+                >
+                  <Ban className="w-4 h-4" /> Cancel Invoice
+                </button>
+              )}
             </div>
           </>
         )}
+        {msg && <p className="text-xs text-muted-foreground border-t border-border pt-2">{msg}</p>}
+      </div>
+      {hasInvoice && inquiry.primarySnapshotLineItems != null && (
+        <SupplementalSubPanel inquiry={inquiry} onUpdated={onUpdated} />
+      )}
+    </div>
+  );
+}
+
+// ── Supplemental Invoices sub-panel ──────────────────────────────────────────
+//
+// Renders the "uninvoiced delta" preview + Issue button + the list of
+// already-issued supplemental invoices for this inquiry. Lives inside the
+// main SquarePanel border so it visually reads as part of the same Square
+// surface.
+
+function SupplementalSubPanel({
+  inquiry, onUpdated,
+}: {
+  inquiry: Inquiry;
+  onUpdated: (i: Inquiry) => void;
+}) {
+  const [busy, setBusy] = useState<null | "issue" | `refresh-${number}` | `cancel-${number}`>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  // Compute the delta against the live (possibly unsaved) inquiry. We
+  // show whatever is on the server-returned `inquiry` object — the admin
+  // is expected to save before issuing, so unsaved edits won't be billed.
+  // Matches the server-side delta computation 1:1.
+  const delta = useMemo(() => computeUninvoicedDelta({
+    currentLineItems: inquiry.lineItems ?? [],
+    currentFees: inquiry.fees ?? [],
+    currentDiscounts: inquiry.discounts ?? [],
+    snapshotLineItems: inquiry.primarySnapshotLineItems ?? [],
+    snapshotFees: inquiry.primarySnapshotFees ?? [],
+    snapshotDiscounts: inquiry.primarySnapshotDiscounts ?? [],
+  }), [
+    inquiry.lineItems, inquiry.fees, inquiry.discounts,
+    inquiry.primarySnapshotLineItems, inquiry.primarySnapshotFees, inquiry.primarySnapshotDiscounts,
+  ]);
+
+  // Hide PENDING reservation rows — they're a transient artifact of
+  // two-phase issuance (server claims a seq slot, then publishes to
+  // Square). Under normal conditions they exist for sub-second windows
+  // and the publish handler flips them to a real Square status before
+  // returning. They'd only persist if the api process crashed mid-call.
+  const supplementals = (inquiry.supplementals ?? []).filter(
+    s => (s.squareInvoiceStatus ?? "").toUpperCase() !== "PENDING",
+  );
+  const hasDelta = delta.deltaTotal > 0;
+
+  async function issueSupplement() {
+    if (!hasDelta) return;
+    if (!confirm(`Issue a supplemental Square invoice for ${formatCurrency(delta.deltaTotal)}? The customer will receive a separate email.`)) return;
+    setBusy("issue"); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/square/supplement`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to issue supplemental"); return; }
+      onUpdated(data.inquiry);
+      setMsg("Supplemental invoice sent.");
+    } catch { setMsg("Failed to issue supplemental."); }
+    finally { setBusy(null); }
+  }
+
+  async function refreshSupplement(suppId: number) {
+    setBusy(`refresh-${suppId}`); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/square/supplement/${suppId}/refresh`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to refresh"); return; }
+      onUpdated(data.inquiry);
+    } catch { setMsg("Failed to refresh supplemental."); }
+    finally { setBusy(null); }
+  }
+
+  async function cancelSupplement(suppId: number) {
+    if (!confirm("Cancel this supplemental Square invoice?")) return;
+    setBusy(`cancel-${suppId}`); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/square/supplement/${suppId}/cancel`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to cancel"); return; }
+      onUpdated(data.inquiry);
+      setMsg("Supplemental cancelled.");
+    } catch { setMsg("Failed to cancel supplemental."); }
+    finally { setBusy(null); }
+  }
+
+  return (
+    <div className="border-t border-border bg-emerald-50/40">
+      <div className="px-4 py-2 border-b border-border flex items-center gap-2">
+        <Plus className="w-3.5 h-3.5 text-emerald-700" />
+        <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+          Supplemental Invoices
+        </span>
+      </div>
+      <div className="p-4 space-y-3 text-sm">
+        {/* Delta preview + Issue button */}
+        <div className="rounded-xl border border-border bg-background p-3 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Uninvoiced extras</p>
+              <p className="font-semibold text-base">
+                {formatCurrency(delta.deltaTotal)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={issueSupplement}
+              disabled={busy !== null || !hasDelta || !inquiry.clientEmail}
+              title={
+                !inquiry.clientEmail ? "Client email required" :
+                !hasDelta ? "No new charges since the primary invoice — nothing to bill" : ""
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {busy === "issue" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Issue supplemental
+            </button>
+          </div>
+          {hasDelta && (
+            <div className="border-t border-border pt-2 space-y-1 text-xs">
+              {delta.deltaLineItems.map(li => (
+                <div key={`l-${li.id}`} className="flex justify-between gap-2">
+                  <span className="text-muted-foreground truncate">
+                    {li.name}
+                    <span className="text-muted-foreground/70"> × {li.quantity}</span>
+                  </span>
+                  <span className="font-medium tabular-nums">
+                    +{formatCurrency(li.quantity * li.unitPrice)}
+                  </span>
+                </div>
+              ))}
+              {delta.deltaFees.map(f => (
+                <div key={`f-${f.id}`} className="flex justify-between gap-2">
+                  <span className="text-muted-foreground truncate">{f.label}</span>
+                  <span className="font-medium tabular-nums">
+                    +{f.kind === "percent" ? `${f.amount}%` : formatCurrency(f.amount)}
+                  </span>
+                </div>
+              ))}
+              {delta.deltaDiscounts.map(d => (
+                <div key={`d-${d.id}`} className="flex justify-between gap-2">
+                  <span className="text-muted-foreground truncate">{d.label}</span>
+                  <span className="font-medium tabular-nums text-emerald-700">
+                    −{d.kind === "percent" ? `${d.amount}%` : formatCurrency(d.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {!hasDelta && supplementals.length === 0 && (
+            <p className="text-xs text-muted-foreground border-t border-border pt-2">
+              Edit the quote (e.g. bump the OTD extra-hours stepper or add a fee row), save, then issue a supplemental for any post-event extras.
+            </p>
+          )}
+        </div>
+
+        {/* Issued supplementals list */}
+        {supplementals.length > 0 && (
+          <ul className="space-y-2">
+            {supplementals.map(s => {
+              const sStatus = s.squareInvoiceStatus ?? "—";
+              const sPaid = !!s.squarePaidInFullAt || sStatus === "PAID";
+              const sCanceled = sStatus.toUpperCase() === "CANCELED";
+              const sCanCancel = !sPaid && !sCanceled;
+              return (
+                <li
+                  key={s.id}
+                  className="rounded-xl border border-border bg-background p-3 space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">Supplemental #{s.seq}</span>
+                      <span className={cn(
+                        "inline-block px-2 py-0.5 rounded-full text-xs font-semibold",
+                        SQUARE_STATUS_COLORS[sStatus] ?? "bg-secondary text-muted-foreground",
+                      )}>
+                        {sStatus}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Issued {formatDateTime(s.createdAt)}
+                    </p>
+                  </div>
+                  <p className="text-sm">
+                    <span className="font-semibold tabular-nums">
+                      {formatCurrency(Number(s.squareBalanceDue ?? 0))}
+                    </span>
+                    <span className="text-muted-foreground"> due · </span>
+                    <span className="tabular-nums">
+                      {formatCurrency(Number(s.squareAmountPaid ?? 0))}
+                    </span>
+                    <span className="text-muted-foreground"> paid · </span>
+                    <span className="text-muted-foreground tabular-nums">
+                      total {formatCurrency(Number(s.amountTotal ?? 0))}
+                    </span>
+                  </p>
+                  {s.squarePaidInFullAt && (
+                    <p className="text-xs text-muted-foreground">
+                      Paid in full {formatDateTime(s.squarePaidInFullAt)}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {s.squareHostedUrl && (
+                      <a
+                        href={s.squareHostedUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-foreground text-xs font-semibold rounded-lg hover:bg-border transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" /> View
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => refreshSupplement(s.id)}
+                      disabled={busy !== null}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-foreground text-xs font-semibold rounded-lg hover:bg-border transition-colors disabled:opacity-50"
+                    >
+                      {busy === `refresh-${s.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                      Refresh
+                    </button>
+                    {sCanCancel && (
+                      <button
+                        type="button"
+                        onClick={() => cancelSupplement(s.id)}
+                        disabled={busy !== null}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-destructive text-xs font-semibold rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
+                      >
+                        {busy === `cancel-${s.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
         {msg && <p className="text-xs text-muted-foreground border-t border-border pt-2">{msg}</p>}
       </div>
     </div>
