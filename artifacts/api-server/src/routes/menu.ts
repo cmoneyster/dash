@@ -1,14 +1,17 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { menuItemsTable, menuCategoriesTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { asc, eq, and } from "drizzle-orm";
 
 const router: IRouter = Router();
 
 router.get("/menu", async (req, res) => {
   try {
     const { category, available } = req.query;
-    let items = await db.select().from(menuItemsTable);
+    let items = await db
+      .select()
+      .from(menuItemsTable)
+      .orderBy(asc(menuItemsTable.sortOrder), asc(menuItemsTable.id));
 
     // Exclude items whose category is hidden (or whose category row exists & is invisible).
     const cats = await db.select().from(menuCategoriesTable);

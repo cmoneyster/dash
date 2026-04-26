@@ -1,9 +1,24 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { menuItemsTable, menuCategoriesTable } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
+
+// Returns the next sortOrder slot at the end of the given category
+// (MAX(sortOrder) + 10, or 10 if the category is empty). Tx-aware so
+// it can be reused inside a transaction.
+async function nextSortOrderForCategory(
+  tx: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0],
+  category: string,
+): Promise<number> {
+  const [row] = await tx
+    .select({ max: sql<number | null>`MAX(${menuItemsTable.sortOrder})` })
+    .from(menuItemsTable)
+    .where(eq(menuItemsTable.category, category));
+  const max = row?.max == null ? null : Number(row.max);
+  return (max ?? 0) + 10;
+}
 
 async function ensureCategoryExists(name: string | undefined | null) {
   if (!name) return;
@@ -48,7 +63,10 @@ function formatItem(item: typeof menuItemsTable.$inferSelect) {
 
 router.get("/admin/menu", async (req, res) => {
   try {
-    const items = await db.select().from(menuItemsTable).orderBy(menuItemsTable.createdAt);
+    const items = await db
+      .select()
+      .from(menuItemsTable)
+      .orderBy(asc(menuItemsTable.sortOrder), asc(menuItemsTable.id));
     res.json(items.map(formatItem));
   } catch (err) {
     req.log.error({ err }, "Error listing admin menu items");
@@ -74,10 +92,13 @@ router.post("/admin/menu", async (req, res) => {
       internalNotes,
       otdEligible,
     } = req.body;
+    // New items always land at the bottom of their category.
+    const sortOrder = await nextSortOrderForCategory(db, String(category ?? "").trim());
     const [item] = await db.insert(menuItemsTable).values({
       name,
       description,
       category,
+      sortOrder,
       price: String(price),
       servingSize: servingSize ?? 1,
       unit: unit ?? "tray",
@@ -179,6 +200,19 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
     if (internalNotes !== undefined)    updates.internalNotes = internalNotes ? String(internalNotes).trim() || null : null;
     if (otdEligible !== undefined)      updates.otdEligible = otdEligible === true || otdEligible === "true";
 
+    // If the category is being changed to a different value, drop the
+    // item at the bottom of the destination category so it doesn't
+    // inherit a stale sortOrder from its old neighbors.
+    if (category !== undefined) {
+      const [existing] = await db
+        .select({ category: menuItemsTable.category })
+        .from(menuItemsTable)
+        .where(eq(menuItemsTable.id, id));
+      if (existing && existing.category !== String(category).trim()) {
+        updates.sortOrder = await nextSortOrderForCategory(db, String(category).trim());
+      }
+    }
+
     const [item] = await db.update(menuItemsTable).set(updates).where(eq(menuItemsTable.id, id)).returning();
     if (!item) {
       res.status(404).json({ error: "Menu item not found" });
@@ -204,6 +238,33 @@ router.delete("/admin/menu/:id", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "Error deleting menu item");
     res.status(500).json({ error: "Failed to delete menu item" });
+  }
+});
+
+// Bulk reorder menu items inside a single transaction. Mirrors the
+// shape of POST /admin/categories/reorder. Body: { items: [{id, sortOrder}] }
+router.post("/admin/menu/reorder", async (req, res): Promise<void> => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items : null;
+    if (!items) {
+      res.status(400).json({ error: "items array required" });
+      return;
+    }
+    await db.transaction(async (tx) => {
+      for (const it of items) {
+        const id = parseInt(String(it.id), 10);
+        const so = parseInt(String(it.sortOrder), 10);
+        if (isNaN(id) || isNaN(so)) continue;
+        await tx
+          .update(menuItemsTable)
+          .set({ sortOrder: so })
+          .where(eq(menuItemsTable.id, id));
+      }
+    });
+    res.status(204).send();
+  } catch (err) {
+    req.log.error({ err }, "Error reordering menu items");
+    res.status(500).json({ error: "Failed to reorder menu items" });
   }
 });
 

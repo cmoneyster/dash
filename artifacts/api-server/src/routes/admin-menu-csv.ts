@@ -365,12 +365,74 @@ router.post("/admin/menu/csv/apply", async (req, res) => {
       }
 
       // ── Items ─────────────────────────────────────────────────────────
+      // Helper: next sortOrder slot at the end of a category.
+      async function nextSortForCategory(catName: string): Promise<number> {
+        const [row] = await tx
+          .select({ max: sql<number | null>`MAX(${menuItemsTable.sortOrder})` })
+          .from(menuItemsTable)
+          .where(eq(menuItemsTable.category, catName));
+        const max = row?.max == null ? null : Number(row.max);
+        return (max ?? 0) + 10;
+      }
+
+      // Cache existing categories so we only need to ask the DB once
+      // per category for the running MAX, then bump locally for each
+      // additional new row in the same import batch.
+      const sortCursorByCategory = new Map<string, number>();
+      async function nextSortCached(catName: string): Promise<number> {
+        if (!catName) return 10;
+        if (sortCursorByCategory.has(catName)) {
+          const next = sortCursorByCategory.get(catName)! + 10;
+          sortCursorByCategory.set(catName, next);
+          return next;
+        }
+        const fresh = await nextSortForCategory(catName);
+        sortCursorByCategory.set(catName, fresh);
+        return fresh;
+      }
+
+      // For updates that change category, look up the item's current
+      // category once so we know whether to re-slot its sortOrder.
+      const itemBeforeById = new Map<number, { category: string }>();
+      const updateIds = selectedItemRows
+        .filter((r) => r.status === "updated" && r.id != null)
+        .map((r) => r.id as number);
+      if (updateIds.length) {
+        const before = await tx
+          .select({ id: menuItemsTable.id, category: menuItemsTable.category })
+          .from(menuItemsTable)
+          .where(inArray(menuItemsTable.id, updateIds));
+        for (const b of before) itemBeforeById.set(b.id, { category: b.category });
+      }
+
       for (const r of selectedItemRows) {
         if (r.status === "new" && r.newValues) {
-          await tx.insert(menuItemsTable).values(r.newValues as typeof menuItemsTable.$inferInsert);
+          const values = { ...r.newValues } as Record<string, unknown>;
+          const cat = String(values.category ?? "").trim();
+          // CSV may carry an explicit sortOrder; respect it. Otherwise
+          // append at the end of the destination category.
+          if (values.sortOrder === undefined || values.sortOrder === null) {
+            values.sortOrder = await nextSortCached(cat);
+          }
+          await tx.insert(menuItemsTable).values(values as typeof menuItemsTable.$inferInsert);
           itemsCreated++;
         } else if (r.status === "updated" && r.id != null && r.updates) {
-          await tx.update(menuItemsTable).set(r.updates).where(eq(menuItemsTable.id, r.id));
+          const updates = { ...r.updates } as Record<string, unknown>;
+          // If the row's category is being changed (and the CSV didn't
+          // explicitly specify a new sortOrder), re-slot the item at
+          // the bottom of its destination so it doesn't carry over a
+          // stale sort position from its old neighbors.
+          const before = itemBeforeById.get(r.id);
+          const newCat = updates.category != null ? String(updates.category).trim() : null;
+          if (
+            before &&
+            newCat &&
+            newCat !== before.category &&
+            (updates.sortOrder === undefined || updates.sortOrder === null)
+          ) {
+            updates.sortOrder = await nextSortCached(newCat);
+          }
+          await tx.update(menuItemsTable).set(updates).where(eq(menuItemsTable.id, r.id));
           itemsUpdated++;
         }
       }

@@ -69,6 +69,20 @@ function isOpenSupplemental(s: CateringSupplementalInvoice): boolean {
   return OPEN_SUPP_STATUSES.has((s.squareInvoiceStatus ?? "").toUpperCase());
 }
 
+// Blocks primary-invoice cancel. Strictly broader than `isOpenSupplemental`:
+// any supplemental that is NOT terminally CANCELED and NOT FAILED counts.
+// In particular this includes PAID and REFUNDED supplementals — canceling
+// the primary clears `primarySnapshot*` and `squareCustomerId`, so a fresh
+// primary re-issue would restart from scratch and could double-bill rows
+// that were already captured on a paid supplemental. The admin must
+// reconcile the supplemental in Square (refund/void) and then cancel
+// the supplemental row through `/square/supplement/:id/cancel` (which
+// flips it to CANCELED) before the primary can be canceled here.
+function blocksPrimaryCancel(s: CateringSupplementalInvoice): boolean {
+  const st = (s.squareInvoiceStatus ?? "").toUpperCase();
+  return st !== "CANCELED" && st !== "FAILED";
+}
+
 // Embed supplementals on inquiry GET responses so the admin UI can render
 // the supplemental sub-panel (delta preview, list, cancel guard) without
 // an extra round-trip per inquiry.
@@ -1075,9 +1089,13 @@ router.post("/admin/catering/:id/square/cancel", async (req, res): Promise<void>
         .select()
         .from(cateringSupplementalInvoicesTable)
         .where(eq(cateringSupplementalInvoicesTable.cateringInquiryId, id));
-      const openSupps = existingSupps.filter(isOpenSupplemental);
-      if (openSupps.length > 0) {
-        return { kind: "open_supps" as const, count: openSupps.length };
+      // Use the strict predicate here (PAID and REFUNDED also block) — see
+      // `blocksPrimaryCancel` for why. The race-narrower OPEN_SUPP_STATUSES
+      // set is still used by the supplement-issuance handler to decide
+      // whether a fresh issuance can proceed.
+      const blockingSupps = existingSupps.filter(blocksPrimaryCancel);
+      if (blockingSupps.length > 0) {
+        return { kind: "open_supps" as const, count: blockingSupps.length };
       }
 
       await cancelInvoice(inquiry.squareInvoiceId, inquiry.squareInvoiceVersion);

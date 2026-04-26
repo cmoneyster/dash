@@ -1436,19 +1436,17 @@ function SquarePanel({
     inquiry.primarySnapshotLineItems, inquiry.primarySnapshotFees, inquiry.primarySnapshotDiscounts,
   ]);
   const uninvoicedDelta = inquiry.primarySnapshotLineItems != null ? totalsDelta.deltaTotal : 0;
-  // "Open" supplementals block primary cancel. Mirrors OPEN_SUPP_STATUSES
-  // server-side in admin-catering.ts. Two groups:
-  //   1) Live Square statuses still chargeable to the customer:
-  //      DRAFT / UNPAID / SCHEDULED / PARTIALLY_PAID.
-  //   2) In-product transient/recovery states from two-phase issuance:
-  //      PENDING (publish in flight) and AWAITING_RECONCILE (publish
-  //      succeeded but the DB finalize step failed and the row needs
-  //      manual cleanup before the primary can be safely canceled).
-  // Terminal statuses (PAID / REFUNDED / CANCELED / FAILED) do not block.
+  // Any supplemental that is NOT terminally CANCELED and NOT FAILED blocks
+  // primary cancel. Mirrors `blocksPrimaryCancel` server-side in
+  // admin-catering.ts. Critically this *includes* PAID and REFUNDED — a
+  // primary cancel clears `primarySnapshot*` and `squareCustomerId`, so a
+  // fresh re-issue would restart from scratch and could double-bill rows
+  // that were already captured on a paid supplemental. The admin must
+  // reconcile (refund/void in Square) and cancel each supplemental row
+  // first to flip it to CANCELED, after which the primary can be canceled.
   const openSupplementals = (inquiry.supplementals ?? []).filter(s => {
     const st = (s.squareInvoiceStatus ?? "").toUpperCase();
-    return st === "DRAFT" || st === "UNPAID" || st === "SCHEDULED"
-      || st === "PARTIALLY_PAID" || st === "PENDING" || st === "AWAITING_RECONCILE";
+    return st !== "CANCELED" && st !== "FAILED";
   });
   const hasOpenSupplementals = openSupplementals.length > 0;
   const canCancel = hasInvoice && !isPaid && !hasOpenSupplementals;

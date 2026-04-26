@@ -56,6 +56,10 @@ export const menuItemsTable = pgTable("menu_items", {
   // stock is restocked above the threshold (or set to unlimited / 0) so
   // a future dip will re-fire. See artifacts/api-server/src/lib/lowStockAlerts.ts.
   lowStockAlertSent: boolean("low_stock_alert_sent").notNull().default(false),
+  // Manual display order within the item's category. New items are
+  // inserted at the end of their category (MAX(sortOrder)+10). Used by
+  // both the admin Menu Manager and the public /menu listing.
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
