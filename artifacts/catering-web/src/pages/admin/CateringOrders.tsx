@@ -189,6 +189,34 @@ function uid() {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// Structural equality for plain JSON-shaped values (objects, arrays,
+// primitives). Used to compare the inquiry editor form against the last
+// persisted snapshot so we can drive the "Unsaved changes" pill and the
+// auto-save-before-quote-action behavior. JSON.stringify is unreliable
+// here because key ordering can differ across object spreads.
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return a === b;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== "object") return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
+    return true;
+  }
+  if (Array.isArray(b)) return false;
+  const ao = a as Record<string, unknown>;
+  const bo = b as Record<string, unknown>;
+  const ka = Object.keys(ao);
+  const kb = Object.keys(bo);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    if (!Object.prototype.hasOwnProperty.call(bo, k)) return false;
+    if (!deepEqual(ao[k], bo[k])) return false;
+  }
+  return true;
+}
+
 function round2(n: number) { return Math.round(n * 100) / 100; }
 
 function computeTotalsClient(items: QuoteLineItem[], fees: QuoteAdjustment[], discounts: QuoteAdjustment[]) {
@@ -899,12 +927,15 @@ function AdjustmentList({
 // ── Quote Actions panel ──────────────────────────────────────────────────────
 
 function QuoteActions({
-  inquiry, onUpdated,
+  inquiry, onUpdated, isDirty, flushSave,
 }: {
   inquiry: Inquiry;
   onUpdated: (i: Inquiry) => void;
+  isDirty: boolean;
+  flushSave: () => Promise<Inquiry>;
 }) {
   const [busy, setBusy] = useState<null | "gen" | "email" | "sms" | "reply-email" | "reply-sms" | "dismiss">(null);
+  const [savingFirst, setSavingFirst] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [replyText, setReplyText] = useState("");
@@ -915,10 +946,30 @@ function QuoteActions({
   const pdfUrl = `${BASE}/api/admin/catering/${inquiry.id}/quote.pdf`;
   const issued = !!inquiry.quoteIssuedAt;
 
+  // Auto-save the inquiry editor before running a quote action so the
+  // regenerated PDF, rotated public link, and email/SMS attachment all
+  // reflect the admin's latest edits. Returns the persisted inquiry, or
+  // null if the save failed (caller should abort).
+  async function ensureSaved(): Promise<Inquiry | null> {
+    if (!isDirty) return inquiry;
+    setSavingFirst(true);
+    try {
+      return await flushSave();
+    } catch (err) {
+      const m = err instanceof Error && err.message ? err.message : "Failed to save changes.";
+      setMsg(m);
+      return null;
+    } finally {
+      setSavingFirst(false);
+    }
+  }
+
   async function generate() {
     setBusy("gen"); setMsg(null);
     try {
-      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/quote`, { method: "POST", headers: authHeaders() });
+      const saved = await ensureSaved();
+      if (!saved) return;
+      const r = await fetch(`${BASE}/api/admin/catering/${saved.id}/quote`, { method: "POST", headers: authHeaders() });
       const data = await r.json();
       if (!r.ok) { setMsg(data.error ?? "Failed to generate"); return; }
       onUpdated(data.inquiry);
@@ -931,7 +982,9 @@ function QuoteActions({
     if (!inquiry.clientEmail) { setMsg("No client email on file."); return; }
     setBusy("email"); setMsg(null);
     try {
-      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/quote/email`, {
+      const saved = await ensureSaved();
+      if (!saved) return;
+      const r = await fetch(`${BASE}/api/admin/catering/${saved.id}/quote/email`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify({}),
       });
       const data = await r.json();
@@ -946,7 +999,9 @@ function QuoteActions({
     if (!inquiry.clientPhone) { setMsg("No client phone on file."); return; }
     setBusy("sms"); setMsg(null);
     try {
-      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/quote/sms`, {
+      const saved = await ensureSaved();
+      if (!saved) return;
+      const r = await fetch(`${BASE}/api/admin/catering/${saved.id}/quote/sms`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify({}),
       });
       const data = await r.json();
@@ -1005,6 +1060,15 @@ function QuoteActions({
       <div className="bg-violet-50 px-4 py-2 border-b border-border flex items-center gap-2">
         <Send className="w-3.5 h-3.5 text-violet-700" />
         <span className="text-xs font-bold uppercase tracking-wider text-violet-700">Quote Actions</span>
+        {isDirty && (
+          <span
+            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase tracking-wider"
+            title="Form has edits that haven't been saved yet — quote actions will save them automatically before running."
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            Unsaved changes
+          </span>
+        )}
       </div>
       <div className="p-4 space-y-3 text-sm">
         <div className="grid grid-cols-2 gap-3">
@@ -1039,7 +1103,11 @@ function QuoteActions({
             className="inline-flex items-center gap-1.5 px-3 py-2 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors disabled:opacity-50"
           >
             {busy === "gen" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />}
-            {issued ? "Refresh Quote" : "Generate Quote"}
+            {busy === "gen"
+              ? (savingFirst
+                  ? (issued ? "Saving & refreshing…" : "Saving & generating…")
+                  : (issued ? "Refreshing…" : "Generating…"))
+              : (issued ? "Refresh Quote" : "Generate Quote")}
           </button>
           <a
             href={pdfUrl + (getAdminToken() ? `?_t=${encodeURIComponent(getAdminToken()!)}` : "")}
@@ -1067,7 +1135,9 @@ function QuoteActions({
             className="inline-flex items-center gap-1.5 px-3 py-2 bg-secondary text-foreground text-sm font-semibold rounded-xl hover:bg-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {busy === "email" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-            Email PDF
+            {busy === "email"
+              ? (savingFirst ? "Saving & emailing…" : "Emailing…")
+              : "Email PDF"}
           </button>
           <button
             type="button"
@@ -1077,7 +1147,9 @@ function QuoteActions({
             className="inline-flex items-center gap-1.5 px-3 py-2 bg-secondary text-foreground text-sm font-semibold rounded-xl hover:bg-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {busy === "sms" ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
-            Text Link
+            {busy === "sms"
+              ? (savingFirst ? "Saving & texting…" : "Texting…")
+              : "Text Link"}
           </button>
         </div>
 
@@ -1426,6 +1498,10 @@ function DetailPanel({
   menu: AdminMenuItem[];
 }) {
   const [form, setForm] = useState<Partial<Inquiry>>(inquiry);
+  // Snapshot of the last persisted version of this inquiry. We deep-equal
+  // form against this to drive the "Unsaved changes" pill and the
+  // auto-save-before-quote-action behavior in QuoteActions.
+  const [savedSnapshot, setSavedSnapshot] = useState<Partial<Inquiry>>(inquiry);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1463,9 +1539,16 @@ function DetailPanel({
       };
     }
     setForm(next);
+    // Snapshot is the persisted inquiry as the server gave it to us — the
+    // legacy migration only mutates local state, so any mismatch (e.g. a
+    // legacy cart inquiry that gained synthetic lineItems above) correctly
+    // shows as dirty until the admin saves.
+    setSavedSnapshot(inquiry);
     setSaved(false);
     setError("");
   }, [inquiry]);
+
+  const isDirty = useMemo(() => !deepEqual(form, savedSnapshot), [form, savedSnapshot]);
 
   function set(key: keyof Inquiry, value: any) {
     setForm(p => ({ ...p, [key]: value }));
@@ -1476,26 +1559,41 @@ function DetailPanel({
     setSaved(false);
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.clientName?.trim()) { setError("Client name is required."); return; }
+  // Persist the current form to the server and return the saved inquiry.
+  // Throws on validation or network error so callers (manual Save click +
+  // QuoteActions auto-save) can react. Updates the snapshot so isDirty
+  // flips back to false once the server response is in.
+  async function flushSave(): Promise<Inquiry> {
+    if (!form.clientName?.trim()) {
+      setError("Client name is required.");
+      throw new Error("Client name is required.");
+    }
     setSaving(true);
     setError("");
     try {
       const url = isNew ? `${BASE}/api/admin/catering` : `${BASE}/api/admin/catering/${(inquiry as Inquiry).id}`;
       const method = isNew ? "POST" : "PUT";
       const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(form) });
-      if (!res.ok) throw new Error();
-      const savedData = await res.json();
+      if (!res.ok) throw new Error("Failed to save. Please try again.");
+      const savedData: Inquiry = await res.json();
       setForm(savedData);
+      setSavedSnapshot(savedData);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       onSaved(savedData);
-    } catch {
-      setError("Failed to save. Please try again.");
+      return savedData;
+    } catch (err) {
+      const msg = err instanceof Error && err.message ? err.message : "Failed to save. Please try again.";
+      setError(msg);
+      throw err instanceof Error ? err : new Error(msg);
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    try { await flushSave(); } catch { /* error already surfaced via setError */ }
   }
 
   async function handleDelete() {
@@ -1834,11 +1932,13 @@ function DetailPanel({
                 <>
                   <QuoteActions
                     inquiry={form as Inquiry}
-                    onUpdated={(i) => { setForm(i); onSaved(i); }}
+                    onUpdated={(i) => { setForm(i); setSavedSnapshot(i); onSaved(i); }}
+                    isDirty={isDirty}
+                    flushSave={flushSave}
                   />
                   <SquarePanel
                     inquiry={form as Inquiry}
-                    onUpdated={(i) => { setForm(i); onSaved(i); }}
+                    onUpdated={(i) => { setForm(i); setSavedSnapshot(i); onSaved(i); }}
                   />
                 </>
               )}
