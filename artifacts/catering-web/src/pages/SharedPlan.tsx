@@ -372,14 +372,21 @@ export default function SharedPlan() {
 
   const groupedItems = useMemo(() => {
     if (!plan?.items) return [];
+    const known = new Set((categoryRows ?? []).map(c => c.name));
     const map = new Map<string, typeof plan.items>();
     (categoryRows ?? []).forEach(c => map.set(c.name, []));
+    const otherBucket: typeof plan.items = [];
     plan.items.forEach(item => {
       const cat = item.menuItem.category;
-      if (!map.has(cat)) map.set(cat, []);
-      map.get(cat)!.push(item);
+      if (cat && known.has(cat)) {
+        map.get(cat)!.push(item);
+      } else {
+        otherBucket.push(item);
+      }
     });
-    return Array.from(map.entries()).filter(([, items]) => items.length > 0);
+    const ordered: [string, typeof plan.items][] = Array.from(map.entries()).filter(([, items]) => items.length > 0);
+    if (otherBucket.length > 0) ordered.push(["Other", otherBucket]);
+    return ordered;
   }, [plan?.items, categoryRows]);
   const hasSmallBites  = smallBiteItems.length > 0;
   const hasEntrees     = entreeItems.length > 0;

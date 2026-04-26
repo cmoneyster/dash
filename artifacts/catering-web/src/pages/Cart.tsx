@@ -360,14 +360,19 @@ export default function Cart() {
   // (deleted, etc.) appear at the end in insertion order.
   const groupedItems = useMemo(() => {
     if (!cart?.items.length) return [];
+    const known = new Set((categoryRows ?? []).map(c => c.name));
     const map = new Map<string, typeof cart.items>();
     (categoryRows ?? []).forEach(c => map.set(c.name, []));
+    const otherBucket: typeof cart.items = [];
     for (const item of cart.items) {
-      const cat = (item.menuItem as any).category ?? "Other";
-      if (!map.has(cat)) map.set(cat, []);
-      map.get(cat)!.push(item);
+      const rawCat = (item.menuItem as any).category ?? "";
+      if (rawCat && known.has(rawCat)) {
+        map.get(rawCat)!.push(item);
+      } else {
+        otherBucket.push(item);
+      }
     }
-    return [...map.entries()]
+    const ordered: [string, typeof cart.items][] = [...map.entries()]
       .filter(([, items]) => items.length > 0)
       .map(([cat, items]) => [
         cat,
@@ -377,7 +382,19 @@ export default function Cart() {
           const sb = (b as any).sizeSlot ?? Infinity;
           return sa - sb;
         }),
-      ] as [string, typeof cart.items]);
+      ]);
+    if (otherBucket.length > 0) {
+      ordered.push([
+        "Other",
+        [...otherBucket].sort((a, b) => {
+          if (a.menuItemId !== b.menuItemId) return a.menuItemId - b.menuItemId;
+          const sa = (a as any).sizeSlot ?? Infinity;
+          const sb = (b as any).sizeSlot ?? Infinity;
+          return sa - sb;
+        }),
+      ]);
+    }
+    return ordered;
   }, [cart?.items, categoryRows]);
 
   return (
