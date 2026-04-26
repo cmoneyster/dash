@@ -995,6 +995,10 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
       squareInvoiceId: created.invoiceId,
       squareInvoiceVersion: created.invoiceVersion,
       squareOrderId: created.orderId,
+      // Capture the Square customer id used for the primary so the
+      // supplemental flow can bind to the SAME customer later, even if
+      // the admin edits clientEmail in the meantime.
+      squareCustomerId: created.customerId,
       squareInvoiceStatus: created.status,
       squareHostedUrl: created.hostedUrl,
       squareAmountPaid: "0.00",
@@ -1092,6 +1096,11 @@ router.post("/admin/catering/:id/square/cancel", async (req, res): Promise<void>
           squareDueAt: null,
           squareDepositPaidAt: null,
           squarePaidInFullAt: null,
+          // Clear customer + snapshot together. Re-issuing the primary
+          // re-runs ensureCustomer and re-snapshots, so a stale
+          // customer id from a previous cycle would be misleading
+          // (and could be mis-bound to a future supplemental).
+          squareCustomerId: null,
           primarySnapshotLineItems: null,
           primarySnapshotFees: null,
           primarySnapshotDiscounts: null,
@@ -1154,6 +1163,8 @@ router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<v
     deltaLineItems: QuoteLineItem[];
     deltaFees: QuoteAdjustment[];
     deltaDiscounts: QuoteAdjustment[];
+    primaryCustomerId: string;
+    primaryInvoiceNumber: string | null;
   };
   try {
     const prep = await db.transaction(async (tx) => {
@@ -1167,6 +1178,14 @@ router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<v
         return { kind: "no_primary" as const };
       }
       if (!inq.clientEmail?.trim()) return { kind: "no_email" as const };
+      // Inquiries whose primary was published before squareCustomerId
+      // existed have NULL here. We can't bind the supplemental to the
+      // correct Square customer in that case, so refuse rather than
+      // risk re-resolving by current email and billing the wrong
+      // customer. Operator workaround: cancel + re-issue the primary.
+      if (!inq.squareCustomerId?.trim()) {
+        return { kind: "no_customer_id" as const };
+      }
 
       const delta = computeUninvoicedDelta({
         currentLineItems: (inq.lineItems ?? []) as QuoteLineItem[],
@@ -1247,12 +1266,20 @@ router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<v
         delta,
         linesSnapshot,
         deltaLineItems, deltaFees, deltaDiscounts,
+        primaryCustomerId: inq.squareCustomerId!,
+        primaryInvoiceNumber: inq.squareInvoiceId,
       };
     });
 
     if (prep.kind === "not_found") { res.status(404).json({ error: "Inquiry not found" }); return; }
     if (prep.kind === "no_primary") { res.status(409).json({ error: "Issue the primary Square invoice before sending a supplemental." }); return; }
     if (prep.kind === "no_email") { res.status(400).json({ error: "Client must have an email on file" }); return; }
+    if (prep.kind === "no_customer_id") {
+      res.status(409).json({
+        error: "Primary invoice was issued before per-inquiry customer tracking existed. Cancel the primary and re-issue it before sending a supplemental.",
+      });
+      return;
+    }
     if (prep.kind === "no_delta") { res.status(400).json({ error: "No new charges since the primary invoice — nothing to bill." }); return; }
     if (prep.kind === "blocked") {
       const verb = prep.status === "PENDING" ? "is still publishing" : "needs reconciliation";
@@ -1280,6 +1307,16 @@ router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<v
       fees: reservation.deltaFees,
       discounts: reservation.deltaDiscounts,
       supplementSeq: reservation.nextSeq,
+      // Bind to the SAME Square customer the primary invoice was sent
+      // to. Sourcing this from the inquiry row (captured at primary
+      // publish) — not re-resolving by current email — guarantees a
+      // post-publish edit to clientEmail can't reroute the supplemental
+      // to a different Square customer than the one that's paying the
+      // primary.
+      primaryCustomerId: reservation.primaryCustomerId,
+      // Reference the primary invoice in the supplemental description
+      // so the customer can correlate the two emails Square sends.
+      primaryInvoiceNumber: reservation.primaryInvoiceNumber,
     });
   } catch (err) {
     try {

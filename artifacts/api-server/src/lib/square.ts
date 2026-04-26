@@ -228,6 +228,7 @@ export type CreatedInvoice = {
   status: string;
   hostedUrl: string | null;
   balanceDueCents: number;
+  customerId: string;
 };
 
 export async function createAndPublishInvoiceForInquiry(opts: {
@@ -349,6 +350,7 @@ export async function createAndPublishInvoiceForInquiry(opts: {
     status: published.invoice.status,
     hostedUrl: published.invoice.public_url ?? null,
     balanceDueCents: published.invoice.next_payment_amount_money?.amount ?? dollarsToCents(totals.total),
+    customerId,
   };
 }
 
@@ -373,14 +375,25 @@ export async function createAndPublishSupplementalInvoice(opts: {
   // description so the merchant + customer can tell supplementals apart
   // ("Supplemental #1", "#2", …).
   supplementSeq: number;
+  // The exact Square customer id the primary invoice was billed to.
+  // Required (not optional) to guarantee the supplemental binds to the
+  // SAME Square customer as the primary, even if the admin edited
+  // `clientEmail` on the inquiry after publishing the primary. The
+  // caller is responsible for sourcing this from the inquiry's
+  // persisted `squareCustomerId`.
+  primaryCustomerId: string;
+  // Primary invoice number (e.g. "INV-001") for cross-reference in the
+  // supplemental description, so the customer can match it to the
+  // primary invoice they already received.
+  primaryInvoiceNumber?: string | null;
 }): Promise<CreatedInvoice> {
   const cfg = getSquareConfig();
   if (!cfg) throw new Error("Square is not configured");
 
-  const { inquiry, lineItems, fees, discounts, supplementSeq } = opts;
+  const { inquiry, lineItems, fees, discounts, supplementSeq, primaryCustomerId, primaryInvoiceNumber } = opts;
 
-  if (!inquiry.clientEmail?.trim()) {
-    throw new Error("Square invoices require the client to have an email on file");
+  if (!primaryCustomerId.trim()) {
+    throw new Error("Supplemental invoice requires the primary invoice's Square customer id");
   }
 
   const totals = computeQuoteTotals(lineItems, fees, discounts);
@@ -388,13 +401,11 @@ export async function createAndPublishSupplementalInvoice(opts: {
     throw new Error("Supplemental invoice total must be greater than $0");
   }
 
-  // 1) Customer (find-or-create by email — same Square customer as primary)
-  const customerId = await ensureCustomer(cfg, {
-    email: inquiry.clientEmail.trim(),
-    givenName: inquiry.clientName,
-    phone: inquiry.clientPhone,
-    organization: inquiry.organization,
-  });
+  // 1) Bind to the EXACT Square customer that the primary invoice was
+  // sent to — never re-resolve by current email. The primary's customer
+  // id is the source of truth; if `clientEmail` was edited after the
+  // primary publish, we must still bill the original customer.
+  const customerId = primaryCustomerId.trim();
 
   // 2) Order built from the delta rows
   const orderId = await createOrderFromRows(cfg, {
@@ -414,8 +425,17 @@ export async function createAndPublishSupplementalInvoice(opts: {
     automatic_payment_source: "NONE",
   }];
 
-  // 4) Create invoice (draft)
+  // 4) Create invoice (draft).
+  //
+  // Title + description deliberately reference the primary invoice by
+  // its Square invoice number (and our quote number) so the customer
+  // can match this supplemental email to the original invoice they
+  // already received. Falls back gracefully if either is missing.
   const titleSuffix = `Supplemental #${supplementSeq}`;
+  const quoteRef = inquiry.quoteNumber ?? `Quote #${inquiry.id}`;
+  const primaryRef = primaryInvoiceNumber?.trim()
+    ? `Invoice ${primaryInvoiceNumber.trim()}`
+    : quoteRef;
   const createBody = {
     idempotency_key: `inv-create-supp-${inquiry.id}-${supplementSeq}-${Date.now()}-${randomUUID()}`,
     invoice: {
@@ -425,8 +445,10 @@ export async function createAndPublishSupplementalInvoice(opts: {
       payment_requests: paymentRequests,
       delivery_method: "EMAIL",
       accepted_payment_methods: { card: true, square_gift_card: false, bank_account: false },
-      title: `Catering ${inquiry.quoteNumber ?? `Quote #${inquiry.id}`} — ${titleSuffix}`,
-      description: `Additional charges for your catering order${inquiry.eventDate ? ` on ${inquiry.eventDate}` : ""}.`,
+      title: `Catering ${quoteRef} — ${titleSuffix}`,
+      description:
+        `Additional charges for your catering order${inquiry.eventDate ? ` on ${inquiry.eventDate}` : ""}. `
+        + `This is a separate invoice that supplements ${primaryRef}; the original invoice is unchanged.`,
       scheduled_at: undefined,
     },
   };
@@ -455,6 +477,7 @@ export async function createAndPublishSupplementalInvoice(opts: {
     status: published.invoice.status,
     hostedUrl: published.invoice.public_url ?? null,
     balanceDueCents: published.invoice.next_payment_amount_money?.amount ?? dollarsToCents(totals.total),
+    customerId,
   };
 }
 

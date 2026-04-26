@@ -113,6 +113,12 @@ export const cateringInquiriesTable = pgTable("catering_inquiries", {
   squareInvoiceId: text("square_invoice_id"),
   squareInvoiceVersion: integer("square_invoice_version"),
   squareOrderId: text("square_order_id"),
+  // Square customer id captured at primary publish. Supplemental
+  // invoices MUST bind to this exact customer (not a re-resolution by
+  // current email) so an admin editing `clientEmail` after the primary
+  // is sent cannot accidentally route the supplemental to a different
+  // Square customer than the one being billed for the primary.
+  squareCustomerId: text("square_customer_id"),
   squareInvoiceStatus: text("square_invoice_status"), // DRAFT | UNPAID | SCHEDULED | PARTIALLY_PAID | PAID | CANCELED | FAILED | REFUNDED
   squareHostedUrl: text("square_hosted_url"),
   squareAmountPaid: numeric("square_amount_paid", { precision: 12, scale: 2 }),
