@@ -14,6 +14,7 @@ import type {
   QuoteReply,
 } from "@workspace/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
+import { computeOtdSetupFeeRow, otdSetupFeeRowEquals, OTD_SETUP_FEE_ID } from "@workspace/pricing";
 import { sendNewInquiryAlert } from "../lib/sms";
 import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
 import { sendMail } from "../lib/mail";
@@ -393,35 +394,29 @@ router.put("/admin/catering/:id", async (req, res): Promise<void> => {
         // Synthesize the OTD setup-fee row so a programmatic mode flip
         // (without re-opening the editor — e.g. via API or a future
         // bulk action) still produces a fee array that bills the setup
-        // fee. The amount tracks the snapshot, zeroed out / omitted
-        // once the food subtotal hits the waiver threshold so the
-        // orange info card and the totals always agree. Mirrors the
-        // QuoteEditor synthesizer (OTD_SETUP_FEE_ID = "otd-setup-fee").
+        // fee. Delegates to the shared synthesizer in `@workspace/pricing`
+        // so the stable id, label, and waiver logic stay aligned with
+        // the admin Quote Builder UI and the cart-as-OTD seed path.
         const baseFees = (updates.fees as QuoteAdjustment[] | undefined) ?? current.fees ?? [];
         const baseSubtotalNum = updates.subtotal != null
           ? parseFloat(updates.subtotal as string)
           : (current.subtotal != null ? parseFloat(current.subtotal) : 0);
         const subtotalForWaiver = Number.isFinite(baseSubtotalNum) ? baseSubtotalNum : 0;
-        const waived = subtotalForWaiver >= cfg.feeWaiverThreshold;
-        const otherFees = baseFees.filter((f) => f.id !== "otd-setup-fee");
-        const nextFees = waived || cfg.setupFee <= 0
-          ? otherFees
-          : [
-              ...otherFees,
-              {
-                id: "otd-setup-fee",
-                label: "On the Dash — on-site setup fee",
-                kind: "fixed" as const,
-                amount: Math.round(cfg.setupFee * 100) / 100,
-              },
-            ];
-        // Only write back if something changed, to avoid pointless
-        // totals churn when an existing OTD inquiry is re-saved.
-        if (
-          nextFees.length !== baseFees.length
-          || nextFees.some((f, i) => f !== baseFees[i])
-        ) {
-          updates.fees = nextFees;
+        const desiredRow = computeOtdSetupFeeRow(
+          "on_the_dash",
+          cfg.setupFee,
+          cfg.feeWaiverThreshold,
+          subtotalForWaiver,
+        );
+        const existingRowRaw = baseFees.find((f) => f.id === OTD_SETUP_FEE_ID) ?? null;
+        const existingRow = existingRowRaw
+          ? { ...existingRowRaw, amount: Number(existingRowRaw.amount) }
+          : null;
+        // Skip the write-back when the row is already in its desired
+        // shape, to avoid pointless totals churn on no-op re-saves.
+        if (!otdSetupFeeRowEquals(desiredRow, existingRow)) {
+          const otherFees = baseFees.filter((f) => f.id !== OTD_SETUP_FEE_ID);
+          updates.fees = desiredRow ? [...otherFees, desiredRow] : otherFees;
           applyTotalsToUpdates(updates);
         }
       } else {

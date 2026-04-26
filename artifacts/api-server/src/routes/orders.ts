@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, orderItemsTable, cartItemsTable, menuItemsTable, cateringInquiriesTable, eventSettingsTable } from "@workspace/db/schema";
-import { computeEffectivePriceDetail } from "@workspace/pricing";
+import { computeEffectivePriceDetail, computeOtdSetupFeeRow } from "@workspace/pricing";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { sendNewInquiryAlert } from "../lib/sms";
@@ -243,23 +243,19 @@ router.post("/orders", async (req, res): Promise<void> => {
       // Seed the editable Quote Builder fee array with the synthesized
       // OTD setup-fee row when this cart was placed as On the Dash so
       // the very first PDF the client receives bills the setup fee
-      // (matching what the cart already added to `total`). The row uses
-      // the same stable id the QuoteEditor + admin-catering toggle path
-      // use ("otd-setup-fee") so flips and re-saves stay deduped.
-      // Omitted when the food subtotal already cleared the waiver
-      // threshold so the row and the orange info card always agree.
-      const seededFees = isOtd
-        && subtotal < otdConfig.feeWaiverThreshold
-        && otdConfig.setupFee > 0
-        ? [
-            {
-              id: "otd-setup-fee",
-              label: "On the Dash — on-site setup fee",
-              kind: "fixed" as const,
-              amount: Math.round(otdConfig.setupFee * 100) / 100,
-            },
-          ]
-        : [];
+      // (matching what the cart already added to `total`). Delegates to
+      // the shared synthesizer in `@workspace/pricing` so the stable id
+      // and waiver logic stay aligned with the admin Quote Builder UI
+      // and the admin mode-toggle path. Returns null (→ empty fees
+      // array) when the food subtotal already cleared the waiver
+      // threshold, so the row and the orange info card always agree.
+      const seededSetupRow = computeOtdSetupFeeRow(
+        serviceMode,
+        otdConfig.setupFee,
+        otdConfig.feeWaiverThreshold,
+        subtotal,
+      );
+      const seededFees = seededSetupRow ? [seededSetupRow] : [];
 
       // Seed the canonical quote totals (subtotal/feesTotal/discountsTotal/
       // total) at insert time so every downstream consumer — the admin

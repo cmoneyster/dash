@@ -9,7 +9,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
-import { computeEffectivePriceDetail } from "@workspace/pricing";
+import {
+  computeEffectivePriceDetail,
+  computeOtdSetupFeeRow,
+  otdSetupFeeRowEquals,
+  OTD_SETUP_FEE_ID,
+} from "@workspace/pricing";
 import { TAX_DISCLOSURE } from "@/lib/tax";
 import { VenueAutocomplete } from "@/components/VenueAutocomplete";
 
@@ -462,36 +467,6 @@ function MenuPicker({ menu, onPick }: {
 // when staff bumps the stepper, and keeps the line easily distinguishable
 // from manually-added fees with the same label.
 const OTD_EXTRA_HOURS_FEE_ID = "otd-extra-hours";
-// Stable id for the synthesized OTD on-site setup fee row. Mirrors the
-// extra-hours pattern: kept out of the manual Fees editor (so admins can't
-// drift it from the snapshot) and stripped automatically when the inquiry
-// switches back to Drop-Off. The row's amount tracks the snapshot setup
-// fee, zeroed out (and removed) once the food subtotal hits the waiver
-// threshold so the orange info card and the quote totals always agree.
-const OTD_SETUP_FEE_ID = "otd-setup-fee";
-
-// Compute what the OTD setup-fee row should look like for a given snapshot
-// + subtotal, or null when no row should be present (Drop-Off, missing
-// snapshot, or subtotal at/above the waiver threshold). The label is
-// stable so persisted rows don't churn between renders.
-function computeOtdSetupFeeRow(
-  serviceMode: string | null,
-  setupFee: number | null,
-  waiverThreshold: number | null,
-  subtotal: number,
-): QuoteAdjustment | null {
-  if (serviceMode !== "on_the_dash") return null;
-  if (setupFee == null || !Number.isFinite(setupFee) || setupFee <= 0) return null;
-  if (waiverThreshold != null && Number.isFinite(waiverThreshold) && subtotal >= waiverThreshold) {
-    return null;
-  }
-  return {
-    id: OTD_SETUP_FEE_ID,
-    label: "On the Dash — on-site setup fee",
-    kind: "fixed",
-    amount: round2(setupFee),
-  };
-}
 
 function QuoteEditor({
   lineItems, fees, discounts, quoteNotes, quoteExpiresAt,
@@ -678,13 +653,13 @@ function QuoteEditor({
       otdFeeWaiverThreshold,
       totals.subtotal,
     );
-    const existing = fees.find(f => f.id === OTD_SETUP_FEE_ID) ?? null;
-    const sameAmount = desired != null && existing != null
-      && Math.abs(desired.amount - Number(existing.amount)) < 0.005
-      && desired.label === existing.label
-      && desired.kind === existing.kind;
-    if (!desired && !existing) return;
-    if (sameAmount) return;
+    const existingRaw = fees.find(f => f.id === OTD_SETUP_FEE_ID) ?? null;
+    // Coerce existing.amount to a number for the semantic compare (Drizzle
+    // numeric columns hydrate as strings on first load).
+    const existing = existingRaw
+      ? { ...existingRaw, amount: Number(existingRaw.amount) }
+      : null;
+    if (otdSetupFeeRowEquals(desired, existing)) return;
     const otherFees = fees.filter(f => f.id !== OTD_SETUP_FEE_ID);
     onChange({ fees: desired ? [...otherFees, desired] : otherFees });
   }, [serviceMode, otdSetupFee, otdFeeWaiverThreshold, totals.subtotal, fees, onChange]);

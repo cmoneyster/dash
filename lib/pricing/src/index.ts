@@ -45,3 +45,89 @@ export function computeEffectivePrice(
 ): number {
   return computeEffectivePriceDetail(item, qty, sizePrice).price;
 }
+
+// ============================================================================
+// OTD on-site setup fee synthesis — shared across the admin Quote Builder UI
+// (artifacts/catering-web) and the server routes that snapshot/seed it
+// (artifacts/api-server). Centralized here so the stable id, label, and
+// waiver logic can never drift between the three call sites.
+// ============================================================================
+
+// Stable id used for the synthesized "On the Dash on-site setup fee" row in
+// the Quote Builder fees array. The matching Quote Builder helper for the
+// extra-hours upcharge uses the sibling id "otd-extra-hours". Keeping the
+// id literal exported lets backend and frontend dedupe / strip the row by
+// the same key.
+export const OTD_SETUP_FEE_ID = "otd-setup-fee";
+
+// Stable, customer-facing label for the row. Surfaces in the PDF, the
+// admin Quote Builder fees list, and the public quote payload.
+export const OTD_SETUP_FEE_LABEL = "On the Dash — on-site setup fee";
+
+// Minimal shape of a fee/discount row used by both api-server and
+// catering-web. Mirrors `QuoteAdjustment` from `@workspace/db/schema` but
+// is redeclared locally so this package stays free of a `@workspace/db`
+// dependency (it is consumed by both backend and frontend bundles).
+export type OtdQuoteAdjustment = {
+  id: string;
+  label: string;
+  kind: "fixed" | "percent";
+  amount: number;
+};
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Compute the synthesized OTD setup-fee row, or null when no row should
+ * be present. Returns null in any of these cases (matching the orange
+ * info card and waiver-badge logic in the admin UI):
+ *   - serviceMode is not "on_the_dash"
+ *   - the snapshot setup fee is missing or non-positive
+ *   - the food subtotal has reached/passed the per-inquiry waiver threshold
+ *
+ * The label and id are stable so persisted rows do not churn between
+ * renders / saves.
+ */
+export function computeOtdSetupFeeRow(
+  serviceMode: string | null | undefined,
+  setupFee: number | null | undefined,
+  waiverThreshold: number | null | undefined,
+  subtotal: number,
+): OtdQuoteAdjustment | null {
+  if (serviceMode !== "on_the_dash") return null;
+  if (setupFee == null || !Number.isFinite(setupFee) || setupFee <= 0) return null;
+  if (
+    waiverThreshold != null
+    && Number.isFinite(waiverThreshold)
+    && subtotal >= waiverThreshold
+  ) {
+    return null;
+  }
+  return {
+    id: OTD_SETUP_FEE_ID,
+    label: OTD_SETUP_FEE_LABEL,
+    kind: "fixed",
+    amount: round2(setupFee),
+  };
+}
+
+/**
+ * Semantic equality for two synthesized fee rows. Used by the admin
+ * mode-toggle handler to decide whether to write back a new fees array,
+ * so we don't churn quote totals on no-op re-saves.
+ */
+export function otdSetupFeeRowEquals(
+  a: OtdQuoteAdjustment | null,
+  b: OtdQuoteAdjustment | null,
+): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return (
+    a.id === b.id
+    && a.kind === b.kind
+    && a.label === b.label
+    && Math.abs(Number(a.amount) - Number(b.amount)) < 0.005
+  );
+}
