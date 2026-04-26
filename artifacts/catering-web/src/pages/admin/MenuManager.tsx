@@ -349,12 +349,19 @@ export default function MenuManager() {
   const pricingTemplate = watch("pricingTemplate", "per_unit");
   const watchedCategory = watch("category", "");
 
-  // Auto-set pricing template when category changes
+  // Auto-set pricing template when category changes. Drive the default from
+  // the picked category's structured plannerGroup ("entree" → pan sizes,
+  // anything else → per unit) instead of matching the literal "Entrées"
+  // prefix, so any future entrée-group parent (e.g. "Mains - Beef") gets the
+  // correct default with no source edits.
   React.useEffect(() => {
     if (!watchedCategory) return;
-    const isEntreeCat = String(watchedCategory).startsWith("Entrées");
+    if (!adminCategories) return;
+    const picked = adminCategories.find(c => c.name === String(watchedCategory));
+    if (!picked) return;
+    const isEntreeCat = picked.plannerGroup === "entree";
     setValue("pricingTemplate", isEntreeCat ? "pan_sizes" : "per_unit");
-  }, [watchedCategory, setValue]);
+  }, [watchedCategory, adminCategories, setValue]);
 
   const openNew = () => {
     setEditingItem(null);

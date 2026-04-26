@@ -18,7 +18,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
-import { useCategories, type Category } from "@/lib/categories";
+import { useCategories, splitCategoryName, type Category } from "@/lib/categories";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
 import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
 
@@ -1077,12 +1077,15 @@ export default function Plan() {
                           <div className="flex flex-wrap gap-2">
                             {catMaps.order
                               .filter(cat => catMaps.entree.has(cat) && entreeServingsBycat[cat] != null)
-                              .map(cat => (
-                                <span key={cat} className="text-xs bg-secondary rounded-full px-3 py-1 text-muted-foreground">
-                                  {cat.replace("Entrées - ", "")}:{" "}
-                                  <span className="font-bold text-foreground">{entreeServingsBycat[cat]} srv</span>
-                                </span>
-                              ))}
+                              .map(cat => {
+                                const { label, sub } = splitCategoryName(cat);
+                                return (
+                                  <span key={cat} className="text-xs bg-secondary rounded-full px-3 py-1 text-muted-foreground">
+                                    {sub ?? label}:{" "}
+                                    <span className="font-bold text-foreground">{entreeServingsBycat[cat]} srv</span>
+                                  </span>
+                                );
+                              })}
                           </div>
                         )}
 
