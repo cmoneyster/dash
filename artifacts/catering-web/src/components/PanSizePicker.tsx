@@ -116,7 +116,7 @@ export function PanSizePicker({ item, onClose, onConfirm, loading }: PanSizePick
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-primary font-bold text-sm">{formatCurrency(s.price)}</span>
                     {s.servings != null && (
-                      <span className="text-xs text-muted-foreground">· serves {s.servings}</span>
+                      <span className="text-xs text-muted-foreground">· {s.servings} servings</span>
                     )}
                   </div>
                 </div>

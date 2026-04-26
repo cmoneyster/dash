@@ -60,19 +60,19 @@ export function getPanSizesServingRange(item: MenuItem): { min: number; max: num
   return { min: servings[0], max: servings[servings.length - 1] };
 }
 
-// Single source of truth for the "Serves …" line on the public menu cards.
+// Single source of truth for the "Servings …" line on the public menu cards.
 // Pan-size items render a min–max range derived from their per-size serving
 // counts (or a single number when min === max). Per-unit items keep the
-// existing "Serves N (unit)" line. Falls back to per-unit text whenever the
+// existing "Servings N (unit)" line. Falls back to per-unit text whenever the
 // pan-size data isn't usable, so the row never renders blank.
 export function formatServingsLine(item: MenuItem): string {
   if (isPanSizesItem(item)) {
     const range = getPanSizesServingRange(item);
     if (range) {
       return range.min === range.max
-        ? `Serves ${range.min}`
-        : `Serves ${range.min}\u2013${range.max}`;
+        ? `Servings ${range.min}`
+        : `Servings ${range.min}\u2013${range.max}`;
     }
   }
-  return `Serves ${item.servingSize} (${item.unit})`;
+  return `Servings ${item.servingSize} (${item.unit})`;
 }
