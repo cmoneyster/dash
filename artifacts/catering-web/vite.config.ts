@@ -1,8 +1,75 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import fs from "node:fs";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+
+// The Open Graph share image is intentionally sourced from
+// `attached_assets/` rather than `artifacts/catering-web/public/`. JPEGs
+// placed inside an artifact's `public/` get silently re-encoded by the
+// surrounding asset pipeline, which causes a 1-byte drift on the file
+// in every unrelated commit (see Task #155). Serving the canonical
+// image from outside `public/` keeps the URL `/opengraph.jpg` stable
+// while leaving nothing in `public/` for the encoder to mutate.
+const ogImageSourcePath = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "attached_assets",
+  "catering-web-opengraph.jpg",
+);
+const ogImageRelativePath = "opengraph.jpg";
+
+function ogImagePlugin(basePathPrefix: string): Plugin {
+  // Accept both the bare URL and the BASE_PATH-prefixed URL so the
+  // middleware works regardless of whether this artifact is mounted at
+  // `/` or under a sub-path in dev.
+  const normalizedBase = basePathPrefix.endsWith("/")
+    ? basePathPrefix
+    : `${basePathPrefix}/`;
+  const servedPaths = new Set<string>([
+    `/${ogImageRelativePath}`,
+    `${normalizedBase}${ogImageRelativePath}`,
+  ]);
+
+  return {
+    name: "catering-web:og-image",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url) {
+          next();
+          return;
+        }
+        const url = req.url.split("?")[0];
+        if (!servedPaths.has(url)) {
+          next();
+          return;
+        }
+        try {
+          const buf = fs.readFileSync(ogImageSourcePath);
+          res.setHeader("Content-Type", "image/jpeg");
+          res.setHeader("Content-Length", String(buf.length));
+          res.setHeader("Cache-Control", "public, max-age=86400");
+          res.end(buf);
+        } catch (err) {
+          next(err as Error);
+        }
+      });
+    },
+    closeBundle() {
+      const outDir = path.resolve(import.meta.dirname, "dist", "public");
+      fs.mkdirSync(outDir, { recursive: true });
+      const destPath = path.join(outDir, ogImageRelativePath);
+      fs.copyFileSync(ogImageSourcePath, destPath);
+      if (!fs.existsSync(destPath)) {
+        throw new Error(
+          `og-image plugin failed to emit ${destPath} during build`,
+        );
+      }
+    },
+  };
+}
 
 const rawPort = process.env.PORT;
 
@@ -32,6 +99,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    ogImagePlugin(basePath),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
