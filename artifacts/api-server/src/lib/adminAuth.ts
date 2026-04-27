@@ -19,7 +19,13 @@ export function validateAdminToken(token: string): boolean {
 
 export function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers["authorization"];
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const headerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  // EventSource (used by the customer-chat SSE feed) can't set
+  // Authorization headers, so we also accept ?token=... as a fallback.
+  // The token is the same HMAC value the header path uses, so leaking
+  // it via the query string is no worse than leaking the header value.
+  const queryToken = typeof req.query?.token === "string" ? req.query.token : null;
+  const token = headerToken || queryToken;
 
   if (!token || !validateAdminToken(token)) {
     res.status(401).json({ error: "Unauthorized" });

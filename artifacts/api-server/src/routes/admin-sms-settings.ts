@@ -9,7 +9,8 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { isEjoinConfigured, sendSmsViaEjoin, clearEjoinPortCache, EJOIN_PORT_COUNT } from "../lib/sms-ejoin";
+import { isEjoinConfigured, sendSmsViaEjoin, clearEjoinPortCache, EJOIN_PORT_COUNT, getInboundMode } from "../lib/sms-ejoin";
+import { clearSmsInboxSettingsCache } from "../lib/sms-inbox";
 
 const router: IRouter = Router();
 
@@ -19,7 +20,16 @@ const router: IRouter = Router();
 type SmsSettingsUpdate = Partial<
   Pick<
     typeof eventSettingsTable.$inferInsert,
-    "smsActivePorts" | "ownerNotificationPhone" | "lowStockAlertPhones" | "lowStockAlertThreshold" | "updatedAt"
+    | "smsActivePorts"
+    | "ownerNotificationPhone"
+    | "lowStockAlertPhones"
+    | "lowStockAlertThreshold"
+    | "smsChatPort"
+    | "smsOwnerForwardEnabled"
+    | "smsOwnerForwardCapPer24h"
+    | "smsOwnerReplyEnabled"
+    | "smsBackfillDays"
+    | "updatedAt"
   >
 >;
 
@@ -104,6 +114,52 @@ function normalizeAlertPhones(v: unknown): string[] {
   return out;
 }
 
+// Allow null/empty (= "no chat port chosen yet, feature off"). Otherwise
+// must be an integer in 1..EJOIN_PORT_COUNT. Overlap with the
+// round-robin pool is checked at the route level since it depends on
+// the other field's resolved value.
+function normalizeChatPort(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > EJOIN_PORT_COUNT) {
+    throw new HttpError(`smsChatPort must be an integer between 1 and ${EJOIN_PORT_COUNT}, or null to disable`);
+  }
+  return n;
+}
+
+function normalizeBool(v: unknown, field: string): boolean {
+  if (typeof v === "boolean") return v;
+  if (v === "true" || v === 1 || v === "1") return true;
+  if (v === "false" || v === 0 || v === "0") return false;
+  throw new HttpError(`${field} must be a boolean`);
+}
+
+// Cap is one of {1,3,5,10} or null (unlimited). Reject other values
+// so the UI and backend stay aligned.
+function normalizeForwardCap(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (!Number.isInteger(n)) {
+    throw new HttpError("smsOwnerForwardCapPer24h must be an integer or null");
+  }
+  if (![1, 3, 5, 10].includes(n)) {
+    throw new HttpError("smsOwnerForwardCapPer24h must be one of 1, 3, 5, 10, or null (unlimited)");
+  }
+  return n;
+}
+
+function normalizeBackfillDays(v: unknown): number {
+  const n = Number(v);
+  // Hard cap at 365 — the gateway's inbox page typically doesn't go
+  // back further than ~3 months on most firmware revisions, but we
+  // accept up to a year so admins can self-discover the practical
+  // ceiling.
+  if (!Number.isInteger(n) || n < 1 || n > 365) {
+    throw new HttpError("smsBackfillDays must be an integer between 1 and 365");
+  }
+  return n;
+}
+
 function normalizeAlertThreshold(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
@@ -128,6 +184,14 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   lowStockAlertThreshold: number | null;
   ejoinConfigured: boolean;
   ownerNotificationPhoneSource: "db" | "env" | "none";
+  smsChatPort: number | null;
+  smsOwnerForwardEnabled: boolean;
+  smsOwnerForwardCapPer24h: number | null;
+  smsOwnerReplyEnabled: boolean;
+  smsBackfillDays: number;
+  smsBackfillCompletedAt: string | null;
+  smsInboundMode: "push" | "poll";
+  ejoinPortCount: number;
 } {
   const dbOwner = s?.ownerNotificationPhone?.trim() || null;
   const envOwner = process.env.OWNER_PHONE?.trim() || null;
@@ -141,6 +205,14 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
     // Lets the UI show "currently using OWNER_PHONE env var (legacy)" when
     // the admin hasn't entered a DB-managed number yet.
     ownerNotificationPhoneSource,
+    smsChatPort: s?.smsChatPort ?? null,
+    smsOwnerForwardEnabled: !!s?.smsOwnerForwardEnabled,
+    smsOwnerForwardCapPer24h: s?.smsOwnerForwardCapPer24h ?? null,
+    smsOwnerReplyEnabled: !!s?.smsOwnerReplyEnabled,
+    smsBackfillDays: s?.smsBackfillDays ?? 90,
+    smsBackfillCompletedAt: s?.smsBackfillCompletedAt ? s.smsBackfillCompletedAt.toISOString() : null,
+    smsInboundMode: getInboundMode(),
+    ejoinPortCount: EJOIN_PORT_COUNT,
   };
 }
 
@@ -163,6 +235,11 @@ router.put("/admin/sms-settings", async (req, res) => {
       ownerNotificationPhone?: unknown;
       lowStockAlertPhones?: unknown;
       lowStockAlertThreshold?: unknown;
+      smsChatPort?: unknown;
+      smsOwnerForwardEnabled?: unknown;
+      smsOwnerForwardCapPer24h?: unknown;
+      smsOwnerReplyEnabled?: unknown;
+      smsBackfillDays?: unknown;
     };
     const updates: SmsSettingsUpdate = { updatedAt: new Date() };
     if (body.smsActivePorts !== undefined) {
@@ -177,8 +254,35 @@ router.put("/admin/sms-settings", async (req, res) => {
     if (body.lowStockAlertThreshold !== undefined) {
       updates.lowStockAlertThreshold = normalizeAlertThreshold(body.lowStockAlertThreshold);
     }
+    if (body.smsChatPort !== undefined) {
+      updates.smsChatPort = normalizeChatPort(body.smsChatPort);
+    }
+    if (body.smsOwnerForwardEnabled !== undefined) {
+      updates.smsOwnerForwardEnabled = normalizeBool(body.smsOwnerForwardEnabled, "smsOwnerForwardEnabled");
+    }
+    if (body.smsOwnerForwardCapPer24h !== undefined) {
+      updates.smsOwnerForwardCapPer24h = normalizeForwardCap(body.smsOwnerForwardCapPer24h);
+    }
+    if (body.smsOwnerReplyEnabled !== undefined) {
+      updates.smsOwnerReplyEnabled = normalizeBool(body.smsOwnerReplyEnabled, "smsOwnerReplyEnabled");
+    }
+    if (body.smsBackfillDays !== undefined) {
+      updates.smsBackfillDays = normalizeBackfillDays(body.smsBackfillDays);
+    }
 
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+
+    // Cross-field validation: chat port must NOT overlap with the
+    // round-robin pool. If either field is changing this save, evaluate
+    // against the resolved post-update values.
+    const resolvedChatPort = updates.smsChatPort !== undefined ? updates.smsChatPort : existing?.smsChatPort ?? null;
+    const resolvedPool = updates.smsActivePorts !== undefined ? updates.smsActivePorts : existing?.smsActivePorts ?? [7];
+    if (resolvedChatPort != null && resolvedPool.includes(resolvedChatPort)) {
+      throw new HttpError(
+        `Customer chat port (port ${resolvedChatPort}) cannot also be in the staff round-robin pool. ` +
+        `Remove it from the pool or pick a different chat port.`,
+      );
+    }
     let row: typeof eventSettingsTable.$inferSelect | undefined;
     if (existing) {
       const [updated] = await db
@@ -209,6 +313,10 @@ router.put("/admin/sms-settings", async (req, res) => {
     // Port cache is short-lived but the admin expects "Save → next test uses
     // the new pool" to be instant. Invalidate explicitly.
     clearEjoinPortCache();
+    // Owner-forward / opt-out / reply settings are read on the inbound
+    // ingest hot path and cached for 5s. Invalidate so toggles take
+    // effect on the very next inbound.
+    clearSmsInboxSettingsCache();
 
     res.json(buildResponse(row));
   } catch (err: unknown) {

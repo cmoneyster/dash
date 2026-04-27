@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken, getAdminToken } from "@/components/AdminGuard";
 
@@ -58,8 +58,58 @@ function useInstagramBadge(): number {
   return count;
 }
 
+function useUnmatchedSmsBadge(): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    let es: EventSource | null = null;
+    let pollInt: ReturnType<typeof setInterval> | null = null;
+
+    async function load() {
+      const token = getAdminToken();
+      if (!token) return;
+      try {
+        const r = await fetch("/api/admin/messages/badges", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) return;
+        const data = (await r.json()) as { unmatchedCount?: number };
+        if (!cancelled) setCount(data.unmatchedCount ?? 0);
+      } catch {
+        // silent — sidebar shouldn't break if poller endpoint hiccups
+      }
+    }
+    load();
+
+    const token = getAdminToken();
+    if (token) {
+      try {
+        es = new EventSource(`/api/admin/messages/stream?token=${encodeURIComponent(token)}`);
+        es.addEventListener("inbound", () => load());
+        es.addEventListener("unmatched-changed", () => load());
+        es.onerror = () => {
+          // Fall back to a slower poll until the stream comes back.
+          if (!pollInt) pollInt = setInterval(load, 60_000);
+        };
+      } catch {
+        pollInt = setInterval(load, 60_000);
+      }
+    } else {
+      pollInt = setInterval(load, 60_000);
+    }
+
+    return () => {
+      cancelled = true;
+      es?.close();
+      if (pollInt) clearInterval(pollInt);
+    };
+  }, []);
+  return count;
+}
+
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const instagramBadge = useInstagramBadge();
+  const unmatchedBadge = useUnmatchedSmsBadge();
   return (
     <>
       <AdminNavLink href="/admin" icon={LayoutDashboard} onClick={onNavigate}>Dashboard</AdminNavLink>
@@ -87,6 +137,9 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Communications</p>
       </div>
       <AdminNavLink href="/admin/sms" icon={MessageSquare} onClick={onNavigate}>SMS</AdminNavLink>
+      <AdminNavLink href="/admin/messages/unmatched" icon={Inbox} onClick={onNavigate} badge={unmatchedBadge}>
+        Unmatched Inbox
+      </AdminNavLink>
       <div className="pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Catering</p>
       </div>

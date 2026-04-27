@@ -3,7 +3,7 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
   Save, Check, Loader2, MessageSquare, Plus, Trash2, Send,
-  AlertTriangle, Smartphone, UserCog,
+  AlertTriangle, Smartphone, UserCog, MessagesSquare, RefreshCw,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -18,11 +18,35 @@ type ServerState = {
   lowStockAlertThreshold: number | null;
   ejoinConfigured: boolean;
   ownerNotificationPhoneSource: "db" | "env" | "none";
+  smsChatPort: number | null;
+  smsOwnerForwardEnabled: boolean;
+  smsOwnerForwardCapPer24h: number | null;
+  smsOwnerReplyEnabled: boolean;
+  smsBackfillDays: number;
+  smsBackfillCompletedAt: string | null;
+  smsInboundMode: "push" | "poll";
+  ejoinPortCount: number;
+};
+
+type BackfillStatus = {
+  inFlight: boolean;
+  startedAt: string | null;
+  lastResult: { startedAt: string; finishedAt: string; ingested: number; skipped: number; errors: number } | null;
+  backfillDays: number;
+  completedAt: string | null;
 };
 
 // Hardware: ejointech gateway exposes 8 physical SIM ports (1..8).
 const EJOIN_VALID_PORTS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const EJOIN_PORT_COUNT = EJOIN_VALID_PORTS.length;
+
+const FORWARD_CAP_OPTIONS: { value: string; label: string }[] = [
+  { value: "1", label: "1 forward / 24h" },
+  { value: "3", label: "3 forwards / 24h" },
+  { value: "5", label: "5 forwards / 24h" },
+  { value: "10", label: "10 forwards / 24h" },
+  { value: "", label: "Unlimited" },
+];
 
 type FeedbackKind = "success" | "error";
 type Feedback = { kind: FeedbackKind; message: string } | null;
@@ -59,6 +83,26 @@ export default function SmsSettings() {
   const [alertPhones, setAlertPhones] = useState<string[]>([]);
   const [threshold, setThreshold] = useState<string>("");
 
+  // Customer-chat-port form state (single-port picker; "" = none).
+  const [chatPort, setChatPort] = useState<string>("");
+  const [savingChatPort, setSavingChatPort] = useState(false);
+  const [savedChatPort, setSavedChatPort] = useState(false);
+  const [chatPortError, setChatPortError] = useState("");
+
+  // Customer-chat behavior card form state.
+  const [forwardEnabled, setForwardEnabled] = useState(false);
+  const [forwardCap, setForwardCap] = useState<string>("1");
+  const [ownerReplyEnabled, setOwnerReplyEnabled] = useState(false);
+  const [backfillDays, setBackfillDays] = useState<string>("90");
+  const [savingChat, setSavingChat] = useState(false);
+  const [savedChat, setSavedChat] = useState(false);
+  const [chatError, setChatError] = useState("");
+
+  // Backfill action state.
+  const [backfillStatus, setBackfillStatus] = useState<BackfillStatus | null>(null);
+  const [runningBackfill, setRunningBackfill] = useState(false);
+  const [backfillFeedback, setBackfillFeedback] = useState<Feedback>(null);
+
   // Per-section save state. Three forms share the same backend PUT but with
   // different bodies so a partial failure doesn't roll back unrelated edits.
   const [savingPorts, setSavingPorts] = useState(false);
@@ -91,6 +135,11 @@ export default function SmsSettings() {
       setOwnerPhone(data.ownerNotificationPhone ?? "");
       setAlertPhones(data.lowStockAlertPhones);
       setThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
+      setChatPort(data.smsChatPort != null ? String(data.smsChatPort) : "");
+      setForwardEnabled(!!data.smsOwnerForwardEnabled);
+      setForwardCap(data.smsOwnerForwardCapPer24h == null ? "" : String(data.smsOwnerForwardCapPer24h));
+      setOwnerReplyEnabled(!!data.smsOwnerReplyEnabled);
+      setBackfillDays(String(data.smsBackfillDays ?? 90));
     } catch (e: any) {
       setLoadError(e?.message || "Failed to load SMS settings");
     } finally {
@@ -98,7 +147,25 @@ export default function SmsSettings() {
     }
   }
 
-  useEffect(() => { loadSettings(); }, []);
+  async function loadBackfillStatus() {
+    try {
+      const r = await fetch(`${BASE}/api/admin/messages/backfill/status`, { headers });
+      if (!r.ok) return;
+      const data = (await r.json()) as BackfillStatus;
+      setBackfillStatus(data);
+    } catch {
+      // silent — non-critical status panel
+    }
+  }
+
+  useEffect(() => { loadSettings(); loadBackfillStatus(); }, []);
+  useEffect(() => {
+    // While a backfill is running, poll status until it stops so the UI
+    // can show progress + the final summary without forcing a reload.
+    if (!backfillStatus?.inFlight) return;
+    const id = setInterval(loadBackfillStatus, 3_000);
+    return () => clearInterval(id);
+  }, [backfillStatus?.inFlight]);
 
   // ── Ports ──────────────────────────────────────────────────────────────────
 
@@ -261,6 +328,100 @@ export default function SmsSettings() {
     }
   }
 
+  // ── Customer Chat Port (single port picker) ────────────────────────────────
+
+  async function saveChatPort() {
+    setSavingChatPort(true);
+    setChatPortError("");
+    setSavedChatPort(false);
+    try {
+      const value = chatPort === "" ? null : Number(chatPort);
+      const r = await fetch(`${BASE}/api/admin/sms-settings`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ smsChatPort: value }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Save failed");
+      const next = data as ServerState;
+      setServer(next);
+      setChatPort(next.smsChatPort != null ? String(next.smsChatPort) : "");
+      setSavedChatPort(true);
+      setTimeout(() => setSavedChatPort(false), 2000);
+    } catch (e: any) {
+      setChatPortError(e?.message || "Save failed");
+    } finally {
+      setSavingChatPort(false);
+    }
+  }
+
+  // ── Customer Chat behavior card (forwarding + backfill window) ─────────────
+
+  async function saveChatBehavior() {
+    setSavingChat(true);
+    setChatError("");
+    setSavedChat(false);
+    try {
+      const cap = forwardCap === "" ? null : Number(forwardCap);
+      const days = Number(backfillDays);
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        throw new Error("Backfill window must be between 1 and 365 days.");
+      }
+      const r = await fetch(`${BASE}/api/admin/sms-settings`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          smsOwnerForwardEnabled: forwardEnabled,
+          smsOwnerForwardCapPer24h: cap,
+          smsOwnerReplyEnabled: ownerReplyEnabled,
+          smsBackfillDays: days,
+        }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Save failed");
+      const next = data as ServerState;
+      setServer(next);
+      setForwardEnabled(next.smsOwnerForwardEnabled);
+      setForwardCap(next.smsOwnerForwardCapPer24h == null ? "" : String(next.smsOwnerForwardCapPer24h));
+      setOwnerReplyEnabled(next.smsOwnerReplyEnabled);
+      setBackfillDays(String(next.smsBackfillDays));
+      setSavedChat(true);
+      setTimeout(() => setSavedChat(false), 2000);
+    } catch (e: any) {
+      setChatError(e?.message || "Save failed");
+    } finally {
+      setSavingChat(false);
+    }
+  }
+
+  async function handleRunBackfill() {
+    setRunningBackfill(true);
+    setBackfillFeedback(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/messages/backfill`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({}),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Failed to start backfill");
+      const result = data?.result;
+      if (result) {
+        setBackfillFeedback({
+          kind: "success",
+          message: `Backfilled ${result.ingested} message${result.ingested === 1 ? "" : "s"} (${result.skipped} duplicates / ${result.errors} errors).`,
+        });
+      } else {
+        setBackfillFeedback({ kind: "success", message: "Backfill kicked off." });
+      }
+      await loadBackfillStatus();
+    } catch (e: any) {
+      setBackfillFeedback({ kind: "error", message: e?.message || "Failed to start backfill" });
+    } finally {
+      setRunningBackfill(false);
+    }
+  }
+
   // ── Derived state ──────────────────────────────────────────────────────────
 
   // Test buttons reach the live (saved) state. Disable them when the form is
@@ -354,6 +515,56 @@ export default function SmsSettings() {
               </div>
             </section>
 
+            {/* ── Card 1b: Customer Chat Port (single SIM) ──────────────── */}
+            <section className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <MessagesSquare className="w-4 h-4 text-muted-foreground" />
+                <h2 className="font-display font-bold text-lg">Customer Chat Port</h2>
+                <StatusPill
+                  ok={server?.smsChatPort != null}
+                  okLabel={`Port ${server?.smsChatPort}`}
+                  badLabel="Not configured"
+                />
+                <span className="text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                  Inbound: {server?.smsInboundMode === "push" ? "webhook (push)" : "poller (pull)"}
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                The single SIM that customers see when they receive any catering text — quotes, change-request replies,
+                invoice notifications, event reminders, and the inquiry chat composer all go through this one port.
+                Inbound texts on this port are captured into the matching inquiry's chat thread. The chat port cannot
+                also be in the round-robin pool above.
+              </p>
+              <div className="max-w-xs">
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5" htmlFor="chatPortSelect">
+                  Dedicated chat port
+                </label>
+                <select
+                  id="chatPortSelect"
+                  value={chatPort}
+                  onChange={e => setChatPort(e.target.value)}
+                  className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                >
+                  <option value="">— None (chat disabled) —</option>
+                  {EJOIN_VALID_PORTS.map(p => (
+                    <option key={p} value={p}>Port {p}</option>
+                  ))}
+                </select>
+              </div>
+              {chatPortError && <p className="text-destructive text-sm">{chatPortError}</p>}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={saveChatPort}
+                  disabled={savingChatPort}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+                >
+                  {savingChatPort ? <Loader2 className="w-4 h-4 animate-spin" /> : savedChatPort ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
+                  {savingChatPort ? "Saving…" : savedChatPort ? "Saved!" : "Save Chat Port"}
+                </button>
+              </div>
+            </section>
+
             {/* ── Card 2: Owner Notifications ────────────────────────────── */}
             <section className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
@@ -421,6 +632,142 @@ export default function SmsSettings() {
                 <p className={ownerTestFeedback.kind === "success" ? "text-xs text-emerald-600" : "text-xs text-destructive"}>
                   {ownerTestFeedback.message}
                 </p>
+              )}
+            </section>
+
+            {/* ── Card 2b: Customer Chat (forwarding + backfill) ────────── */}
+            <section className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <MessagesSquare className="w-4 h-4 text-muted-foreground" />
+                <h2 className="font-display font-bold text-lg">Customer Chat</h2>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Forward inbound customer texts to the owner phone, optionally let the owner reply back from their phone using the
+                <code className="mx-1 px-1.5 py-0.5 bg-secondary rounded">#&lt;inquiry-id&gt;</code> tag, and choose how far back to
+                pull existing SIM messages on first deployment. Owner forwarding requires the Owner Notifications phone above to
+                be set.
+              </p>
+
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={forwardEnabled}
+                    onChange={e => setForwardEnabled(e.target.checked)}
+                    className="mt-1 w-4 h-4"
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium block">Forward inbound texts to owner</span>
+                    <span className="text-muted-foreground text-xs">
+                      Each forward is tagged <code className="px-1 py-0.5 bg-secondary rounded">[#N]</code> so the owner knows which inquiry it belongs to.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={ownerReplyEnabled}
+                    onChange={e => setOwnerReplyEnabled(e.target.checked)}
+                    className="mt-1 w-4 h-4"
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium block">Allow owner to reply by texting <code className="px-1 py-0.5 bg-secondary rounded">#N &lt;message&gt;</code></span>
+                    <span className="text-muted-foreground text-xs">
+                      Replies are routed back to the customer through the dedicated chat port. The customer never sees the owner's number.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5" htmlFor="forwardCapSelect">
+                    Forwards per inquiry per 24h
+                  </label>
+                  <select
+                    id="forwardCapSelect"
+                    value={forwardCap}
+                    onChange={e => setForwardCap(e.target.value)}
+                    disabled={!forwardEnabled}
+                    className="w-full px-4 py-2 border border-border rounded-xl bg-background disabled:opacity-50"
+                  >
+                    {FORWARD_CAP_OPTIONS.map(o => (
+                      <option key={o.value || "unlimited"} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Protects the SIM from being hammered by a chatty customer. Default is 1.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5" htmlFor="backfillDaysInput">
+                    Historical backfill window (days)
+                  </label>
+                  <input
+                    id="backfillDaysInput"
+                    type="number"
+                    min={1}
+                    max={365}
+                    step={1}
+                    value={backfillDays}
+                    onChange={e => setBackfillDays(e.target.value)}
+                    className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    How far back to pull existing SIM messages on first boot or when "Run backfill now" is clicked. Default 90 days.
+                  </p>
+                </div>
+              </div>
+
+              {chatError && <p className="text-destructive text-sm">{chatError}</p>}
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={saveChatBehavior}
+                  disabled={savingChat}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+                >
+                  {savingChat ? <Loader2 className="w-4 h-4 animate-spin" /> : savedChat ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
+                  {savingChat ? "Saving…" : savedChat ? "Saved!" : "Save Chat Settings"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRunBackfill}
+                  disabled={runningBackfill || backfillStatus?.inFlight || server?.smsChatPort == null}
+                  title={
+                    server?.smsChatPort == null
+                      ? "Pick a customer chat port first."
+                      : backfillStatus?.inFlight
+                      ? "Backfill already running."
+                      : "Pull historical SMS from the gateway and ingest into chat threads."
+                  }
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-2 hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {runningBackfill || backfillStatus?.inFlight ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                  {runningBackfill || backfillStatus?.inFlight ? "Running backfill…" : "Run backfill now"}
+                </button>
+              </div>
+              {backfillFeedback && (
+                <p className={backfillFeedback.kind === "success" ? "text-xs text-emerald-600" : "text-xs text-destructive"}>
+                  {backfillFeedback.message}
+                </p>
+              )}
+              {backfillStatus && (backfillStatus.lastResult || backfillStatus.completedAt) && (
+                <div className="text-xs text-muted-foreground bg-secondary/50 rounded-xl px-3 py-2">
+                  {backfillStatus.lastResult ? (
+                    <>
+                      Last run: <strong>{new Date(backfillStatus.lastResult.finishedAt).toLocaleString()}</strong> —
+                      ingested {backfillStatus.lastResult.ingested}, skipped {backfillStatus.lastResult.skipped},
+                      errors {backfillStatus.lastResult.errors}.
+                    </>
+                  ) : backfillStatus.completedAt ? (
+                    <>Last completed: <strong>{new Date(backfillStatus.completedAt).toLocaleString()}</strong>.</>
+                  ) : null}
+                </div>
               )}
             </section>
 

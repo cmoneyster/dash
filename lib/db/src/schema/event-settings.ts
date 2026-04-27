@@ -41,6 +41,29 @@ export const eventSettingsTable = pgTable("event_settings", {
   // takes precedence over the OWNER_PHONE env var. Stored as the admin
   // typed it (E.164-ish) — sender normalizes before dispatch.
   ownerNotificationPhone: text("owner_notification_phone"),
+  // ── Customer chat port ────────────────────────────────────────────────────
+  // Single physical SIM port on the gateway dedicated to two-way customer
+  // SMS chat (quote sends, change-request replies, the inquiry composer,
+  // owner-relayed replies, and the inbound chat capture). MUST NOT
+  // overlap with smsActivePorts (the round-robin pool used for staff-
+  // facing sends). Validation enforces non-overlap on save.
+  smsChatPort: integer("sms_chat_port"),
+  // Toggle: forward inbound customer messages to the owner phone.
+  smsOwnerForwardEnabled: boolean("sms_owner_forward_enabled").notNull().default(false),
+  // Cap for owner forwards per inquiry per rolling 24h. NULL means
+  // unlimited. UI exposes 1/3/5/10/unlimited; default 1.
+  smsOwnerForwardCapPer24h: integer("sms_owner_forward_cap_per_24h").default(1),
+  // Toggle: allow the owner to reply from their phone with `#<id> ...`
+  // tag and have the message routed back to the customer through the
+  // chat port.
+  smsOwnerReplyEnabled: boolean("sms_owner_reply_enabled").notNull().default(false),
+  // How many days of historical SIM messages to pull on first deploy
+  // (and on a manual "Run backfill now"). Default 90.
+  smsBackfillDays: integer("sms_backfill_days").notNull().default(90),
+  // Stamped after the first successful historical backfill so it
+  // doesn't re-run on every server restart. Manual re-trigger via
+  // the settings card always runs regardless.
+  smsBackfillCompletedAt: timestamp("sms_backfill_completed_at"),
   // ── On the Dash Experience pricing config ──────────────────────────────────
   // Controls the on-site food trailer service mode. Defaults match the
   // launch pricing: $500 setup fee, waived once subtotal is $2,000+,

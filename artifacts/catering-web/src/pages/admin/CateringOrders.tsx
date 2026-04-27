@@ -1958,6 +1958,261 @@ function SupplementalSubPanel({
   );
 }
 
+// ── Messages Panel (in-inquiry SMS chat) ─────────────────────────────────────
+//
+// Renders the two-way SMS thread for a single inquiry. Subscribes to the
+// admin SSE stream while open (so new inbounds and admin sends from
+// other tabs appear instantly). Marks all unread messages seen on
+// mount. Disables the composer when the customer is on the blocklist.
+
+type ChatMessage = {
+  id: number;
+  direction: "inbound" | "outbound";
+  customerPhone: string;
+  body: string;
+  occurredAt: string;
+  port: number | null;
+  inquiryId: number | null;
+  seenByAdmin: boolean;
+  source: string;
+};
+
+function chatTimeLabel(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  } catch {
+    return iso;
+  }
+}
+
+function MessagesPanel({ inquiryId, hasPhone }: { inquiryId: number; hasPhone: boolean }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [customerPhone, setCustomerPhone] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<"customer-opt-out" | "admin-blocked" | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [composer, setComposer] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(`${BASE}/api/admin/messages/by-inquiry/${inquiryId}`, { headers: authHeaders() });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = (await r.json()) as {
+        messages: ChatMessage[];
+        customerPhone: string | null;
+        blocked: "customer-opt-out" | "admin-blocked" | null;
+      };
+      setMessages(data.messages);
+      setCustomerPhone(data.customerPhone);
+      setBlocked(data.blocked);
+      setError("");
+    } catch (e: any) {
+      setError(e?.message || "Failed to load messages");
+    } finally {
+      setLoading(false);
+    }
+  }, [inquiryId]);
+
+  useEffect(() => {
+    setLoading(true);
+    load();
+  }, [load]);
+
+  // Scroll the thread to the latest message whenever the list changes.
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages.length]);
+
+  // Mark unread messages seen as soon as the panel loads them. The
+  // server publishes a `messages-seen` event which clears the badge in
+  // the inquiry list and the per-row badge.
+  useEffect(() => {
+    if (loading) return;
+    const hasUnread = messages.some(m => m.direction === "inbound" && !m.seenByAdmin);
+    if (!hasUnread) return;
+    fetch(`${BASE}/api/admin/messages/by-inquiry/${inquiryId}/mark-seen`, {
+      method: "POST",
+      headers: authHeaders(),
+    }).catch(() => { /* non-fatal */ });
+  }, [loading, messages, inquiryId]);
+
+  // Subscribe to the SSE stream for live thread updates.
+  useEffect(() => {
+    const token = getAdminToken();
+    if (!token) return;
+    let es: EventSource | null = null;
+    let pollInt: ReturnType<typeof setInterval> | null = null;
+    function startPoll() {
+      if (!pollInt) pollInt = setInterval(load, 30_000);
+    }
+    function stopPoll() {
+      if (pollInt) {
+        clearInterval(pollInt);
+        pollInt = null;
+      }
+    }
+    try {
+      es = new EventSource(`${BASE}/api/admin/messages/stream?token=${encodeURIComponent(token)}`);
+      const reload = (raw: MessageEvent) => {
+        try {
+          const ev = JSON.parse(raw.data) as { inquiryId?: number };
+          // Only reload if the event is unrelated-or-related to this inquiry
+          // (no inquiryId means broad event like unmatched changes — ignore).
+          if (ev.inquiryId === inquiryId) load();
+        } catch {
+          // unparseable payload — best to just reload
+          load();
+        }
+      };
+      es.addEventListener("inbound", reload as EventListener);
+      es.addEventListener("outbound", reload as EventListener);
+      es.addEventListener("hello", () => stopPoll());
+      es.onerror = () => startPoll();
+    } catch {
+      startPoll();
+    }
+    return () => {
+      es?.close();
+      stopPoll();
+    };
+  }, [inquiryId, load]);
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    const text = composer.trim();
+    if (!text || sending || blocked) return;
+    setSending(true);
+    setSendError("");
+    try {
+      const r = await fetch(`${BASE}/api/admin/messages/send`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ inquiryId, message: text }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Failed to send");
+      setComposer("");
+      // Optimistically reload — SSE will also fire, but reload guarantees
+      // the bubble appears even if the stream is stalled.
+      await load();
+    } catch (e: any) {
+      setSendError(e?.message || "Failed to send");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className="border border-border rounded-2xl overflow-hidden bg-card">
+      <header className="px-4 py-2.5 border-b border-border bg-secondary/30 flex items-center gap-2 flex-wrap">
+        <MessageSquare className="w-4 h-4 text-muted-foreground" />
+        <h3 className="font-semibold text-sm">Messages</h3>
+        {customerPhone && <span className="text-xs font-mono text-muted-foreground">{customerPhone}</span>}
+        {blocked === "customer-opt-out" && (
+          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
+            Opted out
+          </span>
+        )}
+        {blocked === "admin-blocked" && (
+          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full">
+            Blocked
+          </span>
+        )}
+      </header>
+
+      {!hasPhone ? (
+        <div className="p-4 text-sm text-muted-foreground text-center">
+          Add a client phone number to start texting from this inquiry.
+        </div>
+      ) : (
+        <>
+          <div ref={scrollRef} className="max-h-80 overflow-y-auto p-4 space-y-2 bg-background/40">
+            {loading ? (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading messages…
+              </div>
+            ) : error ? (
+              <div className="text-sm text-destructive">{error}</div>
+            ) : messages.length === 0 ? (
+              <div className="text-sm text-muted-foreground text-center py-6">
+                No messages yet. Use the composer below to start the thread.
+              </div>
+            ) : (
+              messages.map(m => {
+                const isInbound = m.direction === "inbound";
+                return (
+                  <div key={m.id} className={cn("flex", isInbound ? "justify-start" : "justify-end")}>
+                    <div
+                      className={cn(
+                        "max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words shadow-sm",
+                        isInbound
+                          ? "bg-secondary text-foreground rounded-bl-md"
+                          : "bg-primary text-primary-foreground rounded-br-md",
+                      )}
+                    >
+                      <div>{m.body}</div>
+                      <div
+                        className={cn(
+                          "text-[10px] mt-1 flex items-center gap-1",
+                          isInbound ? "text-muted-foreground" : "text-primary-foreground/80",
+                        )}
+                      >
+                        <span>{chatTimeLabel(m.occurredAt)}</span>
+                        {m.source === "owner_relay" && (
+                          <span className="italic">· via owner SMS reply</span>
+                        )}
+                        {m.port != null && !isInbound && (
+                          <span className="font-mono opacity-70">· port {m.port}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <form onSubmit={handleSend} className="p-3 border-t border-border space-y-2">
+            <textarea
+              value={composer}
+              onChange={e => setComposer(e.target.value)}
+              placeholder={blocked ? "Composer disabled — recipient is blocklisted." : "Reply to customer…"}
+              disabled={!!blocked || sending}
+              rows={2}
+              maxLength={1500}
+              className="w-full px-3 py-2 border border-border rounded-xl bg-background text-sm resize-none disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend(e as unknown as React.FormEvent);
+                }
+              }}
+            />
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">{composer.length}/1500</span>
+              {sendError && <span className="text-xs text-destructive flex-1 truncate">{sendError}</span>}
+              <button
+                type="submit"
+                disabled={!composer.trim() || sending || !!blocked}
+                className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 bg-foreground text-background font-semibold rounded-xl text-sm hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                {sending ? "Sending…" : "Send"}
+              </button>
+            </div>
+          </form>
+        </>
+      )}
+    </section>
+  );
+}
+
 // ── Detail Panel ─────────────────────────────────────────────────────────────
 
 function DetailPanel({
@@ -2113,6 +2368,14 @@ function DetailPanel({
 
       <form onSubmit={handleSave} className="flex-1 overflow-y-auto">
         <div className="p-6 space-y-4">
+          {/* Two-way SMS chat — only shown for persisted inquiries (need an id). */}
+          {!isNew && (inquiry as Inquiry).id != null && (
+            <MessagesPanel
+              inquiryId={(inquiry as Inquiry).id}
+              hasPhone={!!(form.clientPhone && form.clientPhone.trim())}
+            />
+          )}
+
           {/* Cart items table (read-only) */}
           {hasItems && (
             <OrderItemsTable items={form.orderItems!} total={form.orderTotal ?? null} />
@@ -2462,6 +2725,10 @@ export default function CateringOrders() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [menu, setMenu] = useState<AdminMenuItem[]>([]);
+  // Per-inquiry unread inbound SMS counts. Updated over the same SSE
+  // stream the chat panel uses, so the list badge moves the moment a
+  // new inbound lands or the admin opens the thread.
+  const [unreadByInquiry, setUnreadByInquiry] = useState<Record<number, number>>({});
 
   const load = useCallback(() => {
     fetch(`${BASE}/api/admin/catering`, { headers: authHeaders() })
@@ -2470,7 +2737,49 @@ export default function CateringOrders() {
       .finally(() => setLoading(false));
   }, []);
 
+  const loadBadges = useCallback(async () => {
+    const token = getAdminToken();
+    if (!token) return;
+    try {
+      const r = await fetch(`${BASE}/api/admin/messages/badges`, { headers: authHeaders() });
+      if (!r.ok) return;
+      const data = (await r.json()) as { perInquiry?: Array<{ inquiryId: number; unread: number }> };
+      const map: Record<number, number> = {};
+      (data.perInquiry ?? []).forEach(r => { map[r.inquiryId] = r.unread; });
+      setUnreadByInquiry(map);
+    } catch {
+      // silent — list badges aren't critical
+    }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadBadges(); }, [loadBadges]);
+
+  // Subscribe to the SMS event stream so list-level badges update live
+  // without depending on the chat panel being open. The chat panel
+  // maintains its own subscription for thread updates.
+  useEffect(() => {
+    const token = getAdminToken();
+    if (!token) return;
+    let es: EventSource | null = null;
+    let pollInt: ReturnType<typeof setInterval> | null = null;
+    function startPoll() {
+      if (!pollInt) pollInt = setInterval(loadBadges, 30_000);
+    }
+    try {
+      es = new EventSource(`${BASE}/api/admin/messages/stream?token=${encodeURIComponent(token)}`);
+      es.addEventListener("inbound", () => loadBadges());
+      es.addEventListener("messages-seen", () => loadBadges());
+      es.addEventListener("unmatched-changed", () => loadBadges());
+      es.onerror = () => startPoll();
+    } catch {
+      startPoll();
+    }
+    return () => {
+      es?.close();
+      if (pollInt) clearInterval(pollInt);
+    };
+  }, [loadBadges]);
 
   useEffect(() => {
     type RawMenuItem = {
@@ -2677,6 +2986,14 @@ export default function CateringOrders() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                           <span className="font-semibold text-sm truncate">{inquiry.clientName}</span>
+                          {unreadByInquiry[inquiry.id] > 0 && (
+                            <span
+                              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-primary text-primary-foreground rounded-full font-bold"
+                              title={`${unreadByInquiry[inquiry.id]} new inbound text${unreadByInquiry[inquiry.id] === 1 ? "" : "s"}`}
+                            >
+                              <MessageSquare className="w-2.5 h-2.5" /> {unreadByInquiry[inquiry.id]}
+                            </span>
+                          )}
                           <span className={cn("shrink-0 text-xs px-2 py-0.5 rounded-full font-medium", status.color)}>{status.label}</span>
                           {isCart && (
                             <span className="shrink-0 flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded-full font-semibold">

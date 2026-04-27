@@ -33,6 +33,7 @@ import CateringPlans from "@/pages/admin/CateringPlans";
 import UpcomingCaterings from "@/pages/admin/UpcomingCaterings";
 import HashtagWallModeration from "@/pages/admin/HashtagWallModeration";
 import SmsSettings from "@/pages/admin/SmsSettings";
+import UnmatchedMessages from "@/pages/admin/UnmatchedMessages";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -102,6 +103,9 @@ function Router() {
       </Route>
       <Route path="/admin/sms">
         {() => <AdminGuard><SmsSettings /></AdminGuard>}
+      </Route>
+      <Route path="/admin/messages/unmatched">
+        {() => <AdminGuard><UnmatchedMessages /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />

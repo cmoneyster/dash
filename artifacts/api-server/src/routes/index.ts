@@ -28,6 +28,8 @@ import placesRouter from "./places";
 import instagramPublicRouter from "./instagram-public";
 import adminInstagramRouter from "./admin-instagram";
 import adminSmsSettingsRouter from "./admin-sms-settings";
+import adminSmsMessagesRouter from "./admin-sms-messages";
+import webhooksSmsRouter from "./webhooks-sms";
 
 const router: IRouter = Router();
 
@@ -46,8 +48,9 @@ router.use(verifyRouter);
 router.use(placesRouter);
 router.use(instagramPublicRouter);
 router.use(quotePublicRouter);
-// Public webhook — must be mounted BEFORE the admin auth middleware below.
+// Public webhooks — must be mounted BEFORE the admin auth middleware below.
 router.use(webhooksSquareRouter);
+router.use(webhooksSmsRouter);
 
 router.use(adminAuthRouter);
 
@@ -64,6 +67,7 @@ router.use("/admin/catering", requireAdminAuth);
 router.use("/admin/plans", requireAdminAuth);
 router.use("/admin/categories", requireAdminAuth);
 router.use("/admin/instagram", requireAdminAuth);
+router.use("/admin/messages", requireAdminAuth);
 
 router.use(adminMenuRouter);
 router.use(adminMenuCsvRouter);
@@ -76,5 +80,6 @@ router.use(adminCateringRouter);
 router.use(adminPlansRouter);
 router.use(adminInstagramRouter);
 router.use(adminSmsSettingsRouter);
+router.use(adminSmsMessagesRouter);
 
 export default router;

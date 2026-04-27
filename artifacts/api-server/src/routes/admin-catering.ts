@@ -25,6 +25,7 @@ import {
 } from "@workspace/pricing";
 import { sendNewInquiryAlert } from "../lib/sms";
 import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
+import { sendToCustomerGuarded } from "../lib/sms-inbox";
 import { sendMail } from "../lib/mail";
 import { computeQuoteTotals, renderQuotePdf, fmtUSD } from "../lib/quote";
 import { TAX_DISCLOSURE } from "../lib/tax";
@@ -789,12 +790,27 @@ router.post("/admin/catering/:id/quote/sms", async (req, res): Promise<void> => 
       return;
     }
     try {
-      // Bypass the fire-and-forget sendSms wrapper so we only stamp the
-      // last-texted timestamp on a confirmed gateway success.
-      await sendSmsViaEjoin(to, smsBody);
+      // Customer-bound — must go through the dedicated chat port so the
+      // reply lands in this inquiry's chat thread. The guarded sender
+      // also enforces the blocklist and persists to sms_messages.
+      const sendResult = await sendToCustomerGuarded({
+        to,
+        body: smsBody,
+        inquiryId: id,
+        source: "system",
+      });
+      if (sendResult.status === "blocked") {
+        res.status(403).json({
+          error: sendResult.reason === "customer-opt-out"
+            ? "Customer has opted out of SMS (texted STOP)."
+            : "This number is on the blocklist.",
+        });
+        return;
+      }
     } catch (sendErr) {
       req.log.error({ err: sendErr }, "Quote SMS gateway send failed");
-      res.status(502).json({ error: "Failed to send SMS via gateway" });
+      const detail = sendErr instanceof Error ? sendErr.message : "Failed to send SMS via gateway";
+      res.status(502).json({ error: detail });
       return;
     }
 
@@ -885,10 +901,25 @@ router.post("/admin/catering/:id/change-request/reply", async (req, res): Promis
         return;
       }
       try {
-        await sendSmsViaEjoin(to, message);
+        // Customer-bound — route through dedicated chat port.
+        const sendResult = await sendToCustomerGuarded({
+          to,
+          body: message,
+          inquiryId: id,
+          source: "admin",
+        });
+        if (sendResult.status === "blocked") {
+          res.status(403).json({
+            error: sendResult.reason === "customer-opt-out"
+              ? "Customer has opted out of SMS (texted STOP)."
+              : "This number is on the blocklist.",
+          });
+          return;
+        }
       } catch (sendErr) {
         req.log.error({ err: sendErr }, "Change-request reply SMS failed");
-        res.status(502).json({ error: "Failed to send SMS via gateway" });
+        const detail = sendErr instanceof Error ? sendErr.message : "Failed to send SMS via gateway";
+        res.status(502).json({ error: detail });
         return;
       }
       sentTo = to;
