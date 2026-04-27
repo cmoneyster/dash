@@ -27,6 +27,17 @@ async function resolveOwnerPhone(): Promise<string | null> {
   return envPhone || null;
 }
 
+// Auto-reply disclaimer appended to guest-facing transactional sends
+// (order received, order ready). Both go through the round-robin gateway
+// pool, so any inbound reply lands on a random SIM and is effectively
+// dropped — this sets correct expectations.
+//
+// Wording uses ASCII punctuation only (no em-dash) so the suffix stays
+// inside the GSM-7 character set; an em-dash would force the entire
+// message to UCS-2 encoding (70 chars/segment instead of 160) and roughly
+// triple per-message gateway cost.
+const NO_REPLY_NOTE = "Auto msg. Replies not read.";
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function sendSms(to: string, body: string): Promise<void> {
@@ -54,7 +65,7 @@ export async function sendOrderConfirmation(opts: {
   const { guestName, orderId, phoneNumber, eventName, orderStatusUrl } = opts;
   const name  = guestName.split(" ")[0];
   const event = eventName || "dash by Hollywood East Cafe";
-  const body  = `Hi ${name}! Your order #${orderId} has been received at ${event}. Track your order: ${orderStatusUrl} Auto msg. Replies not read.`;
+  const body  = `Hi ${name}! Your order #${orderId} has been received at ${event}. Track your order: ${orderStatusUrl} ${NO_REPLY_NOTE}`;
   await sendSms(phoneNumber, body);
 }
 
@@ -67,7 +78,7 @@ export async function sendOrderReady(opts: {
   const { guestName, orderId, eventName, phoneNumber } = opts;
   const name  = guestName.split(" ")[0];
   const event = eventName || "dash by Hollywood East Cafe";
-  const body  = `Hi ${name}! Your order #${orderId} is ready for pickup at ${event}! — dash by Hollywood East Cafe Auto msg. Replies not read.`;
+  const body  = `Hi ${name}! Your order #${orderId} is ready for pickup at ${event}! — dash by Hollywood East Cafe ${NO_REPLY_NOTE}`;
   await sendSms(phoneNumber, body);
 }
 
