@@ -17,6 +17,9 @@ type ServerState = {
   lowStockAlertPhones: string[];
   lowStockAlertThreshold: number | null;
   ejoinConfigured: boolean;
+  // Returned by /admin/sms-settings so the test-send card can pre-fill
+  // the same default body the server would substitute on a blank submit.
+  eventName: string;
   ownerNotificationPhoneSource: "db" | "env" | "none";
 };
 
