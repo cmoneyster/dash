@@ -42,6 +42,7 @@ router.use(eventOrderingRouter);
 router.use(eventTakerRouter);
 router.use(verifyRouter);
 router.use(placesRouter);
+router.use(socialShareRouter);
 router.use(quotePublicRouter);
 // Public webhook — must be mounted BEFORE the admin auth middleware below.
 router.use(webhooksSquareRouter);
