@@ -108,12 +108,12 @@ function normalizeAlertPhones(v: unknown): string[] {
 function normalizeAlertThreshold(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
-  // Spec: non-negative integer. We still cap at 10000 as a defensive sanity
-  // bound — admins setting a threshold above that almost certainly fat-
-  // fingered the input — but 0 is now legal (e.g. "alert only when
-  // truly out of stock").
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > 10000) {
-    throw new HttpError("lowStockAlertThreshold must be a non-negative integer (0–10000)");
+  // The runtime crossing rule in lowStockAlerts.ts excludes items at
+  // newStock <= 0 (out-of-stock has its own flow), so a threshold of 0
+  // would silently never fire. Require >= 1 so configured semantics
+  // match actual alerting behavior. Cap at 10000 as a fat-finger guard.
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 10000) {
+    throw new HttpError("lowStockAlertThreshold must be an integer between 1 and 10000");
   }
   return n;
 }

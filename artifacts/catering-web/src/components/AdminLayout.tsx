@@ -86,7 +86,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
       <div className="pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Communications</p>
       </div>
-      <AdminNavLink href="/admin/sms" icon={MessageSquare} onClick={onNavigate}>SMS Settings</AdminNavLink>
+      <AdminNavLink href="/admin/sms" icon={MessageSquare} onClick={onNavigate}>SMS</AdminNavLink>
       <div className="pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Catering</p>
       </div>

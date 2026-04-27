@@ -528,7 +528,7 @@ export default function SmsSettings() {
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Threshold (units remaining)</label>
                 <input
                   type="number"
-                  min={0}
+                  min={1}
                   max={10000}
                   step={1}
                   value={threshold}
@@ -536,7 +536,7 @@ export default function SmsSettings() {
                   placeholder="5"
                   className="w-full px-4 py-2 border border-border rounded-xl bg-background"
                 />
-                <p className="text-xs text-muted-foreground mt-1">Defaults to 5 if left blank. Set to 0 to alert only when an item is fully out of stock.</p>
+                <p className="text-xs text-muted-foreground mt-1">Defaults to 5 if left blank. An alert fires once when an item drops to or below this many units.</p>
               </div>
               {alertsError && <p className="text-destructive text-sm">{alertsError}</p>}
               <div className="flex items-center gap-3 flex-wrap">
@@ -573,8 +573,11 @@ export default function SmsSettings() {
               )}
             </section>
 
-            {/* ── Card 4: Test Send (arbitrary phone) ────────────────────── */}
-            <section className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+            {/* ── Card 4: Test Send (arbitrary phone) ──────────────────────
+              * Sticks to the bottom of the viewport so it stays reachable
+              * while admins scroll through the port pool / phone lists
+              * above. */}
+            <section className="bg-card border border-border rounded-2xl p-6 shadow-lg space-y-4 sticky bottom-4 z-10">
               <div className="flex items-center gap-2">
                 <Send className="w-4 h-4 text-muted-foreground" />
                 <h2 className="font-display font-bold text-lg">Send Test SMS</h2>
