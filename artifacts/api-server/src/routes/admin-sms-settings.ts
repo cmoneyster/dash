@@ -10,7 +10,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { isEjoinConfigured, sendSmsViaEjoin, clearEjoinPortCache } from "../lib/sms-ejoin";
+import { isEjoinConfigured, sendSmsViaEjoin, clearEjoinPortCache, EJOIN_PORT_COUNT } from "../lib/sms-ejoin";
 
 const router: IRouter = Router();
 
@@ -23,15 +23,15 @@ function normalizePortPool(v: unknown): number[] {
   if (v.length === 0) {
     throw Object.assign(new Error("smsActivePorts must include at least one port"), { status: 400 });
   }
-  if (v.length > 32) {
-    throw Object.assign(new Error("smsActivePorts cannot exceed 32 entries (gateway hardware limit)"), { status: 400 });
+  if (v.length > EJOIN_PORT_COUNT) {
+    throw Object.assign(new Error(`smsActivePorts cannot exceed ${EJOIN_PORT_COUNT} entries (gateway has ${EJOIN_PORT_COUNT} physical SIM ports)`), { status: 400 });
   }
   const out: number[] = [];
   const seen = new Set<number>();
   v.forEach((raw, idx) => {
     const n = Number(raw);
-    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 32) {
-      throw Object.assign(new Error(`Port #${idx + 1} must be an integer between 1 and 32`), { status: 400 });
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > EJOIN_PORT_COUNT) {
+      throw Object.assign(new Error(`Port #${idx + 1} must be an integer between 1 and ${EJOIN_PORT_COUNT}`), { status: 400 });
     }
     if (seen.has(n)) return; // dedupe silently — order preserved
     seen.add(n);
@@ -98,11 +98,11 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   lowStockAlertPhones: string[];
   lowStockAlertThreshold: number | null;
   ejoinConfigured: boolean;
-  ownerPhoneSource: "db" | "env" | "none";
+  ownerNotificationPhoneSource: "db" | "env" | "none";
 } {
   const dbOwner = s?.ownerNotificationPhone?.trim() || null;
   const envOwner = process.env.OWNER_PHONE?.trim() || null;
-  const ownerPhoneSource: "db" | "env" | "none" = dbOwner ? "db" : envOwner ? "env" : "none";
+  const ownerNotificationPhoneSource: "db" | "env" | "none" = dbOwner ? "db" : envOwner ? "env" : "none";
   return {
     smsActivePorts: s?.smsActivePorts ?? [7],
     ownerNotificationPhone: dbOwner,
@@ -111,8 +111,32 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
     ejoinConfigured: isEjoinConfigured(),
     // Lets the UI show "currently using OWNER_PHONE env var (legacy)" when
     // the admin hasn't entered a DB-managed number yet.
-    ownerPhoneSource,
+    ownerNotificationPhoneSource,
   };
+}
+
+// ── Test-send rate limiter ──────────────────────────────────────────────────
+// Per-admin-token cooldown so a slip on the keyboard (or a bug in the UI)
+// can't spam real SMS through the gateway. Keyed by the bearer token; falls
+// back to the source IP when no token is present (shouldn't happen because
+// the route is mounted under requireAdminAuth, but belt-and-suspenders).
+const TEST_SEND_COOLDOWN_MS = 5_000;
+const lastTestSendAt = new Map<string, number>();
+
+function testSendKey(req: { headers: Record<string, any>; ip?: string }): string {
+  const auth = typeof req.headers.authorization === "string" ? req.headers.authorization : "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  return token || req.ip || "unknown";
+}
+
+function checkTestSendRateLimit(key: string): { ok: true } | { ok: false; retryAfterMs: number } {
+  const now = Date.now();
+  const prev = lastTestSendAt.get(key);
+  if (prev != null && now - prev < TEST_SEND_COOLDOWN_MS) {
+    return { ok: false, retryAfterMs: TEST_SEND_COOLDOWN_MS - (now - prev) };
+  }
+  lastTestSendAt.set(key, now);
+  return { ok: true };
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -196,34 +220,61 @@ router.put("/admin/sms-settings", async (req, res) => {
 // port so admins can verify each SIM/port individually before adding it to
 // the round-robin pool. Bypasses sendSms() so gateway errors surface in the
 // HTTP response instead of being swallowed.
+//
+// Body shape: { to: string, message?: string, port?: number }.
+//   - `port`, when provided, must be one of the currently-saved active
+//     ports (we don't let admins poke arbitrary hardware ports from the
+//     test endpoint).
+//   - A short per-admin cooldown prevents accidental SMS spam.
 router.post("/admin/sms-settings/test-send", async (req, res) => {
   try {
-    const body = req.body as { phone?: unknown; port?: unknown; message?: unknown };
-    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
-    if (!phone || phone.replace(/\D/g, "").length < 7) {
-      res.status(400).json({ error: "phone is required and must contain at least 7 digits" });
+    const body = req.body as { to?: unknown; port?: unknown; message?: unknown };
+    const to = typeof body.to === "string" ? body.to.trim() : "";
+    if (!to || to.replace(/\D/g, "").length < 7) {
+      res.status(400).json({ error: "to is required and must contain at least 7 digits" });
       return;
     }
-    let portOverride: number | undefined;
-    if (body.port !== undefined && body.port !== null && body.port !== "") {
-      const n = Number(body.port);
-      if (!Number.isInteger(n) || n < 1 || n > 32) {
-        res.status(400).json({ error: "port must be an integer between 1 and 32" });
-        return;
-      }
-      portOverride = n;
-    }
+
     if (!isEjoinConfigured()) {
       res.status(503).json({ error: "SMS gateway is not configured." });
       return;
     }
+
     const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    const activePorts = settings?.smsActivePorts ?? [7];
+
+    let portOverride: number | undefined;
+    if (body.port !== undefined && body.port !== null && body.port !== "") {
+      const n = Number(body.port);
+      if (!Number.isInteger(n) || n < 1 || n > EJOIN_PORT_COUNT) {
+        res.status(400).json({ error: `port must be an integer between 1 and ${EJOIN_PORT_COUNT}` });
+        return;
+      }
+      if (!activePorts.includes(n)) {
+        res.status(400).json({
+          error: `port ${n} is not in the saved active port pool (${activePorts.join(", ")}). Save it as active first or pick "Auto".`,
+        });
+        return;
+      }
+      portOverride = n;
+    }
+
+    const limit = checkTestSendRateLimit(testSendKey(req as any));
+    if (!limit.ok) {
+      res.status(429).json({
+        error: `Slow down — wait ${Math.ceil(limit.retryAfterMs / 1000)}s before sending another test SMS.`,
+        retryAfterMs: limit.retryAfterMs,
+      });
+      return;
+    }
+
     const event = settings?.eventName?.trim() || "dash by Hollywood East Cafe";
     const customMessage = typeof body.message === "string" ? body.message.trim() : "";
     const message = customMessage || `Test SMS from ${event}`;
-    let usedPort: number;
+
+    let result: { port: number; gatewayResponse: string };
     try {
-      usedPort = await sendSmsViaEjoin(phone, message, portOverride != null ? { portOverride } : undefined);
+      result = await sendSmsViaEjoin(to, message, portOverride != null ? { portOverride } : undefined);
     } catch (err: any) {
       const detail = typeof err?.message === "string" ? err.message : "send failed";
       res.status(502).json({ error: `Failed to send test SMS: ${detail}` });
@@ -231,11 +282,12 @@ router.post("/admin/sms-settings/test-send", async (req, res) => {
     }
     res.json({
       ok: true,
-      sentTo: phone,
+      sentTo: to,
       // The port that was actually used. When portOverride is unset this is
       // the next entry the round-robin counter picked from the saved pool.
-      port: usedPort,
+      port: result.port,
       portSource: portOverride != null ? "override" : "round-robin",
+      gatewayResponse: result.gatewayResponse,
     });
   } catch (err: any) {
     req.log.error({ err }, "Error sending test SMS");
@@ -260,11 +312,11 @@ router.post("/admin/sms-settings/test-low-stock-alert", async (req, res) => {
     }
     const event = settings?.eventName?.trim() || "dash by Hollywood East Cafe";
     const message = `Test alert from ${event}`;
-    const results: Array<{ phone: string; ok: boolean; error?: string }> = [];
+    const results: Array<{ phone: string; ok: boolean; port?: number; gatewayResponse?: string; error?: string }> = [];
     for (const phone of phones) {
       try {
-        await sendSmsViaEjoin(phone, message);
-        results.push({ phone, ok: true });
+        const r = await sendSmsViaEjoin(phone, message);
+        results.push({ phone, ok: true, port: r.port, gatewayResponse: r.gatewayResponse });
       } catch (err: any) {
         const detail = typeof err?.message === "string" ? err.message : "send failed";
         results.push({ phone, ok: false, error: detail });
@@ -308,8 +360,9 @@ router.post("/admin/sms-settings/test-owner-alert", async (req, res) => {
     }
     const event = settings?.eventName?.trim() || "dash by Hollywood East Cafe";
     const message = `Test owner alert from ${event}`;
+    let result: { port: number; gatewayResponse: string };
     try {
-      await sendSmsViaEjoin(ownerPhone, message);
+      result = await sendSmsViaEjoin(ownerPhone, message);
     } catch (err: any) {
       const detail = typeof err?.message === "string" ? err.message : "send failed";
       res.status(502).json({ error: `Failed to send owner test alert: ${detail}` });
@@ -318,7 +371,9 @@ router.post("/admin/sms-settings/test-owner-alert", async (req, res) => {
     res.json({
       ok: true,
       sentTo: ownerPhone,
-      source: dbPhone ? "db" : "env",
+      port: result.port,
+      gatewayResponse: result.gatewayResponse,
+      ownerNotificationPhoneSource: dbPhone ? "db" : "env",
     });
   } catch (err: any) {
     req.log.error({ err }, "Error sending test owner alert");

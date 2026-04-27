@@ -17,8 +17,12 @@ type ServerState = {
   lowStockAlertPhones: string[];
   lowStockAlertThreshold: number | null;
   ejoinConfigured: boolean;
-  ownerPhoneSource: "db" | "env" | "none";
+  ownerNotificationPhoneSource: "db" | "env" | "none";
 };
+
+// Hardware: ejointech gateway exposes 8 physical SIM ports (1..8).
+const EJOIN_PORT_COUNT = 8;
+const EJOIN_VALID_PORTS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 
 type FeedbackKind = "success" | "error";
 type Feedback = { kind: FeedbackKind; message: string } | null;
@@ -48,9 +52,9 @@ export default function SmsSettings() {
   const [loadError, setLoadError] = useState("");
   const [server, setServer] = useState<ServerState | null>(null);
 
-  // Form state — strings while editing so admins can type freely (commas,
-  // mid-edit empties, etc.). Coerced on save.
-  const [portsText, setPortsText] = useState("");
+  // Form state. Active ports tracked as a Set<number> backing 8 checkboxes;
+  // every other field is plain string-state coerced on save.
+  const [activePorts, setActivePorts] = useState<Set<number>>(new Set([7]));
   const [ownerPhone, setOwnerPhone] = useState("");
   const [alertPhones, setAlertPhones] = useState<string[]>([]);
   const [threshold, setThreshold] = useState<string>("");
@@ -90,7 +94,7 @@ export default function SmsSettings() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = (await r.json()) as ServerState;
       setServer(data);
-      setPortsText(data.smsActivePorts.join(", "));
+      setActivePorts(new Set(data.smsActivePorts));
       setOwnerPhone(data.ownerNotificationPhone ?? "");
       setAlertPhones(data.lowStockAlertPhones);
       setThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
@@ -105,11 +109,19 @@ export default function SmsSettings() {
 
   // ── Ports ──────────────────────────────────────────────────────────────────
 
-  function parsePortsInput(): number[] {
-    // Accept commas, spaces, or both as separators so admins can paste
-    // either "1,2,3" or "1 2 3" without thinking.
-    const parts = portsText.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
-    return parts.map(p => Number(p));
+  function togglePort(port: number) {
+    setActivePorts(prev => {
+      const next = new Set(prev);
+      if (next.has(port)) next.delete(port);
+      else next.add(port);
+      return next;
+    });
+  }
+
+  function selectedPortsArray(): number[] {
+    // Sorted ascending so the persisted order is stable + the round-robin
+    // cycles through ports in a predictable sequence.
+    return [...activePorts].filter(p => Number.isInteger(p)).sort((a, b) => a - b);
   }
 
   async function savePorts() {
@@ -117,15 +129,8 @@ export default function SmsSettings() {
     setPortsError("");
     setSavedPorts(false);
     try {
-      const ports = parsePortsInput();
-      // Client-side guard mirrors the server validator so the user gets a
-      // localized message before the round-trip.
-      if (ports.length === 0) throw new Error("Add at least one port number.");
-      for (const [i, n] of ports.entries()) {
-        if (!Number.isInteger(n) || n < 1 || n > 32) {
-          throw new Error(`Port #${i + 1} must be an integer between 1 and 32.`);
-        }
-      }
+      const ports = selectedPortsArray();
+      if (ports.length === 0) throw new Error("Select at least one port.");
       const r = await fetch(`${BASE}/api/admin/sms-settings`, {
         method: "PUT",
         headers,
@@ -134,7 +139,7 @@ export default function SmsSettings() {
       const data = await r.json().catch(() => null);
       if (!r.ok) throw new Error(data?.error || "Save failed");
       setServer(data as ServerState);
-      setPortsText((data as ServerState).smsActivePorts.join(", "));
+      setActivePorts(new Set((data as ServerState).smsActivePorts));
       setSavedPorts(true);
       setTimeout(() => setSavedPorts(false), 2000);
     } catch (e: any) {
@@ -181,8 +186,10 @@ export default function SmsSettings() {
       const r = await fetch(`${BASE}/api/admin/sms-settings/test-owner-alert`, { method: "POST", headers });
       const data = await r.json().catch(() => null);
       if (!r.ok) throw new Error(data?.error || "Failed to send owner test");
-      const where = data?.source === "env" ? " (using legacy OWNER_PHONE env var)" : "";
-      setOwnerTestFeedback({ kind: "success", message: `Sent test to ${data?.sentTo}${where}.` });
+      const where = data?.ownerNotificationPhoneSource === "env" ? " (using legacy OWNER_PHONE env var)" : "";
+      const portInfo = data?.port != null ? ` via port ${data.port}` : "";
+      const gateway = data?.gatewayResponse ? ` Gateway: ${data.gatewayResponse}.` : "";
+      setOwnerTestFeedback({ kind: "success", message: `Sent test to ${data?.sentTo}${portInfo}${where}.${gateway}` });
     } catch (e: any) {
       setOwnerTestFeedback({ kind: "error", message: e?.message || "Failed to send owner test" });
     } finally {
@@ -267,20 +274,25 @@ export default function SmsSettings() {
     setSendingTest(true);
     setTestFeedback(null);
     try {
-      const phone = testPhone.trim();
-      if (!phone || phone.replace(/\D/g, "").length < 7) {
+      const to = testPhone.trim();
+      if (!to || to.replace(/\D/g, "").length < 7) {
         throw new Error("Phone must contain at least 7 digits.");
       }
       const portStr = testPort.trim();
       let port: number | undefined;
       if (portStr !== "") {
         const n = Number(portStr);
-        if (!Number.isInteger(n) || n < 1 || n > 32) {
-          throw new Error("Port must be an integer between 1 and 32.");
+        if (!Number.isInteger(n) || n < 1 || n > EJOIN_PORT_COUNT) {
+          throw new Error(`Port must be an integer between 1 and ${EJOIN_PORT_COUNT}.`);
+        }
+        // The dropdown only offers saved active ports + Auto, but guard
+        // anyway in case the server pool changed under us.
+        if (server && !server.smsActivePorts.includes(n)) {
+          throw new Error(`Port ${n} is not in the saved active port pool. Save it first or pick "Auto".`);
         }
         port = n;
       }
-      const body: Record<string, unknown> = { phone };
+      const body: Record<string, unknown> = { to };
       if (port != null) body.port = port;
       const trimmedMsg = testMessage.trim();
       if (trimmedMsg) body.message = trimmedMsg;
@@ -294,7 +306,8 @@ export default function SmsSettings() {
       const portLabel = data?.portSource === "round-robin"
         ? `port ${data?.port} (round-robin pick)`
         : `port ${data?.port}`;
-      setTestFeedback({ kind: "success", message: `Sent test SMS to ${data?.sentTo} via ${portLabel}.` });
+      const gateway = data?.gatewayResponse ? ` Gateway: ${data.gatewayResponse}.` : "";
+      setTestFeedback({ kind: "success", message: `Sent test SMS to ${data?.sentTo} via ${portLabel}.${gateway}` });
     } catch (e: any) {
       setTestFeedback({ kind: "error", message: e?.message || "Failed to send test SMS" });
     } finally {
@@ -307,7 +320,7 @@ export default function SmsSettings() {
   // Test buttons reach the live (saved) state. Disable them when the form is
   // dirty so admins don't get confused by "I tested with my edits but they
   // didn't apply".
-  const portsDirty = server ? !portsEqual(parsePortsInput(), server.smsActivePorts) : true;
+  const portsDirty = server ? !portsEqual(selectedPortsArray(), server.smsActivePorts) : true;
   const ownerDirty = server ? (ownerPhone.trim() || null) !== server.ownerNotificationPhone : true;
   const alertsDirty = (() => {
     if (!server) return true;
@@ -348,20 +361,36 @@ export default function SmsSettings() {
                 <StatusPill ok={!!server?.ejoinConfigured} okLabel="Gateway connected" badLabel="Gateway not configured" />
               </div>
               <p className="text-sm text-muted-foreground">
-                Outgoing SMS rotates through these ports in round-robin order so multiple SIMs can share the load.
-                Each port must be an integer between 1 and 32. Use a single port (e.g. <code>7</code>) for one SIM,
-                or a comma-separated list (e.g. <code>1, 2, 3, 4</code>) for a multi-SIM gateway.
+                Outgoing SMS rotates through the selected ports in round-robin order so multiple SIMs can share the load.
+                The gateway has {EJOIN_PORT_COUNT} physical SIM ports — tick the ones with active SIMs installed.
               </p>
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1.5">Active ports</label>
-                <input
-                  type="text"
-                  value={portsText}
-                  onChange={e => setPortsText(e.target.value)}
-                  placeholder="7"
-                  className="w-full px-4 py-2 border border-border rounded-xl bg-background"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                  {EJOIN_VALID_PORTS.map(p => {
+                    const checked = activePorts.has(p);
+                    return (
+                      <label
+                        key={p}
+                        className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-xl cursor-pointer text-sm font-medium transition-colors ${
+                          checked
+                            ? "bg-foreground text-background border-foreground"
+                            : "bg-background text-foreground border-border hover:bg-secondary"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => togglePort(p)}
+                          aria-label={`Port ${p}`}
+                          className="sr-only"
+                        />
+                        Port {p}
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
                   Currently saved: {server?.smsActivePorts.length ? server.smsActivePorts.join(", ") : "(none)"}
                 </p>
               </div>
@@ -384,17 +413,17 @@ export default function SmsSettings() {
               <div className="flex items-center gap-2 flex-wrap">
                 <UserCog className="w-4 h-4 text-muted-foreground" />
                 <h2 className="font-display font-bold text-lg">Owner Notifications</h2>
-                {server?.ownerPhoneSource === "db" && (
+                {server?.ownerNotificationPhoneSource === "db" && (
                   <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
                     Active
                   </span>
                 )}
-                {server?.ownerPhoneSource === "env" && (
+                {server?.ownerNotificationPhoneSource === "env" && (
                   <span className="text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
                     Using legacy OWNER_PHONE env var
                   </span>
                 )}
-                {server?.ownerPhoneSource === "none" && (
+                {server?.ownerNotificationPhoneSource === "none" && (
                   <span className="text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
                     Not configured
                   </span>
@@ -428,9 +457,9 @@ export default function SmsSettings() {
                 <button
                   type="button"
                   onClick={handleSendOwnerTest}
-                  disabled={sendingOwnerTest || ownerDirty || server?.ownerPhoneSource === "none"}
+                  disabled={sendingOwnerTest || ownerDirty || server?.ownerNotificationPhoneSource === "none"}
                   title={
-                    server?.ownerPhoneSource === "none"
+                    server?.ownerNotificationPhoneSource === "none"
                       ? "Save an owner phone first (or set OWNER_PHONE)."
                       : ownerDirty
                       ? "Save your changes before testing."
@@ -566,17 +595,17 @@ export default function SmsSettings() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Port (optional)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={32}
-                    step={1}
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Port</label>
+                  <select
                     value={testPort}
                     onChange={e => setTestPort(e.target.value)}
-                    placeholder="auto"
                     className="w-full px-4 py-2 border border-border rounded-xl bg-background"
-                  />
+                  >
+                    <option value="">Auto (round-robin)</option>
+                    {(server?.smsActivePorts ?? []).map(p => (
+                      <option key={p} value={String(p)}>Port {p}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div>

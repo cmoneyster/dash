@@ -53,15 +53,18 @@ async function getActivePorts(): Promise<number[]> {
       .select({ smsActivePorts: eventSettingsTable.smsActivePorts })
       .from(eventSettingsTable)
       .where(eq(eventSettingsTable.id, 1));
+    // Defensive clamp to the 8-port hardware envelope. Legacy DB rows or
+    // env values referencing ports 9–32 (from older multi-gateway setups)
+    // are silently dropped rather than dispatched to non-existent SIMs.
     ports = (row?.smsActivePorts ?? [])
       .map(p => Number(p))
-      .filter(p => Number.isFinite(p) && Number.isInteger(p) && p >= 1 && p <= 32);
+      .filter(p => Number.isFinite(p) && Number.isInteger(p) && p >= 1 && p <= EJOIN_PORT_COUNT);
   } catch (err) {
     console.warn("[ejoin] failed to read active port pool — falling back to env", err);
   }
   if (ports.length === 0) {
     const envPort = Number(process.env.EJOIN_SMS_PORT ?? "7");
-    ports = Number.isFinite(envPort) && envPort >= 1 && envPort <= 32 ? [envPort] : [7];
+    ports = Number.isFinite(envPort) && envPort >= 1 && envPort <= EJOIN_PORT_COUNT ? [envPort] : [7];
   }
   portCache = { ports, expiresAt: now + PORT_CACHE_TTL_MS };
   return ports;
@@ -127,13 +130,20 @@ async function getSessionCookie(cfg: {
   return authCookie;
 }
 
-// Returns the port that was actually used to send (so callers like the
-// admin test-send endpoint can surface the round-robin choice to the UI).
+// The ejointech gateway hardware exposes 8 physical SIM ports (1..8).
+// Centralized here so the admin UI, route validation, and runtime checks
+// all stay in sync if the hardware ever changes.
+export const EJOIN_PORT_COUNT = 8;
+export const EJOIN_VALID_PORTS: readonly number[] = [1, 2, 3, 4, 5, 6, 7, 8];
+
+// Returns the port that was actually used and a short gateway response
+// summary (so callers like the admin test-send endpoint can surface both
+// the round-robin choice and the gateway acknowledgement to the UI).
 export async function sendSmsViaEjoin(
   to: string,
   message: string,
   opts?: { portOverride?: number },
-): Promise<number> {
+): Promise<{ port: number; gatewayResponse: string }> {
   const cfg = getCredentials();
   if (!cfg) throw new Error("ejointech gateway not configured");
 
@@ -142,8 +152,8 @@ export async function sendSmsViaEjoin(
   let port: number;
   if (opts?.portOverride != null) {
     const p = Number(opts.portOverride);
-    if (!Number.isInteger(p) || p < 1 || p > 32) {
-      throw new Error(`Invalid port override: ${opts.portOverride}`);
+    if (!Number.isInteger(p) || p < 1 || p > EJOIN_PORT_COUNT) {
+      throw new Error(`Invalid port override: ${opts.portOverride} (must be 1-${EJOIN_PORT_COUNT})`);
     }
     port = p;
   } else {
@@ -185,6 +195,31 @@ export async function sendSmsViaEjoin(
     throw new Error("ejointech: session rejected after login — IP may be blocked");
   }
 
-  console.info(`[ejoin] SMS sent to ${phone} via port ${port}`);
-  return port;
+  // Distill the gateway's HTML response into a one-liner the admin UI can
+  // surface. The send page typically embeds a status hint we can grep for;
+  // when nothing matches we fall back to a generic "accepted" string with
+  // the HTTP status so the admin still gets useful feedback.
+  const gatewayResponse = summarizeGatewayResponse(text, resp.status);
+
+  console.info(`[ejoin] SMS sent to ${phone} via port ${port}: ${gatewayResponse}`);
+  return { port, gatewayResponse };
+}
+
+// The GoIP send-SMS page returns a full HTML document. Surface only the
+// short status indicator (e.g. the value of an embedded result field, or
+// a "Send..." line if present) so the admin UI doesn't have to deal with
+// markup. Conservative — if we can't find a meaningful snippet, return a
+// generic OK marker so callers still see *something* informative.
+function summarizeGatewayResponse(html: string, httpStatus: number): string {
+  // Look for explicit numeric result codes the GoIP firmware embeds, e.g.
+  // <input ... value="0"> means OK.
+  const result = /name=["']?send_result["']?[^>]*value=["']([^"']+)["']/i.exec(html);
+  if (result) return `result=${result[1]}`;
+  // Otherwise grab the first short text line that mentions "Send" or "SMS".
+  const line = html
+    .split(/\r?\n/)
+    .map(l => l.replace(/<[^>]+>/g, "").trim())
+    .find(l => l.length > 0 && l.length < 200 && /(send|sms|port)/i.test(l));
+  if (line) return line.slice(0, 160);
+  return `accepted (HTTP ${httpStatus})`;
 }

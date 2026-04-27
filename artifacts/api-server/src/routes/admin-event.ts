@@ -5,6 +5,7 @@ import { db } from "@workspace/db";
 import { eventSettingsTable, eventOrdersTable } from "@workspace/db/schema";
 import { eq, and, gte, lt, inArray } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { isEjoinConfigured } from "../lib/sms-ejoin";
 
 const router: IRouter = Router();
 
@@ -20,6 +21,9 @@ router.get("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate: settings?.eventTakerTaxRate != null ? parseFloat(settings.eventTakerTaxRate) : null,
       venmoHandle: settings?.venmoHandle ?? "",
       venmoQrImageUrl: settings?.venmoQrImageUrl ?? null,
+      // Replaces the legacy `twilioConfigured` flag — used by the admin
+      // shell to badge SMS-related links when the gateway is unreachable.
+      ejoinConfigured: isEjoinConfigured(),
       // ── On the Dash Experience pricing config ──
       // Numeric columns are returned as parsed numbers so the admin UI
       // can render them in plain inputs without re-parsing.
@@ -69,6 +73,7 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate: s.eventTakerTaxRate != null ? parseFloat(s.eventTakerTaxRate) : null,
       venmoHandle: s.venmoHandle ?? "",
       venmoQrImageUrl: s.venmoQrImageUrl ?? null,
+      ejoinConfigured: isEjoinConfigured(),
       otdSetupFee: s.otdSetupFee != null ? parseFloat(s.otdSetupFee) : 500,
       otdFeeWaiverThreshold: s.otdFeeWaiverThreshold != null ? parseFloat(s.otdFeeWaiverThreshold) : 2000,
       otdIncludedHours: s.otdIncludedHours != null ? parseFloat(s.otdIncludedHours) : 2,
