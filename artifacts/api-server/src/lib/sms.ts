@@ -54,7 +54,7 @@ export async function sendOrderConfirmation(opts: {
   const { guestName, orderId, phoneNumber, eventName, orderStatusUrl } = opts;
   const name  = guestName.split(" ")[0];
   const event = eventName || "dash by Hollywood East Cafe";
-  const body  = `Hi ${name}! Your order #${orderId} has been received at ${event}. Track your order: ${orderStatusUrl}`;
+  const body  = `Hi ${name}! Your order #${orderId} has been received at ${event}. Track your order: ${orderStatusUrl} Auto msg. Replies not read.`;
   await sendSms(phoneNumber, body);
 }
 
@@ -67,7 +67,7 @@ export async function sendOrderReady(opts: {
   const { guestName, orderId, eventName, phoneNumber } = opts;
   const name  = guestName.split(" ")[0];
   const event = eventName || "dash by Hollywood East Cafe";
-  const body  = `Hi ${name}! Your order #${orderId} is ready for pickup at ${event}! — dash by Hollywood East Cafe`;
+  const body  = `Hi ${name}! Your order #${orderId} is ready for pickup at ${event}! — dash by Hollywood East Cafe Auto msg. Replies not read.`;
   await sendSms(phoneNumber, body);
 }
 
