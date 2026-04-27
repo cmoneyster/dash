@@ -25,7 +25,6 @@ import verifyRouter from "./verify";
 import categoriesRouter from "./categories";
 import adminCategoriesRouter from "./admin-categories";
 import placesRouter from "./places";
-import socialShareRouter from "./social-share";
 
 const router: IRouter = Router();
 
@@ -42,7 +41,6 @@ router.use(eventOrderingRouter);
 router.use(eventTakerRouter);
 router.use(verifyRouter);
 router.use(placesRouter);
-router.use(socialShareRouter);
 router.use(quotePublicRouter);
 // Public webhook — must be mounted BEFORE the admin auth middleware below.
 router.use(webhooksSquareRouter);
