@@ -2,11 +2,10 @@
 // Owns every SMS-related setting that used to be scattered across the event
 // settings page: the ejointech port pool (multi-port round-robin), the owner
 // notification phone, and the kitchen low-stock recipient list. Also exposes
-// three test endpoints (arbitrary phone, low-stock recipients, owner phone)
-// so admins can verify delivery without burning through a real low-stock
-// crossing.
+// two test endpoints (low-stock recipients and owner phone) so admins can
+// verify delivery without burning through a real low-stock crossing.
 
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -128,7 +127,6 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   lowStockAlertPhones: string[];
   lowStockAlertThreshold: number | null;
   ejoinConfigured: boolean;
-  eventName: string;
   ownerNotificationPhoneSource: "db" | "env" | "none";
 } {
   const dbOwner = s?.ownerNotificationPhone?.trim() || null;
@@ -140,38 +138,10 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
     lowStockAlertPhones: s?.lowStockAlertPhones ?? [],
     lowStockAlertThreshold: s?.lowStockAlertThreshold ?? null,
     ejoinConfigured: isEjoinConfigured(),
-    // Surfaced so the UI can pre-populate the test-send default body
-    // ("Test SMS from <eventName>") to match what the server uses.
-    eventName: s?.eventName?.trim() || DEFAULT_EVENT_NAME,
     // Lets the UI show "currently using OWNER_PHONE env var (legacy)" when
     // the admin hasn't entered a DB-managed number yet.
     ownerNotificationPhoneSource,
   };
-}
-
-// ── Test-send rate limiter ──────────────────────────────────────────────────
-// Per-admin-token cooldown so a slip on the keyboard (or a bug in the UI)
-// can't spam real SMS through the gateway. Keyed by the bearer token; falls
-// back to the source IP when no token is present (shouldn't happen because
-// the route is mounted under requireAdminAuth, but belt-and-suspenders).
-const TEST_SEND_COOLDOWN_MS = 5_000;
-const lastTestSendAt = new Map<string, number>();
-
-function testSendKey(req: Request): string {
-  const raw = req.headers.authorization;
-  const auth = typeof raw === "string" ? raw : "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  return token || req.ip || "unknown";
-}
-
-function checkTestSendRateLimit(key: string): { ok: true } | { ok: false; retryAfterMs: number } {
-  const now = Date.now();
-  const prev = lastTestSendAt.get(key);
-  if (prev != null && now - prev < TEST_SEND_COOLDOWN_MS) {
-    return { ok: false, retryAfterMs: TEST_SEND_COOLDOWN_MS - (now - prev) };
-  }
-  lastTestSendAt.set(key, now);
-  return { ok: true };
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -248,85 +218,6 @@ router.put("/admin/sms-settings", async (req, res) => {
     }
     req.log.error({ err }, "Error updating SMS settings");
     res.status(500).json({ error: "Failed to update SMS settings" });
-  }
-});
-
-// Direct test send to an arbitrary phone, optionally pinned to a specific
-// port so admins can verify each SIM/port individually before adding it to
-// the round-robin pool. Bypasses sendSms() so gateway errors surface in the
-// HTTP response instead of being swallowed.
-//
-// Body shape: { to: string, message?: string, port?: number }.
-//   - `port`, when provided, must be one of the currently-saved active
-//     ports (we don't let admins poke arbitrary hardware ports from the
-//     test endpoint).
-//   - A short per-admin cooldown prevents accidental SMS spam.
-router.post("/admin/sms-settings/test-send", async (req, res) => {
-  try {
-    const body = req.body as { to?: unknown; port?: unknown; message?: unknown };
-    const to = typeof body.to === "string" ? body.to.trim() : "";
-    if (!to || to.replace(/\D/g, "").length < 7) {
-      res.status(400).json({ error: "to is required and must contain at least 7 digits" });
-      return;
-    }
-
-    if (!isEjoinConfigured()) {
-      res.status(503).json({ error: "SMS gateway is not configured." });
-      return;
-    }
-
-    const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
-    const activePorts = settings?.smsActivePorts ?? [7];
-
-    let portOverride: number | undefined;
-    if (body.port !== undefined && body.port !== null && body.port !== "") {
-      const n = Number(body.port);
-      if (!Number.isInteger(n) || n < 1 || n > EJOIN_PORT_COUNT) {
-        res.status(400).json({ error: `port must be an integer between 1 and ${EJOIN_PORT_COUNT}` });
-        return;
-      }
-      if (!activePorts.includes(n)) {
-        res.status(400).json({
-          error: `port ${n} is not in the saved active port pool (${activePorts.join(", ")}). Save it as active first or pick "Auto".`,
-        });
-        return;
-      }
-      portOverride = n;
-    }
-
-    const limit = checkTestSendRateLimit(testSendKey(req));
-    if (!limit.ok) {
-      res.status(429).json({
-        error: `Slow down — wait ${Math.ceil(limit.retryAfterMs / 1000)}s before sending another test SMS.`,
-        retryAfterMs: limit.retryAfterMs,
-      });
-      return;
-    }
-
-    const event = settings?.eventName?.trim() || DEFAULT_EVENT_NAME;
-    const customMessage = typeof body.message === "string" ? body.message.trim() : "";
-    const message = customMessage || `Test SMS from ${event}`;
-
-    let result: { port: number; gatewayResponse: string };
-    try {
-      result = await sendSmsViaEjoin(to, message, portOverride != null ? { portOverride } : undefined);
-    } catch (err: unknown) {
-      const detail = err instanceof Error ? err.message : "send failed";
-      res.status(502).json({ error: `Failed to send test SMS: ${detail}` });
-      return;
-    }
-    res.json({
-      ok: true,
-      sentTo: to,
-      // The port that was actually used. When portOverride is unset this is
-      // the next entry the round-robin counter picked from the saved pool.
-      port: result.port,
-      portSource: portOverride != null ? "override" : "round-robin",
-      gatewayResponse: result.gatewayResponse,
-    });
-  } catch (err: unknown) {
-    req.log.error({ err }, "Error sending test SMS");
-    res.status(500).json({ error: "Failed to send test SMS" });
   }
 });
 

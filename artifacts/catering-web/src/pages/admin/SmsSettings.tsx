@@ -17,15 +17,12 @@ type ServerState = {
   lowStockAlertPhones: string[];
   lowStockAlertThreshold: number | null;
   ejoinConfigured: boolean;
-  // Returned by /admin/sms-settings so the test-send card can pre-fill
-  // the same default body the server would substitute on a blank submit.
-  eventName: string;
   ownerNotificationPhoneSource: "db" | "env" | "none";
 };
 
 // Hardware: ejointech gateway exposes 8 physical SIM ports (1..8).
-const EJOIN_PORT_COUNT = 8;
 const EJOIN_VALID_PORTS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const EJOIN_PORT_COUNT = EJOIN_VALID_PORTS.length;
 
 type FeedbackKind = "success" | "error";
 type Feedback = { kind: FeedbackKind; message: string } | null;
@@ -76,13 +73,6 @@ export default function SmsSettings() {
   const [savedAlerts, setSavedAlerts] = useState(false);
   const [alertsError, setAlertsError] = useState("");
 
-  // Test-send card state.
-  const [testPhone, setTestPhone] = useState("");
-  const [testPort, setTestPort] = useState<string>(""); // "" = use round-robin
-  const [testMessage, setTestMessage] = useState("");
-  const [sendingTest, setSendingTest] = useState(false);
-  const [testFeedback, setTestFeedback] = useState<Feedback>(null);
-
   // Feedback for the two pre-built test buttons.
   const [lowStockFeedback, setLowStockFeedback] = useState<Feedback>(null);
   const [sendingLowStock, setSendingLowStock] = useState(false);
@@ -101,10 +91,6 @@ export default function SmsSettings() {
       setOwnerPhone(data.ownerNotificationPhone ?? "");
       setAlertPhones(data.lowStockAlertPhones);
       setThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
-      // Pre-populate the test message with the same default body the server
-      // would substitute on a blank submit, so admins see exactly what will
-      // go out before they hit Send. They can still edit or clear it.
-      setTestMessage(prev => (prev.trim() === "" ? `Test SMS from ${data.eventName}` : prev));
     } catch (e: any) {
       setLoadError(e?.message || "Failed to load SMS settings");
     } finally {
@@ -272,53 +258,6 @@ export default function SmsSettings() {
       setLowStockFeedback({ kind: "error", message: e?.message || "Failed to send test alert" });
     } finally {
       setSendingLowStock(false);
-    }
-  }
-
-  // ── Test send (arbitrary phone + optional port) ────────────────────────────
-
-  async function handleTestSend() {
-    setSendingTest(true);
-    setTestFeedback(null);
-    try {
-      const to = testPhone.trim();
-      if (!to || to.replace(/\D/g, "").length < 7) {
-        throw new Error("Phone must contain at least 7 digits.");
-      }
-      const portStr = testPort.trim();
-      let port: number | undefined;
-      if (portStr !== "") {
-        const n = Number(portStr);
-        if (!Number.isInteger(n) || n < 1 || n > EJOIN_PORT_COUNT) {
-          throw new Error(`Port must be an integer between 1 and ${EJOIN_PORT_COUNT}.`);
-        }
-        // The dropdown only offers saved active ports + Auto, but guard
-        // anyway in case the server pool changed under us.
-        if (server && !server.smsActivePorts.includes(n)) {
-          throw new Error(`Port ${n} is not in the saved active port pool. Save it first or pick "Auto".`);
-        }
-        port = n;
-      }
-      const body: Record<string, unknown> = { to };
-      if (port != null) body.port = port;
-      const trimmedMsg = testMessage.trim();
-      if (trimmedMsg) body.message = trimmedMsg;
-      const r = await fetch(`${BASE}/api/admin/sms-settings/test-send`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      });
-      const data = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(data?.error || "Failed to send test SMS");
-      const portLabel = data?.portSource === "round-robin"
-        ? `port ${data?.port} (round-robin pick)`
-        : `port ${data?.port}`;
-      const gateway = data?.gatewayResponse ? ` Gateway: ${data.gatewayResponse}.` : "";
-      setTestFeedback({ kind: "success", message: `Sent test SMS to ${data?.sentTo} via ${portLabel}.${gateway}` });
-    } catch (e: any) {
-      setTestFeedback({ kind: "error", message: e?.message || "Failed to send test SMS" });
-    } finally {
-      setSendingTest(false);
     }
   }
 
@@ -580,75 +519,6 @@ export default function SmsSettings() {
               )}
             </section>
 
-            {/* ── Card 4: Test Send (arbitrary phone) ──────────────────────
-              * Sticks to the bottom of the viewport so it stays reachable
-              * while admins scroll through the port pool / phone lists
-              * above. */}
-            <section className="bg-card border border-border rounded-2xl p-6 shadow-lg space-y-4 sticky bottom-4 z-10">
-              <div className="flex items-center gap-2">
-                <Send className="w-4 h-4 text-muted-foreground" />
-                <h2 className="font-display font-bold text-lg">Send Test SMS</h2>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Send a one-off SMS to any phone number. Pin it to a specific port to verify a single SIM, or leave the
-                port blank to use the next port from the round-robin pool.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Recipient phone</label>
-                  <input
-                    type="tel"
-                    value={testPhone}
-                    onChange={e => setTestPhone(e.target.value)}
-                    placeholder="+1 555 123 4567"
-                    className="w-full px-4 py-2 border border-border rounded-xl bg-background"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Port</label>
-                  <select
-                    value={testPort}
-                    onChange={e => setTestPort(e.target.value)}
-                    className="w-full px-4 py-2 border border-border rounded-xl bg-background"
-                  >
-                    <option value="">Auto (round-robin)</option>
-                    {(server?.smsActivePorts ?? []).map(p => (
-                      <option key={p} value={String(p)}>Port {p}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Message (optional)</label>
-                <input
-                  type="text"
-                  value={testMessage}
-                  onChange={e => setTestMessage(e.target.value)}
-                  placeholder={`Test SMS from ${"<event name>"}`}
-                  className="w-full px-4 py-2 border border-border rounded-xl bg-background"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Leave blank to send the default test message (uses the saved event name).
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleTestSend}
-                  disabled={sendingTest || !server?.ejoinConfigured}
-                  title={server?.ejoinConfigured ? "" : "Gateway is not configured."}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {sendingTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  {sendingTest ? "Sending…" : "Send Test"}
-                </button>
-              </div>
-              {testFeedback && (
-                <p className={testFeedback.kind === "success" ? "text-sm text-emerald-600" : "text-sm text-destructive"}>
-                  {testFeedback.message}
-                </p>
-              )}
-            </section>
           </>
         )}
       </div>
