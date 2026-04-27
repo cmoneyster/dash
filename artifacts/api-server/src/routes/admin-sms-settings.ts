@@ -6,7 +6,7 @@
 // so admins can verify delivery without burning through a real low-stock
 // crossing.
 
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { db } from "@workspace/db";
 import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -14,31 +14,55 @@ import { isEjoinConfigured, sendSmsViaEjoin, clearEjoinPortCache, EJOIN_PORT_COU
 
 const router: IRouter = Router();
 
+// Update payload typed off the Drizzle schema so we never silently widen
+// to `Record<string, unknown>` and accidentally let unknown columns
+// through to the DB. Includes only the columns this router owns.
+type SmsSettingsUpdate = Partial<
+  Pick<
+    typeof eventSettingsTable.$inferInsert,
+    "smsActivePorts" | "ownerNotificationPhone" | "lowStockAlertPhones" | "lowStockAlertThreshold" | "updatedAt"
+  >
+>;
+
+// Tagged validation error so route handlers can re-throw cleanly without
+// resorting to ad-hoc `Object.assign`/`any` shapes.
+class HttpError extends Error {
+  status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function isHttpError(err: unknown): err is HttpError {
+  return err instanceof HttpError;
+}
+
 // ── Validation helpers ────────────────────────────────────────────────────────
 
 function normalizePortPool(v: unknown): number[] {
   if (!Array.isArray(v)) {
-    throw Object.assign(new Error("smsActivePorts must be an array of port numbers"), { status: 400 });
+    throw new HttpError("smsActivePorts must be an array of port numbers");
   }
   if (v.length === 0) {
-    throw Object.assign(new Error("smsActivePorts must include at least one port"), { status: 400 });
+    throw new HttpError("smsActivePorts must include at least one port");
   }
   if (v.length > EJOIN_PORT_COUNT) {
-    throw Object.assign(new Error(`smsActivePorts cannot exceed ${EJOIN_PORT_COUNT} entries (gateway has ${EJOIN_PORT_COUNT} physical SIM ports)`), { status: 400 });
+    throw new HttpError(`smsActivePorts cannot exceed ${EJOIN_PORT_COUNT} entries (gateway has ${EJOIN_PORT_COUNT} physical SIM ports)`);
   }
   const out: number[] = [];
   const seen = new Set<number>();
   v.forEach((raw, idx) => {
     const n = Number(raw);
     if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > EJOIN_PORT_COUNT) {
-      throw Object.assign(new Error(`Port #${idx + 1} must be an integer between 1 and ${EJOIN_PORT_COUNT}`), { status: 400 });
+      throw new HttpError(`Port #${idx + 1} must be an integer between 1 and ${EJOIN_PORT_COUNT}`);
     }
     if (seen.has(n)) return; // dedupe silently — order preserved
     seen.add(n);
     out.push(n);
   });
   if (out.length === 0) {
-    throw Object.assign(new Error("smsActivePorts must include at least one port"), { status: 400 });
+    throw new HttpError("smsActivePorts must include at least one port");
   }
   return out;
 }
@@ -46,13 +70,13 @@ function normalizePortPool(v: unknown): number[] {
 function normalizeOwnerPhone(v: unknown): string | null {
   if (v === null || v === undefined || v === "") return null;
   if (typeof v !== "string") {
-    throw Object.assign(new Error("ownerNotificationPhone must be a string"), { status: 400 });
+    throw new HttpError("ownerNotificationPhone must be a string");
   }
   const trimmed = v.trim();
   if (trimmed === "") return null;
   const digits = trimmed.replace(/\D/g, "");
   if (digits.length < 7) {
-    throw Object.assign(new Error("ownerNotificationPhone must contain at least 7 digits"), { status: 400 });
+    throw new HttpError("ownerNotificationPhone must contain at least 7 digits");
   }
   return trimmed.slice(0, 32);
 }
@@ -60,19 +84,19 @@ function normalizeOwnerPhone(v: unknown): string | null {
 function normalizeAlertPhones(v: unknown): string[] {
   if (v === null || v === undefined) return [];
   if (!Array.isArray(v)) {
-    throw Object.assign(new Error("lowStockAlertPhones must be an array of phone numbers"), { status: 400 });
+    throw new HttpError("lowStockAlertPhones must be an array of phone numbers");
   }
   const out: string[] = [];
   const seen = new Set<string>();
   v.forEach((raw, idx) => {
     if (typeof raw !== "string") {
-      throw Object.assign(new Error(`Recipient phone #${idx + 1} must be a string`), { status: 400 });
+      throw new HttpError(`Recipient phone #${idx + 1} must be a string`);
     }
     const trimmed = raw.trim();
     if (trimmed === "") return;
     const digits = trimmed.replace(/\D/g, "");
     if (digits.length < 7) {
-      throw Object.assign(new Error(`Recipient phone #${idx + 1} must contain at least 7 digits`), { status: 400 });
+      throw new HttpError(`Recipient phone #${idx + 1} must contain at least 7 digits`);
     }
     if (seen.has(digits)) return;
     seen.add(digits);
@@ -84,8 +108,12 @@ function normalizeAlertPhones(v: unknown): string[] {
 function normalizeAlertThreshold(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 1000) {
-    throw Object.assign(new Error("lowStockAlertThreshold must be an integer between 1 and 1000"), { status: 400 });
+  // Spec: non-negative integer. We still cap at 10000 as a defensive sanity
+  // bound — admins setting a threshold above that almost certainly fat-
+  // fingered the input — but 0 is now legal (e.g. "alert only when
+  // truly out of stock").
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > 10000) {
+    throw new HttpError("lowStockAlertThreshold must be a non-negative integer (0–10000)");
   }
   return n;
 }
@@ -123,8 +151,9 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
 const TEST_SEND_COOLDOWN_MS = 5_000;
 const lastTestSendAt = new Map<string, number>();
 
-function testSendKey(req: { headers: Record<string, any>; ip?: string }): string {
-  const auth = typeof req.headers.authorization === "string" ? req.headers.authorization : "";
+function testSendKey(req: Request): string {
+  const raw = req.headers.authorization;
+  const auth = typeof raw === "string" ? raw : "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   return token || req.ip || "unknown";
 }
@@ -145,7 +174,7 @@ router.get("/admin/sms-settings", async (req, res) => {
   try {
     const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     res.json(buildResponse(settings));
-  } catch (err) {
+  } catch (err: unknown) {
     req.log.error({ err }, "Error fetching SMS settings");
     res.status(500).json({ error: "Failed to fetch SMS settings" });
   }
@@ -159,7 +188,7 @@ router.put("/admin/sms-settings", async (req, res) => {
       lowStockAlertPhones?: unknown;
       lowStockAlertThreshold?: unknown;
     };
-    const updates: Record<string, any> = { updatedAt: new Date() };
+    const updates: SmsSettingsUpdate = { updatedAt: new Date() };
     if (body.smsActivePorts !== undefined) {
       updates.smsActivePorts = normalizePortPool(body.smsActivePorts);
     }
@@ -206,9 +235,9 @@ router.put("/admin/sms-settings", async (req, res) => {
     clearEjoinPortCache();
 
     res.json(buildResponse(row));
-  } catch (err: any) {
-    if (err?.status === 400) {
-      res.status(400).json({ error: err.message });
+  } catch (err: unknown) {
+    if (isHttpError(err)) {
+      res.status(err.status).json({ error: err.message });
       return;
     }
     req.log.error({ err }, "Error updating SMS settings");
@@ -259,7 +288,7 @@ router.post("/admin/sms-settings/test-send", async (req, res) => {
       portOverride = n;
     }
 
-    const limit = checkTestSendRateLimit(testSendKey(req as any));
+    const limit = checkTestSendRateLimit(testSendKey(req));
     if (!limit.ok) {
       res.status(429).json({
         error: `Slow down — wait ${Math.ceil(limit.retryAfterMs / 1000)}s before sending another test SMS.`,
@@ -275,8 +304,8 @@ router.post("/admin/sms-settings/test-send", async (req, res) => {
     let result: { port: number; gatewayResponse: string };
     try {
       result = await sendSmsViaEjoin(to, message, portOverride != null ? { portOverride } : undefined);
-    } catch (err: any) {
-      const detail = typeof err?.message === "string" ? err.message : "send failed";
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : "send failed";
       res.status(502).json({ error: `Failed to send test SMS: ${detail}` });
       return;
     }
@@ -289,7 +318,7 @@ router.post("/admin/sms-settings/test-send", async (req, res) => {
       portSource: portOverride != null ? "override" : "round-robin",
       gatewayResponse: result.gatewayResponse,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     req.log.error({ err }, "Error sending test SMS");
     res.status(500).json({ error: "Failed to send test SMS" });
   }
@@ -317,8 +346,8 @@ router.post("/admin/sms-settings/test-low-stock-alert", async (req, res) => {
       try {
         const r = await sendSmsViaEjoin(phone, message);
         results.push({ phone, ok: true, port: r.port, gatewayResponse: r.gatewayResponse });
-      } catch (err: any) {
-        const detail = typeof err?.message === "string" ? err.message : "send failed";
+      } catch (err: unknown) {
+        const detail = err instanceof Error ? err.message : "send failed";
         results.push({ phone, ok: false, error: detail });
       }
     }
@@ -331,9 +360,9 @@ router.post("/admin/sms-settings/test-low-stock-alert", async (req, res) => {
       return;
     }
     res.json({ ok: true, sentCount: okCount, totalCount: results.length, results });
-  } catch (err: any) {
+  } catch (err: unknown) {
     req.log.error({ err }, "Error sending test low-stock alert");
-    const detail = typeof err?.message === "string" ? err.message : "Failed to send test alert";
+    const detail = err instanceof Error ? err.message : "Failed to send test alert";
     res.status(502).json({ error: `Failed to send test alert: ${detail}` });
   }
 });
@@ -363,8 +392,8 @@ router.post("/admin/sms-settings/test-owner-alert", async (req, res) => {
     let result: { port: number; gatewayResponse: string };
     try {
       result = await sendSmsViaEjoin(ownerPhone, message);
-    } catch (err: any) {
-      const detail = typeof err?.message === "string" ? err.message : "send failed";
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : "send failed";
       res.status(502).json({ error: `Failed to send owner test alert: ${detail}` });
       return;
     }
@@ -375,7 +404,7 @@ router.post("/admin/sms-settings/test-owner-alert", async (req, res) => {
       gatewayResponse: result.gatewayResponse,
       ownerNotificationPhoneSource: dbPhone ? "db" : "env",
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     req.log.error({ err }, "Error sending test owner alert");
     res.status(500).json({ error: "Failed to send test owner alert" });
   }

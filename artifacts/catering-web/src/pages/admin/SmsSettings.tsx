@@ -528,15 +528,15 @@ export default function SmsSettings() {
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Threshold (units remaining)</label>
                 <input
                   type="number"
-                  min={1}
-                  max={1000}
+                  min={0}
+                  max={10000}
                   step={1}
                   value={threshold}
                   onChange={e => setThreshold(e.target.value)}
                   placeholder="5"
                   className="w-full px-4 py-2 border border-border rounded-xl bg-background"
                 />
-                <p className="text-xs text-muted-foreground mt-1">Defaults to 5 if left blank.</p>
+                <p className="text-xs text-muted-foreground mt-1">Defaults to 5 if left blank. Set to 0 to alert only when an item is fully out of stock.</p>
               </div>
               {alertsError && <p className="text-destructive text-sm">{alertsError}</p>}
               <div className="flex items-center gap-3 flex-wrap">
