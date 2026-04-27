@@ -43,6 +43,26 @@ export const eventSettingsTable = pgTable("event_settings", {
   otdIncludedHours: numeric("otd_included_hours", { precision: 5, scale: 2 }).notNull().default("2"),
   otdAdditionalHourRate: numeric("otd_additional_hour_rate", { precision: 10, scale: 2 }).notNull().default("100"),
   otdMaxAdditionalHours: integer("otd_max_additional_hours").notNull().default(3),
+  // ── Site & Social: link-preview customization ──────────────────────────────
+  // When the public site URL is shared on iMessage / Facebook / Slack / etc.,
+  // these values drive the og: + twitter: meta tags injected at the edge by
+  // the catering-web vite middleware. All fields are optional with sensible
+  // server-side fallbacks (event name as title, generic description, the
+  // bundled opengraph.jpg image), so a fresh install never serves a broken
+  // preview card. socialLogoPosition is one of:
+  //   'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'none'.
+  // socialHeroImageUrl / socialLogoImageUrl reference the existing image
+  // library serving URLs (e.g. /api/storage/objects/<id>) so we reuse a
+  // single upload pipeline for every visual asset on the site.
+  // instagramHandle is reused later by Instagram-specific features (footer
+  // icon link today, hashtag wall in a follow-up task).
+  socialShareTitle: text("social_share_title").notNull().default(""),
+  socialShareDescription: text("social_share_description").notNull().default(""),
+  socialShareTagline: text("social_share_tagline").notNull().default(""),
+  socialHeroImageUrl: text("social_hero_image_url"),
+  socialLogoImageUrl: text("social_logo_image_url"),
+  socialLogoPosition: text("social_logo_position").notNull().default("bottom-right"),
+  instagramHandle: text("instagram_handle"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

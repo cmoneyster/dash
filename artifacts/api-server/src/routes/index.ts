@@ -25,6 +25,7 @@ import verifyRouter from "./verify";
 import categoriesRouter from "./categories";
 import adminCategoriesRouter from "./admin-categories";
 import placesRouter from "./places";
+import socialShareRouter from "./social-share";
 
 const router: IRouter = Router();
 
