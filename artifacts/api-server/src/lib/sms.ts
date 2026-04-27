@@ -1,8 +1,31 @@
 // SMS sender — routes through ejointech gateway
 // On failure: logs the error and sends an alert email to Corey@HollywoodEastCafe.com
 
+import { db } from "@workspace/db";
+import { eventSettingsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import { isEjoinConfigured, sendSmsViaEjoin } from "./sms-ejoin";
 import { sendSmsAlert } from "./mail";
+
+// Resolve the owner notification phone with the documented fallback chain:
+// admin-managed event_settings.owner_notification_phone wins, then the legacy
+// OWNER_PHONE env var. Returns null when neither is present so callers can
+// log/skip without sending to a stale number.
+async function resolveOwnerPhone(): Promise<string | null> {
+  try {
+    const [row] = await db
+      .select({ ownerNotificationPhone: eventSettingsTable.ownerNotificationPhone })
+      .from(eventSettingsTable)
+      .where(eq(eventSettingsTable.id, 1));
+    const dbPhone = row?.ownerNotificationPhone?.trim();
+    if (dbPhone) return dbPhone;
+  } catch (err) {
+    // DB hiccup shouldn't block alerts entirely — fall through to env.
+    console.warn("[SMS] failed to read owner notification phone from DB", err);
+  }
+  const envPhone = process.env.OWNER_PHONE?.trim();
+  return envPhone || null;
+}
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -58,9 +81,9 @@ export async function sendNewInquiryAlert(opts: {
   venueAddress?: string | null;
   link?: string | null;        // deep link to admin inquiry editor
 }): Promise<void> {
-  const ownerPhone = process.env.OWNER_PHONE;
+  const ownerPhone = await resolveOwnerPhone();
   if (!ownerPhone) {
-    console.warn("[SMS] OWNER_PHONE not set — skipping inquiry alert");
+    console.warn("[SMS] no owner notification phone configured — skipping inquiry alert");
     return;
   }
   const sourceLabel = opts.source === "cart" ? "cart order" : "form inquiry";
@@ -120,9 +143,9 @@ export async function sendQuoteResponseSms(opts: {
   message?: string | null;
   link?: string | null;
 }): Promise<void> {
-  const ownerPhone = process.env.OWNER_PHONE;
+  const ownerPhone = await resolveOwnerPhone();
   if (!ownerPhone) {
-    console.warn("[SMS] OWNER_PHONE not set — skipping quote response alert");
+    console.warn("[SMS] no owner notification phone configured — skipping quote response alert");
     return;
   }
   const isAccept = opts.kind === "accepted";

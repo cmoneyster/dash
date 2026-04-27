@@ -6,7 +6,6 @@ export const eventSettingsTable = pgTable("event_settings", {
   eventName: text("event_name").notNull().default(""),
   eventPassword: text("event_password").notNull().default(""),
   kitchenPassword: text("kitchen_password"),
-  twilioFromNumber: text("twilio_from_number"),
   activeEventSessionId: integer("active_event_session_id"),
   // Staff Order Taker (POS-style) settings
   eventTakerPassword: text("event_taker_password"),
@@ -31,6 +30,17 @@ export const eventSettingsTable = pgTable("event_settings", {
   // disabled.
   lowStockAlertPhones: text("low_stock_alert_phones").array().notNull().default(sql`ARRAY[]::text[]`),
   lowStockAlertThreshold: integer("low_stock_alert_threshold"),
+  // ── Communications: SMS gateway port pool ─────────────────────────────────
+  // Set of ejointech gateway ports the sender rotates through (round-robin)
+  // to spread load across SIMs. Each entry must be 1–32 (gateway hardware
+  // limit). Defaults to a single port (7) so existing deployments behave
+  // identically until an admin opts into multi-port. Empty array is treated
+  // as "fall back to port 7" by the sender, but the API rejects empty saves.
+  smsActivePorts: integer("sms_active_ports").array().notNull().default(sql`ARRAY[7]::integer[]`),
+  // Owner phone for inquiry-arrival and quote-response alerts. When set,
+  // takes precedence over the OWNER_PHONE env var. Stored as the admin
+  // typed it (E.164-ish) — sender normalizes before dispatch.
+  ownerNotificationPhone: text("owner_notification_phone"),
   // ── On the Dash Experience pricing config ──────────────────────────────────
   // Controls the on-site food trailer service mode. Defaults match the
   // launch pricing: $500 setup fee, waived once subtotal is $2,000+,

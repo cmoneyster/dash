@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, MessageSquare, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon, AlertTriangle, Plus, Trash2, Send } from "lucide-react";
+import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -107,8 +107,6 @@ export default function EventSettings() {
   const [venmoQrImageUrl, setVenmoQrImageUrl] = useState<string | null>(null);
   const [venmoUploading, setVenmoUploading] = useState(false);
   const [venmoUploadError, setVenmoUploadError] = useState("");
-  const [lowStockAlertPhones, setLowStockAlertPhones] = useState<string[]>([]);
-  const [lowStockAlertThreshold, setLowStockAlertThreshold] = useState<string>("");
   // ── On the Dash Experience pricing config ──
   // String-backed inputs so we can preserve admin keystrokes (decimals,
   // empty while typing, etc.). Validated and coerced to numbers on save.
@@ -117,17 +115,9 @@ export default function EventSettings() {
   const [otdIncludedHours, setOtdIncludedHours] = useState<string>("2");
   const [otdAdditionalHourRate, setOtdAdditionalHourRate] = useState<string>("100");
   const [otdMaxAdditionalHours, setOtdMaxAdditionalHours] = useState<string>("3");
-  const [alertPhoneRowError, setAlertPhoneRowError] = useState<{ index: number; message: string } | null>(null);
-  // Snapshot of the persisted recipient list — the test endpoint sends to
-  // whatever is in the DB, so the test button is only enabled when the
-  // current input matches what's saved.
-  const [savedAlertPhones, setSavedAlertPhones] = useState<string[]>([]);
-  const [sendingTest, setSendingTest] = useState(false);
-  const [testFeedback, setTestFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
   const [hasOrderPassword, setHasOrderPassword] = useState(false);
   const [hasKitchenPassword, setHasKitchenPassword] = useState(false);
   const [hasEventTakerPassword, setHasEventTakerPassword] = useState(false);
-  const [twilioConfigured, setTwilioConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -154,37 +144,15 @@ export default function EventSettings() {
         setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
         setVenmoHandle(data.venmoHandle ?? "");
         setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
-        {
-          const phones = Array.isArray(data.lowStockAlertPhones) ? data.lowStockAlertPhones : [];
-          setLowStockAlertPhones(phones);
-          setSavedAlertPhones(phones);
-        }
-        setLowStockAlertThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
         if (data.otdSetupFee != null) setOtdSetupFee(String(data.otdSetupFee));
         if (data.otdFeeWaiverThreshold != null) setOtdFeeWaiverThreshold(String(data.otdFeeWaiverThreshold));
         if (data.otdIncludedHours != null) setOtdIncludedHours(String(data.otdIncludedHours));
         if (data.otdAdditionalHourRate != null) setOtdAdditionalHourRate(String(data.otdAdditionalHourRate));
         if (data.otdMaxAdditionalHours != null) setOtdMaxAdditionalHours(String(data.otdMaxAdditionalHours));
-        setTwilioConfigured(data.twilioConfigured ?? false);
       })
       .catch(() => setError("Failed to load event settings"))
       .finally(() => setLoading(false));
   }, []);
-
-  function updatePhoneAt(idx: number, value: string) {
-    setLowStockAlertPhones(prev => prev.map((p, i) => (i === idx ? value : p)));
-    setAlertPhoneRowError(prev => (prev && prev.index === idx ? null : prev));
-    setTestFeedback(null);
-  }
-  function removePhoneAt(idx: number) {
-    setLowStockAlertPhones(prev => prev.filter((_, i) => i !== idx));
-    setAlertPhoneRowError(null);
-    setTestFeedback(null);
-  }
-  function addPhone() {
-    setLowStockAlertPhones(prev => [...prev, ""]);
-    setTestFeedback(null);
-  }
 
   async function handleVenmoQrUpload(file: File) {
     setVenmoUploadError("");
@@ -207,46 +175,10 @@ export default function EventSettings() {
     }
   }
 
-  async function handleTestAlert() {
-    setSendingTest(true);
-    setTestFeedback(null);
-    try {
-      const res = await fetch(`${BASE}/api/admin/event-settings/test-low-stock-alert`, {
-        method: "POST",
-        headers,
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "Failed to send test alert");
-      const sent = typeof data?.sentCount === "number" ? data.sentCount : savedAlertPhones.length;
-      const total = typeof data?.totalCount === "number" ? data.totalCount : savedAlertPhones.length;
-      const failedRecipients: string[] = Array.isArray(data?.results)
-        ? data.results.filter((r: any) => !r?.ok).map((r: any) => r.phone)
-        : [];
-      const message = failedRecipients.length === 0
-        ? (total === 1 ? `Test alert sent to ${savedAlertPhones[0] ?? "the saved number"}.` : `Test alert sent to all ${sent} recipients.`)
-        : `Test alert sent to ${sent} of ${total}. Failed: ${failedRecipients.join(", ")}.`;
-      setTestFeedback({ kind: failedRecipients.length === 0 ? "success" : "error", message });
-    } catch (e: any) {
-      setTestFeedback({ kind: "error", message: e?.message || "Failed to send test alert" });
-    } finally {
-      setSendingTest(false);
-    }
-  }
-
-  // Used by the test button to detect unsaved edits — the test endpoint
-  // sends to the persisted list, so we disable testing until those match.
-  function alertPhonesUnsaved(): boolean {
-    const current = lowStockAlertPhones.map(p => p.trim()).filter(Boolean);
-    const saved = savedAlertPhones.map(p => p.trim()).filter(Boolean);
-    if (current.length !== saved.length) return true;
-    return current.some((p, i) => p !== saved[i]);
-  }
-
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError("");
-    setAlertPhoneRowError(null);
     try {
       const body: Record<string, unknown> = {
         eventName,
@@ -254,8 +186,6 @@ export default function EventSettings() {
         eventTakerTaxRate: eventTakerTaxRate.trim() === "" ? null : Number(eventTakerTaxRate),
         venmoHandle: venmoHandle.trim() === "" ? null : venmoHandle.trim(),
         venmoQrImageUrl: venmoQrImageUrl ?? null,
-        lowStockAlertPhones: lowStockAlertPhones.map(p => p.trim()).filter(p => p !== ""),
-        lowStockAlertThreshold: lowStockAlertThreshold.trim() === "" ? null : Number(lowStockAlertThreshold),
         otdSetupFee: otdSetupFee.trim() === "" ? 0 : Number(otdSetupFee),
         otdFeeWaiverThreshold: otdFeeWaiverThreshold.trim() === "" ? 0 : Number(otdFeeWaiverThreshold),
         otdIncludedHours: otdIncludedHours.trim() === "" ? 0 : Number(otdIncludedHours),
@@ -275,19 +205,9 @@ export default function EventSettings() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        // Surface server-provided validation messages (e.g. invalid alert
-        // phone or threshold) instead of a generic "Save failed". When the
-        // server returns an indexed recipient error (e.g. "Recipient phone #2
-        // must contain at least 7 digits"), highlight the offending row
-        // inline so the admin doesn't have to count.
+        // Surface server-provided validation messages instead of a generic "Save failed".
         const data = await res.json().catch(() => null);
-        const message: string = data?.error || "Save failed";
-        const m = /Recipient phone #(\d+)/.exec(message);
-        if (m) {
-          const idx = Number(m[1]) - 1;
-          if (idx >= 0) setAlertPhoneRowError({ index: idx, message });
-        }
-        throw new Error(message);
+        throw new Error(data?.error || "Save failed");
       }
       const data = await res.json() as any;
       setEventName(data.eventName);
@@ -298,13 +218,6 @@ export default function EventSettings() {
       setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
       setVenmoHandle(data.venmoHandle ?? "");
       setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
-      {
-        const phones = Array.isArray(data.lowStockAlertPhones) ? data.lowStockAlertPhones : [];
-        setLowStockAlertPhones(phones);
-        setSavedAlertPhones(phones);
-      }
-      setLowStockAlertThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
-      setTwilioConfigured(data.twilioConfigured ?? false);
       setOrderPassword("");
       setKitchenPassword("");
       setEventTakerPassword("");
@@ -517,115 +430,6 @@ export default function EventSettings() {
           </form>
 
           <form onSubmit={handleSave} className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-muted-foreground" />
-              <h2 className="font-display font-bold text-lg">Low-Stock Alerts</h2>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Send a text message to the kitchen the first time an item drops to or below the threshold during an event.
-              The alert fires once per crossing — restocking the item resets it so the next dip will alert again.
-            </p>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Recipient phone numbers</label>
-              {lowStockAlertPhones.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic mb-2">No recipients — low-stock SMS is disabled.</p>
-              ) : (
-                <div className="space-y-2 mb-2">
-                  {lowStockAlertPhones.map((phone, idx) => {
-                    const rowError = alertPhoneRowError && alertPhoneRowError.index === idx ? alertPhoneRowError.message : null;
-                    return (
-                      <div key={idx}>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="tel"
-                            value={phone}
-                            onChange={e => updatePhoneAt(idx, e.target.value)}
-                            placeholder="+1 555 123 4567"
-                            aria-label={`Recipient phone #${idx + 1}`}
-                            aria-invalid={rowError != null}
-                            className={`flex-1 px-4 py-2 border rounded-xl bg-background ${rowError ? "border-destructive ring-1 ring-destructive/30" : "border-border"}`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removePhoneAt(idx)}
-                            aria-label={`Remove recipient phone #${idx + 1}`}
-                            className="p-2 text-muted-foreground hover:text-destructive border border-border rounded-xl hover:border-destructive/40 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                        {rowError && <p className="text-xs text-destructive mt-1">{rowError}</p>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={addPhone}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-1.5 hover:bg-secondary transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add another phone
-                </button>
-                <button
-                  type="button"
-                  onClick={handleTestAlert}
-                  disabled={sendingTest || savedAlertPhones.length === 0 || alertPhonesUnsaved()}
-                  title={
-                    savedAlertPhones.length === 0
-                      ? "Add and save at least one phone number first"
-                      : alertPhonesUnsaved()
-                      ? "Save your changes before testing"
-                      : `Send a test SMS to ${savedAlertPhones.length === 1 ? "the saved recipient" : `all ${savedAlertPhones.length} saved recipients`}`
-                  }
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-1.5 hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {sendingTest ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                  {sendingTest ? "Sending…" : "Send test alert"}
-                </button>
-              </div>
-              {testFeedback && (
-                <p
-                  className={
-                    testFeedback.kind === "success"
-                      ? "text-xs text-emerald-600 mt-2"
-                      : "text-xs text-destructive mt-2"
-                  }
-                >
-                  {testFeedback.message}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground mt-2">
-                Every saved number gets the same alert. Remove all rows to disable low-stock SMS entirely.
-              </p>
-            </div>
-            {error && <p className="text-destructive text-sm">{error}</p>}
-            <div className="max-w-xs">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Threshold (units remaining)</label>
-              <input
-                type="number"
-                min={1}
-                max={1000}
-                step={1}
-                value={lowStockAlertThreshold}
-                onChange={e => setLowStockAlertThreshold(e.target.value)}
-                placeholder="5"
-                className="w-full px-4 py-2 border border-border rounded-xl bg-background"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Defaults to 5 if left blank.</p>
-            </div>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {saving ? "Saving…" : "Save Alert Settings"}
-            </button>
-          </form>
-
-          <form onSubmit={handleSave} className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
             <div>
               <h2 className="font-display font-bold text-lg">On the Dash Experience Pricing</h2>
               <p className="text-sm text-muted-foreground mt-1">
@@ -705,27 +509,6 @@ export default function EventSettings() {
               {saving ? "Saving…" : saved ? "Saved!" : "Save On the Dash Pricing"}
             </button>
           </form>
-
-          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-3">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-muted-foreground" />
-              <h2 className="font-display font-bold text-lg">SMS Notifications</h2>
-              {twilioConfigured ? (
-                <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Active</span>
-              ) : (
-                <span className="text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">Not connected</span>
-              )}
-            </div>
-            {twilioConfigured ? (
-              <p className="text-sm text-muted-foreground">
-                Twilio is connected. Guests who provide a phone number will automatically receive a text confirmation when they place an order, and another when their order is ready for pickup.
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Connect a Twilio account via the integrations panel to enable SMS order confirmations and pickup alerts for guests.
-              </p>
-            )}
-          </div>
 
           <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
             <h2 className="font-display font-bold text-xl">Share These Links</h2>

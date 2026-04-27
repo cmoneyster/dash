@@ -27,6 +27,7 @@ import adminCategoriesRouter from "./admin-categories";
 import placesRouter from "./places";
 import instagramPublicRouter from "./instagram-public";
 import adminInstagramRouter from "./admin-instagram";
+import adminSmsSettingsRouter from "./admin-sms-settings";
 
 const router: IRouter = Router();
 
@@ -55,6 +56,7 @@ router.use("/admin/stats", requireAdminAuth);
 router.use("/admin/orders", requireAdminAuth);
 router.use("/admin/blackout-dates", requireAdminAuth);
 router.use("/admin/event-settings", requireAdminAuth);
+router.use("/admin/sms-settings", requireAdminAuth);
 router.use("/admin/sales-reports", requireAdminAuth);
 router.use("/admin/sales-reports.csv", requireAdminAuth);
 router.use("/admin/event-sessions", requireAdminAuth);
@@ -73,5 +75,6 @@ router.use(adminEventSessionsRouter);
 router.use(adminCateringRouter);
 router.use(adminPlansRouter);
 router.use(adminInstagramRouter);
+router.use(adminSmsSettingsRouter);
 
 export default router;

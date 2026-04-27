@@ -32,6 +32,7 @@ import CateringOrders from "@/pages/admin/CateringOrders";
 import CateringPlans from "@/pages/admin/CateringPlans";
 import UpcomingCaterings from "@/pages/admin/UpcomingCaterings";
 import HashtagWallModeration from "@/pages/admin/HashtagWallModeration";
+import SmsSettings from "@/pages/admin/SmsSettings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -98,6 +99,9 @@ function Router() {
       </Route>
       <Route path="/admin/social/hashtag-wall">
         {() => <AdminGuard><HashtagWallModeration /></AdminGuard>}
+      </Route>
+      <Route path="/admin/sms">
+        {() => <AdminGuard><SmsSettings /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />

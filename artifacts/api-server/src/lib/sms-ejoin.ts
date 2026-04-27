@@ -1,8 +1,20 @@
 // ejointech SMS via web UI session auth
 // Uses EJOIN_ADMIN_USER / EJOIN_ADMIN_PASS for web login, then POSTs to goip_sms_en.html
-// Port selection via EJOIN_SMS_PORT (default "7")
+// Port pool is loaded from event_settings.sms_active_ports (round-robin) so admins
+// can opt into spreading load across SIMs without redeploying. Per-call port
+// override is supported for the "Send test" flow on the SMS settings page.
 
 import { createHash } from "crypto";
+import { db } from "@workspace/db";
+import { eventSettingsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
+
+const PORT_CACHE_TTL_MS = 10_000;
+let portCache: { ports: number[]; expiresAt: number } | null = null;
+// Module-scoped counter so successive sends across requests round-robin
+// through the configured ports. Reset on cache invalidation isn't needed —
+// modulo by current pool length keeps it correct after pool changes.
+let rrCounter = 0;
 
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
@@ -10,17 +22,56 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
-function getConfig() {
+function getCredentials() {
   const baseUrl   = process.env.EJOIN_GATEWAY_URL?.trim();
   const adminUser = process.env.EJOIN_ADMIN_USER?.trim();
   const adminPass = process.env.EJOIN_ADMIN_PASS?.trim();
-  const port      = process.env.EJOIN_SMS_PORT?.trim() || "7";
   if (!baseUrl || !adminUser || !adminPass) return null;
-  return { baseUrl: baseUrl.replace(/\/$/, ""), adminUser, adminPass, port };
+  return { baseUrl: baseUrl.replace(/\/$/, ""), adminUser, adminPass };
 }
 
 export function isEjoinConfigured(): boolean {
-  return getConfig() !== null;
+  return getCredentials() !== null;
+}
+
+// Invalidate the port cache after admins save changes so the next send
+// picks up the new pool without waiting for the TTL.
+export function clearEjoinPortCache(): void {
+  portCache = null;
+}
+
+// Read the active port pool from event_settings (id=1). Falls back to env
+// EJOIN_SMS_PORT (or 7) when the DB has no rows / the column is empty so
+// pre-rollout deployments still send. The result is cached briefly to avoid
+// hammering the DB on burst sends (e.g. multi-recipient low-stock alerts).
+async function getActivePorts(): Promise<number[]> {
+  const now = Date.now();
+  if (portCache && portCache.expiresAt > now) return portCache.ports;
+  let ports: number[] = [];
+  try {
+    const [row] = await db
+      .select({ smsActivePorts: eventSettingsTable.smsActivePorts })
+      .from(eventSettingsTable)
+      .where(eq(eventSettingsTable.id, 1));
+    ports = (row?.smsActivePorts ?? [])
+      .map(p => Number(p))
+      .filter(p => Number.isFinite(p) && Number.isInteger(p) && p >= 1 && p <= 32);
+  } catch (err) {
+    console.warn("[ejoin] failed to read active port pool — falling back to env", err);
+  }
+  if (ports.length === 0) {
+    const envPort = Number(process.env.EJOIN_SMS_PORT ?? "7");
+    ports = Number.isFinite(envPort) && envPort >= 1 && envPort <= 32 ? [envPort] : [7];
+  }
+  portCache = { ports, expiresAt: now + PORT_CACHE_TTL_MS };
+  return ports;
+}
+
+function nextPort(pool: number[]): number {
+  const idx = rrCounter % pool.length;
+  // Wrap before MAX_SAFE_INTEGER to keep the counter bounded forever.
+  rrCounter = (rrCounter + 1) % 1_000_000;
+  return pool[idx];
 }
 
 async function getSessionCookie(cfg: {
@@ -76,16 +127,36 @@ async function getSessionCookie(cfg: {
   return authCookie;
 }
 
-export async function sendSmsViaEjoin(to: string, message: string): Promise<void> {
-  const cfg = getConfig();
+// Returns the port that was actually used to send (so callers like the
+// admin test-send endpoint can surface the round-robin choice to the UI).
+export async function sendSmsViaEjoin(
+  to: string,
+  message: string,
+  opts?: { portOverride?: number },
+): Promise<number> {
+  const cfg = getCredentials();
   if (!cfg) throw new Error("ejointech gateway not configured");
+
+  // Resolve the gateway port: explicit override (test send) bypasses the
+  // round-robin, otherwise pick the next port from the configured pool.
+  let port: number;
+  if (opts?.portOverride != null) {
+    const p = Number(opts.portOverride);
+    if (!Number.isInteger(p) || p < 1 || p > 32) {
+      throw new Error(`Invalid port override: ${opts.portOverride}`);
+    }
+    port = p;
+  } else {
+    const pool = await getActivePorts();
+    port = nextPort(pool);
+  }
 
   const cookie = await getSessionCookie(cfg);
   const phone  = normalizePhone(to);
 
   const body = new URLSearchParams({
     command:           "goip_send_sms",
-    goip_cmd_port:     cfg.port,
+    goip_cmd_port:     String(port),
     selected_port:     "0",
     selected_slot:     "0",
     goip_sms_dst:      phone,
@@ -114,5 +185,6 @@ export async function sendSmsViaEjoin(to: string, message: string): Promise<void
     throw new Error("ejointech: session rejected after login — IP may be blocked");
   }
 
-  console.info(`[ejoin] SMS sent to ${phone} via port ${cfg.port}`);
+  console.info(`[ejoin] SMS sent to ${phone} via port ${port}`);
+  return port;
 }

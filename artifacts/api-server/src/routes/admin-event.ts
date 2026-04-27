@@ -5,33 +5,12 @@ import { db } from "@workspace/db";
 import { eventSettingsTable, eventOrdersTable } from "@workspace/db/schema";
 import { eq, and, gte, lt, inArray } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
 
 const router: IRouter = Router();
-
-async function isTwilioConfigured(): Promise<boolean> {
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY
-    ? "repl " + process.env.REPL_IDENTITY
-    : process.env.WEB_REPL_RENEWAL
-    ? "depl " + process.env.WEB_REPL_RENEWAL
-    : null;
-  if (!hostname || !xReplitToken) return false;
-  try {
-    const data: any = await fetch(
-      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=twilio",
-      { headers: { Accept: "application/json", "X-Replit-Token": xReplitToken } }
-    ).then(r => r.json()).then((d: any) => d.items?.[0]);
-    return !!(data?.settings?.account_sid && data?.settings?.api_key);
-  } catch {
-    return false;
-  }
-}
 
 router.get("/admin/event-settings", async (req, res) => {
   try {
     const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
-    const twilioConfigured = await isTwilioConfigured();
     res.json({
       eventName: settings?.eventName ?? "",
       hasOrderPassword: !!(settings?.eventPassword),
@@ -41,8 +20,6 @@ router.get("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate: settings?.eventTakerTaxRate != null ? parseFloat(settings.eventTakerTaxRate) : null,
       venmoHandle: settings?.venmoHandle ?? "",
       venmoQrImageUrl: settings?.venmoQrImageUrl ?? null,
-      lowStockAlertPhones: settings?.lowStockAlertPhones ?? [],
-      lowStockAlertThreshold: settings?.lowStockAlertThreshold ?? null,
       // ── On the Dash Experience pricing config ──
       // Numeric columns are returned as parsed numbers so the admin UI
       // can render them in plain inputs without re-parsing.
@@ -51,7 +28,6 @@ router.get("/admin/event-settings", async (req, res) => {
       otdIncludedHours: settings?.otdIncludedHours != null ? parseFloat(settings.otdIncludedHours) : 2,
       otdAdditionalHourRate: settings?.otdAdditionalHourRate != null ? parseFloat(settings.otdAdditionalHourRate) : 100,
       otdMaxAdditionalHours: settings?.otdMaxAdditionalHours ?? 3,
-      twilioConfigured,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching event settings");
@@ -65,7 +41,6 @@ router.put("/admin/event-settings", async (req, res) => {
       eventName, orderPassword, kitchenPassword,
       eventTakerPassword, eventTakerTaxEnabled, eventTakerTaxRate,
       venmoHandle, venmoQrImageUrl,
-      lowStockAlertPhones, lowStockAlertThreshold,
       otdSetupFee, otdFeeWaiverThreshold, otdIncludedHours,
       otdAdditionalHourRate, otdMaxAdditionalHours,
     } = req.body as {
@@ -77,8 +52,6 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate?: number | string | null;
       venmoHandle?: string | null;
       venmoQrImageUrl?: string | null;
-      lowStockAlertPhones?: string[] | null;
-      lowStockAlertThreshold?: number | string | null;
       otdSetupFee?: number | string | null;
       otdFeeWaiverThreshold?: number | string | null;
       otdIncludedHours?: number | string | null;
@@ -86,7 +59,6 @@ router.put("/admin/event-settings", async (req, res) => {
       otdMaxAdditionalHours?: number | string | null;
     };
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
-    const twilioConfigured = await isTwilioConfigured();
 
     const buildResponse = (s: typeof eventSettingsTable.$inferSelect) => ({
       eventName: s.eventName,
@@ -97,51 +69,13 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerTaxRate: s.eventTakerTaxRate != null ? parseFloat(s.eventTakerTaxRate) : null,
       venmoHandle: s.venmoHandle ?? "",
       venmoQrImageUrl: s.venmoQrImageUrl ?? null,
-      lowStockAlertPhones: s.lowStockAlertPhones ?? [],
-      lowStockAlertThreshold: s.lowStockAlertThreshold ?? null,
       otdSetupFee: s.otdSetupFee != null ? parseFloat(s.otdSetupFee) : 500,
       otdFeeWaiverThreshold: s.otdFeeWaiverThreshold != null ? parseFloat(s.otdFeeWaiverThreshold) : 2000,
       otdIncludedHours: s.otdIncludedHours != null ? parseFloat(s.otdIncludedHours) : 2,
       otdAdditionalHourRate: s.otdAdditionalHourRate != null ? parseFloat(s.otdAdditionalHourRate) : 100,
       otdMaxAdditionalHours: s.otdMaxAdditionalHours ?? 3,
-      twilioConfigured,
     });
 
-    // Recipient list validation: trim each entry, drop empties, dedupe
-    // (case-insensitive on digits), and require >= 7 digits per number so the
-    // SMS gateway doesn't silently drop garbage. Errors are recipient-indexed
-    // so the admin UI can highlight the offending row.
-    function normalizeAlertPhones(v: string[] | null | undefined): string[] {
-      if (v == null) return [];
-      if (!Array.isArray(v)) {
-        throw Object.assign(new Error("lowStockAlertPhones must be an array of phone numbers"), { status: 400 });
-      }
-      const out: string[] = [];
-      const seen = new Set<string>();
-      v.forEach((raw, idx) => {
-        if (typeof raw !== "string") {
-          throw Object.assign(new Error(`Recipient phone #${idx + 1} must be a string`), { status: 400 });
-        }
-        const trimmed = raw.trim();
-        if (trimmed === "") return; // silently skip blank rows
-        const digits = trimmed.replace(/\D/g, "");
-        if (digits.length < 7) {
-          throw Object.assign(new Error(`Recipient phone #${idx + 1} must contain at least 7 digits`), { status: 400 });
-        }
-        if (seen.has(digits)) return; // silently dedupe
-        seen.add(digits);
-        out.push(trimmed.slice(0, 32));
-      });
-      return out;
-    }
-    function normalizeAlertThreshold(v: number | string | null | undefined): number | null {
-      if (v === null || v === undefined || v === "") return null;
-      const n = Number(v);
-      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 1000) {
-        throw Object.assign(new Error("lowStockAlertThreshold must be an integer between 1 and 1000"), { status: 400 });
-      }
-      return n;
-    }
     // OTD numeric helpers — money/hour values stored as numeric strings.
     // We accept anything coerceable to a finite non-negative number with at
     // most two decimals (money) or one decimal (hours). Out-of-range values
@@ -206,12 +140,6 @@ router.put("/admin/event-settings", async (req, res) => {
           ? null
           : venmoQrImageUrl;
       }
-      if (lowStockAlertPhones !== undefined) {
-        updates.lowStockAlertPhones = normalizeAlertPhones(lowStockAlertPhones);
-      }
-      if (lowStockAlertThreshold !== undefined) {
-        updates.lowStockAlertThreshold = normalizeAlertThreshold(lowStockAlertThreshold);
-      }
       // OTD pricing config — only validate/update fields that were sent so
       // partial PUTs from older clients still work.
       if (otdSetupFee !== undefined) {
@@ -242,8 +170,6 @@ router.put("/admin/event-settings", async (req, res) => {
         eventTakerTaxRate: (eventTakerTaxRate === undefined || eventTakerTaxRate === null || eventTakerTaxRate === "") ? null : String(Number(eventTakerTaxRate)),
         venmoHandle: venmoHandle == null ? null : (venmoHandle.trim().replace(/^@/, "") || null),
         venmoQrImageUrl: venmoQrImageUrl == null || venmoQrImageUrl === "" ? null : venmoQrImageUrl,
-        lowStockAlertPhones: normalizeAlertPhones(lowStockAlertPhones),
-        lowStockAlertThreshold: normalizeAlertThreshold(lowStockAlertThreshold),
         otdSetupFee: otdSetupFee !== undefined ? normalizeOtdMoney(otdSetupFee, "otdSetupFee", 100000) : "500.00",
         otdFeeWaiverThreshold: otdFeeWaiverThreshold !== undefined ? normalizeOtdMoney(otdFeeWaiverThreshold, "otdFeeWaiverThreshold", 1000000) : "2000.00",
         otdIncludedHours: otdIncludedHours !== undefined ? normalizeOtdHours(otdIncludedHours, "otdIncludedHours") : "2.00",
@@ -259,49 +185,6 @@ router.put("/admin/event-settings", async (req, res) => {
     }
     req.log.error({ err }, "Error updating event settings");
     res.status(500).json({ error: "Failed to update event settings" });
-  }
-});
-
-// Sends a one-line "Test alert from <event name>" SMS to every saved
-// kitchen recipient so the admin can verify delivery before crossing the
-// real threshold. Uses sendSmsViaEjoin directly (not sendSms) so gateway
-// failures surface in the response instead of being swallowed. Sends to
-// all recipients sequentially and reports per-recipient outcomes; the
-// HTTP status reflects whether at least one delivery succeeded.
-router.post("/admin/event-settings/test-low-stock-alert", async (req, res) => {
-  try {
-    const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
-    const phones = (settings?.lowStockAlertPhones ?? []).map(p => p.trim()).filter(Boolean);
-    if (phones.length === 0) {
-      res.status(400).json({ error: "No recipient phone numbers saved. Add at least one and save before testing." });
-      return;
-    }
-    if (!isEjoinConfigured()) {
-      res.status(503).json({ error: "SMS gateway is not configured." });
-      return;
-    }
-    const event = settings?.eventName?.trim() || "dash by Hollywood East Cafe";
-    const message = `Test alert from ${event}`;
-    const results: Array<{ phone: string; ok: boolean; error?: string }> = [];
-    for (const phone of phones) {
-      try {
-        await sendSmsViaEjoin(phone, message);
-        results.push({ phone, ok: true });
-      } catch (err: any) {
-        const detail = typeof err?.message === "string" ? err.message : "send failed";
-        results.push({ phone, ok: false, error: detail });
-      }
-    }
-    const okCount = results.filter(r => r.ok).length;
-    if (okCount === 0) {
-      res.status(502).json({ error: `Failed to send test alert to ${results[0].phone}: ${results[0].error}`, results });
-      return;
-    }
-    res.json({ ok: true, sentCount: okCount, totalCount: results.length, results });
-  } catch (err: any) {
-    req.log.error({ err }, "Error sending test low-stock alert");
-    const detail = typeof err?.message === "string" ? err.message : "Failed to send test alert";
-    res.status(502).json({ error: `Failed to send test alert: ${detail}` });
   }
 });
 
