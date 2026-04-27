@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { clearAdminToken } from "@/components/AdminGuard";
+import { clearAdminToken, getAdminToken } from "@/components/AdminGuard";
 
 const LOGO_URL = `${import.meta.env.BASE_URL}images/dash-logo.png`;
 
-function AdminNavLink({ href, icon: Icon, children, onClick }: { href: string; icon: any; children: React.ReactNode; onClick?: () => void }) {
+function AdminNavLink({ href, icon: Icon, children, onClick, badge }: { href: string; icon: any; children: React.ReactNode; onClick?: () => void; badge?: number }) {
   const [isActive] = useRoute(href);
   return (
     <Link
@@ -20,12 +20,46 @@ function AdminNavLink({ href, icon: Icon, children, onClick }: { href: string; i
       )}
     >
       <Icon className="w-5 h-5" />
-      {children}
+      <span className="flex-1">{children}</span>
+      {badge != null && badge > 0 && (
+        <span className={cn(
+          "px-2 py-0.5 rounded-full text-[11px] font-bold",
+          isActive ? "bg-white/20 text-white" : "bg-primary text-primary-foreground"
+        )}>
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </Link>
   );
 }
 
+function useInstagramBadge(): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const token = getAdminToken();
+      if (!token) return;
+      try {
+        const r = await fetch("/api/admin/instagram/badge", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) return;
+        const data = (await r.json()) as { newSinceLastVisit?: number; totalPending?: number };
+        if (!cancelled) setCount(data.newSinceLastVisit ?? 0);
+      } catch {
+        // silent — sidebar shouldn't break if poller endpoint hiccups
+      }
+    }
+    load();
+    const int = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(int); };
+  }, []);
+  return count;
+}
+
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+  const instagramBadge = useInstagramBadge();
   return (
     <>
       <AdminNavLink href="/admin" icon={LayoutDashboard} onClick={onNavigate}>Dashboard</AdminNavLink>
@@ -55,6 +89,17 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
       <AdminNavLink href="/admin/catering" icon={Briefcase} onClick={onNavigate}>Catering Inquiries</AdminNavLink>
       <AdminNavLink href="/admin/catering/upcoming" icon={CalendarRange} onClick={onNavigate}>Upcoming Caterings</AdminNavLink>
       <AdminNavLink href="/admin/catering/plans" icon={ClipboardList} onClick={onNavigate}>Event Plans</AdminNavLink>
+      <div className="pt-2 pb-1">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Site &amp; Social</p>
+      </div>
+      <AdminNavLink
+        href="/admin/social/hashtag-wall"
+        icon={Instagram}
+        onClick={onNavigate}
+        badge={instagramBadge}
+      >
+        Hashtag Wall
+      </AdminNavLink>
     </>
   );
 }

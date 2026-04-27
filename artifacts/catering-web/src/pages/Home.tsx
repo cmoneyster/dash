@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
+import { HashtagWall } from "@/components/HashtagWall";
 import { ArrowRight, Star, Clock, CalendarCheck } from "lucide-react";
 
 export default function Home() {
@@ -80,6 +81,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <HashtagWall surface="home" />
     </Layout>
   );
 }

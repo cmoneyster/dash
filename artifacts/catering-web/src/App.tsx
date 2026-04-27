@@ -15,6 +15,7 @@ import PublicQuote from "@/pages/PublicQuote";
 import EventTakerOrder from "@/pages/EventTakerOrder";
 import KitchenDisplay from "@/pages/KitchenDisplay";
 import OrderStatus from "@/pages/OrderStatus";
+import Gallery from "@/pages/Gallery";
 
 import SharedPlan from "@/pages/SharedPlan";
 import AdminLogin from "@/pages/admin/Login";
@@ -30,6 +31,7 @@ import SalesReports from "@/pages/admin/SalesReports";
 import CateringOrders from "@/pages/admin/CateringOrders";
 import CateringPlans from "@/pages/admin/CateringPlans";
 import UpcomingCaterings from "@/pages/admin/UpcomingCaterings";
+import HashtagWallModeration from "@/pages/admin/HashtagWallModeration";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,6 +56,7 @@ function Router() {
       <Route path="/event-taker" component={EventTakerOrder} />
       <Route path="/event/order/:id" component={OrderStatus} />
       <Route path="/kitchen" component={KitchenDisplay} />
+      <Route path="/gallery" component={Gallery} />
 
       <Route path="/admin/login" component={AdminLogin} />
 
@@ -92,6 +95,9 @@ function Router() {
       </Route>
       <Route path="/admin/catering/plans">
         {() => <AdminGuard><CateringPlans /></AdminGuard>}
+      </Route>
+      <Route path="/admin/social/hashtag-wall">
+        {() => <AdminGuard><HashtagWallModeration /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />

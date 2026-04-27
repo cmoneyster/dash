@@ -13,3 +13,4 @@ export * from "./event-sessions";
 export * from "./catering-inquiries";
 export * from "./catering-supplemental-invoices";
 export * from "./shared-plans";
+export * from "./instagram";

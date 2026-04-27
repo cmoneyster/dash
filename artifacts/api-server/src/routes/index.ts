@@ -25,6 +25,8 @@ import verifyRouter from "./verify";
 import categoriesRouter from "./categories";
 import adminCategoriesRouter from "./admin-categories";
 import placesRouter from "./places";
+import instagramPublicRouter from "./instagram-public";
+import adminInstagramRouter from "./admin-instagram";
 
 const router: IRouter = Router();
 
@@ -41,6 +43,7 @@ router.use(eventOrderingRouter);
 router.use(eventTakerRouter);
 router.use(verifyRouter);
 router.use(placesRouter);
+router.use(instagramPublicRouter);
 router.use(quotePublicRouter);
 // Public webhook — must be mounted BEFORE the admin auth middleware below.
 router.use(webhooksSquareRouter);
@@ -58,6 +61,7 @@ router.use("/admin/event-sessions", requireAdminAuth);
 router.use("/admin/catering", requireAdminAuth);
 router.use("/admin/plans", requireAdminAuth);
 router.use("/admin/categories", requireAdminAuth);
+router.use("/admin/instagram", requireAdminAuth);
 
 router.use(adminMenuRouter);
 router.use(adminMenuCsvRouter);
@@ -68,5 +72,6 @@ router.use(adminEventRouter);
 router.use(adminEventSessionsRouter);
 router.use(adminCateringRouter);
 router.use(adminPlansRouter);
+router.use(adminInstagramRouter);
 
 export default router;

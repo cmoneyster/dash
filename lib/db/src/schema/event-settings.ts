@@ -43,6 +43,31 @@ export const eventSettingsTable = pgTable("event_settings", {
   otdIncludedHours: numeric("otd_included_hours", { precision: 5, scale: 2 }).notNull().default("2"),
   otdAdditionalHourRate: numeric("otd_additional_hour_rate", { precision: 10, scale: 2 }).notNull().default("100"),
   otdMaxAdditionalHours: integer("otd_max_additional_hours").notNull().default(3),
+  // ── Site & Social ──────────────────────────────────────────────────────────
+  // Brand Instagram handle (no leading @). Empty string = not configured.
+  // Used by the public footer link AND by the hashtag-wall auto-approve rule
+  // (caption mentions the brand handle → auto-approve).
+  instagramHandle: text("instagram_handle").notNull().default(""),
+  // ── Instagram hashtag-wall config ──────────────────────────────────────────
+  // Up to 5 watched hashtags (lowercased, no leading #). Polled every 30 min;
+  // matches drop into instagram_hashtag_candidates as `pending` until an admin
+  // approves them. Hard cap of 5 enforced server-side because Meta's quota is
+  // 30 hashtag-searches per IG user per rolling 7 days.
+  instagramHashtags: text("instagram_hashtags").array().notNull().default(sql`ARRAY[]::text[]`),
+  instagramWallEnabled: boolean("instagram_wall_enabled").notNull().default(false),
+  instagramWallMaxItems: integer("instagram_wall_max_items").notNull().default(12),
+  instagramWallShowOnHome: boolean("instagram_wall_show_on_home").notNull().default(false),
+  instagramWallShowOnGallery: boolean("instagram_wall_show_on_gallery").notNull().default(false),
+  // Auto-approve when the post caption mentions @{instagramHandle}.
+  // Disabled in the UI when handle is empty.
+  instagramAutoApproveMention: boolean("instagram_auto_approve_mention").notNull().default(false),
+  // Auto-deny posts older than N days. Default 90; admin can blank it to disable.
+  instagramAutoDenyOlderThanDays: integer("instagram_auto_deny_older_than_days").default(90),
+  // Stats surfaced to the moderation sidebar; updated by the poller.
+  instagramLastPolledAt: timestamp("instagram_last_polled_at"),
+  // Stamped when the admin loads the moderation page; the sidebar nav badge
+  // counts pending posts that arrived AFTER this timestamp.
+  instagramAdminLastVisitedAt: timestamp("instagram_admin_last_visited_at"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

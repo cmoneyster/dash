@@ -332,6 +332,65 @@ async function runStandaloneMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS otd_additional_hour_rate numeric(10,2) NOT NULL DEFAULT 100,
       ADD COLUMN IF NOT EXISTS otd_max_additional_hours integer NOT NULL DEFAULT 3
   `);
+
+  // ── Site & Social + Instagram hashtag-wall ───────────────────────────────
+  // Single-row event_settings gains the brand Instagram handle plus the
+  // hashtag-wall config (watched tags, on/off toggle, placement, auto-rules,
+  // poller stats). All columns nullable or with safe defaults so existing
+  // rows are valid. Safe to re-run on every boot.
+  await db.execute(sql`
+    ALTER TABLE event_settings
+      ADD COLUMN IF NOT EXISTS instagram_handle text NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS instagram_hashtags text[] NOT NULL DEFAULT ARRAY[]::text[],
+      ADD COLUMN IF NOT EXISTS instagram_wall_enabled boolean NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS instagram_wall_max_items integer NOT NULL DEFAULT 12,
+      ADD COLUMN IF NOT EXISTS instagram_wall_show_on_home boolean NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS instagram_wall_show_on_gallery boolean NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS instagram_auto_approve_mention boolean NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS instagram_auto_deny_older_than_days integer,
+      ADD COLUMN IF NOT EXISTS instagram_last_polled_at timestamp,
+      ADD COLUMN IF NOT EXISTS instagram_admin_last_visited_at timestamp
+  `);
+
+  // Per-post moderation queue. Created here (not just by drizzle push) so a
+  // freshly-deployed prod DB has the table ready before the poller fires.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS instagram_hashtag_candidates (
+      id serial PRIMARY KEY,
+      instagram_post_id text NOT NULL,
+      hashtag text NOT NULL,
+      caption text NOT NULL DEFAULT '',
+      permalink text NOT NULL DEFAULT '',
+      media_type text NOT NULL DEFAULT 'IMAGE',
+      thumbnail_object_path text,
+      thumbnail_serving_url text,
+      original_thumbnail_url text,
+      posted_at timestamp,
+      status text NOT NULL DEFAULT 'pending',
+      decided_by text,
+      decided_at timestamp,
+      approved_at timestamp,
+      auto_rule text,
+      is_unavailable boolean NOT NULL DEFAULT false,
+      last_checked_at timestamp,
+      created_at timestamp NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS instagram_hashtag_candidates_post_id_idx
+      ON instagram_hashtag_candidates (instagram_post_id)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS instagram_hashtag_candidates_status_idx
+      ON instagram_hashtag_candidates (status)
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS instagram_hashtag_id_cache (
+      hashtag text PRIMARY KEY,
+      hashtag_id text NOT NULL,
+      fetched_at timestamp NOT NULL DEFAULT now()
+    )
+  `);
 }
 
 async function backfillCategories(): Promise<void> {

@@ -57,6 +57,10 @@ artifacts-monorepo/
 - `/admin/event-settings` — Event passwords, Twilio SMS, shareable links, low-stock SMS alerts (recipient phone list + threshold)
 - `/admin/event-history` — Event session log: create sessions, set active, view per-event order breakdowns, archive/delete
 - `/admin/catering` — Advance catering inquiry management (client info, status pipeline, admin notes)
+- `/admin/social/hashtag-wall` — Instagram hashtag-wall moderation: approve/deny/blacklist candidate posts pulled by the IG poller, manage watched hashtags (max 5), wall display + auto-rules; sidebar shows pending badge
+
+### Public (additional)
+- `/gallery` — Public Instagram hashtag wall (uses approved candidates)
 
 ## API Routes (all at /api)
 
@@ -109,6 +113,19 @@ artifacts-monorepo/
 
 ### Admin
 - `GET /api/admin/stats` — Dashboard statistics
+
+### Instagram Hashtag Wall
+- `GET /api/instagram/wall` — Public: enabled flag, placement, handle, approved items (rate-limited via cached thumbnails)
+- `GET /api/admin/instagram/badge` — Pending count since `instagramAdminLastVisitedAt` (sidebar badge)
+- `POST /api/admin/instagram/visit` — Stamps `instagramAdminLastVisitedAt` (clears badge)
+- `GET /api/admin/instagram/candidates?status=pending|approved|denied|all&limit=` — Moderation queue with counts
+- `POST /api/admin/instagram/candidates/:id/decision` — Body `{ action: 'approve'|'deny'|'blacklist' }`
+- `POST /api/admin/instagram/candidates/bulk-decision` — Body `{ ids:number[], action }`
+- `POST /api/admin/instagram/poller/run-now` — Manually trigger one poll cycle (admin-only)
+- `GET /api/admin/instagram/status` — Settings + poller stats (last polled, pulled-24h, pending count)
+- `PUT /api/admin/instagram/settings` — Save instagramHandle, hashtags (max 5), wall display, auto-rules
+
+Required env vars: `INSTAGRAM_ACCESS_TOKEN` + `INSTAGRAM_USER_ID` (Meta Graph API). Poller no-ops when missing; admin moderation page shows configuration banner. Background scheduler runs every 30 min (poll) + daily (cleanup unavailable posts).
 
 ## Database Tables
 

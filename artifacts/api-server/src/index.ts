@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedIfEmpty } from "./lib/seed";
+import { startInstagramScheduler } from "./lib/instagramPoller";
 
 const rawPort = process.env["PORT"];
 
@@ -24,5 +25,6 @@ seedIfEmpty().then(() => {
     }
 
     logger.info({ port }, "Server listening");
+    startInstagramScheduler();
   });
 });
