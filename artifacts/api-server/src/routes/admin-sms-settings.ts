@@ -120,12 +120,15 @@ function normalizeAlertThreshold(v: unknown): number | null {
 
 // ── Response shape ────────────────────────────────────────────────────────────
 
+const DEFAULT_EVENT_NAME = "dash by Hollywood East Cafe";
+
 function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   smsActivePorts: number[];
   ownerNotificationPhone: string | null;
   lowStockAlertPhones: string[];
   lowStockAlertThreshold: number | null;
   ejoinConfigured: boolean;
+  eventName: string;
   ownerNotificationPhoneSource: "db" | "env" | "none";
 } {
   const dbOwner = s?.ownerNotificationPhone?.trim() || null;
@@ -137,6 +140,9 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
     lowStockAlertPhones: s?.lowStockAlertPhones ?? [],
     lowStockAlertThreshold: s?.lowStockAlertThreshold ?? null,
     ejoinConfigured: isEjoinConfigured(),
+    // Surfaced so the UI can pre-populate the test-send default body
+    // ("Test SMS from <eventName>") to match what the server uses.
+    eventName: s?.eventName?.trim() || DEFAULT_EVENT_NAME,
     // Lets the UI show "currently using OWNER_PHONE env var (legacy)" when
     // the admin hasn't entered a DB-managed number yet.
     ownerNotificationPhoneSource,
@@ -297,7 +303,7 @@ router.post("/admin/sms-settings/test-send", async (req, res) => {
       return;
     }
 
-    const event = settings?.eventName?.trim() || "dash by Hollywood East Cafe";
+    const event = settings?.eventName?.trim() || DEFAULT_EVENT_NAME;
     const customMessage = typeof body.message === "string" ? body.message.trim() : "";
     const message = customMessage || `Test SMS from ${event}`;
 
@@ -339,7 +345,7 @@ router.post("/admin/sms-settings/test-low-stock-alert", async (req, res) => {
       res.status(503).json({ error: "SMS gateway is not configured." });
       return;
     }
-    const event = settings?.eventName?.trim() || "dash by Hollywood East Cafe";
+    const event = settings?.eventName?.trim() || DEFAULT_EVENT_NAME;
     const message = `Test alert from ${event}`;
     const results: Array<{ phone: string; ok: boolean; port?: number; gatewayResponse?: string; error?: string }> = [];
     for (const phone of phones) {
@@ -387,7 +393,7 @@ router.post("/admin/sms-settings/test-owner-alert", async (req, res) => {
       res.status(503).json({ error: "SMS gateway is not configured." });
       return;
     }
-    const event = settings?.eventName?.trim() || "dash by Hollywood East Cafe";
+    const event = settings?.eventName?.trim() || DEFAULT_EVENT_NAME;
     const message = `Test owner alert from ${event}`;
     let result: { port: number; gatewayResponse: string };
     try {

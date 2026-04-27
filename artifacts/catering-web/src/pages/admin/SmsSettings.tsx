@@ -98,6 +98,10 @@ export default function SmsSettings() {
       setOwnerPhone(data.ownerNotificationPhone ?? "");
       setAlertPhones(data.lowStockAlertPhones);
       setThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
+      // Pre-populate the test message with the same default body the server
+      // would substitute on a blank submit, so admins see exactly what will
+      // go out before they hit Send. They can still edit or clear it.
+      setTestMessage(prev => (prev.trim() === "" ? `Test SMS from ${data.eventName}` : prev));
     } catch (e: any) {
       setLoadError(e?.message || "Failed to load SMS settings");
     } finally {
