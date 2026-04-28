@@ -59,10 +59,25 @@ export const eventSettingsTable = pgTable("event_settings", {
   // normalizes before dispatch.
   smsChatOwnerPhone: text("sms_chat_owner_phone"),
   // Toggle: forward inbound customer messages to the owner phone.
+  // This controls forwards for messages tied to a real catering inquiry
+  // (e.g. "[Catering #123 · Jane] ..."). Unmatched-sender forwards
+  // (random texts from numbers we can't tie to an inquiry — usually
+  // spam) are gated separately by smsOwnerForwardUnmatchedEnabled
+  // below so admins can mute the spam without losing real customer
+  // forwards.
   smsOwnerForwardEnabled: boolean("sms_owner_forward_enabled").notNull().default(false),
   // Cap for owner forwards per inquiry per rolling 24h. NULL means
   // unlimited. UI exposes 1/3/5/10/unlimited; default 1.
   smsOwnerForwardCapPer24h: integer("sms_owner_forward_cap_per_24h").default(1),
+  // Sub-toggle on top of smsOwnerForwardEnabled: when ON, also forward
+  // inbound texts whose sender doesn't match any catering inquiry
+  // (the "[Unmatched · <phone>]" forwards). Defaults to FALSE because
+  // these are usually spam (Google verification codes, retailer promos,
+  // wrong numbers) and admins almost never want them texted to the
+  // owner phone. When OFF, unmatched messages still land in the
+  // Unmatched inbox — just no owner SMS is fired. Has no effect when
+  // smsOwnerForwardEnabled itself is OFF.
+  smsOwnerForwardUnmatchedEnabled: boolean("sms_owner_forward_unmatched_enabled").notNull().default(false),
   // Toggle: allow the owner to reply from their phone with `#<id> ...`
   // tag and have the message routed back to the customer through the
   // chat port.

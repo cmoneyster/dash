@@ -283,6 +283,7 @@ let settingsCache:
       data: {
         ownerForwardEnabled: boolean;
         ownerForwardCap: number | null;
+        ownerForwardUnmatchedEnabled: boolean;
         ownerReplyEnabled: boolean;
       };
     }
@@ -295,6 +296,7 @@ async function getRelevantSettings() {
     .select({
       ownerForwardEnabled: eventSettingsTable.smsOwnerForwardEnabled,
       ownerForwardCap: eventSettingsTable.smsOwnerForwardCapPer24h,
+      ownerForwardUnmatchedEnabled: eventSettingsTable.smsOwnerForwardUnmatchedEnabled,
       ownerReplyEnabled: eventSettingsTable.smsOwnerReplyEnabled,
     })
     .from(eventSettingsTable)
@@ -302,11 +304,31 @@ async function getRelevantSettings() {
   const data = {
     ownerForwardEnabled: !!row?.ownerForwardEnabled,
     ownerForwardCap: row?.ownerForwardCap ?? null,
+    ownerForwardUnmatchedEnabled: !!row?.ownerForwardUnmatchedEnabled,
     ownerReplyEnabled: !!row?.ownerReplyEnabled,
   };
   settingsCache = { expiresAt: now + SETTINGS_TTL_MS, data };
   return data;
 }
+
+// Recency window for owner forwards. Inbounds whose `occurredAt` is
+// older than this are still ingested into the DB and surfaced in the
+// chat / Unmatched UI, but the owner-forward leg is suppressed.
+//
+// This exists because the per-port detail-page walk the poller does
+// on escalation can return the SIM's full backlog (sometimes ~10
+// stale messages from Google verification codes, retailer promos,
+// etc.). Some of those backlog rows have a slightly different
+// gateway-message-id format from anything in the DB (older firmware
+// emitted them in a different shape before the chat-port feature
+// shipped), so they bypass the gid dedupe and look "new" — every
+// single one would otherwise fire its own owner-forward SMS, spamming
+// the owner with N texts every time a single new message arrives.
+//
+// 10 minutes is comfortably wider than any normal poll/backfill jitter
+// while still being narrow enough that no realistic "the customer
+// just texted us" inbound ever falls outside it.
+export const FORWARD_RECENCY_MS = 10 * 60 * 1000;
 
 export function clearSmsInboxSettingsCache(): void {
   settingsCache = null;
@@ -735,8 +757,39 @@ async function ingestInboundImpl(input: {
   // legacy notification phone, then OWNER_PHONE) and are dispatched
   // via the configured chat port — keeping the entire customer-chat
   // surface on one SIM so the owner sees one continuous thread.
+  //
+  // Three independent gates apply (in order, cheapest first):
+  //   1. The recency gate: any inbound older than FORWARD_RECENCY_MS
+  //      is ingested but never forwarded. Stops the per-port detail
+  //      walk's backlog burst from spamming the owner with N old
+  //      messages every time a single new one arrives.
+  //   2. The unmatched-sender gate: when the inbound has no inquiry
+  //      (random texts from numbers we can't tie to a catering
+  //      thread — usually spam), the dedicated unmatched toggle must
+  //      also be ON. Matched inquiries still forward under the
+  //      primary toggle alone.
+  //   3. The per-inquiry 24h cap (existing).
   if (settings.ownerForwardEnabled && chatOwnerDigits) {
-    if (await isForwardCapReached(stored.inquiryId, settings.ownerForwardCap)) {
+    const ageMs = Date.now() - input.occurredAt.getTime();
+    const tooOldToForward = ageMs > FORWARD_RECENCY_MS;
+    const isUnmatched = stored.inquiryId == null;
+    const blockedAsUnmatched = isUnmatched && !settings.ownerForwardUnmatchedEnabled;
+    if (tooOldToForward || blockedAsUnmatched) {
+      // Skipped — message is already in the DB and visible in the UI;
+      // we just don't fire a forward SMS. Logged for operator
+      // visibility so log scans can attribute "no forward" to the
+      // recency / unmatched gate rather than a real send failure.
+      logger.info(
+        {
+          gid: input.gatewayMessageId,
+          messageId: stored.messageId,
+          inquiryId: stored.inquiryId,
+          ageMs,
+          reason: tooOldToForward ? "stale" : "unmatched-disabled",
+        },
+        "[sms-inbox] owner forward skipped",
+      );
+    } else if (await isForwardCapReached(stored.inquiryId, settings.ownerForwardCap)) {
       // Cap reached — silently skip, we don't want to spam either side.
       // The chat UI surfaces the cap separately.
     } else {

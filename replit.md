@@ -175,6 +175,16 @@ Optional firmware-compatibility overrides — only set these if the defaults don
 
 If "Run backfill now" on the SMS Settings page errors out, the surfaced message lists every login path that was tried with the cookies + status received from the gateway — that points directly at which path/cookie name your firmware uses.
 
+### Owner-forward gates
+
+The owner-forward leg (the SMS that fires to the chat-owner phone whenever a customer texts in) sits behind three independent gates. All three must pass for a forward to go out, and each gate exists for a specific real-world failure we've already hit:
+
+1. **Recency gate (`FORWARD_RECENCY_MS`, 10 minutes, in `sms-inbox.ts`).** Inbounds whose `occurredAt` is older than this are still ingested and visible in the chat / Unmatched UI, but no owner SMS fires. The poller's per-port detail-page sweep can return the SIM's full backlog (10+ stale rows from Google verification codes, retailer promos, etc.); some carry slightly different gateway-message-id formats that bypass the gid dedupe, so without this gate every backlog row would fire its own forward. Logged as `[sms-inbox] owner forward skipped reason:"stale"`. Tighten only with care — see `FORWARD_RECENCY_MS` comments in `sms-inbox.ts`.
+2. **Matched-vs-unmatched toggles.** `smsOwnerForwardEnabled` controls forwards for inbounds tied to a real catering inquiry. `smsOwnerForwardUnmatchedEnabled` (defaults to OFF) is a sub-toggle that additionally allows forwarding inbounds whose sender doesn't match any inquiry — usually spam, so most admins keep it off. When OFF, unmatched inbounds still land in the Unmatched inbox; only the owner SMS is suppressed. Logged as `reason:"unmatched-disabled"` when blocked. Has no effect when the primary forward toggle itself is OFF.
+3. **Per-inquiry 24h cap (`smsOwnerForwardCapPer24h`).** Existing per-inquiry rolling-window cap (default 1 forward / 24h, max 10, or null = unlimited). Applied last so the cap counter only ticks when the previous two gates already pass.
+
+The three Customer Chat checkboxes (forward / forward-unmatched / owner-reply) **auto-save the moment the admin clicks them** via per-toggle PUTs — they no longer ride the section's "Save Chat Settings" button. The button now only commits the cap and the backfill window. This was a deliberate UX fix: the previous bundled save left the on-screen checkbox state out of sync with the DB any time the admin toggled but didn't click Save (root cause of the silently-disabled owner-reply incident).
+
 ### Testing the inbound SMS pipeline
 
 When inbound texts aren't appearing in the catering inquiry chat modal or in the Unmatched inbox, walk through this procedure end-to-end. Each step is calibrated to a different failure mode and the api-server log + the diagnostics endpoint together tell you which one you hit.

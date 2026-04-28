@@ -47,6 +47,7 @@ type SmsSettingsUpdate = Partial<
     | "smsChatOwnerPhone"
     | "smsOwnerForwardEnabled"
     | "smsOwnerForwardCapPer24h"
+    | "smsOwnerForwardUnmatchedEnabled"
     | "smsOwnerReplyEnabled"
     | "smsBackfillDays"
     | "updatedAt"
@@ -227,6 +228,7 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   smsChatOwnerPhoneSource: "db-chat" | "db-owner" | "env" | "none";
   smsOwnerForwardEnabled: boolean;
   smsOwnerForwardCapPer24h: number | null;
+  smsOwnerForwardUnmatchedEnabled: boolean;
   smsOwnerReplyEnabled: boolean;
   smsBackfillDays: number;
   smsBackfillCompletedAt: string | null;
@@ -255,6 +257,7 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
     smsChatOwnerPhoneSource,
     smsOwnerForwardEnabled: !!s?.smsOwnerForwardEnabled,
     smsOwnerForwardCapPer24h: s?.smsOwnerForwardCapPer24h ?? null,
+    smsOwnerForwardUnmatchedEnabled: !!s?.smsOwnerForwardUnmatchedEnabled,
     smsOwnerReplyEnabled: !!s?.smsOwnerReplyEnabled,
     smsBackfillDays: s?.smsBackfillDays ?? 90,
     smsBackfillCompletedAt: s?.smsBackfillCompletedAt ? s.smsBackfillCompletedAt.toISOString() : null,
@@ -286,6 +289,7 @@ router.put("/admin/sms-settings", async (req, res) => {
       smsChatOwnerPhone?: unknown;
       smsOwnerForwardEnabled?: unknown;
       smsOwnerForwardCapPer24h?: unknown;
+      smsOwnerForwardUnmatchedEnabled?: unknown;
       smsOwnerReplyEnabled?: unknown;
       smsBackfillDays?: unknown;
     };
@@ -313,6 +317,12 @@ router.put("/admin/sms-settings", async (req, res) => {
     }
     if (body.smsOwnerForwardCapPer24h !== undefined) {
       updates.smsOwnerForwardCapPer24h = normalizeForwardCap(body.smsOwnerForwardCapPer24h);
+    }
+    if (body.smsOwnerForwardUnmatchedEnabled !== undefined) {
+      updates.smsOwnerForwardUnmatchedEnabled = normalizeBool(
+        body.smsOwnerForwardUnmatchedEnabled,
+        "smsOwnerForwardUnmatchedEnabled",
+      );
     }
     if (body.smsOwnerReplyEnabled !== undefined) {
       updates.smsOwnerReplyEnabled = normalizeBool(body.smsOwnerReplyEnabled, "smsOwnerReplyEnabled");
@@ -357,6 +367,11 @@ router.put("/admin/sms-settings", async (req, res) => {
           lowStockAlertPhones: updates.lowStockAlertPhones ?? [],
           lowStockAlertThreshold: updates.lowStockAlertThreshold ?? null,
           smsChatOwnerPhone: updates.smsChatOwnerPhone ?? null,
+          smsOwnerForwardEnabled: updates.smsOwnerForwardEnabled ?? false,
+          smsOwnerForwardCapPer24h: updates.smsOwnerForwardCapPer24h ?? 1,
+          smsOwnerForwardUnmatchedEnabled: updates.smsOwnerForwardUnmatchedEnabled ?? false,
+          smsOwnerReplyEnabled: updates.smsOwnerReplyEnabled ?? false,
+          smsBackfillDays: updates.smsBackfillDays ?? 90,
         })
         .returning();
       row = created;

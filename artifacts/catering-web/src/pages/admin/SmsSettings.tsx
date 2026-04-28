@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
@@ -23,6 +23,7 @@ type ServerState = {
   smsChatOwnerPhoneSource: "db-chat" | "db-owner" | "env" | "none";
   smsOwnerForwardEnabled: boolean;
   smsOwnerForwardCapPer24h: number | null;
+  smsOwnerForwardUnmatchedEnabled: boolean;
   smsOwnerReplyEnabled: boolean;
   smsBackfillDays: number;
   smsBackfillCompletedAt: string | null;
@@ -58,6 +59,35 @@ function StatusPill({ ok, okLabel, badLabel }: { ok: boolean; okLabel: string; b
     <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{okLabel}</span>
   ) : (
     <span className="text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{badLabel}</span>
+  );
+}
+
+// Inline "Saving… / Saved!" indicator for the per-toggle auto-save
+// pattern used by the Customer Chat checkboxes. Renders nothing when
+// idle so the label looks normal once the brief Saved! state fades.
+function BoolToggleIndicator({ status }: { status: "idle" | "saving" | "saved" | "error" | undefined }) {
+  if (!status || status === "idle") return null;
+  if (status === "saving") {
+    return (
+      <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-muted-foreground align-middle">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        Saving…
+      </span>
+    );
+  }
+  if (status === "saved") {
+    return (
+      <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-emerald-600 align-middle">
+        <Check className="w-3 h-3" />
+        Saved!
+      </span>
+    );
+  }
+  // status === "error"
+  return (
+    <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-destructive align-middle">
+      Save failed
+    </span>
   );
 }
 
@@ -100,13 +130,46 @@ export default function SmsSettings() {
   const [chatOwnerPhoneError, setChatOwnerPhoneError] = useState("");
 
   // Customer-chat behavior card form state.
+  // The three booleans (forward / forward-unmatched / owner-reply)
+  // each auto-save on click via the per-toggle handler below — the
+  // "Save Chat Settings" button only commits cap + backfill days.
   const [forwardEnabled, setForwardEnabled] = useState(false);
+  const [forwardUnmatchedEnabled, setForwardUnmatchedEnabled] = useState(false);
   const [forwardCap, setForwardCap] = useState<string>("1");
   const [ownerReplyEnabled, setOwnerReplyEnabled] = useState(false);
   const [backfillDays, setBackfillDays] = useState<string>("90");
   const [savingChat, setSavingChat] = useState(false);
   const [savedChat, setSavedChat] = useState(false);
   const [chatError, setChatError] = useState("");
+
+  // Per-toggle auto-save state. Keyed by the server field name so the
+  // checkbox label can render its own "Saving… / Saved!" indicator
+  // without the three booleans interfering with each other.
+  type BoolToggleField =
+    | "smsOwnerForwardEnabled"
+    | "smsOwnerForwardUnmatchedEnabled"
+    | "smsOwnerReplyEnabled";
+  type BoolToggleStatus = "idle" | "saving" | "saved" | "error";
+  const [boolToggleStatus, setBoolToggleStatus] = useState<
+    Partial<Record<BoolToggleField, BoolToggleStatus>>
+  >({});
+  const [boolToggleError, setBoolToggleError] = useState<
+    Partial<Record<BoolToggleField, string>>
+  >({});
+  // Per-field monotonic request id. Each persistChatBoolean call bumps the
+  // counter for its field and remembers the value it was issued under;
+  // when the response (success OR error) finally arrives, it only mutates
+  // state if its captured id still matches the latest. This is what stops
+  // a slow earlier toggle from clobbering a faster later toggle when the
+  // admin clicks the same checkbox twice in quick succession (or two
+  // different checkboxes in quick succession). Without this, a stale
+  // success response could re-sync ALL three booleans from an outdated
+  // server snapshot and undo the user's most recent click.
+  const boolToggleReqIdRef = useRef<Record<BoolToggleField, number>>({
+    smsOwnerForwardEnabled: 0,
+    smsOwnerForwardUnmatchedEnabled: 0,
+    smsOwnerReplyEnabled: 0,
+  });
 
   // Backfill action state.
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatus | null>(null);
@@ -172,6 +235,7 @@ export default function SmsSettings() {
       setChatPort(data.smsChatPort != null ? String(data.smsChatPort) : "");
       setChatOwnerPhone(data.smsChatOwnerPhone ?? "");
       setForwardEnabled(!!data.smsOwnerForwardEnabled);
+      setForwardUnmatchedEnabled(!!data.smsOwnerForwardUnmatchedEnabled);
       setForwardCap(data.smsOwnerForwardCapPer24h == null ? "" : String(data.smsOwnerForwardCapPer24h));
       setOwnerReplyEnabled(!!data.smsOwnerReplyEnabled);
       setBackfillDays(String(data.smsBackfillDays ?? 90));
@@ -460,6 +524,13 @@ export default function SmsSettings() {
 
   // ── Customer Chat behavior card (forwarding + backfill window) ─────────────
 
+  // Persists ONLY the cap + backfill-window inputs. The three booleans
+  // (forwardEnabled / forwardUnmatchedEnabled / ownerReplyEnabled) each
+  // auto-save the moment the admin clicks them via persistChatBoolean
+  // below — historically they were bundled into this section save,
+  // which left the on-screen checkbox state out of sync with the DB
+  // any time the admin toggled but didn't click Save (root cause of
+  // the silently-disabled owner-reply incident).
   async function saveChatBehavior() {
     setSavingChat(true);
     setChatError("");
@@ -474,9 +545,7 @@ export default function SmsSettings() {
         method: "PUT",
         headers,
         body: JSON.stringify({
-          smsOwnerForwardEnabled: forwardEnabled,
           smsOwnerForwardCapPer24h: cap,
-          smsOwnerReplyEnabled: ownerReplyEnabled,
           smsBackfillDays: days,
         }),
       });
@@ -484,9 +553,7 @@ export default function SmsSettings() {
       if (!r.ok) throw new Error(data?.error || "Save failed");
       const next = data as ServerState;
       setServer(next);
-      setForwardEnabled(next.smsOwnerForwardEnabled);
       setForwardCap(next.smsOwnerForwardCapPer24h == null ? "" : String(next.smsOwnerForwardCapPer24h));
-      setOwnerReplyEnabled(next.smsOwnerReplyEnabled);
       setBackfillDays(String(next.smsBackfillDays));
       setSavedChat(true);
       setTimeout(() => setSavedChat(false), 2000);
@@ -494,6 +561,66 @@ export default function SmsSettings() {
       setChatError(e?.message || "Save failed");
     } finally {
       setSavingChat(false);
+    }
+  }
+
+  // Auto-save handler for the three Customer Chat boolean toggles. Each
+  // checkbox calls this on change; the DB write happens immediately so
+  // a user who toggles and walks away can never be surprised by the
+  // server still holding the old value. On failure we revert the local
+  // checkbox state and surface a per-toggle error message — the toggle
+  // visually un-flips so the admin sees that the change didn't take.
+  async function persistChatBoolean(
+    field: BoolToggleField,
+    nextValue: boolean,
+    applyLocal: (v: boolean) => void,
+  ): Promise<void> {
+    // Optimistic update: flip the checkbox immediately so the click
+    // feels instant even if the network is slow.
+    applyLocal(nextValue);
+    setBoolToggleStatus(s => ({ ...s, [field]: "saving" }));
+    setBoolToggleError(s => ({ ...s, [field]: undefined }));
+    // Bump the per-field request id and capture it for this call.
+    // When the response lands we use this captured id to decide whether
+    // we are still the latest in-flight request for this field; if not,
+    // we silently drop the response so we don't clobber a newer click.
+    const myReqId = ++boolToggleReqIdRef.current[field];
+    const isLatest = () => boolToggleReqIdRef.current[field] === myReqId;
+    try {
+      const r = await fetch(`${BASE}/api/admin/sms-settings`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ [field]: nextValue }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Save failed");
+      const next = data as ServerState;
+      // Stale response: a newer toggle has been issued for this field
+      // since we kicked off; do nothing so we don't override the user's
+      // most recent intent. The newer in-flight request will resolve
+      // and produce the authoritative state.
+      if (!isLatest()) return;
+      // Re-sync only the field we toggled (server PUT only changed
+      // that one) and update server snapshot. We deliberately do NOT
+      // overwrite the OTHER two booleans from this response — a parallel
+      // in-flight toggle on a different field could otherwise be
+      // clobbered by this response's older snapshot of that field.
+      setServer(s => (s ? { ...s, [field]: (next as any)[field] } : next));
+      applyLocal((next as any)[field] as boolean);
+      setBoolToggleStatus(s => ({ ...s, [field]: "saved" }));
+      setTimeout(() => {
+        if (!isLatest()) return;
+        setBoolToggleStatus(s => (s[field] === "saved" ? { ...s, [field]: "idle" } : s));
+      }, 1500);
+    } catch (e: any) {
+      // Stale failure: drop it. The newer in-flight request owns the
+      // user-visible state for this field.
+      if (!isLatest()) return;
+      // Revert the optimistic flip so the checkbox reflects what's
+      // actually persisted.
+      applyLocal(!nextValue);
+      setBoolToggleStatus(s => ({ ...s, [field]: "error" }));
+      setBoolToggleError(s => ({ ...s, [field]: e?.message || "Save failed" }));
     }
   }
 
@@ -878,28 +1005,71 @@ export default function SmsSettings() {
                   <input
                     type="checkbox"
                     checked={forwardEnabled}
-                    onChange={e => setForwardEnabled(e.target.checked)}
+                    onChange={e =>
+                      persistChatBoolean("smsOwnerForwardEnabled", e.target.checked, setForwardEnabled)
+                    }
                     className="mt-1 w-4 h-4"
                   />
                   <span className="text-sm">
-                    <span className="font-medium block">Forward inbound texts to owner</span>
-                    <span className="text-muted-foreground text-xs">
-                      Each forward is tagged <code className="px-1 py-0.5 bg-secondary rounded">[#N]</code> so the owner knows which inquiry it belongs to.
+                    <span className="font-medium block">
+                      Forward inbound texts to owner
+                      <BoolToggleIndicator status={boolToggleStatus.smsOwnerForwardEnabled} />
                     </span>
+                    <span className="text-muted-foreground text-xs">
+                      Each forward is tagged <code className="px-1 py-0.5 bg-secondary rounded">[#N]</code> so the owner knows which inquiry it belongs to. Saves automatically on click.
+                    </span>
+                    {boolToggleError.smsOwnerForwardEnabled && (
+                      <span className="text-destructive text-xs block">{boolToggleError.smsOwnerForwardEnabled}</span>
+                    )}
+                  </span>
+                </label>
+                <label className={`flex items-start gap-3 ${forwardEnabled ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
+                  <input
+                    type="checkbox"
+                    checked={forwardUnmatchedEnabled}
+                    disabled={!forwardEnabled}
+                    onChange={e =>
+                      persistChatBoolean(
+                        "smsOwnerForwardUnmatchedEnabled",
+                        e.target.checked,
+                        setForwardUnmatchedEnabled,
+                      )
+                    }
+                    className="mt-1 w-4 h-4"
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium block">
+                      Also forward texts from unknown senders
+                      <BoolToggleIndicator status={boolToggleStatus.smsOwnerForwardUnmatchedEnabled} />
+                    </span>
+                    <span className="text-muted-foreground text-xs">
+                      OFF by default — texts from numbers that don't match any catering inquiry (random spam, verification codes, wrong numbers) still land in the Unmatched inbox but are never forwarded to the owner phone. Turn this ON only if you want every inbound, including unknowns, texted to the owner. Requires "Forward inbound texts to owner" above.
+                    </span>
+                    {boolToggleError.smsOwnerForwardUnmatchedEnabled && (
+                      <span className="text-destructive text-xs block">{boolToggleError.smsOwnerForwardUnmatchedEnabled}</span>
+                    )}
                   </span>
                 </label>
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={ownerReplyEnabled}
-                    onChange={e => setOwnerReplyEnabled(e.target.checked)}
+                    onChange={e =>
+                      persistChatBoolean("smsOwnerReplyEnabled", e.target.checked, setOwnerReplyEnabled)
+                    }
                     className="mt-1 w-4 h-4"
                   />
                   <span className="text-sm">
-                    <span className="font-medium block">Allow owner to reply by texting <code className="px-1 py-0.5 bg-secondary rounded">#N &lt;message&gt;</code></span>
-                    <span className="text-muted-foreground text-xs">
-                      Replies are routed back to the customer through the dedicated chat port. The customer never sees the owner's number.
+                    <span className="font-medium block">
+                      Allow owner to reply by texting <code className="px-1 py-0.5 bg-secondary rounded">#N &lt;message&gt;</code>
+                      <BoolToggleIndicator status={boolToggleStatus.smsOwnerReplyEnabled} />
                     </span>
+                    <span className="text-muted-foreground text-xs">
+                      Replies are routed back to the customer through the dedicated chat port. The customer never sees the owner's number. Saves automatically on click.
+                    </span>
+                    {boolToggleError.smsOwnerReplyEnabled && (
+                      <span className="text-destructive text-xs block">{boolToggleError.smsOwnerReplyEnabled}</span>
+                    )}
                   </span>
                 </label>
               </div>
