@@ -977,6 +977,143 @@ export async function fetchInboxRaw(): Promise<InboxDiagnosticsResult> {
 // Rows missing any of those are skipped. The id is taken from the
 // first numeric-only cell, falling back to a hash of phone+date+body
 // so cross-deploy dedupe still works for older rows.
+// The newer GoIP firmware on the customer's gateway doesn't server-render
+// the inbox table; it embeds the entire payload as a single-quoted JSON
+// string inside a `loadListData("ID_TabCmdResp", '<json>', ...)` call and
+// builds the rows in the browser. The legacy <tr> scraper sees an empty
+// table and silently returns zero rows. This parser handles that newer
+// format. Each entry in payload.data is:
+//   [seq, portSlot, count, sender, time, content, receiver]
+// — see the gateway page's `smsTrContruct` function for the schema.
+//
+// Notes:
+// - portSlot is "<integer><A|B>" (e.g. "7A"); we collapse to integer port.
+// - Only the latest message per port is returned by this listing page;
+//   full per-port history requires drilling into goip_sms_inbox_details_en.html
+//   which is not handled here.
+// - time is "MM-DD HH:MM" with no year — assume current year, fall back
+//   to previous year if that puts the timestamp >24h in the future.
+// - The listing has no per-message id; we synthesize a stable id from
+//   (port, sender, time, content-head) so re-polls of the same latest
+//   message dedupe to one inbound row.
+
+// Decodes a JS single-quoted string literal body (the bit between the
+// outer quotes — caller must strip those) per the ECMA spec subset
+// observed from the gateway: the standard short escapes, hex escapes
+// `\xNN`, BMP unicode escapes `\uNNNN`, ES2015 code-point escapes
+// `\u{NNNN..}`, the null escape `\0` (only when not followed by a
+// digit), line continuations (`\` + LF or CRLF → empty), and
+// pass-through for any other `\X` (unknown escape decays to the bare
+// character, matching JS engines). Doing this ourselves rather than
+// `eval`/`Function` avoids both the security smell and the JS-only
+// quirk that `JSON.parse` won't accept hex/short/unicode escapes
+// inside its strings — we have to bring the string down to literal
+// characters before handing it to `JSON.parse`.
+function jsUnescapeSingleQuoted(s: string): string {
+  return s.replace(
+    /\\(?:x([0-9a-fA-F]{2})|u\{([0-9a-fA-F]{1,6})\}|u([0-9a-fA-F]{4})|(0(?![0-9])|\r\n|[\s\S]))/g,
+    (_match, hex2: string | undefined, uBraced: string | undefined, u4: string | undefined, c: string | undefined) => {
+      if (hex2 !== undefined) return String.fromCodePoint(parseInt(hex2, 16));
+      if (uBraced !== undefined) {
+        const cp = parseInt(uBraced, 16);
+        return cp <= 0x10ffff ? String.fromCodePoint(cp) : "";
+      }
+      if (u4 !== undefined) return String.fromCodePoint(parseInt(u4, 16));
+      switch (c) {
+        case "n":    return "\n";
+        case "r":    return "\r";
+        case "t":    return "\t";
+        case "b":    return "\b";
+        case "f":    return "\f";
+        case "v":    return "\v";
+        case "0":    return "\0";
+        case "\\":   return "\\";
+        case "'":    return "'";
+        case '"':    return '"';
+        case "/":    return "/";
+        case "\n":   return "";
+        case "\r\n": return "";
+        case "\r":   return "";
+        default:     return c ?? "";
+      }
+    },
+  );
+}
+
+export function parseInboundSmsListData(
+  html: string,
+  opts?: { sinceMs?: number; portFilter?: number | null },
+): InboundSms[] {
+  const since = opts?.sinceMs ?? 0;
+  const portFilter = opts?.portFilter ?? null;
+  // The JSON payload is wrapped in a JS single-quoted string literal,
+  // so we must (a) honor JS escape sequences when finding the closing
+  // quote (otherwise an apostrophe inside a body like `April\'s` ends
+  // the match prematurely and truncates the JSON), and (b) JS-unescape
+  // the captured text before JSON.parse — the gateway double-escapes
+  // backslashes to fit JSON inside the JS literal (e.g. JSON `\r\n`
+  // appears in the page as `\\r\\n`).
+  const m = /loadListData\s*\(\s*["']ID_TabCmdResp["']\s*,\s*'((?:\\[\s\S]|[^'\\])*)'/.exec(html);
+  if (!m) return [];
+  const jsonText = jsUnescapeSingleQuoted(m[1]);
+  let payload: unknown;
+  try {
+    payload = JSON.parse(jsonText);
+  } catch {
+    return [];
+  }
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !Array.isArray((payload as { data?: unknown }).data)
+  ) {
+    return [];
+  }
+  const data = (payload as { data: unknown[] }).data;
+  const out: InboundSms[] = [];
+  const now = new Date();
+  for (const entry of data) {
+    if (!Array.isArray(entry) || entry.length < 6) continue;
+    const portSlot = String(entry[1] ?? "").trim();
+    const sender = String(entry[3] ?? "").trim();
+    const timeStr = String(entry[4] ?? "").trim();
+    const content = String(entry[5] ?? "").trim();
+    if (!portSlot || !sender || !content) continue; // empty slot row
+    const pm = /^(\d{1,2})[A-Za-z]?$/.exec(portSlot);
+    if (!pm) continue;
+    const port = Number(pm[1]);
+    if (!Number.isInteger(port) || port < 1 || port > EJOIN_PORT_COUNT) continue;
+    if (portFilter != null && port !== portFilter) continue;
+    let when: Date | null = null;
+    const tm = /^(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(timeStr);
+    if (tm) {
+      const [, mo, d, h, mi, s] = tm;
+      const y = now.getUTCFullYear();
+      let candidate = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
+      if (Number.isFinite(candidate.getTime())) {
+        // Year rollover: if the parsed timestamp is more than 24h in the
+        // future, the message must be from last year (firmware omits year).
+        if (candidate.getTime() > now.getTime() + 24 * 60 * 60 * 1000) {
+          candidate = new Date(`${y - 1}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
+        }
+        if (Number.isFinite(candidate.getTime())) when = candidate;
+      }
+    }
+    if (when && when.getTime() < since) continue;
+    const ts = when ?? now;
+    const fromDigits = normalizePhone(sender);
+    const id = `listdata:${port}:${fromDigits}:${timeStr}:${content.slice(0, 24)}`;
+    out.push({
+      gatewayMessageId: id,
+      port,
+      fromPhone: fromDigits,
+      body: content,
+      occurredAt: ts,
+    });
+  }
+  return out;
+}
+
 export function parseInboundSmsHtml(
   html: string,
   opts?: { sinceMs?: number; portFilter?: number | null },
@@ -1006,6 +1143,7 @@ export function parseInboundSmsHtml(
     // Identify candidate fields.
     let id: string | null = null;
     let port: number | null = null;
+    let portCell: string | null = null;
     let from: string | null = null;
     let when: Date | null = null;
     let body: string | null = null;
@@ -1014,9 +1152,18 @@ export function parseInboundSmsHtml(
         id = c;
         continue;
       }
-      if (port == null && /^[1-8]$/.test(c)) {
-        port = Number(c);
-        continue;
+      // Accept "7", "7A", "7B" (case-insensitive). The gateway's web UI
+      // labels the two SIM slots in a physical port with an A/B suffix;
+      // we collapse both slots to the integer port number because the
+      // chat-port setting and the send path are integer-only. The
+      // upper bound matches EJOIN_PORT_COUNT (8 physical ports).
+      if (port == null) {
+        const m = /^([1-8])[A-Za-z]?$/.exec(c);
+        if (m) {
+          port = Number(m[1]);
+          portCell = c;
+          continue;
+        }
       }
       if (from == null && /[+]?\d[\d\s\-().]{6,}$/.test(c.replace(/\s/g, "")) && c.replace(/\D/g, "").length >= 7 && c.length < 30) {
         from = c;
@@ -1032,8 +1179,10 @@ export function parseInboundSmsHtml(
         }
       }
     }
-    // Pick the longest leftover cell as the body candidate.
-    const usedSet = new Set([id, String(port ?? ""), from ?? ""]);
+    // Pick the longest leftover cell as the body candidate. Use the
+    // original port-cell text (e.g. "7A") rather than String(port)
+    // so the suffixed label doesn't leak into the body slot.
+    const usedSet = new Set([id, portCell ?? "", from ?? ""]);
     body = cells
       .filter((c) => !usedSet.has(c))
       .sort((a, b) => b.length - a.length)[0] ?? null;
@@ -1050,6 +1199,13 @@ export function parseInboundSmsHtml(
       body,
       occurredAt: ts,
     });
+  }
+  // Newer firmware fallback: when the legacy <tr> scan finds nothing,
+  // try the JavaScript-rendered loadListData JSON payload. Doing this
+  // unconditionally would risk double-counting on hybrid pages, so we
+  // only fall back when the primary path returned zero rows.
+  if (out.length === 0) {
+    return parseInboundSmsListData(html, opts);
   }
   return out;
 }
