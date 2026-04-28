@@ -540,7 +540,18 @@ export async function sendSmsViaEjoin(
       throw new Error(`ejointech SMS POST failed: HTTP ${resp.status}`);
     }
     const text = await resp.text();
-    const rejected = !resp.ok || looksLikeLoginPage(text);
+    // SEND-path detection can be more permissive than the inbox path:
+    // this response is the gateway's own reply to a SEND form POST and
+    // never embeds inbound SMS content, so substring markers cannot be
+    // smuggled in via a malicious text. We add the literal "Login
+    // restricted" / "login_en.html" markers as a backup signal in case
+    // a firmware variant emits the lockout page without the structural
+    // <form action="login_*.html"> element our shared detector keys on.
+    const rejected =
+      !resp.ok ||
+      looksLikeLoginPage(text) ||
+      text.includes("Login restricted") ||
+      text.includes("login_en.html");
     return { text, status: resp.status, rejected };
   };
 
