@@ -18,6 +18,11 @@ vi.mock("../sms-ejoin", () => ({
   fetchInboundSmsForPort: vi.fn(),
   // The functions exercised by sms-inbox.
   sendSmsViaEjoin: vi.fn(async () => ({ port: 7, gatewayResponse: "ok" })),
+  // Corrective texts (and customer-bound sends) now route through the
+  // dedicated chat-port wrapper so the owner's chat-port thread stays
+  // coherent — the test asserts on this mock rather than the raw
+  // sendSmsViaEjoin to pin the chat-port routing in place.
+  sendSmsViaChatPort: vi.fn(async () => ({ port: 7, gatewayResponse: "ok" })),
   sendSmsToCustomer: vi.fn(async () => ({ port: 7, gatewayResponse: "ok" })),
   BlocklistedRecipientError: class BlocklistedRecipientError extends Error {
     reason: "customer-opt-out" | "admin-blocked";
@@ -35,6 +40,7 @@ import * as ejoin from "../sms-ejoin";
 import { ingestInbound, _resetOwnerRejectRateLimitForTests } from "../sms-inbox";
 
 const sendSmsViaEjoinMock = ejoin.sendSmsViaEjoin as unknown as ReturnType<typeof vi.fn>;
+const sendSmsViaChatPortMock = ejoin.sendSmsViaChatPort as unknown as ReturnType<typeof vi.fn>;
 
 // Use a digits-only phone that won't collide with real owner config.
 const OWNER_DIGITS = "5550199001";
@@ -80,6 +86,8 @@ beforeEach(async () => {
   _resetOwnerRejectRateLimitForTests();
   sendSmsViaEjoinMock.mockClear();
   sendSmsViaEjoinMock.mockResolvedValue({ port: 7, gatewayResponse: "ok" });
+  sendSmsViaChatPortMock.mockClear();
+  sendSmsViaChatPortMock.mockResolvedValue({ port: 7, gatewayResponse: "ok" });
   // The owner-phone read goes through a 5-second cache inside
   // sms-inbox; pause briefly so the freshly-written settings row is
   // picked up by the next ingest call.
@@ -112,8 +120,11 @@ describe("ingestInbound — owner reject dedupe (task #188)", () => {
       await ingestInbound(input);
     }
 
-    expect(sendSmsViaEjoinMock).toHaveBeenCalledTimes(1);
-    expect(sendSmsViaEjoinMock.mock.calls[0]?.[0]).toBe(OWNER_DIGITS);
+    // Corrective text rides the chat-port wrapper; the unguarded
+    // sendSmsViaEjoin must NOT be touched on the owner-reject branch.
+    expect(sendSmsViaChatPortMock).toHaveBeenCalledTimes(1);
+    expect(sendSmsViaChatPortMock.mock.calls[0]?.[0]).toBe(OWNER_DIGITS);
+    expect(sendSmsViaEjoinMock).not.toHaveBeenCalled();
 
     // And the sentinel row is parked in the table under the dedicated
     // source so the unmatched listing/badge queries skip it.
@@ -133,7 +144,8 @@ describe("ingestInbound — owner reject dedupe (task #188)", () => {
       await ingestInbound(makeRejectInput(`cap-${i}`));
     }
 
-    expect(sendSmsViaEjoinMock).toHaveBeenCalledTimes(3);
+    expect(sendSmsViaChatPortMock).toHaveBeenCalledTimes(3);
+    expect(sendSmsViaEjoinMock).not.toHaveBeenCalled();
 
     // All 5 sentinels were still recorded — replays of any of them
     // remain a no-op even though the rate cap suppressed the text.
@@ -183,8 +195,9 @@ describe("ingestInbound — owner reject dedupe (task #188)", () => {
         await ingestInbound(input);
       }
 
-      expect(sendSmsViaEjoinMock).toHaveBeenCalledTimes(1);
-      expect(sendSmsViaEjoinMock.mock.calls[0]?.[0]).toBe(ENV_OWNER);
+      expect(sendSmsViaChatPortMock).toHaveBeenCalledTimes(1);
+      expect(sendSmsViaChatPortMock.mock.calls[0]?.[0]).toBe(ENV_OWNER);
+      expect(sendSmsViaEjoinMock).not.toHaveBeenCalled();
 
       const rows = await db
         .select()
@@ -214,13 +227,15 @@ describe("ingestInbound — owner reject dedupe (task #188)", () => {
     for (let i = 0; i < 25; i++) {
       await ingestInbound(makeRejectInput(`backfill-${i}`));
     }
-    const firstPassCalls = sendSmsViaEjoinMock.mock.calls.length;
+    const firstPassCalls = sendSmsViaChatPortMock.mock.calls.length;
     expect(firstPassCalls).toBeLessThanOrEqual(3);
 
+    sendSmsViaChatPortMock.mockClear();
     sendSmsViaEjoinMock.mockClear();
     for (let i = 0; i < 25; i++) {
       await ingestInbound(makeRejectInput(`backfill-${i}`));
     }
+    expect(sendSmsViaChatPortMock).not.toHaveBeenCalled();
     expect(sendSmsViaEjoinMock).not.toHaveBeenCalled();
   });
 });

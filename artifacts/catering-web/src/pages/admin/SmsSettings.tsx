@@ -19,6 +19,8 @@ type ServerState = {
   ejoinConfigured: boolean;
   ownerNotificationPhoneSource: "db" | "env" | "none";
   smsChatPort: number | null;
+  smsChatOwnerPhone: string | null;
+  smsChatOwnerPhoneSource: "db-chat" | "db-owner" | "env" | "none";
   smsOwnerForwardEnabled: boolean;
   smsOwnerForwardCapPer24h: number | null;
   smsOwnerReplyEnabled: boolean;
@@ -89,6 +91,14 @@ export default function SmsSettings() {
   const [savedChatPort, setSavedChatPort] = useState(false);
   const [chatPortError, setChatPortError] = useState("");
 
+  // Customer-chat owner-phone override (the number that receives forwarded
+  // customer texts and is recognized as the owner when replying via the
+  // chat port). Empty string = use the legacy owner notification phone.
+  const [chatOwnerPhone, setChatOwnerPhone] = useState<string>("");
+  const [savingChatOwnerPhone, setSavingChatOwnerPhone] = useState(false);
+  const [savedChatOwnerPhone, setSavedChatOwnerPhone] = useState(false);
+  const [chatOwnerPhoneError, setChatOwnerPhoneError] = useState("");
+
   // Customer-chat behavior card form state.
   const [forwardEnabled, setForwardEnabled] = useState(false);
   const [forwardCap, setForwardCap] = useState<string>("1");
@@ -136,6 +146,7 @@ export default function SmsSettings() {
       setAlertPhones(data.lowStockAlertPhones);
       setThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
       setChatPort(data.smsChatPort != null ? String(data.smsChatPort) : "");
+      setChatOwnerPhone(data.smsChatOwnerPhone ?? "");
       setForwardEnabled(!!data.smsOwnerForwardEnabled);
       setForwardCap(data.smsOwnerForwardCapPer24h == null ? "" : String(data.smsOwnerForwardCapPer24h));
       setOwnerReplyEnabled(!!data.smsOwnerReplyEnabled);
@@ -355,6 +366,37 @@ export default function SmsSettings() {
     }
   }
 
+  // ── Customer-chat owner phone override ─────────────────────────────────────
+
+  async function saveChatOwnerPhone() {
+    setSavingChatOwnerPhone(true);
+    setChatOwnerPhoneError("");
+    setSavedChatOwnerPhone(false);
+    try {
+      const trimmed = chatOwnerPhone.trim();
+      const value = trimmed === "" ? null : trimmed;
+      if (value !== null && value.replace(/\D/g, "").length < 7) {
+        throw new Error("Phone must contain at least 7 digits.");
+      }
+      const r = await fetch(`${BASE}/api/admin/sms-settings`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ smsChatOwnerPhone: value }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Save failed");
+      const next = data as ServerState;
+      setServer(next);
+      setChatOwnerPhone(next.smsChatOwnerPhone ?? "");
+      setSavedChatOwnerPhone(true);
+      setTimeout(() => setSavedChatOwnerPhone(false), 2000);
+    } catch (e: any) {
+      setChatOwnerPhoneError(e?.message || "Save failed");
+    } finally {
+      setSavingChatOwnerPhone(false);
+    }
+  }
+
   // ── Customer Chat behavior card (forwarding + backfill window) ─────────────
 
   async function saveChatBehavior() {
@@ -562,6 +604,74 @@ export default function SmsSettings() {
                   {savingChatPort ? <Loader2 className="w-4 h-4 animate-spin" /> : savedChatPort ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
                   {savingChatPort ? "Saving…" : savedChatPort ? "Saved!" : "Save Chat Port"}
                 </button>
+              </div>
+
+              {/* ── Phone number for customer chat ──────────────────────── */}
+              <div className="border-t border-border pt-4 space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label
+                    className="block text-sm font-medium text-foreground"
+                    htmlFor="chatOwnerPhoneInput"
+                  >
+                    Phone number for customer chat
+                  </label>
+                  {server?.smsChatOwnerPhoneSource === "db-chat" && (
+                    <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      Active
+                    </span>
+                  )}
+                  {server?.smsChatOwnerPhoneSource === "db-owner" && (
+                    <span className="text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                      Falling back to Owner Notifications phone
+                    </span>
+                  )}
+                  {server?.smsChatOwnerPhoneSource === "env" && (
+                    <span className="text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                      Falling back to legacy OWNER_PHONE env var
+                    </span>
+                  )}
+                  {server?.smsChatOwnerPhoneSource === "none" && (
+                    <span className="text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                      Not configured
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Phone that receives forwarded customer texts and is recognized as the owner when replying with the
+                  <code className="mx-1 px-1.5 py-0.5 bg-secondary rounded">#&lt;inquiry-id&gt;</code> tag.
+                  Leave blank to keep using the Owner Notifications phone below. Either way, every chat-side message
+                  (forwards, owner-relay corrective texts) is sent through the chat port above so the owner sees
+                  one continuous thread per customer. Other owner alerts (low-stock, inquiry-arrival,
+                  quote-response, the test owner alert) still use the Owner Notifications phone on the round-robin pool.
+                </p>
+                <input
+                  id="chatOwnerPhoneInput"
+                  type="tel"
+                  value={chatOwnerPhone}
+                  onChange={e => setChatOwnerPhone(e.target.value)}
+                  placeholder="+1 555 123 4567"
+                  className="w-full max-w-xs px-4 py-2 border border-border rounded-xl bg-background"
+                />
+                {chatOwnerPhoneError && (
+                  <p className="text-destructive text-sm">{chatOwnerPhoneError}</p>
+                )}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={saveChatOwnerPhone}
+                    disabled={savingChatOwnerPhone}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+                  >
+                    {savingChatOwnerPhone ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : savedChatOwnerPhone ? (
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    {savingChatOwnerPhone ? "Saving…" : savedChatOwnerPhone ? "Saved!" : "Save Chat Owner Phone"}
+                  </button>
+                </div>
               </div>
             </section>
 

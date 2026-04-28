@@ -48,6 +48,16 @@ export const eventSettingsTable = pgTable("event_settings", {
   // overlap with smsActivePorts (the round-robin pool used for staff-
   // facing sends). Validation enforces non-overlap on save.
   smsChatPort: integer("sms_chat_port"),
+  // Optional phone number that receives the owner-forward leg of a
+  // customer chat (and is recognized as "the owner" when replying via
+  // the chat port). Lets the admin route chat traffic to a different
+  // person than the regular ownerNotificationPhone (which keeps
+  // handling low-stock alerts, inquiry-arrival/quote-response alerts,
+  // and the test-owner-alert button via the round-robin pool).
+  // Resolution order at send time: smsChatOwnerPhone → ownerNotificationPhone
+  // → OWNER_PHONE env var → null. Stored as the admin typed it; sender
+  // normalizes before dispatch.
+  smsChatOwnerPhone: text("sms_chat_owner_phone"),
   // Toggle: forward inbound customer messages to the owner phone.
   smsOwnerForwardEnabled: boolean("sms_owner_forward_enabled").notNull().default(false),
   // Cap for owner forwards per inquiry per rolling 24h. NULL means

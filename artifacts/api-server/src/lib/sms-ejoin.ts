@@ -646,11 +646,18 @@ async function warnIfKnownCustomer(phone: string, usedPort: number): Promise<voi
   }
 }
 
-// Convenience wrapper for every client-bound send. Resolves the saved
-// chat port and forwards to sendSmsViaEjoin with that as a port override.
-// Throws when no chat port is configured so call sites surface a clear
-// error instead of silently degrading to the round-robin pool.
-export async function sendSmsToCustomer(
+// Send through the configured customer-chat port. Used for every
+// outbound that belongs to the customer-chat surface — both the
+// customer-facing sends (quote messages, owner-relayed replies, the
+// inquiry composer) AND the chat-side owner-bound sends (forwarding
+// inbound customer texts to the chat-owner phone, plus the corrective
+// texts that go back when the owner sends a malformed/disabled reply).
+// Keeping all of those on the dedicated chat SIM means the owner's
+// phone shows one continuous thread per customer regardless of which
+// direction a message originated from. Throws when no chat port is
+// configured so call sites surface a clear error instead of silently
+// degrading to the round-robin pool.
+export async function sendSmsViaChatPort(
   to: string,
   message: string,
 ): Promise<{ port: number; gatewayResponse: string }> {
@@ -662,6 +669,11 @@ export async function sendSmsToCustomer(
   }
   return sendSmsViaEjoin(to, message, { portOverride: port });
 }
+
+// Back-compat alias for customer-facing sends specifically. Keeps the
+// existing call sites readable (`sendSmsToCustomer(...)`) while routing
+// through the same chat-port wrapper as the new owner-side chat sends.
+export const sendSmsToCustomer = sendSmsViaChatPort;
 
 // ── Inbound: gateway-mode detection ───────────────────────────────────────────
 

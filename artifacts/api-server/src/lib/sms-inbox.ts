@@ -30,7 +30,13 @@ import {
 } from "@workspace/db/schema";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { sendSmsToCustomer, sendSmsViaEjoin, getChatPort, BlocklistedRecipientError } from "./sms-ejoin";
+import {
+  sendSmsToCustomer,
+  sendSmsViaEjoin,
+  sendSmsViaChatPort,
+  getChatPort,
+  BlocklistedRecipientError,
+} from "./sms-ejoin";
 import { publishSmsEvent } from "./sms-events";
 import { logger } from "./logger";
 
@@ -176,6 +182,49 @@ async function getOwnerPhoneDigits(): Promise<string | null> {
     console.warn("[sms-inbox] resolveOwnerPhone failed", err);
     return null;
   }
+}
+
+// Phone that the customer-chat surface treats as "the owner". Resolved
+// independently from the regular owner-notification phone so admins can
+// route inbound-customer-text forwarding (and the matching #<id> reply
+// path) to a different person than the one receiving low-stock /
+// inquiry-arrival / quote-response alerts. Resolution order:
+//   1. event_settings.smsChatOwnerPhone (admin-controlled, chat-only)
+//   2. event_settings.ownerNotificationPhone (existing legacy default)
+//   3. OWNER_PHONE env var (legacy default)
+// Returns null if every step is empty.
+async function getChatOwnerPhoneDigits(): Promise<string | null> {
+  try {
+    const [row] = await db
+      .select({
+        chat: eventSettingsTable.smsChatOwnerPhone,
+        notify: eventSettingsTable.ownerNotificationPhone,
+      })
+      .from(eventSettingsTable)
+      .where(eq(eventSettingsTable.id, 1));
+    const dbChat = row?.chat?.trim();
+    const dbNotify = row?.notify?.trim();
+    const phone = (dbChat || dbNotify || process.env.OWNER_PHONE || "").trim();
+    return phone ? normalizePhoneDigits(phone) : null;
+  } catch (err) {
+    console.warn("[sms-inbox] resolveChatOwnerPhone failed", err);
+    return null;
+  }
+}
+
+// Match the inbound from-phone against either configured owner phone.
+// Either phone is allowed to send #<id>-tagged replies (or trip the
+// reject paths) since both are operator-controlled numbers.
+async function isOwnerSender(fromDigits: string): Promise<boolean> {
+  if (!fromDigits) return false;
+  const [chatOwner, notifyOwner] = await Promise.all([
+    getChatOwnerPhoneDigits(),
+    getOwnerPhoneDigits(),
+  ]);
+  return (
+    (chatOwner != null && fromDigits === chatOwner) ||
+    (notifyOwner != null && fromDigits === notifyOwner)
+  );
 }
 
 // ── Owner forwarding ──────────────────────────────────────────────────────────
@@ -381,7 +430,10 @@ async function notifyOwnerOfRejection(
     return;
   }
   try {
-    await sendSmsViaEjoin(ownerDigits, OWNER_REJECT_MESSAGES[reason]);
+    // Corrective text rides the customer-chat port so the owner's
+    // chat-port thread stays whole — same SIM as the original inbound,
+    // same SIM as the forwarded customer messages they're replying to.
+    await sendSmsViaChatPort(ownerDigits, OWNER_REJECT_MESSAGES[reason]);
   } catch (err) {
     console.warn("[sms-inbox] owner-reject notify failed", { reason, err });
   }
@@ -428,8 +480,10 @@ export async function classifyInbound(input: {
   const fromDigits = normalizePhoneDigits(input.fromPhone);
   const body = (input.body ?? "").trim();
   if (!fromDigits || !body) return { kind: "skipped-empty" };
-  const ownerDigits = await getOwnerPhoneDigits();
-  if (ownerDigits && fromDigits === ownerDigits) {
+  // Either the chat-owner phone OR the legacy notification owner phone
+  // counts as "the owner" for #<id> reply detection — admins can split
+  // the chat-side owner off without breaking the existing reply flow.
+  if (await isOwnerSender(fromDigits)) {
     // Mirror the order of checks in ingestInboundImpl exactly so the
     // diagnostics outcome can never disagree with the live pipeline.
     if (isStopKeyword(body)) return { kind: "owner-reply-malformed" };
@@ -545,8 +599,18 @@ async function ingestInboundImpl(input: {
   // as an attempted relay — even when the tag is missing/malformed,
   // we reject with a corrective text and never ingest the body.
   const settings = await getRelevantSettings();
-  const ownerDigits = await getOwnerPhoneDigits();
-  if (ownerDigits && fromDigits === ownerDigits) {
+  // chatOwnerDigits = where chat-side owner-bound sends go (forwards
+  // and corrective texts). ownerDigits = legacy notification owner,
+  // still recognized as a valid #<id> reply sender so admins who
+  // haven't migrated to the dedicated chat-owner phone keep working.
+  const [chatOwnerDigits, ownerDigits] = await Promise.all([
+    getChatOwnerPhoneDigits(),
+    getOwnerPhoneDigits(),
+  ]);
+  const fromIsOwner =
+    (chatOwnerDigits != null && fromDigits === chatOwnerDigits) ||
+    (ownerDigits != null && fromDigits === ownerDigits);
+  if (fromIsOwner) {
     // Helper: every reject branch below MUST claim the gateway-id
     // sentinel BEFORE sending the corrective text. If the claim fails
     // (this gid was already handled on a prior poll), suppress the
@@ -554,18 +618,22 @@ async function ingestInboundImpl(input: {
     // ingest logger can flag the storm-prevention path explicitly. The
     // operator-visible reason is unchanged from the original pass.
     // This is the primary fix for the overnight rejection storm.
+    //
+    // Corrective text goes back to whichever owner phone *actually*
+    // sent the inbound (fromDigits), via the chat port — keeps the
+    // owner's chat-port thread coherent.
     const tryNotify = async (
       reason: OwnerRejectReason,
     ): Promise<IngestResult> => {
       const claimed = await claimOwnerRejectMarker({
         gatewayMessageId: input.gatewayMessageId,
-        ownerDigits,
+        ownerDigits: fromDigits,
         body,
         occurredAt: input.occurredAt,
         port: input.port,
       });
       if (claimed) {
-        await notifyOwnerOfRejection(ownerDigits, reason);
+        await notifyOwnerOfRejection(fromDigits, reason);
         return { status: "owner-reply-rejected", reason };
       }
       return { status: "owner-reply-rejected", reason, dedup: true };
@@ -607,7 +675,9 @@ async function ingestInboundImpl(input: {
       .insert(smsMessagesTable)
       .values({
         direction: "inbound",
-        customerPhone: ownerDigits,
+        // Stamp the marker with the actual sending owner phone so the
+        // sentinel row reflects which side originated the relay.
+        customerPhone: fromDigits,
         body: body,
         occurredAt: input.occurredAt,
         port: input.port,
@@ -661,7 +731,11 @@ async function ingestInboundImpl(input: {
   if (stored.status !== "stored") return stored;
 
   // ── Owner forwarding (best-effort) ───────────────────────────────────────
-  if (settings.ownerForwardEnabled && ownerDigits) {
+  // Forwards go to the chat-owner phone (which falls back to the
+  // legacy notification phone, then OWNER_PHONE) and are dispatched
+  // via the configured chat port — keeping the entire customer-chat
+  // surface on one SIM so the owner sees one continuous thread.
+  if (settings.ownerForwardEnabled && chatOwnerDigits) {
     if (await isForwardCapReached(stored.inquiryId, settings.ownerForwardCap)) {
       // Cap reached — silently skip, we don't want to spam either side.
       // The chat UI surfaces the cap separately.
@@ -673,10 +747,10 @@ async function ingestInboundImpl(input: {
           body,
           settings.ownerReplyEnabled,
         );
-        await sendSmsViaEjoin(ownerDigits, forwardBody);
+        await sendSmsViaChatPort(chatOwnerDigits, forwardBody);
         await db.insert(ownerForwardsTable).values({
           inquiryId: stored.inquiryId,
-          ownerPhone: ownerDigits,
+          ownerPhone: chatOwnerDigits,
           sourceGatewayMessageId: input.gatewayMessageId,
         });
       } catch (err) {

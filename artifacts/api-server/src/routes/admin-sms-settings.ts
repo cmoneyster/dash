@@ -25,6 +25,7 @@ type SmsSettingsUpdate = Partial<
     | "lowStockAlertPhones"
     | "lowStockAlertThreshold"
     | "smsChatPort"
+    | "smsChatOwnerPhone"
     | "smsOwnerForwardEnabled"
     | "smsOwnerForwardCapPer24h"
     | "smsOwnerReplyEnabled"
@@ -86,6 +87,24 @@ function normalizeOwnerPhone(v: unknown): string | null {
   const digits = trimmed.replace(/\D/g, "");
   if (digits.length < 7) {
     throw new HttpError("ownerNotificationPhone must contain at least 7 digits");
+  }
+  return trimmed.slice(0, 32);
+}
+
+// Same shape as normalizeOwnerPhone but validated under the chat-owner
+// label so error messages point the admin at the right input. Empty /
+// null clears the override (chat-owner falls back to the regular owner
+// notification phone, then OWNER_PHONE).
+function normalizeChatOwnerPhone(v: unknown): string | null {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v !== "string") {
+    throw new HttpError("smsChatOwnerPhone must be a string");
+  }
+  const trimmed = v.trim();
+  if (trimmed === "") return null;
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length < 7) {
+    throw new HttpError("smsChatOwnerPhone must contain at least 7 digits");
   }
   return trimmed.slice(0, 32);
 }
@@ -185,6 +204,8 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   ejoinConfigured: boolean;
   ownerNotificationPhoneSource: "db" | "env" | "none";
   smsChatPort: number | null;
+  smsChatOwnerPhone: string | null;
+  smsChatOwnerPhoneSource: "db-chat" | "db-owner" | "env" | "none";
   smsOwnerForwardEnabled: boolean;
   smsOwnerForwardCapPer24h: number | null;
   smsOwnerReplyEnabled: boolean;
@@ -196,6 +217,11 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   const dbOwner = s?.ownerNotificationPhone?.trim() || null;
   const envOwner = process.env.OWNER_PHONE?.trim() || null;
   const ownerNotificationPhoneSource: "db" | "env" | "none" = dbOwner ? "db" : envOwner ? "env" : "none";
+  // Same fallback chain that getChatOwnerPhoneDigits resolves at send
+  // time, surfaced so the UI can label which value is actually in use.
+  const dbChatOwner = s?.smsChatOwnerPhone?.trim() || null;
+  const smsChatOwnerPhoneSource: "db-chat" | "db-owner" | "env" | "none" =
+    dbChatOwner ? "db-chat" : dbOwner ? "db-owner" : envOwner ? "env" : "none";
   return {
     smsActivePorts: s?.smsActivePorts ?? [7],
     ownerNotificationPhone: dbOwner,
@@ -206,6 +232,8 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
     // the admin hasn't entered a DB-managed number yet.
     ownerNotificationPhoneSource,
     smsChatPort: s?.smsChatPort ?? null,
+    smsChatOwnerPhone: dbChatOwner,
+    smsChatOwnerPhoneSource,
     smsOwnerForwardEnabled: !!s?.smsOwnerForwardEnabled,
     smsOwnerForwardCapPer24h: s?.smsOwnerForwardCapPer24h ?? null,
     smsOwnerReplyEnabled: !!s?.smsOwnerReplyEnabled,
@@ -236,6 +264,7 @@ router.put("/admin/sms-settings", async (req, res) => {
       lowStockAlertPhones?: unknown;
       lowStockAlertThreshold?: unknown;
       smsChatPort?: unknown;
+      smsChatOwnerPhone?: unknown;
       smsOwnerForwardEnabled?: unknown;
       smsOwnerForwardCapPer24h?: unknown;
       smsOwnerReplyEnabled?: unknown;
@@ -256,6 +285,9 @@ router.put("/admin/sms-settings", async (req, res) => {
     }
     if (body.smsChatPort !== undefined) {
       updates.smsChatPort = normalizeChatPort(body.smsChatPort);
+    }
+    if (body.smsChatOwnerPhone !== undefined) {
+      updates.smsChatOwnerPhone = normalizeChatOwnerPhone(body.smsChatOwnerPhone);
     }
     if (body.smsOwnerForwardEnabled !== undefined) {
       updates.smsOwnerForwardEnabled = normalizeBool(body.smsOwnerForwardEnabled, "smsOwnerForwardEnabled");
@@ -305,6 +337,7 @@ router.put("/admin/sms-settings", async (req, res) => {
           ownerNotificationPhone: updates.ownerNotificationPhone ?? null,
           lowStockAlertPhones: updates.lowStockAlertPhones ?? [],
           lowStockAlertThreshold: updates.lowStockAlertThreshold ?? null,
+          smsChatOwnerPhone: updates.smsChatOwnerPhone ?? null,
         })
         .returning();
       row = created;
