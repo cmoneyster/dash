@@ -2083,7 +2083,7 @@ function MessagesPanel({ inquiryId, hasPhone }: { inquiryId: number; hasPhone: b
     };
   }, [inquiryId, load]);
 
-  async function handleSend(e: React.FormEvent) {
+  async function handleSend(e: React.SyntheticEvent) {
     e.preventDefault();
     const text = composer.trim();
     if (!text || sending || blocked) return;
@@ -2178,7 +2178,15 @@ function MessagesPanel({ inquiryId, hasPhone }: { inquiryId: number; hasPhone: b
             )}
           </div>
 
-          <form onSubmit={handleSend} className="p-3 border-t border-border space-y-2">
+          {/*
+            NOTE: this is intentionally a <div>, NOT a <form>. The chat composer
+            is rendered inside the inquiry editor's <form onSubmit={handleSave}>
+            (see DetailPanel below). HTML5 disallows nested forms — the parser
+            silently drops the inner <form> tag, which used to make Send re-save
+            the inquiry instead of sending the message. Keep this as a <div> and
+            wire the Send button via onClick directly.
+          */}
+          <div className="p-3 border-t border-border space-y-2">
             <textarea
               value={composer}
               onChange={e => setComposer(e.target.value)}
@@ -2190,7 +2198,7 @@ function MessagesPanel({ inquiryId, hasPhone }: { inquiryId: number; hasPhone: b
               onKeyDown={e => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  void handleSend(e as unknown as React.FormEvent);
+                  void handleSend(e);
                 }
               }}
             />
@@ -2198,7 +2206,8 @@ function MessagesPanel({ inquiryId, hasPhone }: { inquiryId: number; hasPhone: b
               <span className="text-xs text-muted-foreground">{composer.length}/1500</span>
               {sendError && <span className="text-xs text-destructive flex-1 truncate">{sendError}</span>}
               <button
-                type="submit"
+                type="button"
+                onClick={handleSend}
                 disabled={!composer.trim() || sending || !!blocked}
                 className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 bg-foreground text-background font-semibold rounded-xl text-sm hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -2206,7 +2215,7 @@ function MessagesPanel({ inquiryId, hasPhone }: { inquiryId: number; hasPhone: b
                 {sending ? "Sending…" : "Send"}
               </button>
             </div>
-          </form>
+          </div>
         </>
       )}
     </section>
