@@ -144,57 +144,201 @@ function nextPort(pool: number[]): number {
   return pool[idx];
 }
 
+// GoIP-class firmware uses a few different session cookie names depending
+// on the build. Default firmware ships `auth_XXXX=hex`; rebadged
+// revisions have been observed using `WEBCC_*`, `goip_*`, plain
+// `JSESSIONID`/`PHPSESSID`, or `SESSION`/`SID`. The original cookie
+// regex pinned both the name (`auth_*`) and the value shape (`[a-f0-9]+`),
+// so any non-default firmware silently fell out as "no session cookie
+// from login page". We accept any of these patterns now, and stop
+// constraining the value at all — we just hand the cookie back through
+// the exact `name=value` pair the gateway sent.
+const SESSION_COOKIE_PATTERNS: RegExp[] = [
+  /^auth_\w+$/i,
+  /^WEBCC[_-]?\w*$/i,
+  /^goip[_-]?\w*$/i,
+  /^(?:JSESSIONID|PHPSESSID|SESSION(?:ID)?|SID|sid)$/i,
+];
+
+// Login page paths we'll try, in order. Most firmware exposes
+// `login_en.html`; some Chinese-only / older builds drop the `_en` or
+// serve the login form directly off the index. EJOIN_LOGIN_PATH lets the
+// admin override without redeploying when none of the defaults match.
+const LOGIN_PATH_CANDIDATES: string[] = [
+  process.env.EJOIN_LOGIN_PATH?.trim().replace(/^\//, ""),
+  "login_en.html",
+  "login.html",
+  "index_en.html",
+  "index.html",
+].filter((p): p is string => !!p);
+
+type CookieKV = { name: string; value: string };
+
+// Parse the array of full Set-Cookie header values into the leading
+// name=value pair (cookie attributes after `;` are dropped — we don't
+// need Path/Domain/Expires for session reuse on the same origin).
+function parseSetCookies(setCookies: string[]): CookieKV[] {
+  const out: CookieKV[] = [];
+  for (const raw of setCookies) {
+    const semi = raw.indexOf(";");
+    const pair = (semi === -1 ? raw : raw.slice(0, semi)).trim();
+    const eq = pair.indexOf("=");
+    if (eq <= 0) continue;
+    const name = pair.slice(0, eq).trim();
+    const value = pair.slice(eq + 1).trim();
+    if (name && value) out.push({ name, value });
+  }
+  return out;
+}
+
+// Pick the cookie that's most likely the gateway's session token. Walks
+// the allow-list in order so the most specific match (auth_*) wins over
+// generic ones. When a server emits multiple Set-Cookie headers with the
+// same name we keep the LAST one — that mirrors how browsers resolve
+// duplicates and matches the common rotate-token pattern.
+//
+// `source` distinguishes a confident allow-list match from the
+// last-resort fallback so the caller can decide whether a downstream
+// failure (e.g. login rejected) is a credential problem (matched cookie)
+// or a wrong-cookie problem worth retrying on another login path.
+type SessionPick = { cookie: CookieKV; source: "matched" | "fallback" };
+
+function pickSessionCookie(cookies: CookieKV[]): SessionPick | null {
+  for (const pattern of SESSION_COOKIE_PATTERNS) {
+    let hit: CookieKV | null = null;
+    for (const c of cookies) if (pattern.test(c.name)) hit = c; // last wins
+    if (hit) return { cookie: hit, source: "matched" };
+  }
+  // Fallback only when there's exactly one cookie — multiple unknown
+  // cookies are too ambiguous to guess. Single-cookie responses are
+  // common on stripped-down firmware so this still helps the long tail.
+  if (cookies.length === 1) return { cookie: cookies[0], source: "fallback" };
+  return null;
+}
+
+function summarizeCookieNames(cookies: CookieKV[]): string {
+  if (cookies.length === 0) return "(none)";
+  return cookies.map(c => c.name).join(", ");
+}
+
 async function getSessionCookie(cfg: {
   baseUrl: string;
   adminUser: string;
   adminPass: string;
 }): Promise<string> {
-  const loginUrl = `${cfg.baseUrl}/login_en.html`;
+  // Per-attempt diagnostic context. When every candidate path fails we
+  // throw an error containing the whole array so the admin sees exactly
+  // what the gateway returned (status code, cookie names, body snippet)
+  // without needing to crack open the api-server log.
+  type Attempt = { path: string; status: number; cookies: string; bodyHead: string };
+  const attempts: Attempt[] = [];
 
-  // Step 1: GET login page — grab session cookie + nonce embedded in JS
-  const getResp = await fetch(loginUrl, { signal: AbortSignal.timeout(10_000) });
+  for (const path of LOGIN_PATH_CANDIDATES) {
+    const loginUrl = `${cfg.baseUrl}/${path}`;
 
-  const setCookie   = getResp.headers.get("set-cookie") ?? "";
-  const nameMatch   = setCookie.match(/(auth_[^=]+)=([a-f0-9]+)/);
-  if (!nameMatch) throw new Error("ejointech: no session cookie from login page");
-  const [, cookieName, cookieVal] = nameMatch;
+    // Step 1: GET login page — grab session cookie + nonce embedded in JS
+    let getResp: Response;
+    try {
+      getResp = await fetch(loginUrl, { signal: AbortSignal.timeout(10_000) });
+    } catch (err) {
+      attempts.push({
+        path,
+        status: 0,
+        cookies: `(network error: ${err instanceof Error ? err.message : String(err)})`,
+        bodyHead: "",
+      });
+      continue;
+    }
 
-  const pageText  = await getResp.text();
-  const nonceMatch = pageText.match(/cookies_nonce\s*=\s*"([a-f0-9]+)"/);
-  if (!nonceMatch) throw new Error("ejointech: no nonce found in login page");
-  const nonce = nonceMatch[1];
+    const cookies = parseSetCookies(getResp.headers.getSetCookie());
+    const pick = pickSessionCookie(cookies);
+    const pageText = await getResp.text();
 
-  // Step 2: POST login — hex_md5(user:pass:nonce)
-  const hash    = createHash("md5").update(`${cfg.adminUser}:${cfg.adminPass}:${nonce}`).digest("hex");
-  const encoded = `${cfg.adminUser}:${hash}`;
+    if (!pick) {
+      attempts.push({
+        path,
+        status: getResp.status,
+        cookies: summarizeCookieNames(cookies),
+        bodyHead: pageText.slice(0, 200).replace(/\s+/g, " ").trim(),
+      });
+      continue;
+    }
 
-  const body = new URLSearchParams({ encoded, nonce: "", loginStatus: "-1" });
+    const nonceMatch = pageText.match(/cookies_nonce\s*=\s*"([a-f0-9]+)"/);
+    if (!nonceMatch) {
+      attempts.push({
+        path,
+        status: getResp.status,
+        cookies: `${pick.cookie.name} (got cookie, but no cookies_nonce in page)`,
+        bodyHead: pageText.slice(0, 200).replace(/\s+/g, " ").trim(),
+      });
+      continue;
+    }
+    const nonce = nonceMatch[1];
 
-  const postResp = await fetch(loginUrl, {
-    method:  "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Cookie:         `${cookieName}=${cookieVal}`,
-    },
-    body:   body.toString(),
-    signal: AbortSignal.timeout(10_000),
-  });
+    // Step 2: POST login — hex_md5(user:pass:nonce)
+    const hash    = createHash("md5").update(`${cfg.adminUser}:${cfg.adminPass}:${nonce}`).digest("hex");
+    const encoded = `${cfg.adminUser}:${hash}`;
 
-  const postText = await postResp.text();
+    const body = new URLSearchParams({ encoded, nonce: "", loginStatus: "-1" });
 
-  // loginStatus="0" in the response page means success
-  if (!postText.includes('value="0"') && !postText.includes("initStatus==\"0\"")) {
-    throw new Error("ejointech: admin login failed — check EJOIN_ADMIN_USER / EJOIN_ADMIN_PASS");
+    const postResp = await fetch(loginUrl, {
+      method:  "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Cookie:         `${pick.cookie.name}=${pick.cookie.value}`,
+      },
+      body:   body.toString(),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const postText = await postResp.text();
+
+    // loginStatus="0" in the response page means success.
+    if (!postText.includes('value="0"') && !postText.includes("initStatus==\"0\"")) {
+      // Distinguish two failure modes:
+      //   - We picked a cookie via the allow-list (`matched`) and the
+      //     gateway still rejected the login → credentials are wrong;
+      //     no point retrying with another path that has the same
+      //     login form and the same secrets.
+      //   - We guessed via the single-cookie `fallback` → the cookie
+      //     we sent probably wasn't the session at all; record and
+      //     keep trying other paths before giving up.
+      if (pick.source === "matched") {
+        throw new Error(
+          `ejointech: admin login failed at ${path} (HTTP ${postResp.status}) — check EJOIN_ADMIN_USER / EJOIN_ADMIN_PASS`,
+        );
+      }
+      attempts.push({
+        path,
+        status: postResp.status,
+        cookies: `${pick.cookie.name} (fallback pick, login rejected)`,
+        bodyHead: postText.slice(0, 200).replace(/\s+/g, " ").trim(),
+      });
+      continue;
+    }
+
+    // Prefer the post-login Set-Cookie if the gateway rotated the
+    // session token; otherwise reuse the cookie we got on the GET.
+    const postCookies = parseSetCookies(postResp.headers.getSetCookie());
+    const postPick = pickSessionCookie(postCookies);
+    const finalCookie = postPick?.cookie ?? pick.cookie;
+
+    return `${finalCookie.name}=${finalCookie.value}`;
   }
 
-  // The post-login Set-Cookie is the authenticated session token
-  const postCookie = postResp.headers.get("set-cookie") ?? "";
-  const postMatch  = postCookie.match(/(auth_[^=]+)=([a-f0-9]+)/);
-  const authCookie = postMatch
-    ? `${postMatch[1]}=${postMatch[2]}`
-    : `${cookieName}=${cookieVal}`;
-
-  return authCookie;
+  // Every path returned without a usable session cookie. Build a single
+  // human-readable summary so it surfaces both in the api-server log
+  // and verbatim on the SMS settings page.
+  const summary = attempts
+    .map(a => `${a.path}: HTTP ${a.status}, cookies=[${a.cookies}]`)
+    .join(" | ");
+  console.warn("[ejoin] login failed — no session cookie from any login path", { attempts });
+  throw new Error(
+    `ejointech: gateway login failed — no recognized session cookie from any login path. ` +
+    `Confirm EJOIN_GATEWAY_URL points at the GoIP web UI (not the SMS API or a reverse proxy that strips Set-Cookie). ` +
+    `Tried: ${summary}`,
+  );
 }
 
 // The ejointech gateway hardware exposes 8 physical SIM ports (1..8).

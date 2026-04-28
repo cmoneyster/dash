@@ -160,3 +160,13 @@ Uses Replit AI Integrations for OpenAI (no user API key needed). Env vars auto-c
 - `AI_INTEGRATIONS_OPENAI_API_KEY`
 
 The chat agent (`/api/chat/message`) is a streaming SSE endpoint that helps customers plan their event or navigate the menu.
+
+## SMS Gateway (ejointech / GoIP)
+
+Outbound SMS, owner alerts, and the customer chat poller all go through one ejointech / GoIP-class HTTP gateway. Required env: `EJOIN_GATEWAY_URL` (web UI base URL, **not** the SMS API), `EJOIN_USER`/`EJOIN_PASS` (sendsms HTTP basic creds), `EJOIN_ADMIN_USER`/`EJOIN_ADMIN_PASS` (web admin creds used for inbound polling + backfill).
+
+Optional firmware-compatibility overrides — only set these if the defaults don't match your gateway's HTML pages:
+- `EJOIN_LOGIN_PATH` — login form path. Tried in order: this override, `login_en.html`, `login.html`, `index_en.html`, `index.html`.
+- `EJOIN_SMS_INBOX_PATH` — inbound SMS list path. Tried in order: this override, `goip_sms_inbox_en.html`, `goip_sms_recv_en.html`, `goip_sms_inbox.html`.
+
+If "Run backfill now" on the SMS Settings page errors out, the surfaced message lists every login path that was tried with the cookies + status received from the gateway — that points directly at which path/cookie name your firmware uses.
