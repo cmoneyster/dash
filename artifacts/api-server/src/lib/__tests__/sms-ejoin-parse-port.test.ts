@@ -398,6 +398,116 @@ describe("parseInboundSmsDetail — per-port drill-in page", () => {
   });
 });
 
+// Inbound timestamp parsing must interpret the gateway's wall-clock
+// strings in the install-site timezone (default America/New_York). The
+// previous implementation hand-stitched the string with a "Z" suffix,
+// causing every inbound chat bubble to render 4 h early in EDT and 5 h
+// early in EST. These tests pin the corrected behavior across summer,
+// winter, and both DST edges so we don't regress at the November
+// transition.
+describe("inbound timestamp parsing is timezone-aware (default America/New_York)", () => {
+  // Helper: assert that the row.occurredAt parsed from a listing-shape
+  // payload with the given "MM-DD HH:MM" string matches the expected
+  // UTC ISO instant. Pins the bug fix for inbound chat times shown 4 h
+  // early during EDT.
+  function listingTsRow(time: string, nowIso: string): Date {
+    const payload = JSON.stringify({
+      result: 0,
+      count: 1,
+      data: [[7, "7A", 1, "12405158960", time, "tz test", "x"]],
+    });
+    // parseInboundSmsListing uses `new Date()` internally for the year
+    // inference; we can't override that without changing the API, so we
+    // stub Date.now via Date constructor for the duration of the call.
+    const realNow = Date.now;
+    Date.now = () => new Date(nowIso).getTime();
+    const RealDate = Date;
+    // @ts-expect-error: temporary monkey-patch for the constructor's
+    // zero-arg form used inside the parser.
+    globalThis.Date = class extends RealDate {
+      constructor(...args: ConstructorParameters<typeof Date>) {
+        // @ts-expect-error rest spread into Date constructor
+        super(...(args.length === 0 ? [Date.now()] : args));
+      }
+    };
+    try {
+      const out = parseInboundSmsListData(listDataPage(payload));
+      expect(out).toHaveLength(1);
+      return out[0].occurredAt;
+    } finally {
+      globalThis.Date = RealDate;
+      Date.now = realNow;
+    }
+  }
+
+  it("listing 'MM-DD HH:MM' in July (EDT) parses to UTC + 4 h", () => {
+    // 2026-07-15 13:50 America/New_York is 17:50 UTC (UTC-4 EDT).
+    const occurredAt = listingTsRow("07-15 13:50", "2026-07-16T00:00:00Z");
+    expect(occurredAt.toISOString()).toBe("2026-07-15T17:50:00.000Z");
+  });
+
+  it("listing 'MM-DD HH:MM' in January (EST) parses to UTC + 5 h", () => {
+    // 2026-01-15 13:50 America/New_York is 18:50 UTC (UTC-5 EST).
+    const occurredAt = listingTsRow("01-15 13:50", "2026-01-16T00:00:00Z");
+    expect(occurredAt.toISOString()).toBe("2026-01-15T18:50:00.000Z");
+  });
+
+  it("legacy <tr> 'YYYY-MM-DD HH:MM:SS' in July (EDT) parses to UTC + 4 h", () => {
+    // The same 2026-07-15 13:50:00 wall clock through the legacy <tr>
+    // scanner path that parseInboundSmsHtml uses for older firmware.
+    const html = `<table>${row(["555", "7", FROM, "2026-07-15 13:50:00", BODY])}</table>`;
+    const out = parseInboundSmsHtml(html);
+    expect(out).toHaveLength(1);
+    expect(out[0].occurredAt.toISOString()).toBe("2026-07-15T17:50:00.000Z");
+  });
+
+  it("legacy <tr> 'YYYY-MM-DD HH:MM:SS' in January (EST) parses to UTC + 5 h", () => {
+    const html = `<table>${row(["556", "7", FROM, "2026-01-15 13:50:00", BODY])}</table>`;
+    const out = parseInboundSmsHtml(html);
+    expect(out).toHaveLength(1);
+    expect(out[0].occurredAt.toISOString()).toBe("2026-01-15T18:50:00.000Z");
+  });
+
+  it("spring-forward gap '2026-03-08 02:30' returns a finite Date and does not throw", () => {
+    // 02:30 on the second Sunday of March in America/New_York never
+    // exists (clocks jump 02:00 EST → 03:00 EDT). The parser must not
+    // crash; the exact instant is unspecified.
+    const html = `<table>${row(["557", "7", FROM, "2026-03-08 02:30:00", BODY])}</table>`;
+    const out = parseInboundSmsHtml(html);
+    expect(out).toHaveLength(1);
+    expect(Number.isFinite(out[0].occurredAt.getTime())).toBe(true);
+  });
+
+  it("fall-back ambiguous '2026-11-01 01:30' picks the earlier (EDT) instant", () => {
+    // 01:30 on the first Sunday of November in America/New_York occurs
+    // twice — once in EDT (UTC-4 → 05:30 UTC) and again an hour later
+    // in EST (UTC-5 → 06:30 UTC). The parser is documented to pick the
+    // earlier (still-DST) instant so the choice is deterministic and
+    // monotonically aligned with normal pre-transition messages.
+    const html = `<table>${row(["558", "7", FROM, "2026-11-01 01:30:00", BODY])}</table>`;
+    const out = parseInboundSmsHtml(html);
+    expect(out).toHaveLength(1);
+    expect(out[0].occurredAt.toISOString()).toBe("2026-11-01T05:30:00.000Z");
+  });
+
+  it("EJOIN_GATEWAY_TZ env override switches the parse zone (UTC → no offset)", () => {
+    // When an operator relocates the gateway, they can flip the env
+    // var without a redeploy. Parsing the same wall clock in UTC means
+    // no offset is applied at all.
+    const prev = process.env.EJOIN_GATEWAY_TZ;
+    process.env.EJOIN_GATEWAY_TZ = "UTC";
+    try {
+      const html = `<table>${row(["559", "7", FROM, "2026-07-15 13:50:00", BODY])}</table>`;
+      const out = parseInboundSmsHtml(html);
+      expect(out).toHaveLength(1);
+      expect(out[0].occurredAt.toISOString()).toBe("2026-07-15T13:50:00.000Z");
+    } finally {
+      if (prev === undefined) delete process.env.EJOIN_GATEWAY_TZ;
+      else process.env.EJOIN_GATEWAY_TZ = prev;
+    }
+  });
+});
+
 describe("parseInboundSmsHtml — fallback to loadListData when <tr> path is empty", () => {
   it("uses the JSON parser when no <tr> rows are present", () => {
     const payload = JSON.stringify({

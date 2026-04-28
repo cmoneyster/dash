@@ -1233,21 +1233,119 @@ function makeListDataStableId(
   return `listdata:${port}:${fromDigits}:${normalizedTime}:${content.slice(0, 24)}`;
 }
 
-// Parse the gateway's "MM-DD HH:MM[:SS]" timestamp into a Date,
-// applying the year-rollover heuristic (firmware omits the year, so we
-// assume current; if that puts the parsed time more than 24h in the
-// future, fall back to last year). Returns null when timeStr doesn't
-// match the expected shape so callers can decide whether to drop the
-// row or substitute "now".
+// Gateway timezone. The Ejoin GoIP device prints message arrival times
+// as a wall-clock string ("MM-DD HH:MM" or "YYYY-MM-DD HH:MM:SS") with
+// no timezone tag. Its onboard clock is set to local time at the
+// install site, so we must interpret those strings in that zone before
+// converting to a UTC instant for storage. Defaults to America/New_York
+// (current install). EJOIN_GATEWAY_TZ overrides without a redeploy.
+//
+// Defensive: a typo in the env var (e.g. "America/New_Yrok") would
+// otherwise throw RangeError out of every Intl.DateTimeFormat call and
+// take the entire SMS poller down. We probe the value once per call
+// and silently fall back to the default if it's not a valid IANA zone.
+const GATEWAY_TZ_DEFAULT = "America/New_York";
+let warnedAboutInvalidTz: string | null = null;
+function getGatewayTimezone(): string {
+  const raw = process.env.EJOIN_GATEWAY_TZ?.trim();
+  if (!raw) return GATEWAY_TZ_DEFAULT;
+  try {
+    // Cheap probe — constructing the formatter validates the zone.
+    new Intl.DateTimeFormat("en-US", { timeZone: raw });
+    return raw;
+  } catch {
+    if (warnedAboutInvalidTz !== raw) {
+      warnedAboutInvalidTz = raw;
+      logger.warn(
+        { envVar: "EJOIN_GATEWAY_TZ", value: raw, fallback: GATEWAY_TZ_DEFAULT },
+        "[sms-ejoin] EJOIN_GATEWAY_TZ is not a valid IANA timezone; using default",
+      );
+    }
+    return GATEWAY_TZ_DEFAULT;
+  }
+}
+
+// Compute the UTC offset (in ms) for a given instant in the target
+// timezone. Returns a NEGATIVE value for zones west of UTC, matching
+// the convention "wallClockMs - utcMs". Uses Intl.DateTimeFormat so DST
+// transitions are handled by the IANA tz database — no hardcoded
+// offsets.
+function getTimezoneOffsetMs(utcMs: number, tz: string): number {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(new Date(utcMs));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  // hourCycle "h23" with hour12:false reports midnight as 00, but some
+  // locales/runtimes still emit 24 — normalize.
+  let h = get("hour");
+  if (h === 24) h = 0;
+  const tzWallMs = Date.UTC(get("year"), get("month") - 1, get("day"), h, get("minute"), get("second"));
+  return tzWallMs - utcMs;
+}
+
+// Convert a wall-clock time in `tz` to its UTC Date. Two-pass DST
+// correction: the first pass uses the "raw wall clock as UTC" instant
+// to estimate the offset, the second pass re-checks at the corrected
+// instant. For the ambiguous fall-back hour in west-of-UTC zones
+// (e.g. 1:30 AM on the first Sunday of November in America/New_York —
+// our default install zone), this deterministically picks the EARLIER
+// (still-DST) instant — documented and pinned by test. For zones east
+// of UTC the Math.min picker can pick the later instant in the
+// equivalent ambiguous window; we accept that compromise because the
+// gateway is currently in Eastern Time and the env-var override is a
+// future-proof escape hatch, not a hot-path. For the spring-forward
+// gap (e.g. 2:30 AM on the second Sunday of March), the function
+// returns a finite Date but does not throw; the exact instant chosen
+// is unspecified because that wall clock never existed.
+function wallClockInTzToUtc(
+  y: number,
+  mo: number,
+  d: number,
+  h: number,
+  mi: number,
+  s: number,
+  tz: string,
+): Date {
+  const guessMs = Date.UTC(y, mo - 1, d, h, mi, s);
+  const offset1 = getTimezoneOffsetMs(guessMs, tz);
+  const utcMs1 = guessMs - offset1;
+  const offset2 = getTimezoneOffsetMs(utcMs1, tz);
+  // If the first-pass correction lands in a different DST regime,
+  // re-correct so the wall clock round-trips. The min() picks the
+  // earlier of the two candidates for the fall-back ambiguous hour
+  // (offset1 = -4 EDT, offset2 = -5 EST → earlier UTC instant uses
+  // offset1, the still-DST one).
+  const utcMs2 = guessMs - offset2;
+  return new Date(Math.min(utcMs1, utcMs2));
+}
+
+// Parse the gateway's "MM-DD HH:MM[:SS]" listing timestamp. The year
+// is missing from the wire format, so we use the gateway's local year
+// (not UTC year) for the initial guess; if the resulting UTC instant
+// would be more than 24 h in the future, we fall back to the prior
+// year — handles the December-to-January wraparound where the gateway
+// shows "12-31 22:00" but our server clock has already rolled into
+// the new year. Comparison is in UTC ms.
 function parseListingTimestamp(timeStr: string, now: Date): Date | null {
   const tm = /^(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(timeStr);
   if (!tm) return null;
   const [, mo, d, h, mi, s] = tm;
-  const y = now.getUTCFullYear();
-  let candidate = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
+  const tz = getGatewayTimezone();
+  const yearStr = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric" }).format(now);
+  const yNum = Number(yearStr);
+  if (!Number.isInteger(yNum)) return null;
+  let candidate = wallClockInTzToUtc(yNum, Number(mo), Number(d), Number(h), Number(mi), Number(s ?? "00"), tz);
   if (!Number.isFinite(candidate.getTime())) return null;
   if (candidate.getTime() > now.getTime() + 24 * 60 * 60 * 1000) {
-    candidate = new Date(`${y - 1}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
+    candidate = wallClockInTzToUtc(yNum - 1, Number(mo), Number(d), Number(h), Number(mi), Number(s ?? "00"), tz);
   }
   return Number.isFinite(candidate.getTime()) ? candidate : null;
 }
@@ -1376,7 +1474,10 @@ export function parseInboundSmsDetail(
       );
       if (isoMatch) {
         const [, y, mo, d, h, mi, s] = isoMatch;
-        const candidate = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
+        const candidate = wallClockInTzToUtc(
+          Number(y), Number(mo), Number(d), Number(h), Number(mi), Number(s ?? "00"),
+          getGatewayTimezone(),
+        );
         if (Number.isFinite(candidate.getTime())) when = candidate;
       }
     }
@@ -1459,7 +1560,10 @@ export function parseInboundSmsHtml(
         const m = c.match(/(\d{4})[-/](\d{2})[-/](\d{2})[\sT](\d{2}):(\d{2})(?::(\d{2}))?/);
         if (m) {
           const [, y, mo, d, h, mi, s] = m;
-          when = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
+          when = wallClockInTzToUtc(
+            Number(y), Number(mo), Number(d), Number(h), Number(mi), Number(s ?? "00"),
+            getGatewayTimezone(),
+          );
           if (Number.isNaN(when.getTime())) when = null;
           else continue;
         }
