@@ -149,6 +149,62 @@ describe("ingestInbound — owner reject dedupe (task #188)", () => {
     expect(rows).toHaveLength(5);
   });
 
+  it("env-fallback owner phone (OWNER_PHONE) also dedups on replays", async () => {
+    // Production root cause: when the DB owner phone column is blank,
+    // sms-inbox falls back to the OWNER_PHONE env var. Confirm the
+    // sentinel claim runs and dedups in that fallback path too —
+    // otherwise a deploy where OWNER_PHONE is set and the DB column
+    // is empty would still storm.
+    const ENV_OWNER = "5550199002";
+
+    // Clear the DB owner column so the env fallback path runs, and
+    // bust the in-module 5-second settings cache so the next ingest
+    // sees the change.
+    await db
+      .update(eventSettingsTable)
+      .set({ ownerNotificationPhone: null })
+      .where(eq(eventSettingsTable.id, 1));
+    const { clearSmsInboxSettingsCache } = await import("../sms-inbox");
+    clearSmsInboxSettingsCache();
+
+    const prevEnv = process.env.OWNER_PHONE;
+    process.env.OWNER_PHONE = ENV_OWNER;
+
+    try {
+      const input = {
+        gatewayMessageId: `${GID_PREFIX}env-fallback`,
+        fromPhone: ENV_OWNER,
+        body: "#5 hello",
+        occurredAt: new Date("2026-04-28T01:50:00Z"),
+        port: 7,
+      };
+
+      for (let i = 0; i < 10; i++) {
+        await ingestInbound(input);
+      }
+
+      expect(sendSmsViaEjoinMock).toHaveBeenCalledTimes(1);
+      expect(sendSmsViaEjoinMock.mock.calls[0]?.[0]).toBe(ENV_OWNER);
+
+      const rows = await db
+        .select()
+        .from(smsMessagesTable)
+        .where(eq(smsMessagesTable.gatewayMessageId, input.gatewayMessageId));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.source).toBe("owner_reject_marker");
+    } finally {
+      // Restore the env var and the DB owner column for the rest of
+      // the file so subsequent tests run against the DB-owner path.
+      if (prevEnv === undefined) delete process.env.OWNER_PHONE;
+      else process.env.OWNER_PHONE = prevEnv;
+      await db
+        .update(eventSettingsTable)
+        .set({ ownerNotificationPhone: OWNER_DIGITS })
+        .where(eq(eventSettingsTable.id, 1));
+      clearSmsInboxSettingsCache();
+    }
+  });
+
   it("backfilled rows are not re-rejected on the next poll", async () => {
     // Simulate the production failure mode: the gateway returns a
     // batch of 25 historical owner-rejected rows. The first poll

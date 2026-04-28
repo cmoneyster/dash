@@ -275,7 +275,11 @@ export type IngestResult =
   | { status: "stored"; messageId: number; inquiryId: number | null }
   | { status: "dedup"; messageId: number }
   | { status: "owner-reply-relayed"; inquiryId: number }
-  | { status: "owner-reply-rejected"; reason: OwnerRejectReason }
+  // dedup=true means the marker for this gateway-message-id was already
+  // claimed on a prior poll, so the corrective text was suppressed
+  // this pass. Distinguishing the two flavors gives operators a clean
+  // signal in the ingest log when the storm-prevention path engaged.
+  | { status: "owner-reply-rejected"; reason: OwnerRejectReason; dedup?: true }
   | { status: "blocked"; reason: BlockReason }
   | { status: "opted-out" }
   | { status: "skipped-empty" };
@@ -507,6 +511,11 @@ export async function ingestInbound(input: {
       outcome,
       inquiryId: inquiryIdLogged,
       rejectReason: result.status === "owner-reply-rejected" ? result.reason : undefined,
+      // Surfaced when the gateway-id sentinel claim was a no-op
+      // (a prior poll already handled this exact gateway row), so
+      // log scans can attribute "no SMS sent this pass" to the
+      // storm-prevention path rather than to a real rejection.
+      rejectDedup: result.status === "owner-reply-rejected" && result.dedup ? true : undefined,
       blockReason: result.status === "blocked" ? result.reason : undefined,
       messageId:
         result.status === "stored" || result.status === "dedup"
@@ -541,11 +550,13 @@ async function ingestInboundImpl(input: {
     // Helper: every reject branch below MUST claim the gateway-id
     // sentinel BEFORE sending the corrective text. If the claim fails
     // (this gid was already handled on a prior poll), suppress the
-    // send and return the same status the prior pass already returned
-    // — the operator's view of "what happened" is unchanged but we
-    // don't text the owner a second time. This is the primary fix
-    // for the overnight rejection storm.
-    const tryNotify = async (reason: OwnerRejectReason) => {
+    // send and surface dedup=true on the rejection result so the
+    // ingest logger can flag the storm-prevention path explicitly. The
+    // operator-visible reason is unchanged from the original pass.
+    // This is the primary fix for the overnight rejection storm.
+    const tryNotify = async (
+      reason: OwnerRejectReason,
+    ): Promise<IngestResult> => {
       const claimed = await claimOwnerRejectMarker({
         gatewayMessageId: input.gatewayMessageId,
         ownerDigits,
@@ -553,36 +564,35 @@ async function ingestInboundImpl(input: {
         occurredAt: input.occurredAt,
         port: input.port,
       });
-      if (claimed) await notifyOwnerOfRejection(ownerDigits, reason);
+      if (claimed) {
+        await notifyOwnerOfRejection(ownerDigits, reason);
+        return { status: "owner-reply-rejected", reason };
+      }
+      return { status: "owner-reply-rejected", reason, dedup: true };
     };
 
     // STOP coming from the owner phone is almost certainly a misfire,
     // not a real opt-out request. Don't blocklist our own owner.
     if (isStopKeyword(body)) {
-      await tryNotify("owner-reply-malformed");
-      return { status: "owner-reply-rejected", reason: "owner-reply-malformed" };
+      return await tryNotify("owner-reply-malformed");
     }
     if (!settings.ownerReplyEnabled) {
-      await tryNotify("owner-reply-disabled");
-      return { status: "owner-reply-rejected", reason: "owner-reply-disabled" };
+      return await tryNotify("owner-reply-disabled");
     }
     const tag = parseOwnerTag(body);
     if (!tag) {
-      await tryNotify("owner-reply-malformed");
-      return { status: "owner-reply-rejected", reason: "owner-reply-malformed" };
+      return await tryNotify("owner-reply-malformed");
     }
     const [inq] = await db
       .select({ id: cateringInquiriesTable.id, clientPhone: cateringInquiriesTable.clientPhone })
       .from(cateringInquiriesTable)
       .where(eq(cateringInquiriesTable.id, tag.inquiryId));
     if (!inq) {
-      await tryNotify("owner-reply-no-inquiry");
-      return { status: "owner-reply-rejected", reason: "owner-reply-no-inquiry" };
+      return await tryNotify("owner-reply-no-inquiry");
     }
     const customerDigits = normalizePhoneDigits(inq.clientPhone ?? "");
     if (!customerDigits) {
-      await tryNotify("owner-reply-no-phone");
-      return { status: "owner-reply-rejected", reason: "owner-reply-no-phone" };
+      return await tryNotify("owner-reply-no-phone");
     }
     // Dedupe BEFORE sending. The poller re-runs every few seconds and
     // the same gateway row can be returned in successive overlap
