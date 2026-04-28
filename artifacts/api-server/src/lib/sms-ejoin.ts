@@ -304,17 +304,28 @@ async function getSessionCookie(cfg: {
       //   - We guessed via the single-cookie `fallback` → the cookie
       //     we sent probably wasn't the session at all; record and
       //     keep trying other paths before giving up.
-      if (pick.source === "matched") {
-        throw new Error(
-          `ejointech: admin login failed at ${path} (HTTP ${postResp.status}) — check EJOIN_ADMIN_USER / EJOIN_ADMIN_PASS`,
-        );
-      }
-      attempts.push({
+      const bodyHead = postText.slice(0, 200).replace(/\s+/g, " ").trim();
+      const attempt: Attempt = {
         path,
         status: postResp.status,
-        cookies: `${pick.cookie.name} (fallback pick, login rejected)`,
-        bodyHead: postText.slice(0, 200).replace(/\s+/g, " ").trim(),
-      });
+        cookies: pick.source === "matched"
+          ? `${pick.cookie.name} (login rejected)`
+          : `${pick.cookie.name} (fallback pick, login rejected)`,
+        bodyHead,
+      };
+      attempts.push(attempt);
+      if (pick.source === "matched") {
+        // Same warn shape as the all-paths-failed terminal branch so
+        // ops sees consistent context regardless of which branch fires.
+        console.warn(
+          "[ejoin] login rejected — credentials look wrong",
+          { attempts },
+        );
+        throw new Error(
+          `ejointech: admin login failed at ${path} (HTTP ${postResp.status}, cookie ${pick.cookie.name}) — ` +
+          `check EJOIN_ADMIN_USER / EJOIN_ADMIN_PASS. Body head: ${bodyHead || "(empty)"}`,
+        );
+      }
       continue;
     }
 
