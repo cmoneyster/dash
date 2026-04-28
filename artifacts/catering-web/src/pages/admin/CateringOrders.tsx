@@ -2178,14 +2178,8 @@ function MessagesPanel({ inquiryId, hasPhone }: { inquiryId: number; hasPhone: b
             )}
           </div>
 
-          {/*
-            NOTE: this is intentionally a <div>, NOT a <form>. The chat composer
-            is rendered inside the inquiry editor's <form onSubmit={handleSave}>
-            (see DetailPanel below). HTML5 disallows nested forms — the parser
-            silently drops the inner <form> tag, which used to make Send re-save
-            the inquiry instead of sending the message. Keep this as a <div> and
-            wire the Send button via onClick directly.
-          */}
+          {/* Must stay a <div>, not a <form>: this is rendered inside the
+              inquiry editor's outer <form>, and HTML5 forbids nested forms. */}
           <div className="p-3 border-t border-border space-y-2">
             <textarea
               value={composer}
