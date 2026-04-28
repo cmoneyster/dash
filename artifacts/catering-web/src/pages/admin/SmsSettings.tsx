@@ -592,9 +592,19 @@ export default function SmsSettings() {
         headers,
         body: JSON.stringify({ [field]: nextValue }),
       });
-      const data = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(data?.error || "Save failed");
+      const data: unknown = await r.json().catch(() => null);
+      if (!r.ok) {
+        const errMsg =
+          data && typeof data === "object" && "error" in data && typeof (data as { error?: unknown }).error === "string"
+            ? (data as { error: string }).error
+            : "Save failed";
+        throw new Error(errMsg);
+      }
+      // BoolToggleField is a strict subset of ServerState's keys whose
+      // value type is boolean, so `next[field]` is typed as boolean
+      // without any cast.
       const next = data as ServerState;
+      const persistedValue: boolean = next[field];
       // Stale response: a newer toggle has been issued for this field
       // since we kicked off; do nothing so we don't override the user's
       // most recent intent. The newer in-flight request will resolve
@@ -605,22 +615,23 @@ export default function SmsSettings() {
       // overwrite the OTHER two booleans from this response — a parallel
       // in-flight toggle on a different field could otherwise be
       // clobbered by this response's older snapshot of that field.
-      setServer(s => (s ? { ...s, [field]: (next as any)[field] } : next));
-      applyLocal((next as any)[field] as boolean);
+      setServer(s => (s ? { ...s, [field]: persistedValue } : next));
+      applyLocal(persistedValue);
       setBoolToggleStatus(s => ({ ...s, [field]: "saved" }));
       setTimeout(() => {
         if (!isLatest()) return;
         setBoolToggleStatus(s => (s[field] === "saved" ? { ...s, [field]: "idle" } : s));
       }, 1500);
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Stale failure: drop it. The newer in-flight request owns the
       // user-visible state for this field.
       if (!isLatest()) return;
       // Revert the optimistic flip so the checkbox reflects what's
       // actually persisted.
       applyLocal(!nextValue);
+      const errMsg = e instanceof Error ? e.message : "Save failed";
       setBoolToggleStatus(s => ({ ...s, [field]: "error" }));
-      setBoolToggleError(s => ({ ...s, [field]: e?.message || "Save failed" }));
+      setBoolToggleError(s => ({ ...s, [field]: errMsg }));
     }
   }
 
@@ -1001,10 +1012,19 @@ export default function SmsSettings() {
               </p>
 
               <div className="space-y-3">
-                <label className="flex items-start gap-3 cursor-pointer">
+                {/*
+                  Each checkbox is disabled while its OWN auto-save PUT
+                  is in flight (status === "saving") so a fast double-
+                  click can't queue a second toggle on top of an
+                  unresolved first one. The unmatched checkbox is
+                  additionally disabled when the parent forward toggle
+                  is OFF (the unmatched gate is meaningless without it).
+                */}
+                <label className={`flex items-start gap-3 ${boolToggleStatus.smsOwnerForwardEnabled === "saving" ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}>
                   <input
                     type="checkbox"
                     checked={forwardEnabled}
+                    disabled={boolToggleStatus.smsOwnerForwardEnabled === "saving"}
                     onChange={e =>
                       persistChatBoolean("smsOwnerForwardEnabled", e.target.checked, setForwardEnabled)
                     }
@@ -1023,11 +1043,11 @@ export default function SmsSettings() {
                     )}
                   </span>
                 </label>
-                <label className={`flex items-start gap-3 ${forwardEnabled ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
+                <label className={`flex items-start gap-3 ${(!forwardEnabled || boolToggleStatus.smsOwnerForwardUnmatchedEnabled === "saving") ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
                   <input
                     type="checkbox"
                     checked={forwardUnmatchedEnabled}
-                    disabled={!forwardEnabled}
+                    disabled={!forwardEnabled || boolToggleStatus.smsOwnerForwardUnmatchedEnabled === "saving"}
                     onChange={e =>
                       persistChatBoolean(
                         "smsOwnerForwardUnmatchedEnabled",
@@ -1050,10 +1070,11 @@ export default function SmsSettings() {
                     )}
                   </span>
                 </label>
-                <label className="flex items-start gap-3 cursor-pointer">
+                <label className={`flex items-start gap-3 ${boolToggleStatus.smsOwnerReplyEnabled === "saving" ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}>
                   <input
                     type="checkbox"
                     checked={ownerReplyEnabled}
+                    disabled={boolToggleStatus.smsOwnerReplyEnabled === "saving"}
                     onChange={e =>
                       persistChatBoolean("smsOwnerReplyEnabled", e.target.checked, setOwnerReplyEnabled)
                     }
