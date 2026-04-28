@@ -19,7 +19,9 @@ import {
 // discarded because (a) the newer firmware doesn't emit <tr> rows so
 // the legacy parser saw an empty table, and (b) when those rows were
 // present they used "7A" / "7B" port labels that the legacy port-cell
-// regex /^[1-8]$/ rejected.
+// regex /^[1-8]$/ rejected. The current parser captures \d{1,2} and
+// then range-checks against EJOIN_PORT_COUNT, so the upper bound moves
+// with the constant rather than being hard-coded in the regex.
 
 function row(cells: string[]): string {
   return `<tr>${cells.map(c => `<td>${c}</td>`).join("")}</tr>`;

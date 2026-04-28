@@ -1155,14 +1155,19 @@ export function parseInboundSmsHtml(
       // Accept "7", "7A", "7B" (case-insensitive). The gateway's web UI
       // labels the two SIM slots in a physical port with an A/B suffix;
       // we collapse both slots to the integer port number because the
-      // chat-port setting and the send path are integer-only. The
-      // upper bound matches EJOIN_PORT_COUNT (8 physical ports).
+      // chat-port setting and the send path are integer-only. We capture
+      // the digits and then range-check against EJOIN_PORT_COUNT rather
+      // than hard-coding the bound in the regex, so bumping the constant
+      // is a one-line change instead of a code search.
       if (port == null) {
-        const m = /^([1-8])[A-Za-z]?$/.exec(c);
+        const m = /^(\d{1,2})[A-Za-z]?$/.exec(c);
         if (m) {
-          port = Number(m[1]);
-          portCell = c;
-          continue;
+          const candidate = Number(m[1]);
+          if (Number.isInteger(candidate) && candidate >= 1 && candidate <= EJOIN_PORT_COUNT) {
+            port = candidate;
+            portCell = c;
+            continue;
+          }
         }
       }
       if (from == null && /[+]?\d[\d\s\-().]{6,}$/.test(c.replace(/\s/g, "")) && c.replace(/\D/g, "").length >= 7 && c.length < 30) {
