@@ -28,7 +28,11 @@ watch its output for the prompt strings, and write a carriage return
 to the master fd to confirm the highlighted default ("create column"
 or "create table") for each prompt. The default is always the correct
 choice in this codebase because we don't perform column renames via
-drizzle.
+drizzle. If a future task genuinely needs to rename a column via
+drizzle-kit, do NOT rely on this script — run `pnpm --filter
+@workspace/db push` interactively from a real shell so you can answer
+the rename prompt yourself, then commit the resulting schema state
+before merging.
 
 Failure modes covered:
   * No prompt at all (clean push) — process exits naturally; the read
