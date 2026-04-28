@@ -236,15 +236,35 @@ async function getSessionCookie(cfg: {
   for (const path of LOGIN_PATH_CANDIDATES) {
     const loginUrl = `${cfg.baseUrl}/${path}`;
 
-    // Step 1: GET login page — grab session cookie + nonce embedded in JS
-    let getResp: Response;
-    try {
-      getResp = await fetch(loginUrl, { signal: AbortSignal.timeout(10_000) });
-    } catch (err) {
+    // Step 1: GET login page — grab session cookie + nonce embedded in JS.
+    //
+    // GoIP firmware soft-rate-limits its login form: when too many
+    // logins land in a short window it returns HTTP 503 ("Server Busy")
+    // for ~minutes before clearing on its own. That same window also
+    // catches us when our own inbound poller is doing the hammering.
+    // So when we see a 503 (or a network timeout / reset) on the GET,
+    // wait briefly and try the same path once more before recording it
+    // as failed. Real config errors (404 = wrong path, malformed HTML,
+    // missing cookie) still bail out immediately.
+    let getResp: Response | null = null;
+    let getErr: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      getErr = null;
+      try {
+        getResp = await fetch(loginUrl, { signal: AbortSignal.timeout(10_000) });
+      } catch (err) {
+        getResp = null;
+        getErr = err;
+      }
+      const transient = getErr != null || (getResp != null && getResp.status === 503);
+      if (!transient || attempt === 1) break;
+      await new Promise(r => setTimeout(r, 400));
+    }
+    if (!getResp) {
       attempts.push({
         path,
         status: 0,
-        cookies: `(network error: ${err instanceof Error ? err.message : String(err)})`,
+        cookies: `(network error: ${getErr instanceof Error ? getErr.message : String(getErr)})`,
         bodyHead: "",
       });
       continue;
@@ -352,6 +372,92 @@ async function getSessionCookie(cfg: {
   );
 }
 
+// ── Session cookie cache ──────────────────────────────────────────────────────
+//
+// Without caching, every outbound send and every inbound poll cycle calls
+// getSessionCookie() and re-authenticates from scratch. That's fine for
+// one-off sends, but ruinous for the inbound poller: it fires every 3s
+// whenever a customer chat port is set, which works out to ~20 gateway
+// logins per minute around the clock. GoIP firmware silently rate-limits
+// its login form (HTTP 503 "Server Busy") once it sees that volume, which
+// then breaks every SMS feature in the app — quote sends, owner alerts,
+// low-stock alerts, customer chat — for several minutes at a time.
+//
+// We hold one authenticated cookie per process for SESSION_TTL_MS
+// (default 10 min, overridable via EJOIN_SESSION_TTL_SECONDS). Concurrent
+// cache misses are deduped through an in-flight promise so a burst of
+// poller + outbound calls only triggers one login. Callers that detect a
+// stale session (response shows the login page or 401/403) call
+// invalidateSessionCache() and retry once with a fresh cookie before
+// surfacing the failure.
+const SESSION_TTL_MS: number = (() => {
+  const raw = process.env.EJOIN_SESSION_TTL_SECONDS?.trim();
+  if (raw) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return Math.floor(n * 1000);
+  }
+  return 10 * 60_000;
+})();
+
+let sessionCache: { cookie: string; expiresAt: number } | null = null;
+let sessionInflight: Promise<string> | null = null;
+
+function invalidateSessionCache(): void {
+  sessionCache = null;
+}
+
+// Public escape hatch (mirrors clearEjoinPortCache) so future callers
+// can force a re-login — e.g. an admin "rotate session" button or a
+// settings save that rotates EJOIN_ADMIN_PASS.
+export function clearEjoinSessionCache(): void {
+  invalidateSessionCache();
+}
+
+async function getCachedSessionCookie(cfg: {
+  baseUrl: string;
+  adminUser: string;
+  adminPass: string;
+}): Promise<string> {
+  const now = Date.now();
+  if (sessionCache && sessionCache.expiresAt > now) return sessionCache.cookie;
+  if (sessionInflight) return sessionInflight;
+  sessionInflight = (async () => {
+    try {
+      const cookie = await getSessionCookie(cfg);
+      sessionCache = { cookie, expiresAt: Date.now() + SESSION_TTL_MS };
+      return cookie;
+    } finally {
+      sessionInflight = null;
+    }
+  })();
+  return sessionInflight;
+}
+
+// Heuristic: a gateway response that contains login-form markup means
+// our session cookie is no longer valid (idle timeout, gateway reboot,
+// admin password rotation, etc). Used by sendSmsViaEjoin and
+// fetchInboundSms to invalidate the cached cookie and retry once with
+// a fresh login before surfacing the error to the user.
+//
+// We match a STRUCTURAL HTML signal — an unescaped <form> element
+// whose action attribute points at a login_*.html path — never plain
+// substrings of body text. This matters because the inbox response
+// embeds user-supplied SMS content; if we matched against substrings
+// like "Login restricted" or "cookies_nonce", an attacker could text
+// the gateway one of those strings and the 3-second poller would
+// flap into a re-auth loop on every cycle, recreating the very rate-
+// limit lockout this cache is meant to prevent. The gateway HTML-
+// escapes message bodies into inbox table cells, so a raw `<form>`
+// tag with that action attribute cannot appear inside a user's
+// message — it only appears when the gateway itself is serving the
+// login page. We also lean on 401/403 status codes (handled at the
+// call sites) as a second, content-independent signal.
+const LOGIN_FORM_RE = /<form[^>]+action\s*=\s*["']?[^"' >]*login[^"' >]*\.html/i;
+
+function looksLikeLoginPage(body: string): boolean {
+  return LOGIN_FORM_RE.test(body);
+}
+
 // The ejointech gateway hardware exposes 8 physical SIM ports (1..8).
 // Centralized here so the admin UI, route validation, and runtime checks
 // all stay in sync if the hardware ever changes.
@@ -383,7 +489,6 @@ export async function sendSmsViaEjoin(
     port = nextPort(pool);
   }
 
-  const cookie = await getSessionCookie(cfg);
   const phone  = normalizePhone(to);
 
   // App-wide blocklist enforcement at the actual send boundary. Every
@@ -409,31 +514,57 @@ export async function sendSmsViaEjoin(
     goip_sms_sendfail: "0",
   });
 
-  const resp = await fetch(`${cfg.baseUrl}/goip_sms_en.html`, {
-    method:  "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Cookie:         cookie,
-      Referer:        `${cfg.baseUrl}/goip_sms_en.html`,
-    },
-    body:   body.toString(),
-    signal: AbortSignal.timeout(15_000),
-  });
+  // One inner POST attempt with a given cookie. We hand the response
+  // back as a structured result so the outer wrapper can decide whether
+  // to invalidate the cached cookie and re-login (HTTP 401/403 or the
+  // gateway returning the login HTML inside a 200 response are all
+  // session-rejection signals).
+  const attemptSend = async (cookie: string): Promise<{
+    text: string;
+    status: number;
+    rejected: boolean;
+  }> => {
+    const resp = await fetch(`${cfg.baseUrl}/goip_sms_en.html`, {
+      method:  "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Cookie:         cookie,
+        Referer:        `${cfg.baseUrl}/goip_sms_en.html`,
+      },
+      body:   body.toString(),
+      signal: AbortSignal.timeout(15_000),
+    });
+    // Genuine non-auth gateway errors (500, 502, 503 from the SMS form
+    // itself) should fail fast — those aren't fixable by re-logging in.
+    if (!resp.ok && resp.status !== 401 && resp.status !== 403) {
+      throw new Error(`ejointech SMS POST failed: HTTP ${resp.status}`);
+    }
+    const text = await resp.text();
+    const rejected = !resp.ok || looksLikeLoginPage(text);
+    return { text, status: resp.status, rejected };
+  };
 
-  if (!resp.ok) {
-    throw new Error(`ejointech SMS POST failed: HTTP ${resp.status}`);
-  }
-
-  const text = await resp.text();
-  if (text.includes("Login restricted") || text.includes("login_en.html")) {
-    throw new Error("ejointech: session rejected after login — IP may be blocked");
+  let cookie = await getCachedSessionCookie(cfg);
+  let result = await attemptSend(cookie);
+  if (result.rejected) {
+    // Cached session looks stale (idle timeout, gateway reboot, or
+    // creds rotated). Re-authenticate once and retry; if it still
+    // rejects after a fresh login, surface the failure.
+    invalidateSessionCache();
+    cookie = await getCachedSessionCookie(cfg);
+    result = await attemptSend(cookie);
+    if (result.rejected) {
+      throw new Error(
+        "ejointech: session rejected after fresh login — gateway may be IP-blocking the app or admin credentials are wrong",
+      );
+    }
   }
 
   // Distill the gateway's HTML response into a one-liner the admin UI can
   // surface. The send page typically embeds a status hint we can grep for;
   // when nothing matches we fall back to a generic "accepted" string with
   // the HTTP status so the admin still gets useful feedback.
-  const gatewayResponse = summarizeGatewayResponse(text, resp.status);
+  const gatewayResponse = summarizeGatewayResponse(result.text, result.status);
 
   console.info(`[ejoin] SMS sent to ${phone} via port ${port}: ${gatewayResponse}`);
 
@@ -537,7 +668,6 @@ export async function fetchInboundSms(opts?: {
 }): Promise<InboundSms[]> {
   const cfg = getCredentials();
   if (!cfg) return [];
-  const cookie = await getSessionCookie(cfg);
   // Try the documented inbox page; firmware typically exposes one of
   // these. Configurable via EJOIN_SMS_INBOX_PATH for unusual firmware.
   const candidates = [
@@ -546,27 +676,69 @@ export async function fetchInboundSms(opts?: {
     "goip_sms_recv_en.html",
     "goip_sms_inbox.html",
   ].filter((p): p is string => !!p);
-  let html: string | null = null;
-  let lastErr: unknown = null;
-  for (const path of candidates) {
-    try {
-      const resp = await fetch(`${cfg.baseUrl}/${path}`, {
-        headers: { Cookie: cookie, Referer: `${cfg.baseUrl}/${path}` },
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (resp.ok) {
-        html = await resp.text();
-        if (html && html.length > 0) break;
+
+  // Inner: try every candidate path with the supplied cookie. Returns
+  // a structured result so the outer wrapper can detect a stale session
+  // (401/403, or some firmware just serves the login HTML inside a 200)
+  // and decide whether to invalidate the cached cookie and retry once
+  // with a fresh login.
+  const attemptFetch = async (cookie: string): Promise<{
+    html: string | null;
+    rejected: boolean;
+    lastErr: unknown;
+  }> => {
+    let lastErr: unknown = null;
+    for (const path of candidates) {
+      try {
+        const resp = await fetch(`${cfg.baseUrl}/${path}`, {
+          headers: { Cookie: cookie, Referer: `${cfg.baseUrl}/${path}` },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (resp.status === 401 || resp.status === 403) {
+          return { html: null, rejected: true, lastErr: null };
+        }
+        if (resp.ok) {
+          const body = await resp.text();
+          if (body && body.length > 0) {
+            // Some firmware returns 200 + the login HTML when the
+            // session is stale instead of redirecting; treat that as a
+            // rejection so we re-authenticate rather than try to parse
+            // the login form as an SMS table.
+            if (looksLikeLoginPage(body)) {
+              return { html: null, rejected: true, lastErr: null };
+            }
+            return { html: body, rejected: false, lastErr: null };
+          }
+        }
+      } catch (err) {
+        lastErr = err;
       }
-    } catch (err) {
-      lastErr = err;
+    }
+    return { html: null, rejected: false, lastErr };
+  };
+
+  let cookie = await getCachedSessionCookie(cfg);
+  let result = await attemptFetch(cookie);
+  if (result.rejected) {
+    invalidateSessionCache();
+    cookie = await getCachedSessionCookie(cfg);
+    result = await attemptFetch(cookie);
+    if (result.rejected) {
+      // Two consecutive rejections (cached cookie + brand-new login)
+      // means the gateway is actively refusing us — IP-block, wrong
+      // credentials, or every poll cycle will quietly produce zero
+      // messages. Surface a warning so the issue is visible in the
+      // log instead of silently returning an empty list forever.
+      console.warn(
+        "[ejoin] inbound poll: session rejected even after fresh login — gateway may be IP-blocking the app or admin credentials are wrong",
+      );
     }
   }
-  if (!html) {
-    if (lastErr) console.warn("[ejoin] inbound poll failed", lastErr);
+  if (!result.html) {
+    if (result.lastErr) console.warn("[ejoin] inbound poll failed", result.lastErr);
     return [];
   }
-  return parseInboundSmsHtml(html, opts);
+  return parseInboundSmsHtml(result.html, opts);
 }
 
 // Best-effort HTML scraper. The GoIP "received SMS" page renders a

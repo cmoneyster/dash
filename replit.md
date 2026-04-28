@@ -165,8 +165,11 @@ The chat agent (`/api/chat/message`) is a streaming SSE endpoint that helps cust
 
 Outbound SMS, owner alerts, and the customer chat poller all go through one ejointech / GoIP-class HTTP gateway. Required env: `EJOIN_GATEWAY_URL` (web UI base URL, **not** the SMS API), `EJOIN_USER`/`EJOIN_PASS` (sendsms HTTP basic creds), `EJOIN_ADMIN_USER`/`EJOIN_ADMIN_PASS` (web admin creds used for inbound polling + backfill).
 
+The gateway session cookie is cached process-wide so every send and every poll cycle reuses the same login. Without caching, the inbound poller (3s cadence whenever a customer chat port is set) generates ~20 logins/min around the clock, which trips the GoIP firmware's login-form rate-limit (HTTP 503 "Server Busy" for several minutes at a time) and breaks every SMS feature in the app. With caching, the gateway only sees one login per session window. When the gateway invalidates the session (idle timeout, reboot, password rotation), the next request transparently re-authenticates once before surfacing the error.
+
 Optional firmware-compatibility overrides — only set these if the defaults don't match your gateway's HTML pages:
-- `EJOIN_LOGIN_PATH` — login form path. Tried in order: this override, `login_en.html`, `login.html`, `index_en.html`, `index.html`.
+- `EJOIN_LOGIN_PATH` — login form path. Tried in order: this override, `login_en.html`, `login.html`, `index_en.html`, `index.html`. The login GET is automatically retried once on transient 503 / network errors before being recorded as failed.
 - `EJOIN_SMS_INBOX_PATH` — inbound SMS list path. Tried in order: this override, `goip_sms_inbox_en.html`, `goip_sms_recv_en.html`, `goip_sms_inbox.html`.
+- `EJOIN_SESSION_TTL_SECONDS` — how long the cached session cookie is reused before forcing a re-login. Default `600` (10 min). Tighten if your firmware's idle timeout is shorter than that.
 
 If "Run backfill now" on the SMS Settings page errors out, the surfaced message lists every login path that was tried with the cookies + status received from the gateway — that points directly at which path/cookie name your firmware uses.
