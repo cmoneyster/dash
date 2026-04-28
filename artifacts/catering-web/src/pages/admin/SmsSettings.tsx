@@ -760,8 +760,9 @@ export default function SmsSettings() {
               <p className="text-sm text-muted-foreground">
                 Forward inbound customer texts to the owner phone, optionally let the owner reply back from their phone using the
                 <code className="mx-1 px-1.5 py-0.5 bg-secondary rounded">#&lt;inquiry-id&gt;</code> tag, and choose how far back to
-                pull existing SIM messages on first deployment. Owner forwarding requires the Owner Notifications phone above to
-                be set.
+                pull existing SIM messages on first deployment. Owner forwarding goes to the chat-owner phone configured under
+                Customer Chat Port (or, if blank, falls back to the Owner Notifications phone below) — at least one of the two
+                must be set.
               </p>
 
               <div className="space-y-3">
