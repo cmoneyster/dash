@@ -599,6 +599,12 @@ export default function SmsSettings() {
                   placeholder="+1 555 123 4567"
                   className="w-full px-4 py-2 border border-border rounded-xl bg-background"
                 />
+                {server?.ownerNotificationPhoneSource === "env" && (
+                  <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                    Owner alerts are currently being sent to the legacy <code>OWNER_PHONE</code> environment value.
+                    Save a number above to take control here, or unset the <code>OWNER_PHONE</code> environment value to disable owner alerts entirely.
+                  </div>
+                )}
               </div>
               {ownerError && <p className="text-destructive text-sm">{ownerError}</p>}
               <div className="flex items-center gap-3 flex-wrap">

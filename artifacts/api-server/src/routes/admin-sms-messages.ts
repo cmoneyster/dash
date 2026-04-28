@@ -31,7 +31,7 @@ import {
   cateringInquiriesTable,
   eventSettingsTable,
 } from "@workspace/db/schema";
-import { and, desc, eq, isNull, isNotNull, inArray, notInArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, isNotNull, inArray, notInArray, sql } from "drizzle-orm";
 import { requireAdminAuth } from "../lib/adminAuth";
 import {
   ingestInbound,
@@ -211,10 +211,10 @@ router.get("/admin/messages/unmatched", async (req, res) => {
       .where(and(
         eq(smsMessagesTable.direction, "inbound"),
         isNull(smsMessagesTable.inquiryId),
-        // Owner-relay sentinel rows occupy the gateway-id slot for
-        // dedupe but are not real customer inbounds — keep them out
-        // of the Unmatched inbox.
-        ne(smsMessagesTable.source, "owner_relay_marker"),
+        // Owner-relay AND owner-reject sentinel rows occupy the
+        // gateway-id slot for dedupe but are not real customer
+        // inbounds — keep them out of the Unmatched inbox.
+        notInArray(smsMessagesTable.source, ["owner_relay_marker", "owner_reject_marker"]),
       ))
       .orderBy(desc(smsMessagesTable.occurredAt))
       .limit(limit);
@@ -309,7 +309,7 @@ router.post("/admin/messages/unmatched/mark-seen", async (req, res) => {
       eq(smsMessagesTable.direction, "inbound"),
       isNull(smsMessagesTable.inquiryId),
       eq(smsMessagesTable.seenByAdmin, false),
-      ne(smsMessagesTable.source, "owner_relay_marker"),
+      notInArray(smsMessagesTable.source, ["owner_relay_marker", "owner_reject_marker"]),
     ];
     const cond = blocked.length > 0
       ? and(...baseConds, notInArray(smsMessagesTable.customerPhone, blocked))
@@ -434,7 +434,7 @@ router.get("/admin/messages/badges", async (req, res) => {
         eq(smsMessagesTable.direction, "inbound"),
         isNull(smsMessagesTable.inquiryId),
         eq(smsMessagesTable.seenByAdmin, false),
-        ne(smsMessagesTable.source, "owner_relay_marker"),
+        notInArray(smsMessagesTable.source, ["owner_relay_marker", "owner_reject_marker"]),
       ));
     const unmatchedCount = unmatchedRows.filter(r => !blocked.has(r.phone)).length;
 

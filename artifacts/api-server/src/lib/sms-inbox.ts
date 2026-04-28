@@ -295,13 +295,87 @@ const OWNER_REJECT_MESSAGES: Record<OwnerRejectReason, string> = {
     "Couldn't relay your reply: that inquiry has no customer phone on file.",
 };
 
+// Defense-in-depth rolling-window cap on owner-reject corrective sends.
+// The DB-backed sentinel claim (claimOwnerRejectMarker) is the primary
+// stop on replays, but if a future code path forgets to claim first
+// (or a brand-new gateway-id slips through on every poll), this cap
+// keeps a runaway loop from texting the owner more than RATE_MAX_PER
+// _WINDOW times per ROLLING_WINDOW_MS. State is in-memory and resets
+// on process restart — that's fine: the sentinel handles the persistent
+// case and this is purely a circuit breaker.
+const OWNER_REJECT_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const OWNER_REJECT_RATE_MAX = 3;
+const ownerRejectSendTimestamps = new Map<string, number[]>();
+
+function shouldSendOwnerRejectNow(ownerDigits: string, now: number): boolean {
+  const key = ownerDigits;
+  const cutoff = now - OWNER_REJECT_RATE_WINDOW_MS;
+  const recent = (ownerRejectSendTimestamps.get(key) ?? []).filter(t => t > cutoff);
+  if (recent.length >= OWNER_REJECT_RATE_MAX) {
+    ownerRejectSendTimestamps.set(key, recent);
+    return false;
+  }
+  recent.push(now);
+  ownerRejectSendTimestamps.set(key, recent);
+  return true;
+}
+
+// Test hook so the dedupe regression test can start each case from a
+// clean rate-limiter state without exporting the Map itself.
+export function _resetOwnerRejectRateLimitForTests(): void {
+  ownerRejectSendTimestamps.clear();
+}
+
+// Claim the gateway-message-id with a sentinel inbound row BEFORE we
+// send any corrective text. If the unique index trips (returning [])
+// then a previous poll cycle already handled this exact gateway row
+// and we must NOT re-send the rejection — that's the bug behind the
+// 900-text overnight storm: the owner-reject branches notified first
+// and dedup-claimed never, so every poller pass replayed every
+// previously-rejected owner inbound. Sentinel rows are flagged
+// seenByAdmin=true and excluded from the Unmatched query (see
+// admin-sms-messages.ts) so they stay invisible in the UI while
+// still occupying the gatewayMessageId slot.
+async function claimOwnerRejectMarker(input: {
+  gatewayMessageId: string;
+  ownerDigits: string;
+  body: string;
+  occurredAt: Date;
+  port: number;
+}): Promise<boolean> {
+  const [marker] = await db
+    .insert(smsMessagesTable)
+    .values({
+      direction: "inbound",
+      customerPhone: input.ownerDigits,
+      body: input.body,
+      occurredAt: input.occurredAt,
+      port: input.port,
+      inquiryId: null,
+      seenByAdmin: true,
+      gatewayMessageId: input.gatewayMessageId,
+      source: "owner_reject_marker",
+    })
+    .onConflictDoNothing({ target: smsMessagesTable.gatewayMessageId })
+    .returning();
+  return !!marker;
+}
+
 // Best-effort corrective text back to the owner. Failures are logged
 // but never thrown — we don't want to crash ingest because the owner's
-// phone is temporarily unreachable.
+// phone is temporarily unreachable. The rate-limiter is the last line
+// of defense if the per-message sentinel claim above is bypassed.
 async function notifyOwnerOfRejection(
   ownerDigits: string,
   reason: OwnerRejectReason,
 ): Promise<void> {
+  if (!shouldSendOwnerRejectNow(ownerDigits, Date.now())) {
+    console.warn(
+      "[sms-inbox] owner-reject rate cap reached; suppressing send",
+      { ownerDigits, reason, capPerHour: OWNER_REJECT_RATE_MAX },
+    );
+    return;
+  }
   try {
     await sendSmsViaEjoin(ownerDigits, OWNER_REJECT_MESSAGES[reason]);
   } catch (err) {
@@ -464,19 +538,37 @@ async function ingestInboundImpl(input: {
   const settings = await getRelevantSettings();
   const ownerDigits = await getOwnerPhoneDigits();
   if (ownerDigits && fromDigits === ownerDigits) {
+    // Helper: every reject branch below MUST claim the gateway-id
+    // sentinel BEFORE sending the corrective text. If the claim fails
+    // (this gid was already handled on a prior poll), suppress the
+    // send and return the same status the prior pass already returned
+    // — the operator's view of "what happened" is unchanged but we
+    // don't text the owner a second time. This is the primary fix
+    // for the overnight rejection storm.
+    const tryNotify = async (reason: OwnerRejectReason) => {
+      const claimed = await claimOwnerRejectMarker({
+        gatewayMessageId: input.gatewayMessageId,
+        ownerDigits,
+        body,
+        occurredAt: input.occurredAt,
+        port: input.port,
+      });
+      if (claimed) await notifyOwnerOfRejection(ownerDigits, reason);
+    };
+
     // STOP coming from the owner phone is almost certainly a misfire,
     // not a real opt-out request. Don't blocklist our own owner.
     if (isStopKeyword(body)) {
-      await notifyOwnerOfRejection(ownerDigits, "owner-reply-malformed");
+      await tryNotify("owner-reply-malformed");
       return { status: "owner-reply-rejected", reason: "owner-reply-malformed" };
     }
     if (!settings.ownerReplyEnabled) {
-      await notifyOwnerOfRejection(ownerDigits, "owner-reply-disabled");
+      await tryNotify("owner-reply-disabled");
       return { status: "owner-reply-rejected", reason: "owner-reply-disabled" };
     }
     const tag = parseOwnerTag(body);
     if (!tag) {
-      await notifyOwnerOfRejection(ownerDigits, "owner-reply-malformed");
+      await tryNotify("owner-reply-malformed");
       return { status: "owner-reply-rejected", reason: "owner-reply-malformed" };
     }
     const [inq] = await db
@@ -484,12 +576,12 @@ async function ingestInboundImpl(input: {
       .from(cateringInquiriesTable)
       .where(eq(cateringInquiriesTable.id, tag.inquiryId));
     if (!inq) {
-      await notifyOwnerOfRejection(ownerDigits, "owner-reply-no-inquiry");
+      await tryNotify("owner-reply-no-inquiry");
       return { status: "owner-reply-rejected", reason: "owner-reply-no-inquiry" };
     }
     const customerDigits = normalizePhoneDigits(inq.clientPhone ?? "");
     if (!customerDigits) {
-      await notifyOwnerOfRejection(ownerDigits, "owner-reply-no-phone");
+      await tryNotify("owner-reply-no-phone");
       return { status: "owner-reply-rejected", reason: "owner-reply-no-phone" };
     }
     // Dedupe BEFORE sending. The poller re-runs every few seconds and
