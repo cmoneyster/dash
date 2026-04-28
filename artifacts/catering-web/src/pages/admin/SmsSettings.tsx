@@ -127,11 +127,35 @@ export default function SmsSettings() {
   const [savedAlerts, setSavedAlerts] = useState(false);
   const [alertsError, setAlertsError] = useState("");
 
-  // Feedback for the two pre-built test buttons.
+  // Feedback for the pre-built test buttons.
   const [lowStockFeedback, setLowStockFeedback] = useState<Feedback>(null);
   const [sendingLowStock, setSendingLowStock] = useState(false);
   const [ownerTestFeedback, setOwnerTestFeedback] = useState<Feedback>(null);
   const [sendingOwnerTest, setSendingOwnerTest] = useState(false);
+  const [chatOwnerTestFeedback, setChatOwnerTestFeedback] = useState<Feedback>(null);
+  const [sendingChatOwnerTest, setSendingChatOwnerTest] = useState(false);
+
+  // Per-button post-send cooldown so admins can't fire repeated test
+  // texts at the gateway / their own phone in rapid succession. Tracked
+  // as the unix-ms timestamp at which the button becomes pressable
+  // again (0 = no cooldown active). 10s window matches the time it
+  // typically takes a real SMS to round-trip the gateway, so by the
+  // time the cooldown clears the admin has either seen the test text
+  // or has good evidence that something went wrong.
+  const TEST_COOLDOWN_MS = 10_000;
+  const [ownerTestCooldownUntil, setOwnerTestCooldownUntil] = useState(0);
+  const [chatOwnerTestCooldownUntil, setChatOwnerTestCooldownUntil] = useState(0);
+  // Drives a 1Hz re-render so the "Retry in Ns" countdown ticks down
+  // visually without each cooldown owning its own setInterval.
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  useEffect(() => {
+    const anyActive = ownerTestCooldownUntil > nowTs || chatOwnerTestCooldownUntil > nowTs;
+    if (!anyActive) return;
+    const id = setInterval(() => setNowTs(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, [ownerTestCooldownUntil, chatOwnerTestCooldownUntil, nowTs]);
+  const ownerTestCooldownLeft = Math.max(0, Math.ceil((ownerTestCooldownUntil - nowTs) / 1000));
+  const chatOwnerTestCooldownLeft = Math.max(0, Math.ceil((chatOwnerTestCooldownUntil - nowTs) / 1000));
 
   async function loadSettings() {
     setLoading(true);
@@ -265,6 +289,12 @@ export default function SmsSettings() {
       setOwnerTestFeedback({ kind: "error", message: e?.message || "Failed to send owner test" });
     } finally {
       setSendingOwnerTest(false);
+      // Cooldown applies whether the send succeeded or failed — a
+      // failure that's actually a slow-but-eventually-delivered SMS
+      // shouldn't let the admin spam-retry and end up with five
+      // identical texts on their phone.
+      setOwnerTestCooldownUntil(Date.now() + TEST_COOLDOWN_MS);
+      setNowTs(Date.now());
     }
   }
 
@@ -397,6 +427,37 @@ export default function SmsSettings() {
     }
   }
 
+  async function handleSendChatOwnerTest() {
+    setSendingChatOwnerTest(true);
+    setChatOwnerTestFeedback(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/sms-settings/test-chat-owner-alert`, { method: "POST", headers });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Failed to send chat-owner test");
+      const sourceLabel =
+        data?.smsChatOwnerPhoneSource === "db-owner"
+          ? " (using Owner Notifications phone)"
+          : data?.smsChatOwnerPhoneSource === "env"
+          ? " (using legacy OWNER_PHONE env var)"
+          : "";
+      const portInfo = data?.port != null ? ` via chat port ${data.port}` : "";
+      const gateway = data?.gatewayResponse ? ` Gateway: ${data.gatewayResponse}.` : "";
+      setChatOwnerTestFeedback({
+        kind: "success",
+        message: `Sent test to ${data?.sentTo}${portInfo}${sourceLabel}.${gateway}`,
+      });
+    } catch (e: any) {
+      setChatOwnerTestFeedback({ kind: "error", message: e?.message || "Failed to send chat-owner test" });
+    } finally {
+      setSendingChatOwnerTest(false);
+      // Same per-button cooldown shape as the owner-alert test —
+      // applies on success or failure so admins can't spam-retry the
+      // chat port.
+      setChatOwnerTestCooldownUntil(Date.now() + TEST_COOLDOWN_MS);
+      setNowTs(Date.now());
+    }
+  }
+
   // ── Customer Chat behavior card (forwarding + backfill window) ─────────────
 
   async function saveChatBehavior() {
@@ -471,6 +532,7 @@ export default function SmsSettings() {
   // didn't apply".
   const portsDirty = server ? !portsEqual(selectedPortsArray(), server.smsActivePorts) : true;
   const ownerDirty = server ? (ownerPhone.trim() || null) !== server.ownerNotificationPhone : true;
+  const chatOwnerDirty = server ? (chatOwnerPhone.trim() || null) !== server.smsChatOwnerPhone : true;
   const alertsDirty = (() => {
     if (!server) return true;
     const cleaned = alertPhones.map(p => p.trim()).filter(Boolean);
@@ -655,7 +717,7 @@ export default function SmsSettings() {
                 {chatOwnerPhoneError && (
                   <p className="text-destructive text-sm">{chatOwnerPhoneError}</p>
                 )}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <button
                     type="button"
                     onClick={saveChatOwnerPhone}
@@ -671,7 +733,42 @@ export default function SmsSettings() {
                     )}
                     {savingChatOwnerPhone ? "Saving…" : savedChatOwnerPhone ? "Saved!" : "Save Chat Owner Phone"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleSendChatOwnerTest}
+                    disabled={
+                      sendingChatOwnerTest ||
+                      chatOwnerTestCooldownLeft > 0 ||
+                      chatOwnerDirty ||
+                      server?.smsChatOwnerPhoneSource === "none" ||
+                      server?.smsChatPort == null
+                    }
+                    title={
+                      server?.smsChatPort == null
+                        ? "Pick a customer chat port first."
+                        : server?.smsChatOwnerPhoneSource === "none"
+                        ? "Save a chat-owner phone first (or fall back to Owner Notifications / OWNER_PHONE)."
+                        : chatOwnerDirty
+                        ? "Save your changes before testing."
+                        : chatOwnerTestCooldownLeft > 0
+                        ? `Cooling down — try again in ${chatOwnerTestCooldownLeft}s.`
+                        : "Send a test SMS through the chat port to the effective chat-owner number."
+                    }
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-2 hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {sendingChatOwnerTest ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    {sendingChatOwnerTest
+                      ? "Sending…"
+                      : chatOwnerTestCooldownLeft > 0
+                      ? `Retry in ${chatOwnerTestCooldownLeft}s`
+                      : "Send Test Chat-Owner Text"}
+                  </button>
                 </div>
+                {chatOwnerTestFeedback && (
+                  <p className={chatOwnerTestFeedback.kind === "success" ? "text-xs text-emerald-600" : "text-xs text-destructive"}>
+                    {chatOwnerTestFeedback.message}
+                  </p>
+                )}
               </div>
             </section>
 
@@ -730,18 +827,29 @@ export default function SmsSettings() {
                 <button
                   type="button"
                   onClick={handleSendOwnerTest}
-                  disabled={sendingOwnerTest || ownerDirty || server?.ownerNotificationPhoneSource === "none"}
+                  disabled={
+                    sendingOwnerTest ||
+                    ownerTestCooldownLeft > 0 ||
+                    ownerDirty ||
+                    server?.ownerNotificationPhoneSource === "none"
+                  }
                   title={
                     server?.ownerNotificationPhoneSource === "none"
                       ? "Save an owner phone first (or set OWNER_PHONE)."
                       : ownerDirty
                       ? "Save your changes before testing."
+                      : ownerTestCooldownLeft > 0
+                      ? `Cooling down — try again in ${ownerTestCooldownLeft}s.`
                       : "Send a test SMS to the saved owner number."
                   }
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-2 hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {sendingOwnerTest ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                  {sendingOwnerTest ? "Sending…" : "Send test owner alert"}
+                  {sendingOwnerTest
+                    ? "Sending…"
+                    : ownerTestCooldownLeft > 0
+                    ? `Retry in ${ownerTestCooldownLeft}s`
+                    : "Send test owner alert"}
                 </button>
               </div>
               {ownerTestFeedback && (

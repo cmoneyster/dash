@@ -9,10 +9,29 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { isEjoinConfigured, sendSmsViaEjoin, clearEjoinPortCache, EJOIN_PORT_COUNT, getInboundMode } from "../lib/sms-ejoin";
+import { isEjoinConfigured, sendSmsViaEjoin, sendSmsViaChatPort, clearEjoinPortCache, EJOIN_PORT_COUNT, getInboundMode } from "../lib/sms-ejoin";
 import { clearSmsInboxSettingsCache } from "../lib/sms-inbox";
 
 const router: IRouter = Router();
+
+// In-process per-test-endpoint throttle. The UI already enforces a 10s
+// per-button cooldown so the buttons can't spam the gateway, but a
+// curl-armed admin shouldn't be able to bypass that and burn through
+// the SIM either. Keyed by endpoint slug so the chat-owner test
+// doesn't gate the regular owner test (they hit different SIMs).
+const TEST_SEND_COOLDOWN_MS = 10_000;
+const lastTestSendAt = new Map<string, number>();
+function checkTestCooldown(slug: string): number {
+  const last = lastTestSendAt.get(slug) ?? 0;
+  const elapsed = Date.now() - last;
+  if (elapsed < TEST_SEND_COOLDOWN_MS) {
+    return Math.ceil((TEST_SEND_COOLDOWN_MS - elapsed) / 1000);
+  }
+  return 0;
+}
+function markTestSend(slug: string): void {
+  lastTestSendAt.set(slug, Date.now());
+}
 
 // Update payload typed off the Drizzle schema so we never silently widen
 // to `Record<string, unknown>` and accidentally let unknown columns
@@ -367,6 +386,11 @@ router.put("/admin/sms-settings", async (req, res) => {
 // Mirrors the previous /admin/event-settings/test-low-stock-alert behavior.
 router.post("/admin/sms-settings/test-low-stock-alert", async (req, res) => {
   try {
+    const cooldown = checkTestCooldown("low-stock");
+    if (cooldown > 0) {
+      res.status(429).json({ error: `Cooling down — try again in ${cooldown}s.`, retryAfter: cooldown });
+      return;
+    }
     const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     const phones = (settings?.lowStockAlertPhones ?? []).map(p => p.trim()).filter(Boolean);
     if (phones.length === 0) {
@@ -377,6 +401,7 @@ router.post("/admin/sms-settings/test-low-stock-alert", async (req, res) => {
       res.status(503).json({ error: "SMS gateway is not configured." });
       return;
     }
+    markTestSend("low-stock");
     const event = settings?.eventName?.trim() || DEFAULT_EVENT_NAME;
     const message = `Test alert from ${event}`;
     const results: Array<{ phone: string; ok: boolean; port?: number; gatewayResponse?: string; error?: string }> = [];
@@ -411,6 +436,11 @@ router.post("/admin/sms-settings/test-low-stock-alert", async (req, res) => {
 // triggering a real catering inquiry.
 router.post("/admin/sms-settings/test-owner-alert", async (req, res) => {
   try {
+    const cooldown = checkTestCooldown("owner");
+    if (cooldown > 0) {
+      res.status(429).json({ error: `Cooling down — try again in ${cooldown}s.`, retryAfter: cooldown });
+      return;
+    }
     const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     const dbPhone = settings?.ownerNotificationPhone?.trim();
     const envPhone = process.env.OWNER_PHONE?.trim();
@@ -425,6 +455,7 @@ router.post("/admin/sms-settings/test-owner-alert", async (req, res) => {
       res.status(503).json({ error: "SMS gateway is not configured." });
       return;
     }
+    markTestSend("owner");
     const event = settings?.eventName?.trim() || DEFAULT_EVENT_NAME;
     const message = `Test owner alert from ${event}`;
     let result: { port: number; gatewayResponse: string };
@@ -445,6 +476,66 @@ router.post("/admin/sms-settings/test-owner-alert", async (req, res) => {
   } catch (err: unknown) {
     req.log.error({ err }, "Error sending test owner alert");
     res.status(500).json({ error: "Failed to send test owner alert" });
+  }
+});
+
+// Send a one-line "This is a test from <event>" SMS through the dedicated
+// customer-chat port to whichever phone the chat-owner forwards would
+// actually use right now (chat → owner notification → OWNER_PHONE env).
+// Mirrors test-owner-alert above, but routes via sendSmsViaChatPort so
+// it also validates the chat-port configuration end-to-end.
+router.post("/admin/sms-settings/test-chat-owner-alert", async (req, res) => {
+  try {
+    const cooldown = checkTestCooldown("chat-owner");
+    if (cooldown > 0) {
+      res.status(429).json({ error: `Cooling down — try again in ${cooldown}s.`, retryAfter: cooldown });
+      return;
+    }
+    const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    const dbChatPhone = settings?.smsChatOwnerPhone?.trim();
+    const dbOwnerPhone = settings?.ownerNotificationPhone?.trim();
+    const envPhone = process.env.OWNER_PHONE?.trim();
+    const chatOwnerPhone = dbChatPhone || dbOwnerPhone || envPhone || "";
+    const source: "db-chat" | "db-owner" | "env" | "none" =
+      dbChatPhone ? "db-chat" : dbOwnerPhone ? "db-owner" : envPhone ? "env" : "none";
+    if (!chatOwnerPhone) {
+      res.status(400).json({
+        error:
+          "No chat-owner phone configured. Save one above (or fall back to the Owner Notifications phone / OWNER_PHONE) before testing.",
+      });
+      return;
+    }
+    if (!isEjoinConfigured()) {
+      res.status(503).json({ error: "SMS gateway is not configured." });
+      return;
+    }
+    if (settings?.smsChatPort == null) {
+      res.status(400).json({
+        error: "No customer chat port configured. Pick one above before testing.",
+      });
+      return;
+    }
+    markTestSend("chat-owner");
+    const event = settings?.eventName?.trim() || DEFAULT_EVENT_NAME;
+    const message = `This is a test from ${event}`;
+    let result: { port: number; gatewayResponse: string };
+    try {
+      result = await sendSmsViaChatPort(chatOwnerPhone, message);
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : "send failed";
+      res.status(502).json({ error: `Failed to send chat-owner test: ${detail}` });
+      return;
+    }
+    res.json({
+      ok: true,
+      sentTo: chatOwnerPhone,
+      port: result.port,
+      gatewayResponse: result.gatewayResponse,
+      smsChatOwnerPhoneSource: source,
+    });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Error sending test chat-owner alert");
+    res.status(500).json({ error: "Failed to send test chat-owner alert" });
   }
 });
 
