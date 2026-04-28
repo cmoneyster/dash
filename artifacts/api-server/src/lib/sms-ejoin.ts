@@ -718,12 +718,31 @@ function inboxCandidatePaths(): string[] {
   ].filter((p): p is string => !!p);
 }
 
-// Try every candidate inbox path with the supplied cookie. Returns
-// a structured result so the outer wrapper can detect a stale session
-// (401/403, or some firmware just serves the login HTML inside a 200)
-// and decide whether to invalidate the cached cookie and retry once
-// with a fresh login.
-async function attemptFetchInbox(
+// Per-port "drill-in" detail page. The inbox listing only exposes the
+// most recent message per SIM (a 16-row, one-per-port table). To recover
+// older history on a SIM we have to ask the gateway for that port's full
+// thread via this detail page. Path varies between firmware revisions;
+// EJOIN_SMS_INBOX_DETAIL_PATH lets the admin pin a path/template that
+// the in-tree defaults don't cover (use `{port}` as a placeholder for
+// the integer SIM number — the candidate list substitutes it).
+function perPortDetailCandidatePaths(port: number): string[] {
+  const subst = (tpl: string) => tpl.replace(/\{port\}/g, String(port));
+  const custom = process.env.EJOIN_SMS_INBOX_DETAIL_PATH?.trim().replace(/^\//, "");
+  return [
+    custom ? subst(custom) : null,
+    `goip_sms_inbox_details_en.html?port=${port}`,
+    `goip_sms_inbox_details.html?port=${port}`,
+    `goip_sms_recv_details_en.html?port=${port}`,
+  ].filter((p): p is string => !!p);
+}
+
+// Try every candidate gateway page path with the supplied cookie.
+// Returns a structured result so the outer wrapper can detect a stale
+// session (401/403, or some firmware just serves the login HTML inside
+// a 200) and decide whether to invalidate the cached cookie and retry
+// once with a fresh login. Used for both the inbox listing AND the
+// per-port detail drill-in page.
+async function attemptFetchPage(
   baseUrl: string,
   cookie: string,
   candidates: string[],
@@ -798,28 +817,40 @@ async function attemptFetchInbox(
 
 // Top-level wrapper: handles cached cookie + one-shot retry on a
 // rejected session. Returns the same structured result the diagnostics
-// endpoint surfaces directly.
-async function fetchInboxWithRetry(): Promise<{
+// endpoint surfaces directly. Used for both the inbox listing AND the
+// per-port detail page; the candidates list is the only thing that
+// differs between the two paths.
+async function fetchPageWithRetry(candidates: string[]): Promise<{
   result: InboxAttemptResult;
   retried: boolean;
   rejectedAfterRetry: boolean;
 } | null> {
   const cfg = getCredentials();
   if (!cfg) return null;
-  const candidates = inboxCandidatePaths();
   let cookie = await getCachedSessionCookie(cfg);
-  let result = await attemptFetchInbox(cfg.baseUrl, cookie, candidates);
+  let result = await attemptFetchPage(cfg.baseUrl, cookie, candidates);
   let retried = false;
   let rejectedAfterRetry = false;
   if (result.rejected) {
     invalidateSessionCache();
     cookie = await getCachedSessionCookie(cfg);
-    result = await attemptFetchInbox(cfg.baseUrl, cookie, candidates);
+    result = await attemptFetchPage(cfg.baseUrl, cookie, candidates);
     retried = true;
     if (result.rejected) rejectedAfterRetry = true;
   }
   return { result, retried, rejectedAfterRetry };
 }
+
+// Per-port summary the listing page exposes: the integer SIM port, the
+// gateway's reported message count for that port, and the stable id of
+// the row representing the latest message. The scheduler tracks these
+// between cycles to detect "new messages arrived on this SIM" without
+// having to drill into the per-port detail page on every poll.
+export type ListingPortSummary = {
+  port: number;
+  count: number;
+  latestId: string | null;
+};
 
 // Pull recent inbound SMS from the gateway's web UI. Best-effort HTML
 // parser — the GoIP firmware returns an HTML table whose exact column
@@ -828,13 +859,21 @@ async function fetchInboxWithRetry(): Promise<{
 // date, body) and skip rows we can't interpret rather than throwing.
 //
 // The opts let callers narrow the window (default last 24h for live
-// poll, larger for backfill).
-export async function fetchInboundSms(opts?: {
+// poll, larger for backfill). Returns both the parsed rows AND the
+// per-port summary the listing surfaced (counts + latest ids), since
+// the live poller needs the summary to decide whether to escalate to
+// the per-port detail walk on the next cycle.
+export type FetchInboundResult = {
+  rows: InboundSms[];
+  ports: ListingPortSummary[];
+};
+
+export async function fetchInbound(opts?: {
   sinceMs?: number;
   portFilter?: number | null;
-}): Promise<InboundSms[]> {
-  const wrapped = await fetchInboxWithRetry();
-  if (!wrapped) return [];
+}): Promise<FetchInboundResult> {
+  const wrapped = await fetchPageWithRetry(inboxCandidatePaths());
+  if (!wrapped) return { rows: [], ports: [] };
   const { result, retried, rejectedAfterRetry } = wrapped;
   if (rejectedAfterRetry) {
     // Two consecutive rejections (cached cookie + brand-new login)
@@ -864,9 +903,20 @@ export async function fetchInboundSms(opts?: {
       },
       "[ejoin] inbound fetch: no usable HTML",
     );
-    return [];
+    return { rows: [], ports: [] };
   }
-  const parsed = parseInboundSmsHtml(result.html, opts);
+  // Use parseInboundSmsListing when the body is a loadListData payload
+  // (newer firmware) so we recover per-port counts; fall back to the
+  // legacy <tr> row scanner otherwise. parseInboundSmsHtml already
+  // implements this preference internally for rows; the listing-shape
+  // path is the only one that exposes counts, so we run it explicitly
+  // here when the row scanner had nothing to offer.
+  const rows = parseInboundSmsHtml(result.html, opts);
+  const listing = parseInboundSmsListing(result.html, opts);
+  // Prefer the row scanner's output if it found anything (avoids
+  // double-counting on hybrid pages); use the listing's row output
+  // only when the legacy path was empty AND the listing isn't.
+  const finalRows = rows.length > 0 ? rows : listing.rows;
   // One structured line per successful cycle. Captures everything an
   // operator needs to tell the difference between "fetch is fine but
   // the parser dropped every row" and "gateway returned no rows".
@@ -879,9 +929,80 @@ export async function fetchInboundSms(opts?: {
       retried,
       portFilter: opts?.portFilter ?? null,
       sinceMs: opts?.sinceMs ?? null,
-      parsedRows: parsed.length,
+      parsedRows: finalRows.length,
+      portsWithMessages: listing.ports.filter(p => p.count > 0).length,
     },
     "[ejoin] inbound fetch",
+  );
+  return { rows: finalRows, ports: listing.ports };
+}
+
+// Backwards-compatible row-only facade. Existing call sites that just
+// want the message rows keep working unchanged; the new per-port count
+// data is available via fetchInbound() for callers that need it.
+export async function fetchInboundSms(opts?: {
+  sinceMs?: number;
+  portFilter?: number | null;
+}): Promise<InboundSms[]> {
+  const { rows } = await fetchInbound(opts);
+  return rows;
+}
+
+// Drill into the gateway's per-port detail page to recover messages
+// older than the latest one the listing exposes. Used both by the
+// historical backfill (full retained history per port) and by the
+// live poller when it detects a count increase on the chat port.
+//
+// Stable id format is shared with the listing parser so dedupe at the
+// DB layer (smsMessagesTable.gatewayMessageId UNIQUE) collapses the
+// same physical message to one row regardless of which fetch path
+// surfaced it first.
+export async function fetchInboundSmsForPort(
+  port: number,
+  opts?: { sinceMs?: number },
+): Promise<InboundSms[]> {
+  if (!Number.isInteger(port) || port < 1 || port > EJOIN_PORT_COUNT) return [];
+  const wrapped = await fetchPageWithRetry(perPortDetailCandidatePaths(port));
+  if (!wrapped) return [];
+  const { result, retried, rejectedAfterRetry } = wrapped;
+  if (rejectedAfterRetry) {
+    console.warn(
+      "[ejoin] per-port inbox detail: session rejected even after fresh login",
+      { port },
+    );
+  }
+  if (!result.html) {
+    if (result.lastErr) {
+      console.warn("[ejoin] per-port inbox detail failed", { port, err: result.lastErr });
+    }
+    logger.warn(
+      {
+        port,
+        triedPaths: result.triedPaths,
+        rejected: result.rejected,
+        retried,
+        rejectedAfterRetry,
+        loginPageDetected: result.loginPageDetected,
+        httpStatus: result.httpStatus,
+        bodyBytes: result.bodyBytes,
+        lastErr: result.lastErr ? String(result.lastErr) : null,
+      },
+      "[ejoin] per-port detail fetch: no usable HTML",
+    );
+    return [];
+  }
+  const parsed = parseInboundSmsDetail(result.html, port, { sinceMs: opts?.sinceMs });
+  logger.info(
+    {
+      port,
+      successPath: result.successPath,
+      httpStatus: result.httpStatus,
+      bodyBytes: result.bodyBytes,
+      retried,
+      sinceMs: opts?.sinceMs ?? null,
+      parsedRows: parsed.length,
+    },
+    "[ejoin] per-port detail fetch",
   );
   return parsed;
 }
@@ -902,6 +1023,10 @@ export type InboxDiagnosticsResult = {
   retried: boolean;
   rejectedAfterRetry: boolean;
   parsedRows: InboundSms[];
+  // Per-port message counts the listing surfaced (newer firmware only).
+  // Lets the operator confirm at a glance which SIMs have hidden
+  // older-than-latest messages a per-port detail walk would recover.
+  listingPorts: ListingPortSummary[];
   fetchError: string | null;
 };
 
@@ -910,11 +1035,11 @@ export async function fetchInboxRaw(): Promise<InboxDiagnosticsResult> {
   // precisely when the gateway is misbehaving (wrong credentials,
   // network unreachable, login form changed, etc), so any error must
   // come back as structured JSON they can read in the admin UI rather
-  // than a 500. Login failures originate inside fetchInboxWithRetry
+  // than a 500. Login failures originate inside fetchPageWithRetry
   // (via getCachedSessionCookie) and would otherwise bubble out.
-  let wrapped: Awaited<ReturnType<typeof fetchInboxWithRetry>>;
+  let wrapped: Awaited<ReturnType<typeof fetchPageWithRetry>>;
   try {
-    wrapped = await fetchInboxWithRetry();
+    wrapped = await fetchPageWithRetry(inboxCandidatePaths());
   } catch (err) {
     return {
       ejoinConfigured: true,
@@ -928,6 +1053,7 @@ export async function fetchInboxRaw(): Promise<InboxDiagnosticsResult> {
       retried: false,
       rejectedAfterRetry: false,
       parsedRows: [],
+      listingPorts: [],
       fetchError: err instanceof Error ? err.message : String(err),
     };
   }
@@ -944,11 +1070,13 @@ export async function fetchInboxRaw(): Promise<InboxDiagnosticsResult> {
       retried: false,
       rejectedAfterRetry: false,
       parsedRows: [],
+      listingPorts: [],
       fetchError: null,
     };
   }
   const { result, retried, rejectedAfterRetry } = wrapped;
   const parsedRows = result.html ? parseInboundSmsHtml(result.html) : [];
+  const listingPorts = result.html ? parseInboundSmsListing(result.html).ports : [];
   return {
     ejoinConfigured: true,
     triedPaths: result.triedPaths,
@@ -961,6 +1089,7 @@ export async function fetchInboxRaw(): Promise<InboxDiagnosticsResult> {
     retried,
     rejectedAfterRetry,
     parsedRows,
+    listingPorts,
     fetchError: result.lastErr ? String(result.lastErr) : null,
   };
 }
@@ -989,13 +1118,17 @@ export async function fetchInboxRaw(): Promise<InboxDiagnosticsResult> {
 // Notes:
 // - portSlot is "<integer><A|B>" (e.g. "7A"); we collapse to integer port.
 // - Only the latest message per port is returned by this listing page;
-//   full per-port history requires drilling into goip_sms_inbox_details_en.html
-//   which is not handled here.
+//   full per-port history is recovered by fetchInboundSmsForPort() which
+//   drills into the per-port detail page (goip_sms_inbox_details_en.html
+//   or similar — see perPortDetailCandidatePaths). The listing's `count`
+//   column tells us which SIMs have hidden older messages worth walking.
 // - time is "MM-DD HH:MM" with no year — assume current year, fall back
 //   to previous year if that puts the timestamp >24h in the future.
 // - The listing has no per-message id; we synthesize a stable id from
 //   (port, sender, time, content-head) so re-polls of the same latest
-//   message dedupe to one inbound row.
+//   message dedupe to one inbound row. The same id formula is reused
+//   by the per-port detail parser so a message recovered via either
+//   fetch path collapses to one DB row through the unique constraint.
 
 // Decodes a JS single-quoted string literal body (the bit between the
 // outer quotes — caller must strip those) per the ECMA spec subset
@@ -1040,12 +1173,15 @@ function jsUnescapeSingleQuoted(s: string): string {
   );
 }
 
-export function parseInboundSmsListData(
-  html: string,
-  opts?: { sinceMs?: number; portFilter?: number | null },
-): InboundSms[] {
-  const since = opts?.sinceMs ?? 0;
-  const portFilter = opts?.portFilter ?? null;
+// Generic loadListData JSON extractor. The listing page uses tab id
+// "ID_TabCmdResp"; the per-port detail page uses a different id (varies
+// by firmware revision). Pinning the tab id in the regex was historically
+// safer (only one such call per page on the listing) but it locked us
+// out of reusing the same extractor for the detail page. The loosened
+// pattern accepts any tab id; if a page ever embeds multiple
+// loadListData calls, we take the first match — the firmware we've
+// observed only emits one per page.
+function extractLoadListEntries(html: string): unknown[] | null {
   // The JSON payload is wrapped in a JS single-quoted string literal,
   // so we must (a) honor JS escape sequences when finding the closing
   // quote (otherwise an apostrophe inside a body like `April\'s` ends
@@ -1053,57 +1189,202 @@ export function parseInboundSmsListData(
   // the captured text before JSON.parse — the gateway double-escapes
   // backslashes to fit JSON inside the JS literal (e.g. JSON `\r\n`
   // appears in the page as `\\r\\n`).
-  const m = /loadListData\s*\(\s*["']ID_TabCmdResp["']\s*,\s*'((?:\\[\s\S]|[^'\\])*)'/.exec(html);
-  if (!m) return [];
+  const m = /loadListData\s*\(\s*["'][^"']+["']\s*,\s*'((?:\\[\s\S]|[^'\\])*)'/.exec(html);
+  if (!m) return null;
   const jsonText = jsUnescapeSingleQuoted(m[1]);
   let payload: unknown;
   try {
     payload = JSON.parse(jsonText);
   } catch {
-    return [];
+    return null;
   }
   if (
     !payload ||
     typeof payload !== "object" ||
     !Array.isArray((payload as { data?: unknown }).data)
   ) {
-    return [];
+    return null;
   }
-  const data = (payload as { data: unknown[] }).data;
-  const out: InboundSms[] = [];
+  return (payload as { data: unknown[] }).data;
+}
+
+// Stable id formula shared by the listing parser AND the per-port
+// detail parser. Same physical message → same id, regardless of which
+// fetch path surfaced it, so the smsMessagesTable.gatewayMessageId
+// unique constraint dedupes them at the DB layer.
+//
+// We strip any optional ":SS" seconds suffix from the time string so
+// the listing page (always MM-DD HH:MM) and the per-port detail page
+// (sometimes MM-DD HH:MM:SS, depending on firmware) collapse onto the
+// same id. Year-bearing detail timestamps degrade gracefully: the full
+// literal becomes part of the id, which means the same message looks
+// different across the two paths on those firmwares — but firmware
+// that exposes year-bearing timestamps also tends to expose its own
+// per-message id we'd want to use instead, so we accept the tradeoff
+// for now and document it here.
+function makeListDataStableId(
+  port: number,
+  fromDigits: string,
+  timeStr: string,
+  content: string,
+): string {
+  const m = /^(\d{2}-\d{2}\s+\d{2}:\d{2})/.exec(timeStr);
+  const normalizedTime = m ? m[1] : timeStr;
+  return `listdata:${port}:${fromDigits}:${normalizedTime}:${content.slice(0, 24)}`;
+}
+
+// Parse the gateway's "MM-DD HH:MM[:SS]" timestamp into a Date,
+// applying the year-rollover heuristic (firmware omits the year, so we
+// assume current; if that puts the parsed time more than 24h in the
+// future, fall back to last year). Returns null when timeStr doesn't
+// match the expected shape so callers can decide whether to drop the
+// row or substitute "now".
+function parseListingTimestamp(timeStr: string, now: Date): Date | null {
+  const tm = /^(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(timeStr);
+  if (!tm) return null;
+  const [, mo, d, h, mi, s] = tm;
+  const y = now.getUTCFullYear();
+  let candidate = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
+  if (!Number.isFinite(candidate.getTime())) return null;
+  if (candidate.getTime() > now.getTime() + 24 * 60 * 60 * 1000) {
+    candidate = new Date(`${y - 1}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
+  }
+  return Number.isFinite(candidate.getTime()) ? candidate : null;
+}
+
+// Listing parser that returns BOTH the parsed rows AND the per-port
+// summary the listing surfaced (count + latest message id per SIM).
+// The summary is what the live poller uses to decide whether to walk
+// the per-port detail page on the next cycle: when count grows or the
+// latest id changes, new messages have arrived and the listing's
+// single-row-per-port view is hiding the older ones.
+//
+// Empty-slot rows ([n, "<port>A", 0, "", "", "", ""]) are still
+// reported in `ports` so diagnostics can show "port 3: 0 messages"
+// without hiding it; only the row output drops them.
+export function parseInboundSmsListing(
+  html: string,
+  opts?: { sinceMs?: number; portFilter?: number | null },
+): { rows: InboundSms[]; ports: ListingPortSummary[] } {
+  const since = opts?.sinceMs ?? 0;
+  const portFilter = opts?.portFilter ?? null;
+  const data = extractLoadListEntries(html);
+  if (!data) return { rows: [], ports: [] };
+  const rows: InboundSms[] = [];
+  const ports: ListingPortSummary[] = [];
   const now = new Date();
   for (const entry of data) {
     if (!Array.isArray(entry) || entry.length < 6) continue;
     const portSlot = String(entry[1] ?? "").trim();
+    const countRaw = entry[2];
     const sender = String(entry[3] ?? "").trim();
     const timeStr = String(entry[4] ?? "").trim();
     const content = String(entry[5] ?? "").trim();
-    if (!portSlot || !sender || !content) continue; // empty slot row
     const pm = /^(\d{1,2})[A-Za-z]?$/.exec(portSlot);
     if (!pm) continue;
     const port = Number(pm[1]);
     if (!Number.isInteger(port) || port < 1 || port > EJOIN_PORT_COUNT) continue;
-    if (portFilter != null && port !== portFilter) continue;
-    let when: Date | null = null;
-    const tm = /^(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(timeStr);
-    if (tm) {
-      const [, mo, d, h, mi, s] = tm;
-      const y = now.getUTCFullYear();
-      let candidate = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
-      if (Number.isFinite(candidate.getTime())) {
-        // Year rollover: if the parsed timestamp is more than 24h in the
-        // future, the message must be from last year (firmware omits year).
-        if (candidate.getTime() > now.getTime() + 24 * 60 * 60 * 1000) {
-          candidate = new Date(`${y - 1}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
-        }
+    const countNum = Number(countRaw);
+    const count = Number.isFinite(countNum) && countNum >= 0 ? Math.floor(countNum) : 0;
+    let latestId: string | null = null;
+    if (sender && content) {
+      const when = parseListingTimestamp(timeStr, now);
+      const ts = when ?? now;
+      const fromDigits = normalizePhone(sender);
+      const id = makeListDataStableId(port, fromDigits, timeStr, content);
+      latestId = id;
+      const passesSince = !when || when.getTime() >= since;
+      const passesFilter = portFilter == null || port === portFilter;
+      if (passesSince && passesFilter) {
+        rows.push({
+          gatewayMessageId: id,
+          port,
+          fromPhone: fromDigits,
+          body: content,
+          occurredAt: ts,
+        });
+      }
+    }
+    ports.push({ port, count, latestId });
+  }
+  return { rows, ports };
+}
+
+// Backwards-compatible row-only facade. Existing tests + callers that
+// only want the parsed rows (no per-port summary) keep working.
+export function parseInboundSmsListData(
+  html: string,
+  opts?: { sinceMs?: number; portFilter?: number | null },
+): InboundSms[] {
+  return parseInboundSmsListing(html, opts).rows;
+}
+
+// Per-port detail page parser. The detail page can show multiple
+// messages from the same SIM (the listing only exposes the latest one
+// per port), so this is the path that recovers older history a customer
+// sent before texting again on the same SIM.
+//
+// Row shape varies: some firmware emits the same listing-shape rows
+// (with the portSlot column), others emit a slimmer shape without it
+// since the URL already pins the port. We probe entry[1] to decide
+// which layout we're looking at and parse accordingly. As a final
+// fallback when no loadListData call is present, we re-use the legacy
+// <tr>/<td> row scanner with a portFilter pinning the URL's port.
+export function parseInboundSmsDetail(
+  html: string,
+  port: number,
+  opts?: { sinceMs?: number },
+): InboundSms[] {
+  const since = opts?.sinceMs ?? 0;
+  if (!Number.isInteger(port) || port < 1 || port > EJOIN_PORT_COUNT) return [];
+  const data = extractLoadListEntries(html);
+  if (!data) {
+    // Legacy <tr> firmware fallback. parseInboundSmsHtml already
+    // accepts a portFilter, so it will drop any noise rows and only
+    // surface the messages that belong to the SIM we asked about.
+    return parseInboundSmsHtml(html, { sinceMs: since, portFilter: port });
+  }
+  const rows: InboundSms[] = [];
+  const now = new Date();
+  for (const entry of data) {
+    if (!Array.isArray(entry) || entry.length < 3) continue;
+    const cell1 = String(entry[1] ?? "").trim();
+    let sender: string;
+    let timeStr: string;
+    let content: string;
+    // If entry[1] looks like a portSlot label ("7A"), the firmware is
+    // re-using the listing layout; otherwise it's the slimmer
+    // [seq, sender, time, content, ...] shape.
+    if (/^\d{1,2}[A-Za-z]?$/.test(cell1) && entry.length >= 6) {
+      sender = String(entry[3] ?? "").trim();
+      timeStr = String(entry[4] ?? "").trim();
+      content = String(entry[5] ?? "").trim();
+    } else if (entry.length >= 4) {
+      sender = cell1;
+      timeStr = String(entry[2] ?? "").trim();
+      content = String(entry[3] ?? "").trim();
+    } else {
+      continue;
+    }
+    if (!sender || !content) continue;
+    let when = parseListingTimestamp(timeStr, now);
+    if (!when) {
+      // Per-port pages on some firmware emit a year-bearing timestamp.
+      // Try the ISO-ish shape before giving up and stamping "now".
+      const isoMatch = timeStr.match(
+        /(\d{4})[-/](\d{2})[-/](\d{2})[\sT](\d{2}):(\d{2})(?::(\d{2}))?/,
+      );
+      if (isoMatch) {
+        const [, y, mo, d, h, mi, s] = isoMatch;
+        const candidate = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s ?? "00"}Z`);
         if (Number.isFinite(candidate.getTime())) when = candidate;
       }
     }
     if (when && when.getTime() < since) continue;
     const ts = when ?? now;
     const fromDigits = normalizePhone(sender);
-    const id = `listdata:${port}:${fromDigits}:${timeStr}:${content.slice(0, 24)}`;
-    out.push({
+    const id = makeListDataStableId(port, fromDigits, timeStr, content);
+    rows.push({
       gatewayMessageId: id,
       port,
       fromPhone: fromDigits,
@@ -1111,7 +1392,7 @@ export function parseInboundSmsListData(
       occurredAt: ts,
     });
   }
-  return out;
+  return rows;
 }
 
 export function parseInboundSmsHtml(

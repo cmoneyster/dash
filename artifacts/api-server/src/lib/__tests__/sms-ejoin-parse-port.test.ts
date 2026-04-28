@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  parseInboundSmsDetail,
   parseInboundSmsHtml,
   parseInboundSmsListData,
+  parseInboundSmsListing,
 } from "../sms-ejoin.js";
 
 // Locks in the contract that the inbound HTML row scanner accepts the
@@ -246,6 +248,153 @@ describe("parseInboundSmsListData — newer firmware loadListData payload", () =
     const out = parseInboundSmsListData(html);
     expect(out).toHaveLength(1);
     expect(out[0].body).toBe("hi 😀");
+  });
+});
+
+// parseInboundSmsListing returns BOTH the parsed rows and the per-port
+// summary the listing surfaced. The summary is what the live poller
+// uses to decide whether to drill into the per-port detail page on the
+// next cycle (count grew → unread messages we'd otherwise lose).
+describe("parseInboundSmsListing — per-port summary alongside rows", () => {
+  it("reports count + latest id for every port row, including empty slots", () => {
+    const payload = JSON.stringify({
+      result: 0, count: 16,
+      data: [
+        [1, "1A", 0, "", "", "", ""],
+        [3, "3A", 5, "12222222222", "04-28 09:00", "older sim", "x"],
+        [7, "7A", 17, "12405158960", "04-28 01:50", "chat sim", "x"],
+      ],
+    });
+    const out = parseInboundSmsListing(listDataPage(payload));
+    expect(out.rows).toHaveLength(2); // empty slot row dropped from rows
+    // ports array reports ALL valid port slots so diagnostics can show
+    // "port 1: 0 messages" instead of hiding empty SIMs.
+    expect(out.ports).toHaveLength(3);
+    const port1 = out.ports.find(p => p.port === 1);
+    const port3 = out.ports.find(p => p.port === 3);
+    const port7 = out.ports.find(p => p.port === 7);
+    expect(port1).toEqual({ port: 1, count: 0, latestId: null });
+    expect(port3?.count).toBe(5);
+    expect(port3?.latestId).toBeTruthy();
+    expect(port7?.count).toBe(17);
+    expect(port7?.latestId).toBeTruthy();
+    // latestId in summary matches the gatewayMessageId of the
+    // corresponding row — that's how the scheduler knows the latest
+    // listing row already covers the same physical message.
+    expect(out.rows.find(r => r.port === 7)?.gatewayMessageId).toBe(port7?.latestId);
+  });
+
+  it("portFilter narrows rows but keeps the full port summary", () => {
+    const payload = JSON.stringify({
+      result: 0, count: 16,
+      data: [
+        [3, "3A", 1, "12222222222", "04-28 09:00", "skip me", "x"],
+        [7, "7A", 1, "12405158960", "04-28 01:50", "keep me", "x"],
+      ],
+    });
+    const out = parseInboundSmsListing(listDataPage(payload), { portFilter: 7 });
+    expect(out.rows).toHaveLength(1);
+    expect(out.rows[0].body).toBe("keep me");
+    // Summary still reports BOTH ports so the scheduler can spot count
+    // changes on non-chat ports too if it ever wants to.
+    expect(out.ports.map(p => p.port).sort()).toEqual([3, 7]);
+  });
+});
+
+// parseInboundSmsDetail handles the per-port "drill in" page. Critical
+// invariants: (a) it surfaces older messages a listing-only fetch
+// would have hidden behind the latest, (b) the synthesized id matches
+// the listing parser's id for the same physical message so dedupe
+// across the two fetch paths collapses to one DB row, (c) it falls
+// back to the legacy <tr> scanner when no loadListData is present.
+describe("parseInboundSmsDetail — per-port drill-in page", () => {
+  it("recovers multiple messages on the same port (the bug being fixed)", () => {
+    // Three messages on port 7 from the same customer — listing would
+    // only have surfaced the latest one. Detail walk recovers all three.
+    const payload = JSON.stringify({
+      result: 0, count: 3,
+      data: [
+        [1, "12405158960", "04-28 01:50", "third (newest)", "x"],
+        [2, "12405158960", "04-28 01:45", "second", "x"],
+        [3, "12405158960", "04-28 01:40", "first (oldest)", "x"],
+      ],
+    });
+    const out = parseInboundSmsDetail(listDataPage(payload), 7);
+    expect(out).toHaveLength(3);
+    expect(out.every(r => r.port === 7)).toBe(true);
+    expect(out.map(r => r.body)).toEqual([
+      "third (newest)", "second", "first (oldest)",
+    ]);
+    expect(out.every(r => r.fromPhone === "2405158960")).toBe(true);
+  });
+
+  it("collapses to the same id as the listing parser for the same physical message", () => {
+    // Same message: port 7, sender 12405158960, time 04-28 01:50, content "test".
+    // Whichever fetch path surfaces it first, the gatewayMessageId must
+    // match so the DB unique constraint dedupes them.
+    const listingPayload = JSON.stringify({
+      result: 0, count: 16,
+      data: [[7, "7A", 17, "12405158960", "04-28 01:50", "test", "x"]],
+    });
+    const detailPayload = JSON.stringify({
+      result: 0, count: 1,
+      data: [[1, "12405158960", "04-28 01:50", "test", "x"]],
+    });
+    const fromListing = parseInboundSmsListData(listDataPage(listingPayload));
+    const fromDetail = parseInboundSmsDetail(listDataPage(detailPayload), 7);
+    expect(fromListing).toHaveLength(1);
+    expect(fromDetail).toHaveLength(1);
+    expect(fromListing[0].gatewayMessageId).toBe(fromDetail[0].gatewayMessageId);
+  });
+
+  it("normalizes the listing's MM-DD HH:MM time and the detail's MM-DD HH:MM:SS to the same id", () => {
+    // Listing always shows MM-DD HH:MM; some firmware on the detail
+    // page adds :SS. The id formula strips the seconds so the two
+    // paths still collide on the same id.
+    const listingPayload = JSON.stringify({
+      result: 0, count: 16,
+      data: [[7, "7A", 1, "12405158960", "04-28 01:50", "hello", "x"]],
+    });
+    const detailPayload = JSON.stringify({
+      result: 0, count: 1,
+      data: [[1, "12405158960", "04-28 01:50:30", "hello", "x"]],
+    });
+    const a = parseInboundSmsListData(listDataPage(listingPayload));
+    const b = parseInboundSmsDetail(listDataPage(detailPayload), 7);
+    expect(a[0].gatewayMessageId).toBe(b[0].gatewayMessageId);
+  });
+
+  it("accepts the listing-shape row layout when firmware re-uses it on the detail page", () => {
+    // Some firmware emits the same [seq, portSlot, count, sender, time,
+    // content, ...] shape on the detail page too. We detect "looks like
+    // a portSlot label" and pivot the column indices accordingly.
+    const payload = JSON.stringify({
+      result: 0, count: 1,
+      data: [[1, "7A", 17, "12405158960", "04-28 01:50", "listing shape", "x"]],
+    });
+    const out = parseInboundSmsDetail(listDataPage(payload), 7);
+    expect(out).toHaveLength(1);
+    expect(out[0].body).toBe("listing shape");
+    expect(out[0].port).toBe(7);
+  });
+
+  it("falls back to the legacy <tr> scanner when no loadListData is present", () => {
+    // Old firmware just renders the detail page server-side. The
+    // legacy scanner already supports portFilter, so we re-use it.
+    const html = `<table>${row(["888", "7", FROM, WHEN, BODY])}</table>`;
+    const out = parseInboundSmsDetail(html, 7);
+    expect(out).toHaveLength(1);
+    expect(out[0].port).toBe(7);
+    expect(out[0].body).toBe(BODY);
+  });
+
+  it("returns empty when port is out of range — no crash, no garbage rows", () => {
+    const payload = JSON.stringify({
+      result: 0, count: 1,
+      data: [[1, "12405158960", "04-28 01:50", "test", "x"]],
+    });
+    expect(parseInboundSmsDetail(listDataPage(payload), 0)).toHaveLength(0);
+    expect(parseInboundSmsDetail(listDataPage(payload), 99)).toHaveLength(0);
   });
 });
 

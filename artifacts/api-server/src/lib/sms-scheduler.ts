@@ -21,7 +21,13 @@ import { db } from "@workspace/db";
 import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
-import { fetchInboundSms, getChatPort, getInboundMode, isEjoinConfigured } from "./sms-ejoin";
+import {
+  fetchInbound,
+  fetchInboundSmsForPort,
+  getChatPort,
+  getInboundMode,
+  isEjoinConfigured,
+} from "./sms-ejoin";
 import { ingestInbound } from "./sms-inbox";
 import { runSmsBackfill } from "../routes/admin-sms-messages";
 
@@ -37,6 +43,24 @@ const POLL_INTERVAL_MS_SAFETY_NET = 10 * 60_000;
 
 let pollHandle: NodeJS.Timeout | null = null;
 
+// Per-port state tracked between poll cycles so we can escalate to the
+// per-port detail page only when something actually changed. The cheap
+// listing page exposes a `count` column (total messages on that SIM)
+// and a "latest message" row; either growing means the gateway received
+// new messages we haven't ingested yet. Without this state, we'd have
+// to drill into the per-port detail page on every 3s cycle, which is
+// wasteful and risks tripping the gateway's login rate limiter.
+const lastSeenCountByPort = new Map<number, number>();
+const lastSeenLatestIdByPort = new Map<number, string | null>();
+
+// Test-only escape hatch so unit tests can drive pollOnce() through
+// a fresh first-cycle / counts-changed transition without the global
+// caches retaining stale state from earlier tests.
+export function _resetSmsPollerStateForTests(): void {
+  lastSeenCountByPort.clear();
+  lastSeenLatestIdByPort.clear();
+}
+
 async function pollOnce(): Promise<void> {
   try {
     if (!isEjoinConfigured()) return;
@@ -47,8 +71,71 @@ async function pollOnce(): Promise<void> {
     // poll (and is dedup'd by gateway message id) or by the historical
     // backfill.
     const sinceMs = Date.now() - 24 * 60 * 60 * 1000;
-    const list = await fetchInboundSms({ sinceMs, portFilter: port });
-    for (const m of list) {
+    // Step 1: cheap listing fetch. Returns the latest message per SIM
+    // plus a per-port summary (count + latest id) we use for change
+    // detection on the next step.
+    const peek = await fetchInbound({ sinceMs, portFilter: port });
+    const summary = peek.ports.find(p => p.port === port) ?? null;
+    const newCount = summary?.count ?? 0;
+    const newLatestId = summary?.latestId ?? null;
+    const lastCount = lastSeenCountByPort.get(port);
+    const lastLatestId = lastSeenLatestIdByPort.get(port) ?? null;
+    const firstCycle = lastCount === undefined;
+    // Escalate when:
+    //   (a) we have no in-memory baseline (cold start / process
+    //       restart) AND the gateway reports messages on this SIM —
+    //       we can't tell what arrived during downtime from the
+    //       listing alone, so always pull the full history once. The
+    //       boot-time backfill stamps a completion marker and won't
+    //       auto-rerun on subsequent restarts, so without this the
+    //       second-and-later restarts could permanently miss any
+    //       customer texts that landed while we were down.
+    //   (b) the gateway reports MORE messages than last cycle (covers
+    //       "count = total messages on SIM" interpretation), OR
+    //   (c) the latest-message id changed (covers "count = unread,
+    //       gets marked read on display" firmware that would
+    //       otherwise hide a new message that just arrived).
+    const countIncreased = !firstCycle && lastCount !== undefined && newCount > lastCount;
+    const latestChanged =
+      !firstCycle && newLatestId != null && newLatestId !== lastLatestId;
+    const shouldEscalate = newCount > 0 && (firstCycle || countIncreased || latestChanged);
+
+    // Update the trackers BEFORE ingest so a thrown error mid-ingest
+    // doesn't make the next cycle escalate twice for the same change.
+    lastSeenCountByPort.set(port, newCount);
+    lastSeenLatestIdByPort.set(port, newLatestId);
+
+    let toIngest = peek.rows;
+    if (shouldEscalate) {
+      // Drill into the per-port detail page to recover the
+      // older-than-latest messages the listing was hiding. Same-id
+      // rows from the listing dedupe naturally — the detail row wins
+      // because the per-port page is the authoritative full history.
+      try {
+        const detail = await fetchInboundSmsForPort(port, { sinceMs });
+        if (detail.length > 0) {
+          const detailIds = new Set(detail.map(m => m.gatewayMessageId));
+          toIngest = [
+            ...detail,
+            ...peek.rows.filter(r => !detailIds.has(r.gatewayMessageId)),
+          ];
+          logger.info(
+            {
+              port,
+              detailCount: detail.length,
+              listingCount: peek.rows.length,
+              newCount,
+              lastCount: lastCount ?? null,
+            },
+            "[sms-scheduler] escalated to per-port detail walk",
+          );
+        }
+      } catch (err) {
+        logger.warn({ err, port }, "[sms-scheduler] per-port detail fetch failed");
+      }
+    }
+
+    for (const m of toIngest) {
       try {
         await ingestInbound({
           gatewayMessageId: m.gatewayMessageId,
@@ -65,6 +152,10 @@ async function pollOnce(): Promise<void> {
     logger.warn({ err }, "[sms-scheduler] poll cycle failed");
   }
 }
+
+// Test-only export so unit tests can drive a single poll cycle without
+// having to start the interval / wait on real time.
+export const _pollOnceForTests = pollOnce;
 
 export function startSmsScheduler(): void {
   // Stagger boot work so we don't compete with seedIfEmpty / instagram

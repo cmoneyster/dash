@@ -42,7 +42,7 @@ import {
   normalizePhoneDigits,
   findInquiryForPhone,
 } from "../lib/sms-inbox";
-import { fetchInboundSms, fetchInboxRaw, getChatPort } from "../lib/sms-ejoin";
+import { fetchInbound, fetchInboundSmsForPort, fetchInboxRaw, getChatPort } from "../lib/sms-ejoin";
 import { classifyInbound } from "../lib/sms-inbox";
 import { subscribeSmsEvents, publishSmsEvent } from "../lib/sms-events";
 
@@ -527,7 +527,32 @@ export async function runBackfill(daysOverride?: number): Promise<typeof lastBac
       );
     }
     const sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
-    const list = await fetchInboundSms({ sinceMs, portFilter: port });
+    // Backfill pulls the FULL retained per-port history (typically 90
+    // days, capped at gateway capacity). The cheap listing only shows
+    // the latest message per SIM; older customer texts on the same SIM
+    // are invisible to it. So backfill always drills into the per-port
+    // detail page for the chat port, then merges in any listing rows
+    // the detail walk didn't cover (defensive — same-id rows dedupe
+    // via the unique constraint at ingest time anyway).
+    const peek = await fetchInbound({ sinceMs, portFilter: port });
+    let detail: Awaited<ReturnType<typeof fetchInboundSmsForPort>> = [];
+    try {
+      detail = await fetchInboundSmsForPort(port, { sinceMs });
+    } catch (err) {
+      console.warn("[backfill] per-port detail fetch failed", { port, err });
+    }
+    const detailIds = new Set(detail.map(m => m.gatewayMessageId));
+    const list = [
+      ...detail,
+      ...peek.rows.filter(r => !detailIds.has(r.gatewayMessageId)),
+    ];
+    console.info("[backfill] fetched", {
+      port,
+      detailRows: detail.length,
+      listingRows: peek.rows.length,
+      mergedRows: list.length,
+      sinceMs,
+    });
     for (const m of list) {
       try {
         const r = await ingestInbound({
