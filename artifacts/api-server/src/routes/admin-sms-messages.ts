@@ -13,6 +13,10 @@
 //   - GET  /admin/messages/stream          → Server-Sent Events feed
 //   - POST /admin/messages/backfill        → run historical backfill on demand
 //   - GET  /admin/messages/backfill/status → last-completed timestamp & in-flight flag
+//   - GET  /admin/messages/inbound-diagnostics → read-only snapshot of the
+//                                          gateway inbox + per-row inquiry-
+//                                          match preview, used to debug
+//                                          "no inbound messages" reports.
 //
 // All routes are mounted behind requireAdminAuth in routes/index.ts.
 // SSE uses a query-string token because EventSource can't set headers;
@@ -38,7 +42,8 @@ import {
   normalizePhoneDigits,
   findInquiryForPhone,
 } from "../lib/sms-inbox";
-import { fetchInboundSms, getChatPort } from "../lib/sms-ejoin";
+import { fetchInboundSms, fetchInboxRaw, getChatPort } from "../lib/sms-ejoin";
+import { classifyInbound } from "../lib/sms-inbox";
 import { subscribeSmsEvents, publishSmsEvent } from "../lib/sms-events";
 
 const router: IRouter = Router();
@@ -492,6 +497,16 @@ let lastBackfillResult:
   | { startedAt: string; finishedAt: string; ingested: number; skipped: number; errors: number }
   | null = null;
 
+// Tagged error so the route handler can surface a 400 (admin needs to
+// change a setting) instead of a generic 500 (server bug). Anything
+// else thrown out of runBackfill bubbles up as 500 as before.
+export class BackfillConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BackfillConfigError";
+  }
+}
+
 export async function runBackfill(daysOverride?: number): Promise<typeof lastBackfillResult> {
   if (backfillInFlight) {
     return lastBackfillResult;
@@ -507,7 +522,9 @@ export async function runBackfill(daysOverride?: number): Promise<typeof lastBac
     const days = daysOverride ?? settings?.smsBackfillDays ?? 90;
     const port = await getChatPort();
     if (port == null) {
-      throw new Error("No customer chat port configured — backfill needs a port to filter on.");
+      throw new BackfillConfigError(
+        "No customer chat port is set. Open Admin → SMS Settings → Customer Chat Port, pick the SIM that receives customer texts, save, then run backfill again.",
+      );
     }
     const sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
     const list = await fetchInboundSms({ sinceMs, portFilter: port });
@@ -565,6 +582,12 @@ router.post("/admin/messages/backfill", async (req, res) => {
     const result = await runBackfill(daysOverride);
     res.json({ ok: true, result });
   } catch (err: unknown) {
+    if (err instanceof BackfillConfigError) {
+      // Misconfiguration, not a server fault — surface verbatim so the
+      // frontend toast tells the admin which setting to change.
+      res.status(400).json({ error: err.message });
+      return;
+    }
     req.log.error({ err }, "Error running backfill");
     const detail = err instanceof Error ? err.message : "Backfill failed";
     res.status(500).json({ error: detail });
@@ -584,6 +607,72 @@ router.get("/admin/messages/backfill/status", async (req, res) => {
   } catch (err: unknown) {
     req.log.error({ err }, "Error reading backfill status");
     res.status(500).json({ error: "Failed to read backfill status" });
+  }
+});
+
+// ── Inbound diagnostics (read-only) ──────────────────────────────────────────
+//
+// Returns a snapshot of what the gateway's inbox page currently looks
+// like + how the ingest pipeline would classify the first few rows.
+// Nothing is written to the DB. Used to debug "Run backfill picks up
+// no messages" reports without having to ssh into the box and tail logs.
+router.get("/admin/messages/inbound-diagnostics", async (req, res) => {
+  try {
+    const chatPort = await getChatPort();
+    const raw = await fetchInboxRaw();
+    // Annotate the first handful of parsed rows with what the ingest
+    // pipeline would do with them — without actually ingesting. Lets
+    // the operator tell "matched-to-inquiry-N", "would land in
+    // Unmatched", "owner-from-phone (needs #<id>)", "STOP keyword",
+    // and "admin-blocked" apart at a glance.
+    const annotated = await Promise.all(
+      raw.parsedRows.slice(0, 5).map(async row => {
+        let classification: unknown;
+        let classifyError: string | null = null;
+        try {
+          classification = await classifyInbound({ fromPhone: row.fromPhone, body: row.body });
+        } catch (err) {
+          classifyError = err instanceof Error ? err.message : "classify failed";
+        }
+        return {
+          gatewayMessageId: row.gatewayMessageId,
+          port: row.port,
+          fromPhoneDigits: normalizePhoneDigits(row.fromPhone),
+          occurredAt: row.occurredAt.toISOString(),
+          bodyHead: row.body.slice(0, 100),
+          classification,
+          classifyError,
+        };
+      }),
+    );
+    // Per-port breakdown so it's obvious whether the chat port has any
+    // traffic at all, regardless of what the chat-port filter setting is.
+    const parsedRowsByPort: Record<string, number> = {};
+    for (const r of raw.parsedRows) {
+      const k = String(r.port);
+      parsedRowsByPort[k] = (parsedRowsByPort[k] ?? 0) + 1;
+    }
+    res.json({
+      chatPort,
+      ejoinConfigured: raw.ejoinConfigured,
+      triedPaths: raw.triedPaths,
+      successPath: raw.successPath,
+      httpStatus: raw.httpStatus,
+      bodyBytes: raw.bodyBytes,
+      bodyHead: raw.bodyHead,
+      loginPageDetected: raw.loginPageDetected,
+      rejected: raw.rejected,
+      retried: raw.retried,
+      rejectedAfterRetry: raw.rejectedAfterRetry,
+      fetchError: raw.fetchError,
+      parsedRowCount: raw.parsedRows.length,
+      parsedRowsByPort,
+      sampleRows: annotated,
+    });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Error running inbound diagnostics");
+    const detail = err instanceof Error ? err.message : "Diagnostics failed";
+    res.status(500).json({ error: detail });
   }
 });
 

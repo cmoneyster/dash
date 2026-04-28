@@ -32,6 +32,7 @@ import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { sendSmsToCustomer, sendSmsViaEjoin, getChatPort, BlocklistedRecipientError } from "./sms-ejoin";
 import { publishSmsEvent } from "./sms-events";
+import { logger } from "./logger";
 
 // ── Phone helpers ─────────────────────────────────────────────────────────────
 
@@ -308,11 +309,127 @@ async function notifyOwnerOfRejection(
   }
 }
 
+// ── Read-only classifier (diagnostics) ───────────────────────────────────────
+//
+// Mirrors every gating decision ingestInbound makes, but never writes
+// anything to the DB and never sends any SMS. The admin diagnostics
+// endpoint uses this to annotate the gateway's parsed inbox rows so an
+// operator can answer at a glance: "this row would be matched to
+// inquiry #N", "this row would land in Unmatched", "this row is from
+// the owner phone and needs the #<id> tag", "this row is a STOP
+// keyword", "this sender is admin-blocked".
+export type InboundClassification =
+  | { kind: "skipped-empty" }
+  // Owner-from-phone outcomes mirror ingestInboundImpl's owner branch
+  // 1:1 so an operator can read the diagnostics annotation and know
+  // exactly what would happen to a real send from the owner phone
+  // without actually sending it. STOP keywords from the owner phone
+  // map to "owner-reply-malformed" (matching the impl, which rejects
+  // STOP-from-owner as a misfire rather than treating it as opt-out).
+  | { kind: "owner-reply-disabled" }
+  | { kind: "owner-reply-malformed" }
+  | {
+      kind: "owner-reply-no-inquiry";
+      tag: { inquiryId: number; reply: string };
+    }
+  | { kind: "owner-reply-no-phone"; inquiryId: number }
+  | { kind: "owner-reply-relay-eligible"; inquiryId: number }
+  | { kind: "stop-keyword" }
+  | { kind: "admin-blocked" }
+  | { kind: "matched-inquiry"; inquiryId: number }
+  | {
+      kind: "unmatched";
+      reason: "no-inquiry-with-phone";
+      customerOptedOut: boolean;
+    };
+
+export async function classifyInbound(input: {
+  fromPhone: string;
+  body: string;
+}): Promise<InboundClassification> {
+  const fromDigits = normalizePhoneDigits(input.fromPhone);
+  const body = (input.body ?? "").trim();
+  if (!fromDigits || !body) return { kind: "skipped-empty" };
+  const ownerDigits = await getOwnerPhoneDigits();
+  if (ownerDigits && fromDigits === ownerDigits) {
+    // Mirror the order of checks in ingestInboundImpl exactly so the
+    // diagnostics outcome can never disagree with the live pipeline.
+    if (isStopKeyword(body)) return { kind: "owner-reply-malformed" };
+    const settings = await getRelevantSettings();
+    if (!settings.ownerReplyEnabled) return { kind: "owner-reply-disabled" };
+    const tag = parseOwnerTag(body);
+    if (!tag) return { kind: "owner-reply-malformed" };
+    const [inq] = await db
+      .select({
+        id: cateringInquiriesTable.id,
+        clientPhone: cateringInquiriesTable.clientPhone,
+      })
+      .from(cateringInquiriesTable)
+      .where(eq(cateringInquiriesTable.id, tag.inquiryId));
+    if (!inq) return { kind: "owner-reply-no-inquiry", tag };
+    const customerDigits = normalizePhoneDigits(inq.clientPhone ?? "");
+    if (!customerDigits) {
+      return { kind: "owner-reply-no-phone", inquiryId: inq.id };
+    }
+    return { kind: "owner-reply-relay-eligible", inquiryId: inq.id };
+  }
+  if (isStopKeyword(body)) return { kind: "stop-keyword" };
+  const blockedReason = await isBlocked(fromDigits);
+  if (blockedReason === "admin-blocked") return { kind: "admin-blocked" };
+  const inquiryId = await findInquiryForPhone(fromDigits);
+  if (inquiryId != null) return { kind: "matched-inquiry", inquiryId };
+  return {
+    kind: "unmatched",
+    reason: "no-inquiry-with-phone",
+    customerOptedOut: blockedReason === "customer-opt-out",
+  };
+}
+
 // Single ingest call for both poller and webhook deliveries. Idempotent
 // on gatewayMessageId — a message that's already been stored returns
 // status 'dedup' without further side effects, so the poller can re-run
 // on overlapping windows.
+//
+// This wrapper exists purely to log one structured line per inbound
+// message regardless of which return path the impl took. The poller,
+// the backfill loop, and the webhook all funnel through here, so a
+// single line per message is enough to reconstruct what the pipeline
+// did. Operators rely on this when debugging "I texted in but it
+// didn't show up" reports.
 export async function ingestInbound(input: {
+  gatewayMessageId: string;
+  fromPhone: string;
+  body: string;
+  occurredAt: Date;
+  port: number;
+}): Promise<IngestResult> {
+  const result = await ingestInboundImpl(input);
+  const inquiryIdLogged =
+    result.status === "stored" ? result.inquiryId :
+    result.status === "owner-reply-relayed" ? result.inquiryId :
+    null;
+  logger.info(
+    {
+      gid: input.gatewayMessageId,
+      fromDigits: normalizePhoneDigits(input.fromPhone),
+      port: input.port,
+      bodyLen: (input.body ?? "").length,
+      occurredAt: input.occurredAt.toISOString(),
+      status: result.status,
+      inquiryId: inquiryIdLogged,
+      rejectReason: result.status === "owner-reply-rejected" ? result.reason : undefined,
+      blockReason: result.status === "blocked" ? result.reason : undefined,
+      messageId:
+        result.status === "stored" || result.status === "dedup"
+          ? result.messageId
+          : undefined,
+    },
+    "[sms-inbox] ingest",
+  );
+  return result;
+}
+
+async function ingestInboundImpl(input: {
   gatewayMessageId: string;
   fromPhone: string;
   body: string;

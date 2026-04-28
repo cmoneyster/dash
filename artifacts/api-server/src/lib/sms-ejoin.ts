@@ -16,6 +16,7 @@ import { createHash } from "crypto";
 import { db } from "@workspace/db";
 import { eventSettingsTable, cateringInquiriesTable, phoneBlocklistTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { logger } from "./logger";
 
 // Sentinel error so callers (and the guarded customer-send wrapper)
 // can distinguish "blocklisted recipient" from generic gateway errors
@@ -693,6 +694,133 @@ export type InboundSms = {
   occurredAt: Date;
 };
 
+// Structured result from one inbox-fetch attempt. Carried up through
+// the wrappers so both the live poller log and the diagnostics endpoint
+// see exactly which path the gateway answered on, what HTTP status it
+// returned, and how big the response body was.
+type InboxAttemptResult = {
+  html: string | null;
+  rejected: boolean;
+  lastErr: unknown;
+  successPath: string | null;
+  httpStatus: number | null;
+  bodyBytes: number;
+  loginPageDetected: boolean;
+  triedPaths: string[];
+};
+
+function inboxCandidatePaths(): string[] {
+  return [
+    process.env.EJOIN_SMS_INBOX_PATH?.trim().replace(/^\//, ""),
+    "goip_sms_inbox_en.html",
+    "goip_sms_recv_en.html",
+    "goip_sms_inbox.html",
+  ].filter((p): p is string => !!p);
+}
+
+// Try every candidate inbox path with the supplied cookie. Returns
+// a structured result so the outer wrapper can detect a stale session
+// (401/403, or some firmware just serves the login HTML inside a 200)
+// and decide whether to invalidate the cached cookie and retry once
+// with a fresh login.
+async function attemptFetchInbox(
+  baseUrl: string,
+  cookie: string,
+  candidates: string[],
+): Promise<InboxAttemptResult> {
+  const tried: string[] = [];
+  let lastErr: unknown = null;
+  // Retain the last HTTP status + body size we actually saw so that a
+  // run where every candidate returned (e.g.) 404 does not surface as
+  // "httpStatus:null". Operators rely on these fields to distinguish
+  // "gateway is reachable but the path is wrong" from "gateway is
+  // unreachable / threw network errors at every attempt".
+  let lastHttpStatus: number | null = null;
+  let lastBodyBytes = 0;
+  for (const path of candidates) {
+    tried.push(path);
+    try {
+      const resp = await fetch(`${baseUrl}/${path}`, {
+        headers: { Cookie: cookie, Referer: `${baseUrl}/${path}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      lastHttpStatus = resp.status;
+      if (resp.status === 401 || resp.status === 403) {
+        return {
+          html: null, rejected: true, lastErr: null,
+          successPath: null, httpStatus: resp.status, bodyBytes: 0,
+          loginPageDetected: false, triedPaths: tried,
+        };
+      }
+      if (resp.ok) {
+        const body = await resp.text();
+        lastBodyBytes = body?.length ?? 0;
+        if (body && body.length > 0) {
+          // Some firmware returns 200 + the login HTML when the
+          // session is stale instead of redirecting; treat that as a
+          // rejection so we re-authenticate rather than try to parse
+          // the login form as an SMS table.
+          if (looksLikeLoginPage(body)) {
+            return {
+              html: null, rejected: true, lastErr: null,
+              successPath: path, httpStatus: resp.status, bodyBytes: body.length,
+              loginPageDetected: true, triedPaths: tried,
+            };
+          }
+          return {
+            html: body, rejected: false, lastErr: null,
+            successPath: path, httpStatus: resp.status, bodyBytes: body.length,
+            loginPageDetected: false, triedPaths: tried,
+          };
+        }
+      } else {
+        // Drain a small snippet so the body buffer is freed promptly
+        // and update lastBodyBytes for diagnostics. We don't keep the
+        // body itself — a hard HTTP error with a multi-KB error page
+        // is not interesting beyond its size.
+        try {
+          const body = await resp.text();
+          lastBodyBytes = body?.length ?? 0;
+        } catch {
+          // ignore drain errors
+        }
+      }
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  return {
+    html: null, rejected: false, lastErr,
+    successPath: null, httpStatus: lastHttpStatus, bodyBytes: lastBodyBytes,
+    loginPageDetected: false, triedPaths: tried,
+  };
+}
+
+// Top-level wrapper: handles cached cookie + one-shot retry on a
+// rejected session. Returns the same structured result the diagnostics
+// endpoint surfaces directly.
+async function fetchInboxWithRetry(): Promise<{
+  result: InboxAttemptResult;
+  retried: boolean;
+  rejectedAfterRetry: boolean;
+} | null> {
+  const cfg = getCredentials();
+  if (!cfg) return null;
+  const candidates = inboxCandidatePaths();
+  let cookie = await getCachedSessionCookie(cfg);
+  let result = await attemptFetchInbox(cfg.baseUrl, cookie, candidates);
+  let retried = false;
+  let rejectedAfterRetry = false;
+  if (result.rejected) {
+    invalidateSessionCache();
+    cookie = await getCachedSessionCookie(cfg);
+    result = await attemptFetchInbox(cfg.baseUrl, cookie, candidates);
+    retried = true;
+    if (result.rejected) rejectedAfterRetry = true;
+  }
+  return { result, retried, rejectedAfterRetry };
+}
+
 // Pull recent inbound SMS from the gateway's web UI. Best-effort HTML
 // parser — the GoIP firmware returns an HTML table whose exact column
 // order varies slightly between firmware revisions, so we look for
@@ -705,79 +833,136 @@ export async function fetchInboundSms(opts?: {
   sinceMs?: number;
   portFilter?: number | null;
 }): Promise<InboundSms[]> {
-  const cfg = getCredentials();
-  if (!cfg) return [];
-  // Try the documented inbox page; firmware typically exposes one of
-  // these. Configurable via EJOIN_SMS_INBOX_PATH for unusual firmware.
-  const candidates = [
-    process.env.EJOIN_SMS_INBOX_PATH?.trim().replace(/^\//, ""),
-    "goip_sms_inbox_en.html",
-    "goip_sms_recv_en.html",
-    "goip_sms_inbox.html",
-  ].filter((p): p is string => !!p);
-
-  // Inner: try every candidate path with the supplied cookie. Returns
-  // a structured result so the outer wrapper can detect a stale session
-  // (401/403, or some firmware just serves the login HTML inside a 200)
-  // and decide whether to invalidate the cached cookie and retry once
-  // with a fresh login.
-  const attemptFetch = async (cookie: string): Promise<{
-    html: string | null;
-    rejected: boolean;
-    lastErr: unknown;
-  }> => {
-    let lastErr: unknown = null;
-    for (const path of candidates) {
-      try {
-        const resp = await fetch(`${cfg.baseUrl}/${path}`, {
-          headers: { Cookie: cookie, Referer: `${cfg.baseUrl}/${path}` },
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (resp.status === 401 || resp.status === 403) {
-          return { html: null, rejected: true, lastErr: null };
-        }
-        if (resp.ok) {
-          const body = await resp.text();
-          if (body && body.length > 0) {
-            // Some firmware returns 200 + the login HTML when the
-            // session is stale instead of redirecting; treat that as a
-            // rejection so we re-authenticate rather than try to parse
-            // the login form as an SMS table.
-            if (looksLikeLoginPage(body)) {
-              return { html: null, rejected: true, lastErr: null };
-            }
-            return { html: body, rejected: false, lastErr: null };
-          }
-        }
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-    return { html: null, rejected: false, lastErr };
-  };
-
-  let cookie = await getCachedSessionCookie(cfg);
-  let result = await attemptFetch(cookie);
-  if (result.rejected) {
-    invalidateSessionCache();
-    cookie = await getCachedSessionCookie(cfg);
-    result = await attemptFetch(cookie);
-    if (result.rejected) {
-      // Two consecutive rejections (cached cookie + brand-new login)
-      // means the gateway is actively refusing us — IP-block, wrong
-      // credentials, or every poll cycle will quietly produce zero
-      // messages. Surface a warning so the issue is visible in the
-      // log instead of silently returning an empty list forever.
-      console.warn(
-        "[ejoin] inbound poll: session rejected even after fresh login — gateway may be IP-blocking the app or admin credentials are wrong",
-      );
-    }
+  const wrapped = await fetchInboxWithRetry();
+  if (!wrapped) return [];
+  const { result, retried, rejectedAfterRetry } = wrapped;
+  if (rejectedAfterRetry) {
+    // Two consecutive rejections (cached cookie + brand-new login)
+    // means the gateway is actively refusing us — IP-block, wrong
+    // credentials, or every poll cycle will quietly produce zero
+    // messages. Surface a warning so the issue is visible in the
+    // log instead of silently returning an empty list forever.
+    console.warn(
+      "[ejoin] inbound poll: session rejected even after fresh login — gateway may be IP-blocking the app or admin credentials are wrong",
+    );
   }
   if (!result.html) {
     if (result.lastErr) console.warn("[ejoin] inbound poll failed", result.lastErr);
+    // One structured line per failed cycle so the operator can tell
+    // "all paths returned empty bodies" apart from "every path threw"
+    // apart from "session got rejected even after re-login".
+    logger.warn(
+      {
+        triedPaths: result.triedPaths,
+        rejected: result.rejected,
+        retried,
+        rejectedAfterRetry,
+        loginPageDetected: result.loginPageDetected,
+        httpStatus: result.httpStatus,
+        bodyBytes: result.bodyBytes,
+        lastErr: result.lastErr ? String(result.lastErr) : null,
+      },
+      "[ejoin] inbound fetch: no usable HTML",
+    );
     return [];
   }
-  return parseInboundSmsHtml(result.html, opts);
+  const parsed = parseInboundSmsHtml(result.html, opts);
+  // One structured line per successful cycle. Captures everything an
+  // operator needs to tell the difference between "fetch is fine but
+  // the parser dropped every row" and "gateway returned no rows".
+  logger.info(
+    {
+      successPath: result.successPath,
+      httpStatus: result.httpStatus,
+      bodyBytes: result.bodyBytes,
+      loginPageDetected: result.loginPageDetected,
+      retried,
+      portFilter: opts?.portFilter ?? null,
+      sinceMs: opts?.sinceMs ?? null,
+      parsedRows: parsed.length,
+    },
+    "[ejoin] inbound fetch",
+  );
+  return parsed;
+}
+
+// Read-only diagnostics view used by the admin "inbound diagnostics"
+// endpoint. Returns the raw fetch metadata + parsed rows WITHOUT any
+// since/port filter so the operator can see exactly what the gateway
+// is serving regardless of the chat-port and backfill-window settings.
+export type InboxDiagnosticsResult = {
+  ejoinConfigured: boolean;
+  triedPaths: string[];
+  successPath: string | null;
+  httpStatus: number | null;
+  bodyBytes: number;
+  bodyHead: string;
+  loginPageDetected: boolean;
+  rejected: boolean;
+  retried: boolean;
+  rejectedAfterRetry: boolean;
+  parsedRows: InboundSms[];
+  fetchError: string | null;
+};
+
+export async function fetchInboxRaw(): Promise<InboxDiagnosticsResult> {
+  // Diagnostics MUST never throw — operators hit this endpoint
+  // precisely when the gateway is misbehaving (wrong credentials,
+  // network unreachable, login form changed, etc), so any error must
+  // come back as structured JSON they can read in the admin UI rather
+  // than a 500. Login failures originate inside fetchInboxWithRetry
+  // (via getCachedSessionCookie) and would otherwise bubble out.
+  let wrapped: Awaited<ReturnType<typeof fetchInboxWithRetry>>;
+  try {
+    wrapped = await fetchInboxWithRetry();
+  } catch (err) {
+    return {
+      ejoinConfigured: true,
+      triedPaths: [],
+      successPath: null,
+      httpStatus: null,
+      bodyBytes: 0,
+      bodyHead: "",
+      loginPageDetected: false,
+      rejected: false,
+      retried: false,
+      rejectedAfterRetry: false,
+      parsedRows: [],
+      fetchError: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (!wrapped) {
+    return {
+      ejoinConfigured: false,
+      triedPaths: [],
+      successPath: null,
+      httpStatus: null,
+      bodyBytes: 0,
+      bodyHead: "",
+      loginPageDetected: false,
+      rejected: false,
+      retried: false,
+      rejectedAfterRetry: false,
+      parsedRows: [],
+      fetchError: null,
+    };
+  }
+  const { result, retried, rejectedAfterRetry } = wrapped;
+  const parsedRows = result.html ? parseInboundSmsHtml(result.html) : [];
+  return {
+    ejoinConfigured: true,
+    triedPaths: result.triedPaths,
+    successPath: result.successPath,
+    httpStatus: result.httpStatus,
+    bodyBytes: result.bodyBytes,
+    bodyHead: result.html ? result.html.slice(0, 400) : "",
+    loginPageDetected: result.loginPageDetected,
+    rejected: result.rejected,
+    retried,
+    rejectedAfterRetry,
+    parsedRows,
+    fetchError: result.lastErr ? String(result.lastErr) : null,
+  };
 }
 
 // Best-effort HTML scraper. The GoIP "received SMS" page renders a
