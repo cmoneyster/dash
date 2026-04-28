@@ -408,6 +408,18 @@ export async function ingestInbound(input: {
     result.status === "stored" ? result.inquiryId :
     result.status === "owner-reply-relayed" ? result.inquiryId :
     null;
+  // Derived operator-readable outcome. Splits "stored" into the two
+  // sub-cases an operator actually cares about — "stored-matched"
+  // (chat bubble appears in an inquiry thread) vs "stored-unmatched"
+  // (lands in the Unmatched inbox) — so log scans don't have to
+  // infer it from inquiryId being null. All other ingest results
+  // pass through unchanged.
+  const outcome =
+    result.status === "stored"
+      ? result.inquiryId != null
+        ? "stored-matched"
+        : "stored-unmatched"
+      : result.status;
   logger.info(
     {
       gid: input.gatewayMessageId,
@@ -416,6 +428,7 @@ export async function ingestInbound(input: {
       bodyLen: (input.body ?? "").length,
       occurredAt: input.occurredAt.toISOString(),
       status: result.status,
+      outcome,
       inquiryId: inquiryIdLogged,
       rejectReason: result.status === "owner-reply-rejected" ? result.reason : undefined,
       blockReason: result.status === "blocked" ? result.reason : undefined,
