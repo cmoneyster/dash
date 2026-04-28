@@ -171,6 +171,7 @@ Optional firmware-compatibility overrides — only set these if the defaults don
 - `EJOIN_LOGIN_PATH` — login form path. Tried in order: this override, `login_en.html`, `login.html`, `index_en.html`, `index.html`. The login GET is automatically retried once on transient 503 / network errors before being recorded as failed.
 - `EJOIN_SMS_INBOX_PATH` — inbound SMS list path. Tried in order: this override, `goip_sms_inbox_en.html`, `goip_sms_recv_en.html`, `goip_sms_inbox.html`.
 - `EJOIN_SESSION_TTL_SECONDS` — how long the cached session cookie is reused before forcing a re-login. Default `600` (10 min). Tighten if your firmware's idle timeout is shorter than that.
+- `EJOIN_GATEWAY_TZ` — IANA timezone the gateway's onboard clock is set to. Default `America/New_York`. The gateway prints inbound message arrival times as a wall-clock string with no timezone tag, so we must interpret them in the install-site zone before storing UTC. Set this if you ever relocate the gateway to a different zone (e.g. `America/Chicago`, `UTC`); a typo silently falls back to the default with a one-time warn-log so a bad value cannot crash the SMS poller.
 
 If "Run backfill now" on the SMS Settings page errors out, the surfaced message lists every login path that was tried with the cookies + status received from the gateway — that points directly at which path/cookie name your firmware uses.
 
