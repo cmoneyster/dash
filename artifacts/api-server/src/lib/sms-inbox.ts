@@ -409,16 +409,18 @@ export async function ingestInbound(input: {
     result.status === "owner-reply-relayed" ? result.inquiryId :
     null;
   // Derived operator-readable outcome. Splits "stored" into the two
-  // sub-cases an operator actually cares about — "stored-matched"
-  // (chat bubble appears in an inquiry thread) vs "stored-unmatched"
-  // (lands in the Unmatched inbox) — so log scans don't have to
-  // infer it from inquiryId being null. All other ingest results
-  // pass through unchanged.
+  // sub-cases an operator actually cares about — "matched" (chat
+  // bubble appears in an inquiry thread) vs "unmatched" (lands in
+  // the Unmatched inbox) — so log scans don't have to infer it from
+  // inquiryId being null. The naming intentionally mirrors the
+  // diagnostics endpoint's classification kinds ("matched-inquiry"
+  // and "unmatched") so an operator using both surfaces sees the
+  // same vocabulary. All other ingest results pass through unchanged.
   const outcome =
     result.status === "stored"
       ? result.inquiryId != null
-        ? "stored-matched"
-        : "stored-unmatched"
+        ? "matched"
+        : "unmatched"
       : result.status;
   logger.info(
     {
