@@ -302,15 +302,43 @@ async function getSessionCookie(cfg: {
 
     const body = new URLSearchParams({ encoded, nonce: "", loginStatus: "-1" });
 
-    const postResp = await fetch(loginUrl, {
-      method:  "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Cookie:         `${pick.cookie.name}=${pick.cookie.value}`,
-      },
-      body:   body.toString(),
-      signal: AbortSignal.timeout(10_000),
-    });
+    // Mirror the GET stage: the login POST hits the same rate-limited
+    // endpoint, so it can also return 503 (or hang the connection) when
+    // we land inside a lockout window. One-shot retry with a short
+    // backoff lets us shake off a transient blip without surfacing the
+    // failure; auth/credential failures still fall through to the
+    // success-marker check below.
+    let postResp: Response | null = null;
+    let postErr: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      postErr = null;
+      try {
+        postResp = await fetch(loginUrl, {
+          method:  "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Cookie:         `${pick.cookie.name}=${pick.cookie.value}`,
+          },
+          body:   body.toString(),
+          signal: AbortSignal.timeout(10_000),
+        });
+      } catch (err) {
+        postResp = null;
+        postErr = err;
+      }
+      const transient = postErr != null || (postResp != null && postResp.status === 503);
+      if (!transient || attempt === 1) break;
+      await new Promise(r => setTimeout(r, 400));
+    }
+    if (!postResp) {
+      attempts.push({
+        path,
+        status: 0,
+        cookies: `${pick.cookie.name} (login POST network error: ${postErr instanceof Error ? postErr.message : String(postErr)})`,
+        bodyHead: "",
+      });
+      continue;
+    }
 
     const postText = await postResp.text();
 
