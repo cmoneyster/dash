@@ -175,6 +175,18 @@ Optional firmware-compatibility overrides — only set these if the defaults don
 
 If "Run backfill now" on the SMS Settings page errors out, the surfaced message lists every login path that was tried with the cookies + status received from the gateway — that points directly at which path/cookie name your firmware uses.
 
+### Dual-environment safety: SMS_OUTBOUND_MODE
+
+The single physical SIM gateway is shared across every api-server process pointing at it (same `EJOIN_GATEWAY_URL`, same admin credentials). When two processes are running at once — almost always the development workspace plus the published production deployment — both poll the same inbox, both ingest each inbound, and both decide independently what to do based on **their own** database row in `event_settings`. The per-DB dedupe sentinel inside `sms-inbox.ts` (added under task #200 to stop replays *within one process*) cannot help here: the second process has its own DB and its own sentinel table, so it claims and proceeds as if it were the first.
+
+The concrete bug this caused before the gate existed: owner replies (`#<id> message` from the chat-owner phone) were correctly relayed to the customer by production, AND simultaneously the dev workspace — whose `smsOwnerReplyEnabled` defaulted to `false` because nobody had toggled it on in the dev DB — texted the owner the "couldn't relay your reply: customer-chat owner replies are disabled" rejection over the same SIM. Same hazard applies to forwards (both DBs forwarding-on → owner gets duplicate forwards), customer-bound relays, and any other outbound path.
+
+The gate: `SMS_OUTBOUND_MODE` (values: `live` (default) | `shadow`). When `shadow`, every send entry point in `sms-ejoin.ts` (`sendSmsViaEjoin`, `sendSmsViaChatPort`, `sendSmsToCustomer`) becomes a structured-logged no-op that returns the same response shape a real send would have produced. **Ingest, classification, owner-reply detection, dedupe sentinels, DB writes, SSE updates, admin UI behavior, and chat-thread visibility all keep working** — only the physical text to the SIM is suppressed. This means dev still mirrors production's pipeline for testing while it stops competing on the wire.
+
+Convention: production deployments leave the var unset (default `live`). Each developer sets `SMS_OUTBOUND_MODE=shadow` on their workspace the first time they connect dev to a production SIM. The shadow check runs **before** credential, port-pool, and chat-port lookups so a stale or missing config in dev still no-ops cleanly without throwing.
+
+Fail-safe behavior: any unrecognised value (typo, empty, "off", "disabled", "1", etc.) is treated as `live`. A misconfiguration must NEVER silently muzzle production. The current outbound mode is logged at scheduler startup as part of the `[sms-scheduler] started` line — grep that on a confused server to confirm whether it's `live` or `shadow`.
+
 ### Owner-forward gates
 
 The owner-forward leg (the SMS that fires to the chat-owner phone whenever a customer texts in) sits behind three independent gates. All three must pass for a forward to go out, and each gate exists for a specific real-world failure we've already hit:

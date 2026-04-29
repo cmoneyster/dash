@@ -26,6 +26,7 @@ import {
   fetchInboundSmsForPort,
   getChatPort,
   getInboundMode,
+  getSmsOutboundMode,
   isEjoinConfigured,
 } from "./sms-ejoin";
 import { ingestInbound } from "./sms-inbox";
@@ -192,5 +193,12 @@ export function startSmsScheduler(): void {
   setTimeout(() => {
     void pollOnce();
   }, 15_000);
-  logger.info({ mode: getInboundMode(), intervalMs: interval }, "[sms-scheduler] started");
+  // Surface BOTH modes at startup. The outbound mode is the only
+  // operator-visible signal that this process has been silenced — easy
+  // to grep ("[sms-scheduler] started") on a confused production box
+  // to confirm whether SMS_OUTBOUND_MODE was accidentally set there.
+  logger.info(
+    { mode: getInboundMode(), intervalMs: interval, outboundMode: getSmsOutboundMode() },
+    "[sms-scheduler] started",
+  );
 }

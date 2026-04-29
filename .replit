@@ -34,3 +34,6 @@ channel = "stable-25_05"
 [userenv.shared]
 EJOIN_SMS_PORT = "7"
 OWNER_PHONE = "+12405158960"
+
+[userenv.development]
+SMS_OUTBOUND_MODE = "shadow"

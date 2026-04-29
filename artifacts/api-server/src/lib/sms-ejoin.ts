@@ -52,6 +52,26 @@ async function lookupBlocklistReason(
   }
 }
 
+// Outbound-mode env gate: gives operators a single switch to put a
+// running api-server into "shadow" mode where every outbound SMS
+// becomes a structured-logged no-op. Critical for setups where two
+// api-server processes (e.g. a development workspace and the
+// published production deployment) poll the same physical SIM
+// gateway. Each process maintains its own database with independent
+// settings and dedupe sentinels, so without a gate one process can
+// happily relay an owner reply while the other texts the owner a
+// "couldn't relay your reply" rejection — over the same SIM. Set
+// SMS_OUTBOUND_MODE=shadow on the non-authoritative process to
+// suppress its physical sends while keeping ingest, classification,
+// dedupe, and DB writes fully exercised. Any unrecognised value
+// (including typos) falls back to "live" — a misconfiguration must
+// NEVER silently muzzle a production deployment's outbound traffic.
+export type SmsOutboundMode = "live" | "shadow";
+export function getSmsOutboundMode(): SmsOutboundMode {
+  const v = process.env.SMS_OUTBOUND_MODE?.trim().toLowerCase();
+  return v === "shadow" ? "shadow" : "live";
+}
+
 const PORT_CACHE_TTL_MS = 10_000;
 let portCache: { ports: number[]; expiresAt: number } | null = null;
 let chatPortCache: { port: number | null; expiresAt: number } | null = null;
@@ -501,6 +521,27 @@ export async function sendSmsViaEjoin(
   message: string,
   opts?: { portOverride?: number },
 ): Promise<{ port: number; gatewayResponse: string }> {
+  // Shadow-mode short-circuit: any process flagged as non-authoritative
+  // for the shared SIM gateway must NOT physically transmit. Run before
+  // credential, port-pool, and blocklist lookups so a dev workspace
+  // missing one of those still no-ops cleanly. The returned shape
+  // matches the live path so every caller (sms-inbox forwards, owner-
+  // reply relays, owner-reject corrective texts, the admin "send test"
+  // button, customer outbound from the chat composer) keeps working
+  // as if the send succeeded — the only observable difference is no
+  // text actually leaves this server.
+  if (getSmsOutboundMode() === "shadow") {
+    const phoneForLog = normalizePhone(to);
+    const portForLog =
+      opts?.portOverride != null && Number.isInteger(Number(opts.portOverride))
+        ? Number(opts.portOverride)
+        : null;
+    logger.info(
+      { to: phoneForLog, port: portForLog, bodyLen: message.length, fn: "sendSmsViaEjoin" },
+      "[sms-outbound] suppressed (SMS_OUTBOUND_MODE=shadow)",
+    );
+    return { port: portForLog ?? 0, gatewayResponse: "suppressed:shadow-mode" };
+  }
   const cfg = getCredentials();
   if (!cfg) throw new Error("ejointech gateway not configured");
 
@@ -661,6 +702,19 @@ export async function sendSmsViaChatPort(
   to: string,
   message: string,
 ): Promise<{ port: number; gatewayResponse: string }> {
+  // Same shadow-mode short-circuit as sendSmsViaEjoin, but skip the
+  // chat-port DB lookup too — a dev workspace pointed at a stale or
+  // empty event_settings row would otherwise throw "no chat port
+  // configured" instead of cleanly no-opping. Sending via chat port
+  // in shadow mode also bypasses the round-robin sanity log warning
+  // about customer-bound sends going through the wrong port.
+  if (getSmsOutboundMode() === "shadow") {
+    logger.info(
+      { to: normalizePhone(to), port: null, bodyLen: message.length, fn: "sendSmsViaChatPort" },
+      "[sms-outbound] suppressed (SMS_OUTBOUND_MODE=shadow)",
+    );
+    return { port: 0, gatewayResponse: "suppressed:shadow-mode" };
+  }
   const port = await getChatPort();
   if (port == null) {
     throw new Error(
