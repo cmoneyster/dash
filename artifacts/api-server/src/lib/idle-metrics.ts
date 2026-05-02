@@ -132,8 +132,15 @@ export type IdleActivitySnapshot = {
   serverStartedAt: string;
   asOf: string;
   ejoinPolls: {
-    lastHour: { count: number; bytes: number };
-    last24h: { count: number; bytes: number };
+    // `avgBytesPerPoll` is a derived rolling average of response-body
+    // size per poll inside the window. Surfaced separately (instead of
+    // making the UI divide bytes/count) so the SMS-settings cadence
+    // estimate ("~X MB/hour at this interval") and the operator's
+    // measured-actual reading on this page stay perfectly comparable.
+    // null when no polls landed in the window so the UI can render a
+    // "no data yet" hint instead of NaN.
+    lastHour: { count: number; bytes: number; avgBytesPerPoll: number | null };
+    last24h: { count: number; bytes: number; avgBytesPerPoll: number | null };
   };
   outboundSms: {
     lastHour: number;
@@ -224,12 +231,17 @@ export function snapshot(pollers: PollerStatusInput): IdleActivitySnapshot {
   // families don't visually swap between renders.
   byFamily.sort((a, b) => b.count - a.count || a.family.localeCompare(b.family));
 
+  // Round to whole bytes for stable display; we only ever surface this
+  // as KB-precision in the UI so sub-byte fractions are noise.
+  const avgHour = ejoinPollsHour > 0 ? Math.round(ejoinBytesHour / ejoinPollsHour) : null;
+  const avgDay = ejoinPollsDay > 0 ? Math.round(ejoinBytesDay / ejoinPollsDay) : null;
+
   return {
     serverStartedAt: SERVER_STARTED_AT.toISOString(),
     asOf: new Date().toISOString(),
     ejoinPolls: {
-      lastHour: { count: ejoinPollsHour, bytes: ejoinBytesHour },
-      last24h: { count: ejoinPollsDay, bytes: ejoinBytesDay },
+      lastHour: { count: ejoinPollsHour, bytes: ejoinBytesHour, avgBytesPerPoll: avgHour },
+      last24h: { count: ejoinPollsDay, bytes: ejoinBytesDay, avgBytesPerPoll: avgDay },
     },
     outboundSms: {
       lastHour: smsHour,

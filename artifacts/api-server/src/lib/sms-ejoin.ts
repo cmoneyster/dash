@@ -1080,6 +1080,16 @@ export async function fetchInboundSmsForPort(
     },
     "[ejoin] per-port detail fetch",
   );
+  // Feed the admin idle-activity dashboard. The per-port detail page is
+  // a real HTTP round-trip to the gateway and is hit on every escalated
+  // poll cycle (cold start + every count/latest-id change), so omitting
+  // it would understate the operator's bandwidth measurement — exactly
+  // what the SMS-settings cadence card is supposed to be calibrated
+  // against. Counted as a separate poll because it IS a separate
+  // request; admins comparing avg bytes/poll vs the SMS-settings
+  // estimate (~7 KB/poll baseline) get a per-fetch comparison and the
+  // total bytes/hour stays accurate either way.
+  recordEjoinPoll(result.bodyBytes);
   return parsed;
 }
 

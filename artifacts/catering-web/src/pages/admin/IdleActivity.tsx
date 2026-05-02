@@ -23,6 +23,19 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+// Per-hour bandwidth label so the operator can compare the SmsSettings
+// "estimated MB/hour at this interval" estimate side-by-side with the
+// real measurement here. Uses decimal-SI units (1000-based) to match
+// telecom-data-plan accounting and the units used by the SmsSettings
+// estimate widget; the absolute-bytes display above intentionally
+// keeps binary units (KB = 1024) since those are byte counts, not
+// data-plan sizes.
+function formatBytesPerHour(bytesPerHour: number): string {
+  if (bytesPerHour < 1000) return `${Math.round(bytesPerHour)} B/hour`;
+  if (bytesPerHour < 1_000_000) return `${(bytesPerHour / 1000).toFixed(1)} KB/hour`;
+  return `${(bytesPerHour / 1_000_000).toFixed(2)} MB/hour`;
+}
+
 function formatRelative(iso: string | null): string {
   if (!iso) return "never";
   const ms = Date.now() - new Date(iso).getTime();
@@ -128,10 +141,54 @@ export default function IdleActivity() {
                 }
               />
               <Row label="Inbound mode" value={data.smsPoller.inboundMode} />
-              <Row label="Last hour (count)" value={data.ejoinPolls.lastHour.count.toLocaleString()} />
-              <Row label="Last hour (bytes)" value={formatBytes(data.ejoinPolls.lastHour.bytes)} />
-              <Row label="Last 24h (count)" value={data.ejoinPolls.last24h.count.toLocaleString()} />
-              <Row label="Last 24h (bytes)" value={formatBytes(data.ejoinPolls.last24h.bytes)} />
+              <Row label="Gateway fetches (last hour)" value={data.ejoinPolls.lastHour.count.toLocaleString()} />
+              {/*
+                Actual measured bandwidth over the trailing 60 minutes.
+                Bytes accumulated in the last hour ARE the per-hour
+                rate, so we render it with the same MB/hour format the
+                SMS Settings cadence card uses for its estimate. This
+                is the apples-to-apples "estimate vs reality"
+                comparison: if the estimate says ~8.6 MB/hour at 3 s
+                cadence and this says ~9 MB/hour, the operator knows
+                the estimate is honest. Includes both the listing
+                fetch and any per-port detail fetches escalation
+                triggered, since both are real round-trips to the
+                gateway.
+              */}
+              <Row
+                label="Last hour usage"
+                value={`${formatBytes(data.ejoinPolls.lastHour.bytes)} ≈ ${formatBytesPerHour(
+                  data.ejoinPolls.lastHour.bytes,
+                )}`}
+              />
+              {/*
+                Per-fetch average is a secondary detail — useful for
+                comparing against the ~7 KB/poll baseline the SMS
+                Settings estimate is calibrated on, and for spotting
+                response-size growth (e.g. a SIM message backlog
+                inflating the listing payload). "Per fetch" not "per
+                cycle": each escalated cycle counts as 2 fetches
+                (listing + per-port detail), and admin-triggered
+                backfill fetches contribute too, so this number is
+                strictly per HTTP request to the gateway.
+              */}
+              <Row
+                label="Avg per gateway fetch (last hour)"
+                value={
+                  data.ejoinPolls.lastHour.avgBytesPerPoll == null
+                    ? "no data yet"
+                    : formatBytes(data.ejoinPolls.lastHour.avgBytesPerPoll)
+                }
+              />
+              <Row label="Gateway fetches (last 24h)" value={data.ejoinPolls.last24h.count.toLocaleString()} />
+              <Row label="Last 24h usage" value={formatBytes(data.ejoinPolls.last24h.bytes)} />
+              <p className="text-xs text-muted-foreground pt-2">
+                Counts every HTTP request to the SIM gateway — steady-state
+                polls, escalated per-port detail fetches, and admin-triggered
+                backfill — so totals reflect real bandwidth. Compare "Last
+                hour usage" to the estimated MB/hour on the SMS Settings
+                cadence card.
+              </p>
             </Card>
 
             <Card title="Outbound SMS" icon={MessageSquare}>

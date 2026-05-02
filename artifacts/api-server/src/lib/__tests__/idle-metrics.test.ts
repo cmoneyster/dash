@@ -62,11 +62,15 @@ describe("idle-metrics windowing", () => {
     // Only the T = +25h event lives in the last hour.
     expect(snap.ejoinPolls.lastHour.count).toBe(1);
     expect(snap.ejoinPolls.lastHour.bytes).toBe(500);
+    // 500 bytes / 1 poll = 500 avg.
+    expect(snap.ejoinPolls.lastHour.avgBytesPerPoll).toBe(500);
     expect(snap.outboundSms.lastHour).toBe(1);
 
     // Last 24h includes T = +2h and T = +25h, but NOT T = 0.
     expect(snap.ejoinPolls.last24h.count).toBe(2);
     expect(snap.ejoinPolls.last24h.bytes).toBe(2500);
+    // 2500 bytes / 2 polls = 1250 avg.
+    expect(snap.ejoinPolls.last24h.avgBytesPerPoll).toBe(1250);
     expect(snap.outboundSms.last24h).toBe(2);
   });
 
@@ -122,6 +126,8 @@ describe("idle-metrics pruning", () => {
     const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     expect(snap.ejoinPolls.last24h.count).toBe(24 * 60);
     expect(snap.ejoinPolls.last24h.bytes).toBe(24 * 60 * 10);
+    // Every poll recorded exactly 10 bytes, so the rolling average is 10.
+    expect(snap.ejoinPolls.last24h.avgBytesPerPoll).toBe(10);
   });
 });
 
@@ -167,9 +173,23 @@ describe("idle-metrics recorders increment the right fields", () => {
     expect(snap.ejoinPolls.last24h.count).toBe(4);
     // 1234 + 0 + max(0, -50) + floor(7.9) = 1234 + 0 + 0 + 7 = 1241
     expect(snap.ejoinPolls.last24h.bytes).toBe(1241);
+    // 1241 / 4 = 310.25, rounded to 310 for stable display.
+    expect(snap.ejoinPolls.last24h.avgBytesPerPoll).toBe(310);
     expect(snap.outboundSms.last24h).toBe(0);
     expect(snap.instagramPolls.last24h).toBe(0);
     expect(snap.instagramPolls.lastRunAt).toBeNull();
+  });
+
+  it("avgBytesPerPoll is null when no polls landed inside the window", () => {
+    // No recordEjoinPoll calls — count is 0, so the derived average
+    // must be null instead of NaN/0 so the UI can render a "no data
+    // yet" placeholder.
+    recordOutboundSms();
+    const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
+    expect(snap.ejoinPolls.lastHour.count).toBe(0);
+    expect(snap.ejoinPolls.lastHour.avgBytesPerPoll).toBeNull();
+    expect(snap.ejoinPolls.last24h.count).toBe(0);
+    expect(snap.ejoinPolls.last24h.avgBytesPerPoll).toBeNull();
   });
 
   it("recordOutboundSms only touches smsOutbound", () => {

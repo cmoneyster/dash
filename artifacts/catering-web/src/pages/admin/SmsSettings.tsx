@@ -47,6 +47,27 @@ type BackfillStatus = {
 const EJOIN_VALID_PORTS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const EJOIN_PORT_COUNT = EJOIN_VALID_PORTS.length;
 
+// Per-poll response-body baseline used for the cadence-card bandwidth
+// estimate. Derived from the original ~8.6 MB/hour @ 3s observation
+// using decimal-SI units (8.6e6 bytes / 1200 polls = 7167 B/poll), so
+// at the 3s default this lands at ~8.60 MB/hour and at 30s at ~860
+// KB/hour — exactly matching the surrounding help-text copy. We use
+// SI (1000-based) units for the /hour bandwidth label because that's
+// how telecom data plans are billed; the absolute byte counts on the
+// Idle Activity page intentionally still use binary KB/MB. Kept as a
+// constant rather than reading actual measured bytes from the
+// snapshot so the estimate stays stable when the poller hasn't
+// ticked yet (e.g. fresh deploy, push mode). The Idle Activity page
+// surfaces the real measured average so an admin can compare
+// estimate vs. reality.
+const EJOIN_ESTIMATED_BYTES_PER_POLL = 7167;
+
+function formatBandwidthPerHour(bytesPerHour: number): string {
+  if (bytesPerHour < 1000) return `${Math.round(bytesPerHour)} B/hour`;
+  if (bytesPerHour < 1_000_000) return `${(bytesPerHour / 1000).toFixed(1)} KB/hour`;
+  return `${(bytesPerHour / 1_000_000).toFixed(2)} MB/hour`;
+}
+
 const FORWARD_CAP_OPTIONS: { value: string; label: string }[] = [
   { value: "1", label: "1 forward / 24h" },
   { value: "3", label: "3 forwards / 24h" },
@@ -1132,6 +1153,46 @@ export default function SmsSettings() {
                 (~8.6 MB/hour of HTTP traffic). Increase the interval to reduce load — at 30 seconds the same
                 traffic drops to ~860 KB/hour. Push-mode catch-up safety net (every 10 minutes) is unaffected.
               </p>
+              {/*
+                Reactive bandwidth estimate. Recomputes as the admin
+                types a new interval so the impact of the change is
+                visible BEFORE saving. The constant baseline keeps the
+                estimate stable across deploys; the Idle Activity page
+                surfaces the actual measured average for ground truth.
+              */}
+              {(() => {
+                const seconds = Number(pollIntervalSec);
+                const min = server?.smsPollIntervalSecondsMin ?? 3;
+                const max = server?.smsPollIntervalSecondsMax ?? 600;
+                const valid = Number.isFinite(seconds) && Number.isInteger(seconds) && seconds >= min && seconds <= max;
+                if (!valid) return null;
+                const pollsPerHour = 3600 / seconds;
+                const bytesPerHour = pollsPerHour * EJOIN_ESTIMATED_BYTES_PER_POLL;
+                // Push mode ignores the operator-tunable interval and
+                // uses a 10-minute safety-net cadence instead. Surface
+                // both numbers so the admin understands the typed-in
+                // interval doesn't actually take effect in push mode.
+                const inPush = server?.smsInboundMode === "push";
+                const pushBytesPerHour = (3600 / 600) * EJOIN_ESTIMATED_BYTES_PER_POLL;
+                return (
+                  <div className="bg-secondary/50 border border-border rounded-xl px-4 py-3 text-sm space-y-1">
+                    <div>
+                      <span className="text-muted-foreground">Estimated gateway bandwidth at this interval: </span>
+                      <span className="font-semibold tabular-nums">~{formatBandwidthPerHour(bytesPerHour)}</span>
+                    </div>
+                    {inPush && (
+                      <div className="text-amber-700">
+                        Push mode is active — the live cadence is the 10-minute safety-net (~{formatBandwidthPerHour(pushBytesPerHour)}),
+                        and the interval above is ignored until you switch back to poll mode.
+                      </div>
+                    )}
+                    <div className="text-muted-foreground text-xs">
+                      Estimate uses ~{(EJOIN_ESTIMATED_BYTES_PER_POLL / 1000).toFixed(1)} KB per poll.
+                      Actual usage is shown on the Idle Activity page.
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="space-y-3">
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input

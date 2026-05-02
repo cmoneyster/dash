@@ -1223,7 +1223,12 @@ components:
                   type: integer
                 bytes:
                   type: integer
-              required: [count, bytes]
+                avgBytesPerPoll:
+                  type: ["integer", "null"]
+                  description: >-
+                    Average response-body bytes per ejoin poll inside the
+                    window. `null` when no polls were recorded.
+              required: [count, bytes, avgBytesPerPoll]
             last24h:
               type: object
               properties:
@@ -1231,7 +1236,12 @@ components:
                   type: integer
                 bytes:
                   type: integer
-              required: [count, bytes]
+                avgBytesPerPoll:
+                  type: ["integer", "null"]
+                  description: >-
+                    Average response-body bytes per ejoin poll inside the
+                    window. `null` when no polls were recorded.
+              required: [count, bytes, avgBytesPerPoll]
           required: [lastHour, last24h]
         outboundSms:
           type: object

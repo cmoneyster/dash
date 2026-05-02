@@ -284,11 +284,21 @@ export interface AdminStats {
 export type IdleActivitySnapshotEjoinPollsLastHour = {
   count: number;
   bytes: number;
+  /**
+   * Average response-body bytes per ejoin poll inside the window. `null` when no polls were recorded.
+   * @nullable
+   */
+  avgBytesPerPoll: number | null;
 };
 
 export type IdleActivitySnapshotEjoinPollsLast24h = {
   count: number;
   bytes: number;
+  /**
+   * Average response-body bytes per ejoin poll inside the window. `null` when no polls were recorded.
+   * @nullable
+   */
+  avgBytesPerPoll: number | null;
 };
 
 export type IdleActivitySnapshotEjoinPolls = {

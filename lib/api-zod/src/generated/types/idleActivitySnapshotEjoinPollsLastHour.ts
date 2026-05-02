@@ -9,4 +9,9 @@
 export type IdleActivitySnapshotEjoinPollsLastHour = {
   count: number;
   bytes: number;
+  /**
+   * Average response-body bytes per ejoin poll inside the window. `null` when no polls were recorded.
+   * @nullable
+   */
+  avgBytesPerPoll: number | null;
 };

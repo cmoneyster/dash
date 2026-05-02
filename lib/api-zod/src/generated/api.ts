@@ -1188,10 +1188,22 @@ export const GetAdminIdleActivityResponse = zod.object({
     lastHour: zod.object({
       count: zod.number(),
       bytes: zod.number(),
+      avgBytesPerPoll: zod
+        .number()
+        .nullable()
+        .describe(
+          "Average response-body bytes per ejoin poll inside the window. `null` when no polls were recorded.",
+        ),
     }),
     last24h: zod.object({
       count: zod.number(),
       bytes: zod.number(),
+      avgBytesPerPoll: zod
+        .number()
+        .nullable()
+        .describe(
+          "Average response-body bytes per ejoin poll inside the window. `null` when no polls were recorded.",
+        ),
     }),
   }),
   outboundSms: zod.object({
