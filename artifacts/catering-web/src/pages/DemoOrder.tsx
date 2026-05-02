@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { ShoppingBag, Minus, Plus, Utensils, Phone, Sparkles, ArrowLeft, PlayCircle } from "lucide-react";
+import { ShoppingBag, Minus, Plus, Phone, Sparkles, ArrowLeft, PlayCircle } from "lucide-react";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useCategories } from "@/lib/categories";
 import { useDemoTour } from "@/lib/demoTour";
@@ -150,20 +150,17 @@ export default function DemoOrder() {
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
 
       <header className="sticky top-[44px] z-30 bg-card/80 backdrop-blur-md border-b border-border">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 bg-foreground rounded-xl flex items-center justify-center flex-shrink-0">
-              <Utensils className="w-5 h-5 text-background" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="font-display font-bold text-xl truncate">Demo Ordering</h1>
-              <p className="text-xs text-muted-foreground">dash by Hollywood East Cafe</p>
-            </div>
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="font-display font-bold text-xl">Demo Ordering</h1>
+            <p className="text-xs text-muted-foreground">dash by Hollywood East Cafe</p>
           </div>
-          <div ref={cartRef} className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-sm font-bold flex-shrink-0">
-            <ShoppingBag className="w-4 h-4" />
-            {totalQty} item{totalQty !== 1 ? "s" : ""} selected
-          </div>
+          {orderItems.length > 0 && (
+            <div ref={cartRef} className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-sm font-bold">
+              <ShoppingBag className="w-4 h-4" />
+              {totalQty} item{totalQty !== 1 ? "s" : ""} selected
+            </div>
+          )}
         </div>
       </header>
 
@@ -260,7 +257,7 @@ export default function DemoOrder() {
                   className="w-full px-4 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 />
                 <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                  For demo purposes only — you will not receive ads or spam. We send one sample tracking text and that's it.
+                  By submitting, you agree to receive one demo text with a sample tracking link. No ads, no spam — that's it.
                 </p>
               </div>
 
