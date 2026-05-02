@@ -480,6 +480,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdminStats"
 
+  # Idle activity (in-process counters; resets on server restart)
+  /admin/idle-activity:
+    get:
+      operationId: getAdminIdleActivity
+      tags: [admin]
+      summary: Background traffic counters since the server last restarted
+      responses:
+        "200":
+          description: Idle activity snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdleActivitySnapshot"
+
   # OpenAI conversations (generic, kept for compatibility)
   /openai/conversations:
     get:
@@ -1189,6 +1203,76 @@ components:
         - pendingOrders
         - totalRevenue
         - totalMenuItems
+
+    IdleActivitySnapshot:
+      type: object
+      properties:
+        serverStartedAt:
+          type: string
+          format: date-time
+        asOf:
+          type: string
+          format: date-time
+        ejoinPolls:
+          type: object
+          properties:
+            lastHour:
+              type: object
+              properties:
+                count:
+                  type: integer
+                bytes:
+                  type: integer
+              required: [count, bytes]
+            last24h:
+              type: object
+              properties:
+                count:
+                  type: integer
+                bytes:
+                  type: integer
+              required: [count, bytes]
+          required: [lastHour, last24h]
+        outboundSms:
+          type: object
+          properties:
+            lastHour:
+              type: integer
+            last24h:
+              type: integer
+          required: [lastHour, last24h]
+        instagramPolls:
+          type: object
+          properties:
+            last24h:
+              type: integer
+            lastRunAt:
+              type: ["string", "null"]
+              format: date-time
+          required: [last24h, lastRunAt]
+        clientPolls:
+          type: object
+          properties:
+            windowMinutes:
+              type: integer
+            byFamily:
+              type: array
+              items:
+                type: object
+                properties:
+                  family:
+                    type: string
+                  count:
+                    type: integer
+                required: [family, count]
+          required: [windowMinutes, byFamily]
+      required:
+        - serverStartedAt
+        - asOf
+        - ejoinPolls
+        - outboundSms
+        - instagramPolls
+        - clientPolls
 
     OpenaiConversation:
       type: object

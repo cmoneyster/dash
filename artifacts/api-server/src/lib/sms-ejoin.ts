@@ -1000,6 +1000,11 @@ export async function fetchInbound(opts?: {
     },
     "[ejoin] inbound fetch",
   );
+  // Feed the admin idle-activity dashboard. We record on every poll
+  // attempt that produced a body (regardless of whether it parsed)
+  // so the operator sees the full background traffic, not just the
+  // happy-path subset.
+  recordEjoinPoll(result.bodyBytes);
   return { rows: finalRows, ports: listing.ports };
 }
 
