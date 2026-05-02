@@ -34,6 +34,7 @@ import UpcomingCaterings from "@/pages/admin/UpcomingCaterings";
 import HashtagWallModeration from "@/pages/admin/HashtagWallModeration";
 import SmsSettings from "@/pages/admin/SmsSettings";
 import UnmatchedMessages from "@/pages/admin/UnmatchedMessages";
+import IdleActivity from "@/pages/admin/IdleActivity";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -106,6 +107,9 @@ function Router() {
       </Route>
       <Route path="/admin/messages/unmatched">
         {() => <AdminGuard><UnmatchedMessages /></AdminGuard>}
+      </Route>
+      <Route path="/admin/idle-activity">
+        {() => <AdminGuard><IdleActivity /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />
