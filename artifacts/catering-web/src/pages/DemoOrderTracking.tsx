@@ -101,11 +101,8 @@ export default function DemoOrderTracking() {
             <div className="border-t border-border pt-4">
               <p className="text-xs uppercase tracking-widest font-semibold text-muted-foreground mb-2">Sample order</p>
               {order.items.map((i) => (
-                <div key={i.itemId} className="flex justify-between text-sm py-0.5">
-                  <span>
-                    {i.quantity}× {i.name}
-                  </span>
-                  <span className="text-muted-foreground">${(i.price * i.quantity).toFixed(2)}</span>
+                <div key={i.itemId} className="text-sm py-0.5">
+                  {i.quantity}× {i.name}
                 </div>
               ))}
             </div>
