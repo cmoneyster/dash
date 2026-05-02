@@ -231,3 +231,10 @@ export function _resetIdleMetricsForTests(): void {
   buckets.clear();
   lastInstagramPollAt = null;
 }
+
+// Test-only accessor that exposes the internal Map size so the pruning
+// contract ("buckets stay bounded after long simulated runs") can be
+// asserted directly instead of inferred from snapshot output.
+export function _getBucketCountForTests(): number {
+  return buckets.size;
+}
