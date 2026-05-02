@@ -7,6 +7,11 @@ import { classifyPath, normalizePath, recordHttpRequest } from "./lib/idle-metri
 
 const app: Express = express();
 
+// One trusted proxy hop in front of us (Replit platform proxy). This makes
+// `req.ip` resolve to the real client address rather than the edge proxy,
+// which is what the demo flow's per-IP rate limiter needs to be accurate.
+app.set("trust proxy", 1);
+
 app.use(
   pinoHttp({
     logger,

@@ -96,7 +96,11 @@ export function useDemoTour(refs: Refs) {
 
   const run = useCallback(
     ({ phase, auto }: { phase: "shopping" | "confirmation"; auto: boolean }) => {
-      if (auto) {
+      // Only the shopping tour is gated by the "seen" flag. The
+      // confirmation step fires once per submission and should always
+      // play — otherwise first-time users miss it because the shopping
+      // tour already stamped the flag when it ended.
+      if (auto && phase === "shopping") {
         try {
           if (localStorage.getItem(TOUR_SEEN_KEY)) return;
         } catch {

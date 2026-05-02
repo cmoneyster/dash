@@ -2,7 +2,23 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { demoMenuItemsTable, demoOrdersTable, menuItemsTable } from "@workspace/db/schema";
 import { asc, eq, inArray } from "drizzle-orm";
-import { sendSms } from "../lib/sms";
+import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
+
+// Trusted public origin for outbound demo SMS links. We deliberately do NOT
+// build this from request headers (Host / X-Forwarded-Host) — those are
+// attacker-controlled and the demo SMS endpoint is unauthenticated, so a
+// caller could otherwise cause our SIM gateway to send branded texts that
+// link to an attacker domain. Falls back to the first REPLIT_DOMAINS entry
+// (the deployed app's hostname) so links still work in production.
+function trustedPublicOrigin(): string {
+  const explicit = process.env.PUBLIC_APP_URL?.trim();
+  if (explicit) return explicit.replace(/\/+$/, "");
+  const first = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (first) return `https://${first}`;
+  const dev = process.env.REPLIT_DEV_DOMAIN?.trim();
+  if (dev) return `https://${dev}`;
+  return "https://localhost";
+}
 
 const router: IRouter = Router();
 
@@ -198,23 +214,32 @@ router.post("/demo/orders", async (req, res) => {
     // Sample tracking link uses the demo order id; the demo page renders
     // a fake "you'll be notified when ready" status when this URL is
     // visited so the SMS recipient can see what the live experience
-    // would look like.
-    const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0]?.trim() || req.protocol || "https";
-    const host = (req.headers["x-forwarded-host"] as string) || req.headers.host;
-    const trackingUrl = `${proto}://${host}/demo/order/${created.id}`;
+    // would look like. URL origin comes from trusted server config — see
+    // trustedPublicOrigin() above for why we ignore request headers here.
+    const trackingUrl = `${trustedPublicOrigin()}/demo/order/${created.id}`;
     const firstName = created.guestName.split(" ")[0];
     const smsBody = `Hi ${firstName}! This is a DEMO from dash by Hollywood East Cafe — no real order was placed. Track sample: ${trackingUrl} (For demo purposes only.)`;
 
+    // Call the gateway directly so we observe real send failures. The
+    // higher-level sendSms() helper swallows ejoin errors (it only emits
+    // an alert email), which would make smsSent dishonest here.
     let smsError: string | null = null;
-    try {
-      await sendSms(phoneNorm, smsBody);
-    } catch (err) {
-      smsError = err instanceof Error ? err.message : String(err);
-      req.log.warn({ err, demoOrderId: created.id }, "Demo SMS send failed");
+    let smsSent = false;
+    if (!isEjoinConfigured()) {
+      smsError = "SMS gateway not configured";
+      req.log.warn({ demoOrderId: created.id }, "Demo SMS skipped: gateway not configured");
+    } else {
+      try {
+        await sendSmsViaEjoin(phoneNorm, smsBody);
+        smsSent = true;
+      } catch (err) {
+        smsError = err instanceof Error ? err.message : String(err);
+        req.log.warn({ err, demoOrderId: created.id }, "Demo SMS send failed");
+      }
     }
     await db
       .update(demoOrdersTable)
-      .set({ smsSent: smsError == null, smsError })
+      .set({ smsSent, smsError })
       .where(eq(demoOrdersTable.id, created.id));
 
     res.status(201).json({
@@ -223,7 +248,8 @@ router.post("/demo/orders", async (req, res) => {
       phoneNumber: created.phoneNumber,
       items: orderItems,
       trackingUrl,
-      smsSent: smsError == null,
+      smsSent,
+      smsError,
     });
   } catch (err) {
     req.log.error({ err }, "Error creating demo order");
