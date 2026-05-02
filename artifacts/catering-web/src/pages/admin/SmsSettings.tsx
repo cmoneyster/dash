@@ -587,10 +587,51 @@ export default function SmsSettings() {
         method: "POST",
         headers,
       });
-      const data = await r.json().catch(() => null);
+      const data: {
+        skipped?: boolean;
+        skipReason?: "already-running" | "ejoin-not-configured" | "no-chat-port";
+        fetchedCount?: number;
+        ingested?: number;
+        errors?: number;
+        error?: string;
+      } | null = await r.json().catch(() => null);
       if (!r.ok) throw new Error(data?.error || "Run failed");
-      setPollNowFeedback({ kind: "success", message: "Poll triggered." });
-      setTimeout(() => setPollNowFeedback(null), 3000);
+      // Translate the scheduler's structured result into something the
+      // admin can act on. Skips are not errors but the operator needs
+      // to know why nothing was pulled.
+      let message: string;
+      let kind: "success" | "error" = "success";
+      if (data?.skipped) {
+        kind = "error";
+        switch (data.skipReason) {
+          case "already-running":
+            message = "Another poll is already in progress — try again in a few seconds.";
+            break;
+          case "ejoin-not-configured":
+            message = "Skipped: the SIM gateway URL or credentials are not configured.";
+            break;
+          case "no-chat-port":
+            message = "Skipped: no customer chat port is set under Phone Pool.";
+            break;
+          default:
+            message = "Poll was skipped.";
+        }
+      } else {
+        const fetched = data?.fetchedCount ?? 0;
+        const ingested = data?.ingested ?? 0;
+        const errs = data?.errors ?? 0;
+        if (fetched === 0) {
+          message = "Poll finished — no new messages.";
+        } else {
+          message = `Pulled ${fetched} message${fetched === 1 ? "" : "s"}, saved ${ingested}.`;
+        }
+        if (errs > 0) {
+          message += ` ${errs} error${errs === 1 ? "" : "s"} during ingest.`;
+          kind = "error";
+        }
+      }
+      setPollNowFeedback({ kind, message });
+      setTimeout(() => setPollNowFeedback(null), 6000);
     } catch (e: any) {
       setPollNowFeedback({ kind: "error", message: e?.message || "Run failed" });
     } finally {
