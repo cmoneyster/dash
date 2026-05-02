@@ -41,12 +41,15 @@ import { runSmsBackfill } from "../routes/admin-sms-messages";
 // only applies in poll mode.
 const POLL_INTERVAL_MS_SAFETY_NET = 10 * 60_000;
 // Operator-tunable seconds clamp. The 3s lower bound mirrors the
-// gateway's practical refresh ceiling (faster polls just re-fetch
-// the same listing without picking up new rows). The 600s upper
-// bound matches the safety-net cadence so a misconfigured value
-// doesn't accidentally make poll mode lazier than push mode.
+// gateway's practical refresh ceiling (faster polls just re-fetch the
+// same listing without picking up new rows). The upper bound is
+// intentionally generous (24h) so operators can all-but-pause polling
+// during long quiet periods (overnight, between events) without
+// flipping the enabled toggle off; in push mode the operator-tunable
+// interval is ignored anyway and the 10-minute safety-net cadence
+// still applies.
 const MIN_POLL_INTERVAL_SECONDS = 3;
-const MAX_POLL_INTERVAL_SECONDS = 600;
+const MAX_POLL_INTERVAL_SECONDS = 86_400;
 const DEFAULT_POLL_INTERVAL_SECONDS = 3;
 
 let pollTimer: NodeJS.Timeout | null = null;

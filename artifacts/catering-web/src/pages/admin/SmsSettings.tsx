@@ -573,7 +573,7 @@ export default function SmsSettings() {
     try {
       const seconds = Number(pollIntervalSec);
       const min = server?.smsPollIntervalSecondsMin ?? 3;
-      const max = server?.smsPollIntervalSecondsMax ?? 600;
+      const max = server?.smsPollIntervalSecondsMax ?? 86_400;
       if (!Number.isFinite(seconds) || !Number.isInteger(seconds) || seconds < min || seconds > max) {
         throw new Error(`Interval must be an integer between ${min} and ${max} seconds.`);
       }
@@ -1163,7 +1163,7 @@ export default function SmsSettings() {
               {(() => {
                 const seconds = Number(pollIntervalSec);
                 const min = server?.smsPollIntervalSecondsMin ?? 3;
-                const max = server?.smsPollIntervalSecondsMax ?? 600;
+                const max = server?.smsPollIntervalSecondsMax ?? 86_400;
                 const valid = Number.isFinite(seconds) && Number.isInteger(seconds) && seconds >= min && seconds <= max;
                 if (!valid) return null;
                 const pollsPerHour = 3600 / seconds;
