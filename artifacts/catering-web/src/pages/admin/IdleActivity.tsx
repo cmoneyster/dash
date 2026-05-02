@@ -1,5 +1,8 @@
 import { AdminLayout } from "@/components/AdminLayout";
-import { useGetAdminIdleActivity } from "@workspace/api-client-react";
+import {
+  useGetAdminIdleActivity,
+  getGetAdminIdleActivityQueryKey,
+} from "@workspace/api-client-react";
 import { Activity, MessageSquare, Instagram, Globe, RefreshCw } from "lucide-react";
 
 // Names for the route families the server reports back. Kept here so
@@ -72,6 +75,7 @@ export default function IdleActivity() {
   // looks at this page for seconds, not minutes.
   const { data, isLoading, isFetching, refetch, error } = useGetAdminIdleActivity({
     query: {
+      queryKey: getGetAdminIdleActivityQueryKey(),
       refetchInterval: 60_000,
       refetchOnWindowFocus: true,
     },
