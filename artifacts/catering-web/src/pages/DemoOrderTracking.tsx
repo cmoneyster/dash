@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { CheckCircle2, Clock, Sparkles, ArrowLeft } from "lucide-react";
+import { useDemoTour } from "@/lib/demoTour";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -18,6 +19,8 @@ export default function DemoOrderTracking() {
   const [, params] = useRoute<{ id: string }>("/demo/order/:id");
   const [order, setOrder] = useState<DemoOrder | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const confirmRef = useRef<HTMLDivElement | null>(null);
+  const { run } = useDemoTour({ confirmRef });
 
   useEffect(() => {
     if (!params?.id) return;
@@ -29,6 +32,12 @@ export default function DemoOrderTracking() {
       .then(setOrder)
       .catch(() => setErr("This demo order link is no longer available."));
   }, [params?.id]);
+
+  useEffect(() => {
+    if (!order) return;
+    const t = setTimeout(() => run({ phase: "confirmation", auto: true }), 300);
+    return () => clearTimeout(t);
+  }, [order, run]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -52,7 +61,7 @@ export default function DemoOrderTracking() {
         {!err && !order && <p className="text-center text-muted-foreground">Loading…</p>}
 
         {order && (
-          <div className="bg-card border border-border rounded-3xl p-8">
+          <div ref={confirmRef} className="bg-card border border-border rounded-3xl p-8">
             <p className="text-xs uppercase tracking-widest font-semibold text-muted-foreground">
               Order #{order.id}
             </p>

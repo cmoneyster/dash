@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "wouter";
-import { ShoppingBag, CheckCircle2, Minus, Plus, Utensils, Phone, ExternalLink, Sparkles, ArrowLeft, PlayCircle, MessageSquare } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { ShoppingBag, Minus, Plus, Utensils, Phone, Sparkles, ArrowLeft, PlayCircle } from "lucide-react";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useCategories } from "@/lib/categories";
 import { useDemoTour } from "@/lib/demoTour";
@@ -27,9 +27,6 @@ type DemoOrderResponse = {
   smsSent: boolean;
 };
 
-// Sticky amber DEMO banner that sits above the EventOrder-shaped header.
-// Keeps the "Back to site" link and the "Show tour" replay button so the
-// tour is always reachable, regardless of localStorage state.
 function DemoBanner({ onReplayTour }: { onReplayTour: () => void }) {
   return (
     <div className="sticky top-0 z-40 bg-amber-500 text-amber-950 border-b-2 border-amber-700">
@@ -58,6 +55,7 @@ function DemoBanner({ onReplayTour }: { onReplayTour: () => void }) {
 }
 
 export default function DemoOrder() {
+  const [, setLocation] = useLocation();
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [menu, setMenu] = useState<DemoMenuItem[] | null>(null);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
@@ -65,18 +63,13 @@ export default function DemoOrder() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
-  const [result, setResult] = useState<DemoOrderResponse | null>(null);
   const { data: categoriesData } = useCategories();
 
-  // Tour anchors. categoriesRef wraps the first category section so the
-  // spotlight covers the heading; itemCardRef points at the first item
-  // row's quantity controls; cartRef anchors the header cart-count pill.
   const categoriesRef = useRef<HTMLDivElement | null>(null);
-  const itemCardRef = useRef<HTMLDivElement | null>(null);
+  const itemCardRef = useRef<HTMLButtonElement | null>(null);
   const cartRef = useRef<HTMLDivElement | null>(null);
-  const formRef = useRef<HTMLFormElement | null>(null);
+  const formRef = useRef<HTMLDivElement | null>(null);
   const submitBtnRef = useRef<HTMLButtonElement | null>(null);
-  const confirmRef = useRef<HTMLDivElement | null>(null);
 
   const { run, replay } = useDemoTour({
     categoriesRef,
@@ -84,7 +77,6 @@ export default function DemoOrder() {
     cartRef,
     formRef,
     submitBtnRef,
-    confirmRef,
   });
 
   useEffect(() => {
@@ -99,19 +91,11 @@ export default function DemoOrder() {
       .catch(() => setMenu([]));
   }, []);
 
-  // Kick off the auto-tour after the menu renders.
   useEffect(() => {
     if (!menu || menu.length === 0) return;
     const t = setTimeout(() => run({ phase: "shopping", auto: true }), 400);
     return () => clearTimeout(t);
   }, [menu, run]);
-
-  // After submit, advance the tour to the confirmation step.
-  useEffect(() => {
-    if (!result) return;
-    const t = setTimeout(() => run({ phase: "confirmation", auto: true }), 300);
-    return () => clearTimeout(t);
-  }, [result, run]);
 
   function setQty(id: number, qty: number) {
     setQuantities((prev) => ({ ...prev, [id]: Math.max(0, qty) }));
@@ -121,7 +105,6 @@ export default function DemoOrder() {
     itemId: m.id,
     name: m.name,
     quantity: quantities[m.id],
-    price: m.price,
   })) ?? [];
 
   const totalQty = orderItems.reduce((s, i) => s + i.quantity, 0);
@@ -147,7 +130,7 @@ export default function DemoOrder() {
         return;
       }
       const data = (await res.json()) as DemoOrderResponse;
-      setResult(data);
+      setLocation(`/demo/order/${data.id}`);
     } catch {
       setSubmitErr("Connection error. Please try again.");
     } finally {
@@ -155,70 +138,6 @@ export default function DemoOrder() {
     }
   }
 
-  function placeAnother() {
-    setResult(null);
-    setGuestName("");
-    setPhoneNumber("");
-    if (menu) {
-      const init: Record<number, number> = {};
-      menu.forEach((item) => { init[item.id] = 0; });
-      setQuantities(init);
-    }
-  }
-
-  // ── Confirmation state ──────────────────────────────────────────────
-  // Mirrors EventOrder's centered confirmation card so the demo's last
-  // screen looks like the real guest experience. The demo-only bits
-  // (sample tracking link, "this was a demo" copy) live inside the
-  // same card layout.
-  if (result) {
-    return (
-      <div className="min-h-screen bg-background">
-        <DemoBanner onReplayTour={replay} />
-        <div className="flex items-center justify-center p-4 pt-12">
-          <div ref={confirmRef} className="text-center max-w-sm w-full">
-            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle2 className="w-10 h-10 text-emerald-600" />
-            </div>
-            <h2 className="font-display font-bold text-3xl mb-2">Order Received!</h2>
-            <p className="text-muted-foreground mb-1">
-              {result.smsSent
-                ? `We just texted ${result.phoneNumber} a sample tracking link, exactly like a real guest would receive at your event.`
-                : `Demo order recorded. We weren't able to send the sample text to ${result.phoneNumber} — your gateway may not be configured.`}
-            </p>
-            {result.smsSent && (
-              <div className="flex items-center gap-2 justify-center text-muted-foreground text-sm mb-4 mt-2">
-                <MessageSquare className="w-4 h-4" />
-                <span>Check your phone — should arrive within seconds.</span>
-              </div>
-            )}
-
-            <a
-              href={result.trackingUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-secondary text-foreground font-semibold rounded-xl hover:bg-border transition-colors text-sm mb-4 w-full justify-center"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Track Order #{result.id}
-            </a>
-
-            <button
-              onClick={placeAnother}
-              className="w-full px-6 py-3 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors"
-            >
-              Place Another Order
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // The /api/demo/menu endpoint already filters out hidden items by joining
-  // through the live menu. Order categories the same way EventOrder does:
-  // use the categories API ordering, then append any present-but-unlisted
-  // categories at the end so nothing silently vanishes.
   const presentCats = menu ? new Set(menu.map((i) => i.category)) : new Set<string>();
   const orderedFromApi = (categoriesData ?? []).filter((c) => presentCats.has(c.name)).map((c) => c.name);
   const categories = orderedFromApi.length > 0
@@ -231,11 +150,7 @@ export default function DemoOrder() {
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
 
       <header className="sticky top-[44px] z-30 bg-card/80 backdrop-blur-md border-b border-border">
-        {/* cartRef anchors the tour's "Review the order" spotlight. We
-            attach it to the entire header row so the highlight is visible
-            both before and after items are added (driver.js can't spotlight
-            a zero-size element). */}
-        <div ref={cartRef} className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 bg-foreground rounded-xl flex items-center justify-center flex-shrink-0">
               <Utensils className="w-5 h-5 text-background" />
@@ -245,12 +160,10 @@ export default function DemoOrder() {
               <p className="text-xs text-muted-foreground">dash by Hollywood East Cafe</p>
             </div>
           </div>
-          {orderItems.length > 0 && (
-            <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-sm font-bold flex-shrink-0">
-              <ShoppingBag className="w-4 h-4" />
-              {totalQty} item{totalQty !== 1 ? "s" : ""} selected
-            </div>
-          )}
+          <div ref={cartRef} className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-sm font-bold flex-shrink-0">
+            <ShoppingBag className="w-4 h-4" />
+            {totalQty} item{totalQty !== 1 ? "s" : ""} selected
+          </div>
         </div>
       </header>
 
@@ -262,7 +175,7 @@ export default function DemoOrder() {
             The demo menu hasn't been set up yet.
           </div>
         ) : (
-          <form ref={formRef} onSubmit={handleSubmit} className="space-y-8">
+          <form onSubmit={handleSubmit} className="space-y-8">
             <div ref={categoriesRef}>
               {categories.map((cat, catIdx) => (
                 <div key={cat} className={catIdx > 0 ? "mt-8" : ""}>
@@ -274,7 +187,6 @@ export default function DemoOrder() {
                       return (
                         <div
                           key={item.id}
-                          ref={isFirstItem ? itemCardRef : undefined}
                           className="flex gap-4 items-center bg-card border border-border rounded-2xl p-4"
                         >
                           {item.imageUrl && (
@@ -286,9 +198,7 @@ export default function DemoOrder() {
                             />
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-bold text-sm">{item.name}</p>
-                            </div>
+                            <p className="font-bold text-sm">{item.name}</p>
                             {item.description && (
                               <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
                             )}
@@ -304,6 +214,7 @@ export default function DemoOrder() {
                             </button>
                             <span className="w-6 text-center font-bold text-sm">{qty}</span>
                             <button
+                              ref={isFirstItem ? itemCardRef : undefined}
                               type="button"
                               onClick={() => setQty(item.id, qty + 1)}
                               className="w-8 h-8 flex items-center justify-center rounded-full bg-foreground text-background hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-30"
@@ -319,7 +230,7 @@ export default function DemoOrder() {
               ))}
             </div>
 
-            <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
+            <div ref={formRef} className="bg-card border border-border rounded-2xl p-6 space-y-4">
               <h2 className="font-display font-bold text-lg">Your Details</h2>
               <div>
                 <label className="block text-sm font-semibold mb-1">Your Name <span className="text-destructive">*</span></label>

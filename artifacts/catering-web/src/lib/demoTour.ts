@@ -5,12 +5,12 @@ import "driver.js/dist/driver.css";
 const TOUR_SEEN_KEY = "dash_demo_tour_seen_v1";
 
 type Refs = {
-  categoriesRef: RefObject<HTMLDivElement | null>;
-  itemCardRef: RefObject<HTMLDivElement | null>;
-  cartRef: RefObject<HTMLDivElement | null>;
-  formRef: RefObject<HTMLFormElement | null>;
-  submitBtnRef: RefObject<HTMLButtonElement | null>;
-  confirmRef: RefObject<HTMLDivElement | null>;
+  categoriesRef?: RefObject<HTMLElement | null>;
+  itemCardRef?: RefObject<HTMLElement | null>;
+  cartRef?: RefObject<HTMLElement | null>;
+  formRef?: RefObject<HTMLElement | null>;
+  submitBtnRef?: RefObject<HTMLElement | null>;
+  confirmRef?: RefObject<HTMLElement | null>;
 };
 
 // 6-step spotlight tour for the public demo guest ordering page.
@@ -31,7 +31,7 @@ export function useDemoTour(refs: Refs) {
 
   const buildShoppingSteps = useCallback((): DriveStep[] => {
     const steps: DriveStep[] = [];
-    if (refs.categoriesRef.current) {
+    if (refs.categoriesRef?.current) {
       steps.push({
         element: refs.categoriesRef.current,
         popover: {
@@ -40,7 +40,7 @@ export function useDemoTour(refs: Refs) {
         },
       });
     }
-    if (refs.itemCardRef.current) {
+    if (refs.itemCardRef?.current) {
       steps.push({
         element: refs.itemCardRef.current,
         popover: {
@@ -49,7 +49,7 @@ export function useDemoTour(refs: Refs) {
         },
       });
     }
-    if (refs.cartRef.current) {
+    if (refs.cartRef?.current) {
       steps.push({
         element: refs.cartRef.current,
         popover: {
@@ -58,7 +58,7 @@ export function useDemoTour(refs: Refs) {
         },
       });
     }
-    if (refs.formRef.current) {
+    if (refs.formRef?.current) {
       steps.push({
         element: refs.formRef.current,
         popover: {
@@ -68,7 +68,7 @@ export function useDemoTour(refs: Refs) {
         },
       });
     }
-    if (refs.submitBtnRef.current) {
+    if (refs.submitBtnRef?.current) {
       steps.push({
         element: refs.submitBtnRef.current,
         popover: {
@@ -81,7 +81,7 @@ export function useDemoTour(refs: Refs) {
   }, [refs]);
 
   const buildConfirmationSteps = useCallback((): DriveStep[] => {
-    if (!refs.confirmRef.current) return [];
+    if (!refs.confirmRef?.current) return [];
     return [
       {
         element: refs.confirmRef.current,
