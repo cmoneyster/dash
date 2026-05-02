@@ -33,6 +33,7 @@ import type {
   GetCartParams,
   GetPlanParams,
   HealthStatus,
+  IdleActivitySnapshot,
   ListMenuItemsParams,
   MenuItem,
   OpenaiConversation,
@@ -2074,6 +2075,81 @@ export function useGetAdminStats<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetAdminStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Background traffic counters since the server last restarted
+ */
+export const getGetAdminIdleActivityUrl = () => {
+  return `/api/admin/idle-activity`;
+};
+
+export const getAdminIdleActivity = async (
+  options?: RequestInit,
+): Promise<IdleActivitySnapshot> => {
+  return customFetch<IdleActivitySnapshot>(getGetAdminIdleActivityUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminIdleActivityQueryKey = () => {
+  return [`/api/admin/idle-activity`] as const;
+};
+
+export const getGetAdminIdleActivityQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminIdleActivity>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminIdleActivity>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminIdleActivityQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAdminIdleActivity>>
+  > = ({ signal }) => getAdminIdleActivity({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminIdleActivity>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdminIdleActivityQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminIdleActivity>>
+>;
+export type GetAdminIdleActivityQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Background traffic counters since the server last restarted
+ */
+
+export function useGetAdminIdleActivity<
+  TData = Awaited<ReturnType<typeof getAdminIdleActivity>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminIdleActivity>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminIdleActivityQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

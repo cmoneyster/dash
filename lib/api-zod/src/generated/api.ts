@@ -1179,6 +1179,41 @@ export const GetAdminStatsResponse = zod.object({
 });
 
 /**
+ * @summary Background traffic counters since the server last restarted
+ */
+export const GetAdminIdleActivityResponse = zod.object({
+  serverStartedAt: zod.date(),
+  asOf: zod.date(),
+  ejoinPolls: zod.object({
+    lastHour: zod.object({
+      count: zod.number(),
+      bytes: zod.number(),
+    }),
+    last24h: zod.object({
+      count: zod.number(),
+      bytes: zod.number(),
+    }),
+  }),
+  outboundSms: zod.object({
+    lastHour: zod.number(),
+    last24h: zod.number(),
+  }),
+  instagramPolls: zod.object({
+    last24h: zod.number(),
+    lastRunAt: zod.date().nullable(),
+  }),
+  clientPolls: zod.object({
+    windowMinutes: zod.number(),
+    byFamily: zod.array(
+      zod.object({
+        family: zod.string(),
+        count: zod.number(),
+      }),
+    ),
+  }),
+});
+
+/**
  * @summary List all conversations
  */
 export const ListOpenaiConversationsResponseItem = zod.object({

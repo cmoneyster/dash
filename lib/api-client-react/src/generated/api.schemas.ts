@@ -281,6 +281,51 @@ export interface AdminStats {
   totalMenuItems: number;
 }
 
+export type IdleActivitySnapshotEjoinPollsLastHour = {
+  count: number;
+  bytes: number;
+};
+
+export type IdleActivitySnapshotEjoinPollsLast24h = {
+  count: number;
+  bytes: number;
+};
+
+export type IdleActivitySnapshotEjoinPolls = {
+  lastHour: IdleActivitySnapshotEjoinPollsLastHour;
+  last24h: IdleActivitySnapshotEjoinPollsLast24h;
+};
+
+export type IdleActivitySnapshotOutboundSms = {
+  lastHour: number;
+  last24h: number;
+};
+
+export type IdleActivitySnapshotInstagramPolls = {
+  last24h: number;
+  /** @nullable */
+  lastRunAt: string | null;
+};
+
+export type IdleActivitySnapshotClientPollsByFamilyItem = {
+  family: string;
+  count: number;
+};
+
+export type IdleActivitySnapshotClientPolls = {
+  windowMinutes: number;
+  byFamily: IdleActivitySnapshotClientPollsByFamilyItem[];
+};
+
+export interface IdleActivitySnapshot {
+  serverStartedAt: string;
+  asOf: string;
+  ejoinPolls: IdleActivitySnapshotEjoinPolls;
+  outboundSms: IdleActivitySnapshotOutboundSms;
+  instagramPolls: IdleActivitySnapshotInstagramPolls;
+  clientPolls: IdleActivitySnapshotClientPolls;
+}
+
 export interface OpenaiConversation {
   id: number;
   title: string;

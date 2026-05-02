@@ -7,6 +7,7 @@ import {
 } from "@workspace/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { logger } from "./logger";
+import { recordInstagramPoll } from "./idle-metrics";
 import { ObjectStorageService } from "./objectStorage";
 import {
   InstagramApiError,
@@ -240,6 +241,11 @@ export async function runPollerOnce(): Promise<PollerSummary> {
     pollerRunning = false;
   }
   logger.info({ summary }, "instagram poller cycle complete");
+  // Record for the admin idle-activity dashboard. Counted regardless
+  // of whether any candidates were inserted — the operator wants to
+  // know the poller is still cycling, not just whether it found new
+  // posts.
+  recordInstagramPoll();
   return summary;
 }
 

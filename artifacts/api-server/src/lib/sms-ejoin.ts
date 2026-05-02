@@ -17,6 +17,7 @@ import { db } from "@workspace/db";
 import { eventSettingsTable, cateringInquiriesTable, phoneBlocklistTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+import { recordEjoinPoll, recordOutboundSms } from "./idle-metrics";
 
 // Sentinel error so callers (and the guarded customer-send wrapper)
 // can distinguish "blocklisted recipient" from generic gateway errors
@@ -648,6 +649,10 @@ export async function sendSmsViaEjoin(
   const gatewayResponse = summarizeGatewayResponse(result.text, result.status);
 
   console.info(`[ejoin] SMS sent to ${phone} via port ${port}: ${gatewayResponse}`);
+  // Count for the admin idle-activity dashboard. Only fires on a real
+  // dispatch — the shadow-mode short-circuit above returns earlier so
+  // suppressed sends don't inflate the "outbound SMS" totals.
+  recordOutboundSms();
 
   // Regression sanity log: if this send went out on the round-robin
   // pool (no portOverride) but the destination phone matches a known
