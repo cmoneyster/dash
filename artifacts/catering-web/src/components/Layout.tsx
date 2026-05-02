@@ -1,5 +1,5 @@
 import { Link, useRoute } from "wouter";
-import { ShoppingBag, Heart } from "lucide-react";
+import { ShoppingBag, Heart, MapPin } from "lucide-react";
 import { ChatWidget } from "./ChatWidget";
 import { useGetCart, getGetCartQueryKey } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
@@ -51,6 +51,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <NavLink href="/menu">Our Menu</NavLink>
             <NavLink href="/gallery">Gallery</NavLink>
             <NavLink href="/plan">Event Plan</NavLink>
+            <Link
+              href="/event"
+              className="font-medium text-sm transition-colors text-primary hover:text-primary/80 relative py-2 inline-flex items-center gap-1.5"
+            >
+              <MapPin className="w-4 h-4" />
+              I'm at an event
+            </Link>
           </nav>
 
           <div className="flex items-center gap-4">

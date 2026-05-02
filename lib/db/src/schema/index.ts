@@ -17,3 +17,5 @@ export * from "./instagram";
 export * from "./sms-messages";
 export * from "./phone-blocklist";
 export * from "./owner-forwards";
+export * from "./demo-menu-items";
+export * from "./demo-orders";

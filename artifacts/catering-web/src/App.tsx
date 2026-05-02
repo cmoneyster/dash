@@ -11,6 +11,8 @@ import Plan from "@/pages/Plan";
 import Confirmation from "@/pages/Confirmation";
 import NotFound from "@/pages/not-found";
 import EventOrder from "@/pages/EventOrder";
+import DemoOrder from "@/pages/DemoOrder";
+import DemoOrderTracking from "@/pages/DemoOrderTracking";
 import PublicQuote from "@/pages/PublicQuote";
 import EventTakerOrder from "@/pages/EventTakerOrder";
 import KitchenDisplay from "@/pages/KitchenDisplay";
@@ -35,6 +37,7 @@ import HashtagWallModeration from "@/pages/admin/HashtagWallModeration";
 import SmsSettings from "@/pages/admin/SmsSettings";
 import UnmatchedMessages from "@/pages/admin/UnmatchedMessages";
 import IdleActivity from "@/pages/admin/IdleActivity";
+import DemoMenu from "@/pages/admin/DemoMenu";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,6 +58,8 @@ function Router() {
       <Route path="/plan/share/:token" component={SharedPlan} />
       <Route path="/confirmation" component={Confirmation} />
       <Route path="/event" component={EventOrder} />
+      <Route path="/demo" component={DemoOrder} />
+      <Route path="/demo/order/:id" component={DemoOrderTracking} />
       <Route path="/quote/:token" component={PublicQuote} />
       <Route path="/event-taker" component={EventTakerOrder} />
       <Route path="/event/order/:id" component={OrderStatus} />
@@ -110,6 +115,9 @@ function Router() {
       </Route>
       <Route path="/admin/idle-activity">
         {() => <AdminGuard><IdleActivity /></AdminGuard>}
+      </Route>
+      <Route path="/admin/demo-menu">
+        {() => <AdminGuard><DemoMenu /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />

@@ -31,6 +31,7 @@ import adminInstagramRouter from "./admin-instagram";
 import adminSmsSettingsRouter from "./admin-sms-settings";
 import adminSmsMessagesRouter from "./admin-sms-messages";
 import webhooksSmsRouter from "./webhooks-sms";
+import demoRouter, { adminDemoRouter } from "./demo";
 
 const router: IRouter = Router();
 
@@ -52,6 +53,7 @@ router.use(quotePublicRouter);
 // Public webhooks — must be mounted BEFORE the admin auth middleware below.
 router.use(webhooksSquareRouter);
 router.use(webhooksSmsRouter);
+router.use(demoRouter);
 
 router.use(adminAuthRouter);
 
@@ -70,6 +72,7 @@ router.use("/admin/plans", requireAdminAuth);
 router.use("/admin/categories", requireAdminAuth);
 router.use("/admin/instagram", requireAdminAuth);
 router.use("/admin/messages", requireAdminAuth);
+router.use("/admin/demo-menu", requireAdminAuth);
 
 router.use(adminMenuRouter);
 router.use(adminMenuCsvRouter);
@@ -84,5 +87,6 @@ router.use(adminPlansRouter);
 router.use(adminInstagramRouter);
 router.use(adminSmsSettingsRouter);
 router.use(adminSmsMessagesRouter);
+router.use(adminDemoRouter);
 
 export default router;

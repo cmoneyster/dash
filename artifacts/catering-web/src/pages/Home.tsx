@@ -1,11 +1,13 @@
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { HashtagWall } from "@/components/HashtagWall";
+import { FirstVisitInterstitial } from "@/components/FirstVisitInterstitial";
 import { ArrowRight, Star, Clock, CalendarCheck } from "lucide-react";
 
 export default function Home() {
   return (
     <Layout>
+      <FirstVisitInterstitial />
       {/* Hero Section */}
       <section className="relative pt-32 pb-40 overflow-hidden">
         <div className="absolute inset-0 z-0">

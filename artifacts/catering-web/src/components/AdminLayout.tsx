@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken, getAdminToken } from "@/components/AdminGuard";
 
@@ -121,6 +121,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">On-Site Events</p>
       </div>
       <AdminNavLink href="/admin/event-settings" icon={Zap} onClick={onNavigate}>Event Settings</AdminNavLink>
+      <AdminNavLink href="/admin/demo-menu" icon={Sparkles} onClick={onNavigate}>Demo Menu</AdminNavLink>
       <AdminNavLink href="/admin/event-history" icon={History} onClick={onNavigate}>Event Log</AdminNavLink>
       <AdminNavLink href="/admin/sales-reports" icon={BarChart3} onClick={onNavigate}>Sales Reports</AdminNavLink>
       <a
