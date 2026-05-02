@@ -351,18 +351,24 @@ async function pollTick(): Promise<void> {
 }
 
 /**
- * Operator-visible snapshot for the admin Idle Activity card. Reflects
- * the last values the loop saw (or defaults if it hasn't ticked yet).
+ * Operator-visible snapshot for the admin Idle Activity card. Reads
+ * the persisted settings directly so the page reflects what the admin
+ * just saved on the moderation sidebar, instead of waiting up to one
+ * full poll interval (defaults to 30 min, can be hours) for the
+ * in-memory cache to refresh on the next tick. Falls back to the
+ * in-memory cache if the DB read fails so the card still renders
+ * during a transient hiccup.
  */
-export function getInstagramPollerStatus(): {
+export async function getInstagramPollerStatus(): Promise<{
   enabled: boolean;
   intervalMinutes: number;
   minMinutes: number;
   maxMinutes: number;
-} {
+}> {
+  const { enabled, intervalMinutes } = await readPollerSettings();
   return {
-    enabled: lastEffectivePollEnabled,
-    intervalMinutes: lastEffectivePollIntervalMinutes,
+    enabled,
+    intervalMinutes,
     minMinutes: MIN_POLL_INTERVAL_MINUTES,
     maxMinutes: MAX_POLL_INTERVAL_MINUTES,
   };
