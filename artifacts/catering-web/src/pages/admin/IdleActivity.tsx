@@ -70,14 +70,16 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 export default function IdleActivity() {
   // Auto-refresh once a minute so the operator sees fresh numbers
   // without leaning on the button. Manual refresh stays available
-  // for impatient cycles. We deliberately don't use Server-Sent
-  // Events here — the data is cheap to recompute and the operator
-  // looks at this page for seconds, not minutes.
+  // for impatient cycles. Window-focus refetches are intentionally
+  // disabled so polling truly stays at one request per minute even
+  // when the operator clicks between tabs. We deliberately don't
+  // use Server-Sent Events here — the data is cheap to recompute
+  // and the operator looks at this page for seconds, not minutes.
   const { data, isLoading, isFetching, refetch, error } = useGetAdminIdleActivity({
     query: {
       queryKey: getGetAdminIdleActivityQueryKey(),
       refetchInterval: 60_000,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
     },
   });
 
