@@ -33,12 +33,20 @@ function DemoBanner({ onReplayTour }: { onReplayTour: () => void }) {
           <Sparkles className="w-4 h-4 flex-shrink-0" />
           <span>DEMO MODE — nothing is being charged or fulfilled.</span>
         </div>
-        <button
-          onClick={onReplayTour}
-          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/10 hover:bg-amber-950/20 text-xs font-semibold transition-colors"
-        >
-          <PlayCircle className="w-3.5 h-3.5" /> Show tour
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/10 hover:bg-amber-950/20 text-xs font-semibold transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to site
+          </Link>
+          <button
+            onClick={onReplayTour}
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/10 hover:bg-amber-950/20 text-xs font-semibold transition-colors"
+          >
+            <PlayCircle className="w-3.5 h-3.5" /> Show tour
+          </button>
+        </div>
       </div>
     </div>
   );

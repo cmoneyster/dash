@@ -114,9 +114,26 @@ export function useDemoTour(refs: Refs) {
       const d = driver({
         showProgress: true,
         allowClose: true,
+        showButtons: ["next", "previous", "close"],
         nextBtnText: "Next",
         prevBtnText: "Back",
         doneBtnText: "Got it",
+        // Driver.js renders the "close" control as an X icon by default.
+        // Inject an explicit "Skip tour" text button into the footer so
+        // the dismiss action is unmistakable for first-time users.
+        onPopoverRender: (popover) => {
+          const footer = popover.footerButtons;
+          if (!footer) return;
+          if (footer.querySelector('[data-demo-skip="1"]')) return;
+          const skip = document.createElement("button");
+          skip.type = "button";
+          skip.textContent = "Skip tour";
+          skip.dataset.demoSkip = "1";
+          skip.className = "driver-popover-close-btn";
+          skip.style.marginRight = "auto";
+          skip.addEventListener("click", () => driverRef.current?.destroy());
+          footer.insertBefore(skip, footer.firstChild);
+        },
         progressText: "{{current}} of {{total}}",
         onDestroyed: () => {
           if (phase === "shopping") {
