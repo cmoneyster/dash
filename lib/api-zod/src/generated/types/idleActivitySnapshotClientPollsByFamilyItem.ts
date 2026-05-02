@@ -5,8 +5,18 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { IdleActivitySnapshotClientPollsByFamilyItemEndpointsItem } from "./idleActivitySnapshotClientPollsByFamilyItemEndpointsItem";
 
 export type IdleActivitySnapshotClientPollsByFamilyItem = {
   family: string;
   count: number;
+  /** Per-endpoint breakdown of the requests counted toward
+this family in the snapshot window. Sorted by count
+descending, with `:id`-style segments normalized so
+hits to e.g. `/orders/47` and `/orders/48` aggregate
+into a single `/orders/:id` row. Capped per family;
+anything beyond the cap rolls into a synthetic
+`(other)` entry.
+ */
+  endpoints: IdleActivitySnapshotClientPollsByFamilyItemEndpointsItem[];
 };

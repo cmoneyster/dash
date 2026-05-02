@@ -222,16 +222,60 @@ export default function IdleActivity() {
 
             <Card title={`Client HTTP Polls (last ${data.clientPolls.windowMinutes} min)`} icon={Globe}>
               {data.clientPolls.byFamily.map((f) => (
-                <Row
+                <div
                   key={f.family}
-                  label={FAMILY_LABELS[f.family] ?? f.family}
-                  value={f.count.toLocaleString()}
-                />
+                  className="border-b border-border/50 pb-2 last:border-0 last:pb-0"
+                >
+                  {/*
+                    Family-level total stays on the same flex row as the
+                    label so the existing visual rhythm of the card is
+                    preserved. The endpoint sub-list below is collapsed
+                    away entirely when there are zero hits or zero
+                    endpoints (e.g. families with no traffic) so empty
+                    families render exactly as before.
+                  */}
+                  <div className="flex justify-between items-baseline gap-4">
+                    <span className="text-muted-foreground">
+                      {FAMILY_LABELS[f.family] ?? f.family}
+                    </span>
+                    <span className="font-mono font-semibold text-foreground tabular-nums">
+                      {f.count.toLocaleString()}
+                    </span>
+                  </div>
+                  {f.endpoints.length > 0 && (
+                    <ul className="mt-1.5 ml-3 space-y-0.5">
+                      {f.endpoints.map((ep) => (
+                        <li
+                          key={ep.path}
+                          className="flex justify-between items-baseline gap-4 text-xs"
+                        >
+                          {/*
+                            Endpoint paths are :id-normalized templates
+                            with the /api prefix stripped server-side
+                            (e.g. /event-taker/orders/:id/payment).
+                            We render them in mono so the route shape
+                            reads cleanly and word-break so a long path
+                            wraps inside the card instead of overflowing.
+                          */}
+                          <span className="font-mono text-muted-foreground/80 break-all">
+                            {ep.path}
+                          </span>
+                          <span className="font-mono text-muted-foreground tabular-nums">
+                            {ep.count.toLocaleString()}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               ))}
               <p className="text-xs text-muted-foreground pt-2">
                 Counts every request that reached the API, grouped by the page
-                family that probably issued it. The dashboard's own polling is
-                excluded.
+                family that probably issued it and broken down by route. Numeric
+                IDs are folded together (e.g. <span className="font-mono">/orders/:id</span>{" "}
+                covers every order). This page's own polling for these counters
+                is excluded; the sidebar's badge polling on every admin page is
+                not.
               </p>
             </Card>
           </div>

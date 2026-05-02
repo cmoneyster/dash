@@ -3,7 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { classifyPath, recordHttpRequest } from "./lib/idle-metrics";
+import { classifyPath, normalizePath, recordHttpRequest } from "./lib/idle-metrics";
 
 const app: Express = express();
 
@@ -45,7 +45,10 @@ app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 app.use("/api", (req, _res, next) => {
   const path = req.baseUrl + (req.path ?? "");
   if (!path.startsWith("/api/admin/idle-activity")) {
-    recordHttpRequest(classifyPath(path));
+    // Normalize the URL into a route template (numeric / UUID segments
+    // collapse to ":id") so the per-endpoint breakdown groups hits by
+    // route rather than by every distinct order/inquiry ID.
+    recordHttpRequest(classifyPath(path), normalizePath(path));
   }
   next();
 });

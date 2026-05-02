@@ -217,9 +217,9 @@ describe("idle-metrics recorders increment the right fields", () => {
   });
 
   it("recordHttpRequest aggregates per family inside the 5-minute window", () => {
-    recordHttpRequest("kitchen-display");
-    recordHttpRequest("kitchen-display");
-    recordHttpRequest("catering-admin");
+    recordHttpRequest("kitchen-display", "/event-ordering/items");
+    recordHttpRequest("kitchen-display", "/event-ordering/items");
+    recordHttpRequest("catering-admin", "/admin/catering/menu");
 
     const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     const byFamily = new Map(
@@ -242,20 +242,66 @@ describe("idle-metrics recorders increment the right fields", () => {
   it("HTTP totals only reflect the trailing 5-minute window", () => {
     // 10 minutes ago: should fall outside the 5-minute HTTP window.
     vi.setSystemTime(START);
-    recordHttpRequest("kitchen-display");
+    recordHttpRequest("kitchen-display", "/event-ordering/items");
 
     // 1 minute ago: inside the 5-minute window.
     vi.setSystemTime(START + 9 * MS_PER_MINUTE);
-    recordHttpRequest("kitchen-display");
+    recordHttpRequest("kitchen-display", "/event-ordering/items");
 
     // "now" = T = +10m.
     vi.setSystemTime(START + 10 * MS_PER_MINUTE);
-    recordHttpRequest("kitchen-display");
+    recordHttpRequest("kitchen-display", "/event-ordering/items");
 
     const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     const kd = snap.clientPolls.byFamily.find(
       (f) => f.family === "kitchen-display",
     );
     expect(kd?.count).toBe(2);
+  });
+
+  it("recordHttpRequest groups hits by normalized endpoint within each family", () => {
+    // Two different order IDs under the same template, plus a separate
+    // settings endpoint. After normalization the per-endpoint breakdown
+    // should show 2 hits for /event-taker/orders/:id/payment and 1 hit
+    // for /event-taker/settings — not three distinct rows.
+    recordHttpRequest("staff-order-taker", "/event-taker/orders/:id/payment");
+    recordHttpRequest("staff-order-taker", "/event-taker/orders/:id/payment");
+    recordHttpRequest("staff-order-taker", "/event-taker/settings");
+
+    const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
+    const taker = snap.clientPolls.byFamily.find((f) => f.family === "staff-order-taker");
+    expect(taker?.count).toBe(3);
+    expect(taker?.endpoints).toEqual([
+      { path: "/event-taker/orders/:id/payment", count: 2 },
+      { path: "/event-taker/settings", count: 1 },
+    ]);
+
+    // Zero-count families surface an empty endpoints array so the UI
+    // can still render a stable row without conditional logic.
+    const publicFam = snap.clientPolls.byFamily.find((f) => f.family === "public");
+    expect(publicFam?.count).toBe(0);
+    expect(publicFam?.endpoints).toEqual([]);
+  });
+});
+
+describe("idle-metrics normalizePath", () => {
+  it("collapses numeric and UUID segments to :id and strips /api prefix", async () => {
+    const { normalizePath } = await import("../idle-metrics");
+    expect(normalizePath("/api/event-taker/orders/47")).toBe("/event-taker/orders/:id");
+    expect(normalizePath("/api/admin/messages/by-inquiry/123")).toBe(
+      "/admin/messages/by-inquiry/:id",
+    );
+    expect(normalizePath("/api/admin/messages/unmatched/123/block-sender")).toBe(
+      "/admin/messages/unmatched/:id/block-sender",
+    );
+    expect(normalizePath("/api/event-taker/settings")).toBe("/event-taker/settings");
+    expect(
+      normalizePath("/api/admin/messages/by-inquiry/01923f00-1234-4567-8abc-0123456789ab"),
+    ).toBe("/admin/messages/by-inquiry/:id");
+    // Non-/api paths are passed through unchanged so public site
+    // requests keep their full path in the breakdown.
+    expect(normalizePath("/about")).toBe("/about");
+    // Empty / root paths render as "/" rather than "".
+    expect(normalizePath("/api")).toBe("/");
   });
 });

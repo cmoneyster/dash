@@ -29,6 +29,7 @@ export * from "./healthStatus";
 export * from "./idleActivitySnapshot";
 export * from "./idleActivitySnapshotClientPolls";
 export * from "./idleActivitySnapshotClientPollsByFamilyItem";
+export * from "./idleActivitySnapshotClientPollsByFamilyItemEndpointsItem";
 export * from "./idleActivitySnapshotEjoinPolls";
 export * from "./idleActivitySnapshotEjoinPollsLast24h";
 export * from "./idleActivitySnapshotEjoinPollsLastHour";

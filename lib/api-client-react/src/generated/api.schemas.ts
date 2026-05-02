@@ -317,9 +317,23 @@ export type IdleActivitySnapshotInstagramPolls = {
   lastRunAt: string | null;
 };
 
+export type IdleActivitySnapshotClientPollsByFamilyItemEndpointsItem = {
+  path: string;
+  count: number;
+};
+
 export type IdleActivitySnapshotClientPollsByFamilyItem = {
   family: string;
   count: number;
+  /** Per-endpoint breakdown of the requests counted toward
+this family in the snapshot window. Sorted by count
+descending, with `:id`-style segments normalized so
+hits to e.g. `/orders/47` and `/orders/48` aggregate
+into a single `/orders/:id` row. Capped per family;
+anything beyond the cap rolls into a synthetic
+`(other)` entry.
+ */
+  endpoints: IdleActivitySnapshotClientPollsByFamilyItemEndpointsItem[];
 };
 
 export type IdleActivitySnapshotClientPolls = {

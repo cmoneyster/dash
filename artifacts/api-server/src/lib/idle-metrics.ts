@@ -34,15 +34,35 @@ const RETAIN_BUCKETS = DAY_MIN + 10;
 
 // A single minute bucket holds totals for every metric we track. Using
 // one shared shape keeps the Map small (one entry per minute, not one
-// per metric per minute) and the snapshot loop simple.
+// per metric per minute) and the snapshot loop simple. The HTTP slot
+// is a nested map (family → endpoint-template → count) so the admin
+// page can break each family down into the routes contributing to it.
 type Bucket = {
   minute: number;
   ejoinPolls: number;
   ejoinBytes: number;
   smsOutbound: number;
   instagramPolls: number;
-  http: Map<string, number>;
+  http: Map<RouteFamily, Map<string, number>>;
 };
+
+// Cardinality cap: how many distinct endpoint templates we'll remember
+// per family per minute. Path normalization already collapses :id-style
+// segments so the natural cardinality is small (well under 20 in
+// practice). The cap exists strictly as a defensive bound against a
+// path-explosion attack — if a request flood includes pseudo-random
+// path segments the normalizer doesn't recognize, we lose detail on
+// the overflow but keep aggregate counts and bounded memory.
+const MAX_ENDPOINTS_PER_FAMILY_PER_BUCKET = 50;
+// Bucket key used to collapse overflow once the per-family endpoint
+// map fills up. Surfaces in the UI as "(other)" so the operator knows
+// they're seeing a roll-up rather than a real endpoint.
+const OVERFLOW_ENDPOINT_KEY = "(other)";
+
+// Number of distinct endpoints surfaced per family in the snapshot.
+// The roll-up sums anything beyond this into "(other)" so the card
+// stays readable even if a family touches dozens of routes.
+const ENDPOINTS_PER_FAMILY_IN_SNAPSHOT = 8;
 
 const buckets = new Map<number, Bucket>();
 
@@ -102,6 +122,29 @@ export function classifyPath(path: string): RouteFamily {
   return "public";
 }
 
+// Normalize a request path into a route template by replacing
+// numeric and UUID segments with `:id`. Without this every order ID,
+// inquiry ID, etc. would create its own bucket key — the per-endpoint
+// breakdown would be useless ("123 hits to /orders/47, 87 to /orders/48,
+// …") instead of useful ("210 hits to /orders/:id"). Done at record
+// time so the in-memory map keys stay bounded.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function normalizePath(path: string): string {
+  // Strip the leading "/api" since every entry has it; the per-endpoint
+  // list inside a family is more readable without the redundant prefix.
+  const trimmed = path.startsWith("/api") ? path.slice(4) : path;
+  if (trimmed === "") return "/";
+  return trimmed
+    .split("/")
+    .map((seg) => {
+      if (seg === "") return seg;
+      if (/^\d+$/.test(seg)) return ":id";
+      if (UUID_RE.test(seg)) return ":id";
+      return seg;
+    })
+    .join("/");
+}
+
 // ── Recorders ─────────────────────────────────────────────────────────────────
 
 export function recordEjoinPoll(bytes: number): void {
@@ -121,9 +164,21 @@ export function recordInstagramPoll(): void {
   lastInstagramPollAt = new Date();
 }
 
-export function recordHttpRequest(family: RouteFamily): void {
+export function recordHttpRequest(family: RouteFamily, normalizedPath: string): void {
   const b = getOrCreateBucket(nowMinute());
-  b.http.set(family, (b.http.get(family) ?? 0) + 1);
+  let perEndpoint = b.http.get(family);
+  if (!perEndpoint) {
+    perEndpoint = new Map();
+    b.http.set(family, perEndpoint);
+  }
+  // Once the per-family endpoint map is full, lump further distinct
+  // endpoints into the overflow key so a path-explosion attacker can't
+  // grow this map indefinitely. Existing keys still increment normally.
+  let key = normalizedPath;
+  if (!perEndpoint.has(key) && perEndpoint.size >= MAX_ENDPOINTS_PER_FAMILY_PER_BUCKET) {
+    key = OVERFLOW_ENDPOINT_KEY;
+  }
+  perEndpoint.set(key, (perEndpoint.get(key) ?? 0) + 1);
 }
 
 // ── Snapshot ──────────────────────────────────────────────────────────────────
@@ -152,7 +207,16 @@ export type IdleActivitySnapshot = {
   };
   clientPolls: {
     windowMinutes: number;
-    byFamily: Array<{ family: RouteFamily; count: number }>;
+    byFamily: Array<{
+      family: RouteFamily;
+      count: number;
+      // Per-endpoint breakdown sorted by count (desc, ties broken
+      // alphabetically). Endpoint keys are :id-normalized templates with
+      // the "/api" prefix stripped. Empty for families with zero hits.
+      // Truncated past ENDPOINTS_PER_FAMILY_IN_SNAPSHOT into a synthetic
+      // "(other)" row so the card stays readable.
+      endpoints: Array<{ path: string; count: number }>;
+    }>;
   };
   // Operator-tunable poller status. Fed by the route handler from the
   // scheduler modules so the admin can confirm what's currently in
@@ -209,26 +273,58 @@ export function snapshot(pollers: PollerStatusInput): IdleActivitySnapshot {
   let smsHour = 0;
   for (const b of hourBuckets) smsHour += b.smsOutbound;
 
-  // Roll up the HTTP map across the 5-minute window into a single
-  // sorted array. Families with zero hits are still surfaced so the
-  // UI can render a consistent table.
-  const httpTotals = new Map<RouteFamily, number>([
-    ["kitchen-display", 0],
-    ["staff-order-taker", 0],
-    ["catering-admin", 0],
-    ["unmatched-messages", 0],
-    ["other-admin", 0],
-    ["public", 0],
-  ]);
+  // Roll up the HTTP map across the 5-minute window into per-family
+  // totals AND a per-family per-endpoint breakdown. Families with zero
+  // hits are still surfaced so the UI can render a consistent table;
+  // their endpoints array is left empty.
+  const FAMILIES: RouteFamily[] = [
+    "kitchen-display",
+    "staff-order-taker",
+    "catering-admin",
+    "unmatched-messages",
+    "other-admin",
+    "public",
+  ];
+  const perFamilyEndpoints = new Map<RouteFamily, Map<string, number>>();
+  for (const fam of FAMILIES) perFamilyEndpoints.set(fam, new Map());
   for (const b of httpBuckets) {
-    for (const [fam, n] of b.http) {
-      httpTotals.set(fam as RouteFamily, (httpTotals.get(fam as RouteFamily) ?? 0) + n);
+    for (const [fam, endpoints] of b.http) {
+      const target = perFamilyEndpoints.get(fam);
+      if (!target) continue;
+      for (const [path, n] of endpoints) {
+        target.set(path, (target.get(path) ?? 0) + n);
+      }
     }
   }
-  const byFamily: Array<{ family: RouteFamily; count: number }> = [];
-  for (const [family, count] of httpTotals) byFamily.push({ family, count });
-  // Stable order: highest first, then alphabetical so equal-count
-  // families don't visually swap between renders.
+  const byFamily: Array<{
+    family: RouteFamily;
+    count: number;
+    endpoints: Array<{ path: string; count: number }>;
+  }> = [];
+  for (const [family, endpoints] of perFamilyEndpoints) {
+    let total = 0;
+    for (const n of endpoints.values()) total += n;
+    // Sort endpoints highest-count first; tie-break alphabetically so
+    // ordering is stable between renders. Truncate past the snapshot
+    // limit and roll the tail into "(other)" so the UI stays compact
+    // even when a family touches many distinct routes.
+    const sorted = Array.from(endpoints, ([path, count]) => ({ path, count }))
+      .sort((a, b) => b.count - a.count || a.path.localeCompare(b.path));
+    let trimmed: Array<{ path: string; count: number }>;
+    if (sorted.length <= ENDPOINTS_PER_FAMILY_IN_SNAPSHOT) {
+      trimmed = sorted;
+    } else {
+      trimmed = sorted.slice(0, ENDPOINTS_PER_FAMILY_IN_SNAPSHOT);
+      let otherCount = 0;
+      for (let i = ENDPOINTS_PER_FAMILY_IN_SNAPSHOT; i < sorted.length; i++) {
+        otherCount += sorted[i].count;
+      }
+      if (otherCount > 0) trimmed.push({ path: OVERFLOW_ENDPOINT_KEY, count: otherCount });
+    }
+    byFamily.push({ family, count: total, endpoints: trimmed });
+  }
+  // Stable family ordering: highest first, then alphabetical so equal-
+  // count families don't visually swap between renders.
   byFamily.sort((a, b) => b.count - a.count || a.family.localeCompare(b.family));
 
   // Round to whole bytes for stable display; we only ever surface this

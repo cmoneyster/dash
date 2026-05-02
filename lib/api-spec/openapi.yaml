@@ -1274,7 +1274,25 @@ components:
                     type: string
                   count:
                     type: integer
-                required: [family, count]
+                  endpoints:
+                    type: array
+                    description: |
+                      Per-endpoint breakdown of the requests counted toward
+                      this family in the snapshot window. Sorted by count
+                      descending, with `:id`-style segments normalized so
+                      hits to e.g. `/orders/47` and `/orders/48` aggregate
+                      into a single `/orders/:id` row. Capped per family;
+                      anything beyond the cap rolls into a synthetic
+                      `(other)` entry.
+                    items:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        count:
+                          type: integer
+                      required: [path, count]
+                required: [family, count, endpoints]
           required: [windowMinutes, byFamily]
         smsPoller:
           type: object

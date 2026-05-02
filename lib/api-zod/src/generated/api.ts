@@ -1220,6 +1220,16 @@ export const GetAdminIdleActivityResponse = zod.object({
       zod.object({
         family: zod.string(),
         count: zod.number(),
+        endpoints: zod
+          .array(
+            zod.object({
+              path: zod.string(),
+              count: zod.number(),
+            }),
+          )
+          .describe(
+            "Per-endpoint breakdown of the requests counted toward\nthis family in the snapshot window. Sorted by count\ndescending, with `:id`-style segments normalized so\nhits to e.g. `\/orders\/47` and `\/orders\/48` aggregate\ninto a single `\/orders\/:id` row. Capped per family;\nanything beyond the cap rolls into a synthetic\n`(other)` entry.\n",
+          ),
       }),
     ),
   }),
