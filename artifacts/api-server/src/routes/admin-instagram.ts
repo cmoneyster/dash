@@ -6,7 +6,7 @@ import {
 } from "@workspace/db/schema";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { isInstagramConfigured } from "../lib/instagramGraph";
-import { runPollerOnce } from "../lib/instagramPoller";
+import { runPollerOnce, INSTAGRAM_POLL_INTERVAL_RANGE } from "../lib/instagramPoller";
 
 const router: IRouter = Router();
 
@@ -247,6 +247,14 @@ router.get("/admin/instagram/status", async (req, res) => {
       lastPolledAt: settings?.instagramLastPolledAt ? settings.instagramLastPolledAt.toISOString() : null,
       pulledLast24h: Number(pulled24h?.count ?? 0),
       pendingCount: Number(pendingCount?.count ?? 0),
+      // Surface the operator-tunable polling controls so the moderation
+      // sidebar can render the on/off toggle and minutes-between-polls
+      // input alongside the rest of the IG settings (which all save
+      // through the same PUT below).
+      instagramPollEnabled: settings?.instagramPollEnabled ?? true,
+      instagramPollIntervalMinutes: settings?.instagramPollIntervalMinutes ?? INSTAGRAM_POLL_INTERVAL_RANGE.default,
+      instagramPollIntervalMinutesMin: INSTAGRAM_POLL_INTERVAL_RANGE.min,
+      instagramPollIntervalMinutesMax: INSTAGRAM_POLL_INTERVAL_RANGE.max,
     });
   } catch (err: any) {
     req.log.error({ err }, "instagram: status failed");
@@ -340,11 +348,38 @@ router.put("/admin/instagram/settings", async (req, res) => {
         updates.instagramAutoDenyOlderThanDays = n;
       }
     }
+    if (body.instagramPollEnabled !== undefined) {
+      updates.instagramPollEnabled = !!body.instagramPollEnabled;
+    }
+    if (body.instagramPollIntervalMinutes !== undefined) {
+      const n = Number(body.instagramPollIntervalMinutes);
+      if (
+        !Number.isFinite(n) ||
+        !Number.isInteger(n) ||
+        n < INSTAGRAM_POLL_INTERVAL_RANGE.min ||
+        n > INSTAGRAM_POLL_INTERVAL_RANGE.max
+      ) {
+        res.status(400).json({
+          error: `instagramPollIntervalMinutes must be an integer between ${INSTAGRAM_POLL_INTERVAL_RANGE.min} and ${INSTAGRAM_POLL_INTERVAL_RANGE.max}`,
+        });
+        return;
+      }
+      updates.instagramPollIntervalMinutes = n;
+    }
 
     // Ensure the singleton row exists.
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     if (!existing) {
-      await db.insert(eventSettingsTable).values({ id: 1, ...updates });
+      // Persist new poll-cadence fields explicitly on bootstrap so the
+      // row is self-consistent even if the caller's PUT didn't touch
+      // them. Same defensive pattern used by the SMS settings route.
+      await db.insert(eventSettingsTable).values({
+        id: 1,
+        ...updates,
+        instagramPollEnabled: updates.instagramPollEnabled ?? true,
+        instagramPollIntervalMinutes:
+          updates.instagramPollIntervalMinutes ?? INSTAGRAM_POLL_INTERVAL_RANGE.default,
+      });
     } else {
       await db.update(eventSettingsTable).set(updates).where(eq(eventSettingsTable.id, 1));
     }

@@ -317,6 +317,25 @@ export type IdleActivitySnapshotClientPolls = {
   byFamily: IdleActivitySnapshotClientPollsByFamilyItem[];
 };
 
+export type IdleActivitySnapshotSmsPollerInboundMode =
+  (typeof IdleActivitySnapshotSmsPollerInboundMode)[keyof typeof IdleActivitySnapshotSmsPollerInboundMode];
+
+export const IdleActivitySnapshotSmsPollerInboundMode = {
+  push: "push",
+  poll: "poll",
+} as const;
+
+export type IdleActivitySnapshotSmsPoller = {
+  enabled: boolean;
+  intervalSeconds: number;
+  inboundMode: IdleActivitySnapshotSmsPollerInboundMode;
+};
+
+export type IdleActivitySnapshotInstagramPoller = {
+  enabled: boolean;
+  intervalMinutes: number;
+};
+
 export interface IdleActivitySnapshot {
   serverStartedAt: string;
   asOf: string;
@@ -324,6 +343,8 @@ export interface IdleActivitySnapshot {
   outboundSms: IdleActivitySnapshotOutboundSms;
   instagramPolls: IdleActivitySnapshotInstagramPolls;
   clientPolls: IdleActivitySnapshotClientPolls;
+  smsPoller: IdleActivitySnapshotSmsPoller;
+  instagramPoller: IdleActivitySnapshotInstagramPoller;
 }
 
 export interface OpenaiConversation {

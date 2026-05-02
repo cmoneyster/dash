@@ -7,8 +7,10 @@
  */
 import type { IdleActivitySnapshotClientPolls } from "./idleActivitySnapshotClientPolls";
 import type { IdleActivitySnapshotEjoinPolls } from "./idleActivitySnapshotEjoinPolls";
+import type { IdleActivitySnapshotInstagramPoller } from "./idleActivitySnapshotInstagramPoller";
 import type { IdleActivitySnapshotInstagramPolls } from "./idleActivitySnapshotInstagramPolls";
 import type { IdleActivitySnapshotOutboundSms } from "./idleActivitySnapshotOutboundSms";
+import type { IdleActivitySnapshotSmsPoller } from "./idleActivitySnapshotSmsPoller";
 
 export interface IdleActivitySnapshot {
   serverStartedAt: Date;
@@ -17,4 +19,6 @@ export interface IdleActivitySnapshot {
   outboundSms: IdleActivitySnapshotOutboundSms;
   instagramPolls: IdleActivitySnapshotInstagramPolls;
   clientPolls: IdleActivitySnapshotClientPolls;
+  smsPoller: IdleActivitySnapshotSmsPoller;
+  instagramPoller: IdleActivitySnapshotInstagramPoller;
 }

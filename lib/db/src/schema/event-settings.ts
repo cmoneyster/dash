@@ -85,6 +85,15 @@ export const eventSettingsTable = pgTable("event_settings", {
   // How many days of historical SIM messages to pull on first deploy
   // (and on a manual "Run backfill now"). Default 90.
   smsBackfillDays: integer("sms_backfill_days").notNull().default(90),
+  // ── SMS gateway inbound polling controls (operator-tunable) ───────────────
+  // When false, the boot-time loop skips the actual gateway HTTP fetch
+  // (so the SIM stops bleeding ~7 KB every cycle), but admin "Run now"
+  // still works. When true, polls happen every smsPollIntervalSeconds
+  // in poll mode. Push-mode safety-net cadence is unaffected by these
+  // two columns. Default true / 3s preserves prior behavior on first
+  // deploy; the operator can dial it down to reduce data usage.
+  smsPollEnabled: boolean("sms_poll_enabled").notNull().default(true),
+  smsPollIntervalSeconds: integer("sms_poll_interval_seconds").notNull().default(3),
   // Stamped after the first successful historical backfill so it
   // doesn't re-run on every server restart. Manual re-trigger via
   // the settings card always runs regardless.
@@ -121,6 +130,15 @@ export const eventSettingsTable = pgTable("event_settings", {
   instagramAutoApproveMention: boolean("instagram_auto_approve_mention").notNull().default(false),
   // Auto-deny posts older than N days. Default 90; admin can blank it to disable.
   instagramAutoDenyOlderThanDays: integer("instagram_auto_deny_older_than_days").default(90),
+  // ── Instagram hashtag polling controls (operator-tunable) ─────────────────
+  // When false, the boot-time loop skips its scheduled cycle entirely
+  // (so we don't burn the 30-call-per-7-day Meta quota while the
+  // operator is iterating on hashtag config), but admin "Run now"
+  // still works. When true, cycles run every instagramPollIntervalMinutes.
+  // Cleanup pass cadence (daily) is unaffected by these two columns.
+  // Default true / 30 min preserves prior behavior on first deploy.
+  instagramPollEnabled: boolean("instagram_poll_enabled").notNull().default(true),
+  instagramPollIntervalMinutes: integer("instagram_poll_interval_minutes").notNull().default(30),
   // Stats surfaced to the moderation sidebar; updated by the poller.
   instagramLastPolledAt: timestamp("instagram_last_polled_at"),
   // Stamped when the admin loads the moderation page; the sidebar nav badge

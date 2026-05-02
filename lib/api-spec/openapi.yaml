@@ -1266,6 +1266,25 @@ components:
                     type: integer
                 required: [family, count]
           required: [windowMinutes, byFamily]
+        smsPoller:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            intervalSeconds:
+              type: integer
+            inboundMode:
+              type: string
+              enum: [push, poll]
+          required: [enabled, intervalSeconds, inboundMode]
+        instagramPoller:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            intervalMinutes:
+              type: integer
+          required: [enabled, intervalMinutes]
       required:
         - serverStartedAt
         - asOf
@@ -1273,6 +1292,8 @@ components:
         - outboundSms
         - instagramPolls
         - clientPolls
+        - smsPoller
+        - instagramPoller
 
     OpenaiConversation:
       type: object

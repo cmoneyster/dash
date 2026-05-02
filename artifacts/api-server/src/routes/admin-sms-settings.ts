@@ -11,6 +11,7 @@ import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { isEjoinConfigured, sendSmsViaEjoin, sendSmsViaChatPort, clearEjoinPortCache, EJOIN_PORT_COUNT, getInboundMode } from "../lib/sms-ejoin";
 import { clearSmsInboxSettingsCache } from "../lib/sms-inbox";
+import { runSmsPollOnce, SMS_POLL_INTERVAL_RANGE } from "../lib/sms-scheduler";
 
 const router: IRouter = Router();
 
@@ -50,6 +51,8 @@ type SmsSettingsUpdate = Partial<
     | "smsOwnerForwardUnmatchedEnabled"
     | "smsOwnerReplyEnabled"
     | "smsBackfillDays"
+    | "smsPollEnabled"
+    | "smsPollIntervalSeconds"
     | "updatedAt"
   >
 >;
@@ -187,6 +190,16 @@ function normalizeForwardCap(v: unknown): number | null {
   return n;
 }
 
+function normalizePollIntervalSeconds(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < SMS_POLL_INTERVAL_RANGE.min || n > SMS_POLL_INTERVAL_RANGE.max) {
+    throw new HttpError(
+      `smsPollIntervalSeconds must be an integer between ${SMS_POLL_INTERVAL_RANGE.min} and ${SMS_POLL_INTERVAL_RANGE.max}`,
+    );
+  }
+  return n;
+}
+
 function normalizeBackfillDays(v: unknown): number {
   const n = Number(v);
   // Hard cap at 365 — the gateway's inbox page typically doesn't go
@@ -233,6 +246,10 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   smsBackfillDays: number;
   smsBackfillCompletedAt: string | null;
   smsInboundMode: "push" | "poll";
+  smsPollEnabled: boolean;
+  smsPollIntervalSeconds: number;
+  smsPollIntervalSecondsMin: number;
+  smsPollIntervalSecondsMax: number;
   ejoinPortCount: number;
 } {
   const dbOwner = s?.ownerNotificationPhone?.trim() || null;
@@ -262,6 +279,10 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
     smsBackfillDays: s?.smsBackfillDays ?? 90,
     smsBackfillCompletedAt: s?.smsBackfillCompletedAt ? s.smsBackfillCompletedAt.toISOString() : null,
     smsInboundMode: getInboundMode(),
+    smsPollEnabled: s?.smsPollEnabled ?? true,
+    smsPollIntervalSeconds: s?.smsPollIntervalSeconds ?? SMS_POLL_INTERVAL_RANGE.default,
+    smsPollIntervalSecondsMin: SMS_POLL_INTERVAL_RANGE.min,
+    smsPollIntervalSecondsMax: SMS_POLL_INTERVAL_RANGE.max,
     ejoinPortCount: EJOIN_PORT_COUNT,
   };
 }
@@ -292,6 +313,8 @@ router.put("/admin/sms-settings", async (req, res) => {
       smsOwnerForwardUnmatchedEnabled?: unknown;
       smsOwnerReplyEnabled?: unknown;
       smsBackfillDays?: unknown;
+      smsPollEnabled?: unknown;
+      smsPollIntervalSeconds?: unknown;
     };
     const updates: SmsSettingsUpdate = { updatedAt: new Date() };
     if (body.smsActivePorts !== undefined) {
@@ -329,6 +352,12 @@ router.put("/admin/sms-settings", async (req, res) => {
     }
     if (body.smsBackfillDays !== undefined) {
       updates.smsBackfillDays = normalizeBackfillDays(body.smsBackfillDays);
+    }
+    if (body.smsPollEnabled !== undefined) {
+      updates.smsPollEnabled = normalizeBool(body.smsPollEnabled, "smsPollEnabled");
+    }
+    if (body.smsPollIntervalSeconds !== undefined) {
+      updates.smsPollIntervalSeconds = normalizePollIntervalSeconds(body.smsPollIntervalSeconds);
     }
 
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
@@ -372,6 +401,14 @@ router.put("/admin/sms-settings", async (req, res) => {
           smsOwnerForwardUnmatchedEnabled: updates.smsOwnerForwardUnmatchedEnabled ?? false,
           smsOwnerReplyEnabled: updates.smsOwnerReplyEnabled ?? false,
           smsBackfillDays: updates.smsBackfillDays ?? 90,
+          // Persist new poll-cadence fields explicitly so the row is
+          // self-consistent even when the caller is bootstrapping the
+          // singleton without touching them. Falling through to DB
+          // defaults alone would leave the row in an undefined state if
+          // the schema migration is ever rolled back or out of sync.
+          smsPollEnabled: updates.smsPollEnabled ?? true,
+          smsPollIntervalSeconds:
+            updates.smsPollIntervalSeconds ?? SMS_POLL_INTERVAL_RANGE.default,
         })
         .returning();
       row = created;
@@ -551,6 +588,22 @@ router.post("/admin/sms-settings/test-chat-owner-alert", async (req, res) => {
   } catch (err: unknown) {
     req.log.error({ err }, "Error sending test chat-owner alert");
     res.status(500).json({ error: "Failed to send test chat-owner alert" });
+  }
+});
+
+// Manual one-shot trigger for the operator's "Run now" button on the
+// SMS Settings inbound polling card. Always runs even when the
+// persisted enabled flag is OFF — that's the entire point of the
+// button. Overlap with a scheduled or another manual run is gated by
+// an in-process flag inside the scheduler so two clicks in quick
+// succession can't double-fire.
+router.post("/admin/sms-settings/poller/run-now", async (req, res) => {
+  try {
+    const result = await runSmsPollOnce();
+    res.json(result);
+  } catch (err: unknown) {
+    req.log.error({ err }, "sms: manual poller run failed");
+    res.status(500).json({ error: "Failed to run SMS poll" });
   }
 });
 

@@ -147,6 +147,18 @@ export type IdleActivitySnapshot = {
     windowMinutes: number;
     byFamily: Array<{ family: RouteFamily; count: number }>;
   };
+  // Operator-tunable poller status. Fed by the route handler from the
+  // scheduler modules so the admin can confirm what's currently in
+  // effect (toggle + interval) without leaving the Idle Activity page.
+  smsPoller: {
+    enabled: boolean;
+    intervalSeconds: number;
+    inboundMode: "push" | "poll";
+  };
+  instagramPoller: {
+    enabled: boolean;
+    intervalMinutes: number;
+  };
 };
 
 // Sum buckets within `windowMinutes` of "now". Inclusive of the
@@ -161,7 +173,16 @@ function bucketsInWindow(windowMinutes: number): Bucket[] {
   return out;
 }
 
-export function snapshot(): IdleActivitySnapshot {
+// Caller passes in the live poller status because that data lives in
+// the scheduler modules — keeping idle-metrics free of those imports
+// avoids a circular-dep risk and keeps this file purely about the
+// in-memory counters.
+export type PollerStatusInput = {
+  smsPoller: { enabled: boolean; intervalSeconds: number; inboundMode: "push" | "poll" };
+  instagramPoller: { enabled: boolean; intervalMinutes: number };
+};
+
+export function snapshot(pollers: PollerStatusInput): IdleActivitySnapshot {
   const hourBuckets = bucketsInWindow(HOUR_MIN);
   const dayBuckets = bucketsInWindow(DAY_MIN);
   const httpBuckets = bucketsInWindow(HTTP_WINDOW_MIN);
@@ -222,6 +243,8 @@ export function snapshot(): IdleActivitySnapshot {
       windowMinutes: HTTP_WINDOW_MIN,
       byFamily,
     },
+    smsPoller: pollers.smsPoller,
+    instagramPoller: pollers.instagramPoller,
   };
 }
 

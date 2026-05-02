@@ -28,6 +28,10 @@ type ServerState = {
   smsBackfillDays: number;
   smsBackfillCompletedAt: string | null;
   smsInboundMode: "push" | "poll";
+  smsPollEnabled: boolean;
+  smsPollIntervalSeconds: number;
+  smsPollIntervalSecondsMin: number;
+  smsPollIntervalSecondsMax: number;
   ejoinPortCount: number;
 };
 
@@ -138,6 +142,17 @@ export default function SmsSettings() {
   const [forwardCap, setForwardCap] = useState<string>("1");
   const [ownerReplyEnabled, setOwnerReplyEnabled] = useState(false);
   const [backfillDays, setBackfillDays] = useState<string>("90");
+  // SIM-gateway poll cadence (toggle + interval seconds). Default 3s
+  // matches the safety net set by the scheduler when nothing is
+  // persisted yet. The string-state mirrors the input so the user can
+  // type freely; we coerce + clamp on save.
+  const [pollEnabled, setPollEnabled] = useState<boolean>(true);
+  const [pollIntervalSec, setPollIntervalSec] = useState<string>("3");
+  const [savingPoll, setSavingPoll] = useState(false);
+  const [savedPoll, setSavedPoll] = useState(false);
+  const [pollError, setPollError] = useState("");
+  const [runningPollNow, setRunningPollNow] = useState(false);
+  const [pollNowFeedback, setPollNowFeedback] = useState<Feedback>(null);
   const [savingChat, setSavingChat] = useState(false);
   const [savedChat, setSavedChat] = useState(false);
   const [chatError, setChatError] = useState("");
@@ -239,6 +254,8 @@ export default function SmsSettings() {
       setForwardCap(data.smsOwnerForwardCapPer24h == null ? "" : String(data.smsOwnerForwardCapPer24h));
       setOwnerReplyEnabled(!!data.smsOwnerReplyEnabled);
       setBackfillDays(String(data.smsBackfillDays ?? 90));
+      setPollEnabled(!!data.smsPollEnabled);
+      setPollIntervalSec(String(data.smsPollIntervalSeconds ?? 3));
     } catch (e: any) {
       setLoadError(e?.message || "Failed to load SMS settings");
     } finally {
@@ -519,6 +536,65 @@ export default function SmsSettings() {
       // chat port.
       setChatOwnerTestCooldownUntil(Date.now() + TEST_COOLDOWN_MS);
       setNowTs(Date.now());
+    }
+  }
+
+  // ── SIM gateway poll cadence (toggle + interval) ───────────────────
+  // Persists `smsPollEnabled` + `smsPollIntervalSeconds`. The scheduler
+  // re-reads these every tick so changes take effect on the very next
+  // cycle without a server restart. The "Run now" button hits a
+  // dedicated endpoint that ignores the enabled flag so an operator
+  // can force one cycle even while polling is paused.
+  async function savePollCadence() {
+    setSavingPoll(true);
+    setPollError("");
+    setSavedPoll(false);
+    try {
+      const seconds = Number(pollIntervalSec);
+      const min = server?.smsPollIntervalSecondsMin ?? 3;
+      const max = server?.smsPollIntervalSecondsMax ?? 600;
+      if (!Number.isFinite(seconds) || !Number.isInteger(seconds) || seconds < min || seconds > max) {
+        throw new Error(`Interval must be an integer between ${min} and ${max} seconds.`);
+      }
+      const r = await fetch(`${BASE}/api/admin/sms-settings`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          smsPollEnabled: pollEnabled,
+          smsPollIntervalSeconds: seconds,
+        }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Save failed");
+      const next = data as ServerState;
+      setServer(next);
+      setPollEnabled(!!next.smsPollEnabled);
+      setPollIntervalSec(String(next.smsPollIntervalSeconds));
+      setSavedPoll(true);
+      setTimeout(() => setSavedPoll(false), 2000);
+    } catch (e: any) {
+      setPollError(e?.message || "Save failed");
+    } finally {
+      setSavingPoll(false);
+    }
+  }
+
+  async function runPollNow() {
+    setRunningPollNow(true);
+    setPollNowFeedback(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/sms-settings/poller/run-now`, {
+        method: "POST",
+        headers,
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Run failed");
+      setPollNowFeedback({ kind: "success", message: "Poll triggered." });
+      setTimeout(() => setPollNowFeedback(null), 3000);
+    } catch (e: any) {
+      setPollNowFeedback({ kind: "error", message: e?.message || "Run failed" });
+    } finally {
+      setRunningPollNow(false);
     }
   }
 
@@ -993,6 +1069,89 @@ export default function SmsSettings() {
               {ownerTestFeedback && (
                 <p className={ownerTestFeedback.kind === "success" ? "text-xs text-emerald-600" : "text-xs text-destructive"}>
                   {ownerTestFeedback.message}
+                </p>
+              )}
+            </section>
+
+            {/* ── Card 2a': SIM Gateway Poll Cadence ─────────────────────
+                 Controls the inbound-SMS poll loop on the SIM gateway.
+                 Defaults to 3s which generates ~8.6 MB/hour of HTTP
+                 traffic — operators on a slow link can dial it back to
+                 reduce load. Toggle pauses the loop entirely; the
+                 push-mode safety-net catch-up still runs every 10 min
+                 from the scheduler regardless. */}
+            <section className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <RefreshCw className="w-4 h-4 text-muted-foreground" />
+                <h2 className="font-display font-bold text-lg">SIM Gateway Poll Cadence</h2>
+                <StatusPill ok={pollEnabled} okLabel="Polling on" badLabel="Polling paused" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                How often the API server asks the SIM gateway for new inbound texts. Default is every 3 seconds
+                (~8.6 MB/hour of HTTP traffic). Increase the interval to reduce load — at 30 seconds the same
+                traffic drops to ~860 KB/hour. Push-mode catch-up safety net (every 10 minutes) is unaffected.
+              </p>
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pollEnabled}
+                    onChange={e => setPollEnabled(e.target.checked)}
+                    className="mt-1 w-4 h-4"
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium block">Enable inbound poll loop</span>
+                    <span className="text-muted-foreground text-xs">
+                      Turn OFF to stop the periodic poll entirely (e.g. during maintenance). The "Run poll now"
+                      button below still works while paused.
+                    </span>
+                  </span>
+                </label>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5" htmlFor="smsPollIntervalInput">
+                  Poll interval (seconds)
+                </label>
+                <input
+                  id="smsPollIntervalInput"
+                  type="number"
+                  min={server?.smsPollIntervalSecondsMin ?? 3}
+                  max={server?.smsPollIntervalSecondsMax ?? 600}
+                  step={1}
+                  value={pollIntervalSec}
+                  onChange={e => setPollIntervalSec(e.target.value)}
+                  className="w-full sm:w-48 px-4 py-2 border border-border rounded-xl bg-background"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Range: {server?.smsPollIntervalSecondsMin ?? 3}–{server?.smsPollIntervalSecondsMax ?? 600} seconds.
+                  Takes effect on the next poll cycle.
+                </p>
+              </div>
+              {pollError && <p className="text-destructive text-sm">{pollError}</p>}
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={savePollCadence}
+                  disabled={savingPoll}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+                >
+                  {savingPoll ? <Loader2 className="w-4 h-4 animate-spin" /> : savedPoll ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
+                  {savingPoll ? "Saving…" : savedPoll ? "Saved!" : "Save Poll Settings"}
+                </button>
+                <button
+                  type="button"
+                  onClick={runPollNow}
+                  disabled={runningPollNow}
+                  title="Force one poll cycle now (works even when polling is paused)."
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-2 hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {runningPollNow ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  {runningPollNow ? "Running…" : "Run poll now"}
+                </button>
+              </div>
+              {pollNowFeedback && (
+                <p className={pollNowFeedback.kind === "success" ? "text-xs text-emerald-600" : "text-xs text-destructive"}>
+                  {pollNowFeedback.message}
                 </p>
               )}
             </section>

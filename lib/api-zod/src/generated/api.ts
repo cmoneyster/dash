@@ -1211,6 +1211,15 @@ export const GetAdminIdleActivityResponse = zod.object({
       }),
     ),
   }),
+  smsPoller: zod.object({
+    enabled: zod.boolean(),
+    intervalSeconds: zod.number(),
+    inboundMode: zod.enum(["push", "poll"]),
+  }),
+  instagramPoller: zod.object({
+    enabled: zod.boolean(),
+    intervalMinutes: zod.number(),
+  }),
 });
 
 /**

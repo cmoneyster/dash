@@ -57,7 +57,7 @@ describe("idle-metrics windowing", () => {
     recordEjoinPoll(500);
     recordOutboundSms();
 
-    const snap = snapshot();
+    const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
 
     // Only the T = +25h event lives in the last hour.
     expect(snap.ejoinPolls.lastHour.count).toBe(1);
@@ -80,7 +80,7 @@ describe("idle-metrics windowing", () => {
     vi.setSystemTime(START + 60 * MS_PER_MINUTE);
     recordOutboundSms();
 
-    const snap = snapshot();
+    const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     expect(snap.outboundSms.lastHour).toBe(1);
     // But it's still inside the 24h window.
     expect(snap.outboundSms.last24h).toBe(2);
@@ -119,7 +119,7 @@ describe("idle-metrics pruning", () => {
     // "now" is the last-recorded minute. Last 24h = the 1439 prior
     // buckets (cutoff is exclusive) + the current bucket = 1440 events
     // worth of bytes. Each event recorded 10 bytes.
-    const snap = snapshot();
+    const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     expect(snap.ejoinPolls.last24h.count).toBe(24 * 60);
     expect(snap.ejoinPolls.last24h.bytes).toBe(24 * 60 * 10);
   });
@@ -163,7 +163,7 @@ describe("idle-metrics recorders increment the right fields", () => {
     recordEjoinPoll(-50);
     recordEjoinPoll(7.9);
 
-    const snap = snapshot();
+    const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     expect(snap.ejoinPolls.last24h.count).toBe(4);
     // 1234 + 0 + max(0, -50) + floor(7.9) = 1234 + 0 + 0 + 7 = 1241
     expect(snap.ejoinPolls.last24h.bytes).toBe(1241);
@@ -177,7 +177,7 @@ describe("idle-metrics recorders increment the right fields", () => {
     recordOutboundSms();
     recordOutboundSms();
 
-    const snap = snapshot();
+    const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     expect(snap.outboundSms.lastHour).toBe(3);
     expect(snap.outboundSms.last24h).toBe(3);
     expect(snap.ejoinPolls.last24h.count).toBe(0);
@@ -189,7 +189,7 @@ describe("idle-metrics recorders increment the right fields", () => {
     recordInstagramPoll();
     recordInstagramPoll();
 
-    const snap = snapshot();
+    const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     expect(snap.instagramPolls.last24h).toBe(2);
     expect(snap.instagramPolls.lastRunAt).toBe(new Date(START).toISOString());
     expect(snap.outboundSms.last24h).toBe(0);
@@ -201,7 +201,7 @@ describe("idle-metrics recorders increment the right fields", () => {
     recordHttpRequest("kitchen-display");
     recordHttpRequest("catering-admin");
 
-    const snap = snapshot();
+    const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     const byFamily = new Map(
       snap.clientPolls.byFamily.map((f) => [f.family, f.count]),
     );
@@ -232,7 +232,7 @@ describe("idle-metrics recorders increment the right fields", () => {
     vi.setSystemTime(START + 10 * MS_PER_MINUTE);
     recordHttpRequest("kitchen-display");
 
-    const snap = snapshot();
+    const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     const kd = snap.clientPolls.byFamily.find(
       (f) => f.family === "kitchen-display",
     );

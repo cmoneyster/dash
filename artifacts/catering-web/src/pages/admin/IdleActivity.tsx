@@ -119,6 +119,15 @@ export default function IdleActivity() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <Card title="SIM Gateway Polls" icon={Activity}>
+              <Row
+                label="Status"
+                value={
+                  data.smsPoller.enabled
+                    ? `polling every ${data.smsPoller.intervalSeconds}s`
+                    : "polling paused"
+                }
+              />
+              <Row label="Inbound mode" value={data.smsPoller.inboundMode} />
               <Row label="Last hour (count)" value={data.ejoinPolls.lastHour.count.toLocaleString()} />
               <Row label="Last hour (bytes)" value={formatBytes(data.ejoinPolls.lastHour.bytes)} />
               <Row label="Last 24h (count)" value={data.ejoinPolls.last24h.count.toLocaleString()} />
@@ -135,6 +144,14 @@ export default function IdleActivity() {
             </Card>
 
             <Card title="Instagram Poller" icon={Instagram}>
+              <Row
+                label="Status"
+                value={
+                  data.instagramPoller.enabled
+                    ? `polling every ${data.instagramPoller.intervalMinutes} min`
+                    : "polling paused"
+                }
+              />
               <Row label="Cycles in last 24h" value={data.instagramPolls.last24h.toLocaleString()} />
               <Row
                 label="Last cycle"
