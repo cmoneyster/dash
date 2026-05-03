@@ -14,6 +14,23 @@ import {
 import { sizeLabel as sizeLabelOf, firstAvailableSizeSlot, type SizeSlot } from "@/lib/sizeSlotHelpers";
 import { getAdminToken } from "@/components/AdminGuard";
 import { ArrowLeft, Loader2, Save, Plus, Trash2, GripVertical, Search, Users, ImageIcon, X as XIcon, Library, Check } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // MenuItem rows ship the size1..size5 columns at runtime even though
 // the generated MenuItem type omits them. Treat the listing as the
@@ -254,6 +271,22 @@ export default function MenuPackageEdit() {
     });
   };
 
+  const itemSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleItemDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    setDraftItems((prev) => {
+      const oldIdx = prev.findIndex((d) => d.draftId === active.id);
+      const newIdx = prev.findIndex((d) => d.draftId === over.id);
+      if (oldIdx < 0 || newIdx < 0) return prev;
+      return arrayMove(prev, oldIdx, newIdx);
+    });
+  };
+
   // Build planner state for math
   const piecesMap: Record<number, number> = {};
   const servingsMap: Record<number, number> = {};
@@ -367,50 +400,23 @@ export default function MenuPackageEdit() {
                 {draftItems.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">No items yet — pick from the right.</p>
                 ) : (
-                  <div className="space-y-2">
-                    {draftItems.map((d, idx) => {
-                      const isPan = d.menuItem.pricingTemplate === "pan_sizes";
-                      const sizeOpts: { val: SizeSlot; label: string }[] = [];
-                      if (isPan) {
-                        for (const slot of [1, 2, 3, 4, 5] as const) {
-                          const lbl = sizeLabelOf(d.menuItem, slot);
-                          if (lbl) sizeOpts.push({ val: slot, label: lbl });
-                        }
-                      }
-                      return (
-                        <div key={d.draftId} className="flex items-center gap-2 p-2 rounded-xl border border-border bg-background">
-                          <div className="flex flex-col">
-                            <button onClick={() => moveItem(d.draftId, -1)} disabled={idx === 0} className="text-xs disabled:opacity-30" aria-label="Move up">▲</button>
-                            <button onClick={() => moveItem(d.draftId, 1)} disabled={idx === draftItems.length - 1} className="text-xs disabled:opacity-30" aria-label="Move down">▼</button>
-                          </div>
-                          <GripVertical className="w-4 h-4 text-muted-foreground shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold truncate">{d.menuItem.name}</div>
-                            <div className="text-xs text-muted-foreground">{d.menuItem.category}</div>
-                          </div>
-                          {isPan && (
-                            <select
-                              value={d.sizeKey ?? ""}
-                              onChange={(e) => updateItem(d.draftId, { sizeKey: parseInt(e.target.value, 10) })}
-                              className="px-2 py-1 rounded-lg border border-border bg-background text-sm"
-                            >
-                              {sizeOpts.map((o) => <option key={o.val} value={o.val}>{o.label}</option>)}
-                            </select>
-                          )}
-                          <input
-                            type="number"
-                            min={1}
-                            value={d.quantity}
-                            onChange={(e) => updateItem(d.draftId, { quantity: Math.max(1, parseInt(e.target.value || "1", 10) || 1) })}
-                            className="w-20 px-2 py-1 rounded-lg border border-border bg-background text-sm text-center"
+                  <DndContext sensors={itemSensors} collisionDetection={closestCenter} onDragEnd={handleItemDragEnd}>
+                    <SortableContext items={draftItems.map((d) => d.draftId)} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-2">
+                        {draftItems.map((d, idx) => (
+                          <SortableDraftItemRow
+                            key={d.draftId}
+                            draft={d}
+                            index={idx}
+                            total={draftItems.length}
+                            onMove={moveItem}
+                            onUpdate={updateItem}
+                            onRemove={removeItem}
                           />
-                          <button onClick={() => removeItem(d.draftId)} className="p-2 text-muted-foreground hover:text-destructive" aria-label="Remove">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                 )}
               </div>
 
@@ -504,6 +510,80 @@ function PPGInput({ label, value, onChange }: { label: string; value: number; on
         onChange={(e) => onChange(Math.max(0, parseFloat(e.target.value || "0") || 0))}
         className="w-full mt-1 px-2 py-1.5 rounded-lg border border-border bg-background text-sm text-center"
       />
+    </div>
+  );
+}
+
+function SortableDraftItemRow({
+  draft: d,
+  index,
+  total,
+  onMove,
+  onUpdate,
+  onRemove,
+}: {
+  draft: DraftItem;
+  index: number;
+  total: number;
+  onMove: (draftId: string, dir: -1 | 1) => void;
+  onUpdate: (draftId: string, patch: Partial<DraftItem>) => void;
+  onRemove: (draftId: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: d.draftId });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+  const isPan = d.menuItem.pricingTemplate === "pan_sizes";
+  const sizeOpts: { val: SizeSlot; label: string }[] = [];
+  if (isPan) {
+    for (const slot of [1, 2, 3, 4, 5] as const) {
+      const lbl = sizeLabelOf(d.menuItem, slot);
+      if (lbl) sizeOpts.push({ val: slot, label: lbl });
+    }
+  }
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2 p-2 rounded-xl border border-border bg-background">
+      <div className="flex flex-col">
+        <button type="button" onClick={() => onMove(d.draftId, -1)} disabled={index === 0} className="text-xs disabled:opacity-30" aria-label="Move up">▲</button>
+        <button type="button" onClick={() => onMove(d.draftId, 1)} disabled={index === total - 1} className="text-xs disabled:opacity-30" aria-label="Move down">▼</button>
+      </div>
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-1 text-muted-foreground hover:text-foreground touch-none shrink-0"
+        aria-label="Drag to reorder"
+        title="Drag to reorder"
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold truncate">{d.menuItem.name}</div>
+        <div className="text-xs text-muted-foreground">{d.menuItem.category}</div>
+      </div>
+      {isPan && (
+        <select
+          value={d.sizeKey ?? ""}
+          onChange={(e) => onUpdate(d.draftId, { sizeKey: parseInt(e.target.value, 10) })}
+          className="px-2 py-1 rounded-lg border border-border bg-background text-sm"
+        >
+          {sizeOpts.map((o) => <option key={o.val} value={o.val}>{o.label}</option>)}
+        </select>
+      )}
+      <input
+        type="number"
+        min={1}
+        value={d.quantity}
+        onChange={(e) => onUpdate(d.draftId, { quantity: Math.max(1, parseInt(e.target.value || "1", 10) || 1) })}
+        className="w-20 px-2 py-1 rounded-lg border border-border bg-background text-sm text-center"
+      />
+      <button type="button" onClick={() => onRemove(d.draftId)} className="p-2 text-muted-foreground hover:text-destructive" aria-label="Remove">
+        <Trash2 className="w-4 h-4" />
+      </button>
     </div>
   );
 }
