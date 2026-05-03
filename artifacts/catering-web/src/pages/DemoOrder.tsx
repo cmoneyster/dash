@@ -44,9 +44,12 @@ function DemoBanner({ onReplayTour }: { onReplayTour: () => void }) {
           </Link>
           <button
             onClick={onReplayTour}
-            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/10 hover:bg-amber-950/20 text-xs font-semibold transition-colors"
+            aria-label="Show tour"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/10 hover:bg-amber-950/20 text-xs font-semibold transition-colors"
           >
-            <PlayCircle className="w-3.5 h-3.5" /> Show tour
+            <PlayCircle className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Show tour</span>
+            <span className="sm:hidden">Tour</span>
           </button>
         </div>
       </div>
