@@ -22,7 +22,14 @@ router.get("/events/day-load", async (req, res): Promise<void> => {
     if (load.blackedOut || load.load === "full") {
       suggestedDates = await findOpenAlternates(date, 3);
     }
-    res.json({ ...load, suggestedDates });
+    // Public response: aggregates only. Intentionally strip the raw
+    // `bookings` array and any per-row identifiers — the bot's
+    // tailored verdict is computed server-side via computeDayLoad and
+    // doesn't need to leak order IDs / individual statuses to anyone
+    // who hits this endpoint.
+    const { bookings: _drop, ...publicShape } = load;
+    void _drop;
+    res.json({ ...publicShape, suggestedDates });
   } catch (err) {
     req.log.error({ err }, "Error computing day load");
     res.status(500).json({ error: "Failed to compute day load" });
