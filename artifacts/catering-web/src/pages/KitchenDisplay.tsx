@@ -1,11 +1,29 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer, Pause, Play, Ban, ShoppingBag, Users, X, AlertTriangle, Minus, Plus } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer, PrinterCheck, Pause, Play, Ban, ShoppingBag, Users, X, AlertTriangle, Minus, Plus } from "lucide-react";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const POLL_INTERVAL = 6000;
 const STOCK_POLL_INTERVAL = 15000;
 const LOW_STOCK_LS_KEY = "kitchen_low_stock_seen";
+// Per-device browser auto-print: when a fresh order shows up on this kitchen
+// tab, automatically window.print() the kitchen ticket / receipt / both.
+// This is independent of the server-side CloudPRNT fan-out — it covers the
+// "no network printer wired" / "browser-attached USB printer" case and acts
+// as an extra backup when CloudPRNT is misbehaving. Persisted in localStorage
+// so each kitchen device remembers its own preference.
+const KITCHEN_AUTO_PRINT_KEY = "kitchen_auto_print";
+type KitchenAutoPrintMode = "off" | "both" | "kitchen" | "receipt";
+function getStoredKitchenAutoPrint(): KitchenAutoPrintMode {
+  try {
+    const v = localStorage.getItem(KITCHEN_AUTO_PRINT_KEY);
+    if (v === "both" || v === "kitchen" || v === "receipt" || v === "off") return v;
+    return "off";
+  } catch { return "off"; }
+}
+function setStoredKitchenAutoPrint(v: KitchenAutoPrintMode) {
+  try { localStorage.setItem(KITCHEN_AUTO_PRINT_KEY, v); } catch {}
+}
 const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 const LOW_STOCK_THRESHOLD_MIN = 1;
 const LOW_STOCK_THRESHOLD_MAX = 20;
@@ -631,6 +649,16 @@ export default function KitchenDisplay() {
         setNewOrderIds(s => new Set([...s, ...fresh]));
         if (soundEnabledRef.current) playChime();
         if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
+        // Auto-print fresh orders if the cashier on this device opted in.
+        // Skipped on first-poll-ever (when prevOrderIds was empty) so we
+        // don't spam-print every order in the active queue when a tablet
+        // first opens.
+        if (autoPrintModeRef.current !== "off") {
+          for (const id of fresh) {
+            const order = data.find(o => o.id === id);
+            if (order) queueAutoPrintFor(order);
+          }
+        }
       }
       prevOrderIds.current = incoming;
       setOrders(data);
@@ -901,21 +929,65 @@ export default function KitchenDisplay() {
 
   // ── Print receipts / kitchen tickets ─────────────────────────────
   const [printJob, setPrintJob] = useState<PrintJob | null>(null);
+  // FIFO queue so auto-print can fire kitchen ticket → customer receipt
+  // back-to-back without one window.print() call clobbering the other.
+  const printQueueRef = useRef<PrintJob[]>([]);
 
   useEffect(() => {
     if (!printJob) return;
-    const clear = () => setPrintJob(null);
-    window.addEventListener("afterprint", clear);
+    const next = () => {
+      const queued = printQueueRef.current.shift() ?? null;
+      // Small gap so the printable DOM swap settles before the next dialog.
+      if (queued) setTimeout(() => setPrintJob(queued), 150);
+      else setPrintJob(null);
+    };
+    window.addEventListener("afterprint", next);
     // Wait one tick so the print region renders before invoking print()
     const t = setTimeout(() => window.print(), 80);
     return () => {
       clearTimeout(t);
-      window.removeEventListener("afterprint", clear);
+      window.removeEventListener("afterprint", next);
     };
   }, [printJob]);
 
   function printOrder(order: EventOrder, mode: "receipt" | "kitchen") {
+    // Manual print bypasses the queue (matches old behavior).
+    printQueueRef.current = [];
     setPrintJob({ order, mode });
+  }
+
+  // Per-device auto-print mode for newly-arrived orders.
+  const [autoPrintMode, setAutoPrintMode] = useState<KitchenAutoPrintMode>(getStoredKitchenAutoPrint());
+  const autoPrintModeRef = useRef(autoPrintMode);
+  useEffect(() => { autoPrintModeRef.current = autoPrintMode; }, [autoPrintMode]);
+  function chooseAutoPrintMode(m: KitchenAutoPrintMode) {
+    setAutoPrintMode(m);
+    setStoredKitchenAutoPrint(m);
+  }
+  // Track which orders we've already auto-printed this session so a poll
+  // that briefly drops + re-adds an order id can't trigger a reprint.
+  const autoPrintedOrderIdsRef = useRef<Set<number>>(new Set());
+
+  function queueAutoPrintFor(order: EventOrder) {
+    const mode = autoPrintModeRef.current;
+    if (mode === "off") return;
+    if (autoPrintedOrderIdsRef.current.has(order.id)) return;
+    autoPrintedOrderIdsRef.current.add(order.id);
+    const jobs: PrintJob[] = [];
+    if (mode === "kitchen" || mode === "both") jobs.push({ order, mode: "kitchen" });
+    if (mode === "receipt" || mode === "both") jobs.push({ order, mode: "receipt" });
+    if (jobs.length === 0) return;
+    // If nothing is printing right now, kick off the first one and queue
+    // the rest. If a print is already in flight, just append.
+    setPrintJob(prev => {
+      if (prev) {
+        printQueueRef.current.push(...jobs);
+        return prev;
+      }
+      const [first, ...rest] = jobs;
+      printQueueRef.current.push(...rest);
+      return first;
+    });
   }
 
   // Server-synced "Fire totals" tap. Optimistically toggles the itemId in
@@ -1164,6 +1236,27 @@ export default function KitchenDisplay() {
             >
               {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
+            <label
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors border cursor-pointer ${
+                autoPrintMode !== "off"
+                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
+                  : "bg-white/5 text-white/50 border-transparent hover:text-white/80"
+              }`}
+              title="Auto-print kitchen ticket / receipt when a fresh order arrives on this device"
+            >
+              {autoPrintMode !== "off" ? <PrinterCheck className="w-4 h-4" /> : <Printer className="w-4 h-4" />}
+              <span className="hidden md:inline">Auto-print:</span>
+              <select
+                value={autoPrintMode}
+                onChange={e => chooseAutoPrintMode(e.target.value as KitchenAutoPrintMode)}
+                className="bg-transparent font-semibold focus:outline-none cursor-pointer"
+              >
+                <option value="off" className="text-black">Off</option>
+                <option value="both" className="text-black">Both</option>
+                <option value="kitchen" className="text-black">Kitchen only</option>
+                <option value="receipt" className="text-black">Receipt only</option>
+              </select>
+            </label>
             <a
               href="/admin/printers"
               target="_blank"
