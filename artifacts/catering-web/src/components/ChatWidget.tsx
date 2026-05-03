@@ -52,6 +52,11 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
 }
 
 function renderMessageContent(text: string): ReactNode[] {
+  // Strip markdown heading prefixes (`#`, `##`, `###`, ...) at the start
+  // of any line — the prompt tells the bot not to use them, but older
+  // model output can still leak them. We drop the marker and let the
+  // existing bold pass handle any emphasis on the rest of the line.
+  text = text.replace(/^\s*#{1,6}\s+/gm, "");
   // First split out **bold** spans, then render links inside each segment.
   // Single `*` (italic) is intentionally not supported — the prompt tells
   // the bot to use bold sparingly and avoid italics.
