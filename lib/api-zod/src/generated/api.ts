@@ -80,7 +80,7 @@ export const ListMenuItemsResponseItem = zod.object({
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
-  createdAt: zod.date(),
+  createdAt: zod.coerce.date(),
 });
 export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
 
@@ -149,7 +149,7 @@ export const GetMenuItemResponse = zod.object({
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
-  createdAt: zod.date(),
+  createdAt: zod.coerce.date(),
 });
 
 /**
@@ -213,7 +213,7 @@ export const AdminListMenuItemsResponseItem = zod.object({
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
-  createdAt: zod.date(),
+  createdAt: zod.coerce.date(),
 });
 export const AdminListMenuItemsResponse = zod.array(
   AdminListMenuItemsResponseItem,
@@ -333,7 +333,7 @@ export const UpdateMenuItemResponse = zod.object({
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
-  createdAt: zod.date(),
+  createdAt: zod.coerce.date(),
 });
 
 /**
@@ -347,12 +347,12 @@ export const DeleteMenuItemParams = zod.object({
  * @summary Combined blackout + per-service-style + global guest-cap view for a single date
  */
 export const GetDayLoadQueryParams = zod.object({
-  date: zod.date(),
+  date: zod.coerce.date(),
 });
 
 export const GetDayLoadResponse = zod
   .object({
-    date: zod.date(),
+    date: zod.coerce.date(),
     blackedOut: zod.boolean(),
     load: zod.enum(["open", "filling", "near_full", "full"]),
     totals: zod.object({
@@ -377,7 +377,7 @@ export const GetDayLoadResponse = zod
       slotsByServiceStyle: zod.record(zod.string(), zod.number()),
     }),
     conflicts: zod.array(zod.string()),
-    suggestedDates: zod.array(zod.date()),
+    suggestedDates: zod.array(zod.coerce.date()),
   })
   .describe(
     "Combined blackout, per-service-style slot, and global guest-cap view for a single date.",
@@ -387,14 +387,14 @@ export const GetDayLoadResponse = zod
  * @summary Check availability for a date range
  */
 export const CheckAvailabilityQueryParams = zod.object({
-  startDate: zod.date(),
-  endDate: zod.date(),
+  startDate: zod.coerce.date(),
+  endDate: zod.coerce.date(),
 });
 
 export const CheckAvailabilityResponse = zod.object({
   available: zod.boolean(),
-  blackoutDates: zod.array(zod.date()),
-  suggestedDates: zod.array(zod.date()),
+  blackoutDates: zod.array(zod.coerce.date()),
+  suggestedDates: zod.array(zod.coerce.date()),
 });
 
 /**
@@ -511,9 +511,9 @@ export const AdminSyncRecommendationsResponse = zod.object({
  */
 export const ListBlackoutDatesResponseItem = zod.object({
   id: zod.number(),
-  date: zod.date(),
+  date: zod.coerce.date(),
   reason: zod.string().nullish(),
-  createdAt: zod.date(),
+  createdAt: zod.coerce.date(),
 });
 export const ListBlackoutDatesResponse = zod.array(
   ListBlackoutDatesResponseItem,
@@ -523,7 +523,7 @@ export const ListBlackoutDatesResponse = zod.array(
  * @summary Add a blackout date
  */
 export const CreateBlackoutDateBody = zod.object({
-  date: zod.date(),
+  date: zod.coerce.date(),
   reason: zod.string().nullish(),
 });
 
@@ -605,7 +605,7 @@ export const GetCartResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
-        createdAt: zod.date(),
+        createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -692,7 +692,7 @@ export const AddToCartResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
-        createdAt: zod.date(),
+        createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -781,7 +781,7 @@ export const UpdateCartItemResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
-        createdAt: zod.date(),
+        createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -865,7 +865,7 @@ export const RemoveFromCartResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
-        createdAt: zod.date(),
+        createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -947,7 +947,7 @@ export const GetPlanResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
-        createdAt: zod.date(),
+        createdAt: zod.coerce.date(),
       }),
     }),
   ),
@@ -1025,7 +1025,7 @@ export const AddToPlanResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
-        createdAt: zod.date(),
+        createdAt: zod.coerce.date(),
       }),
     }),
   ),
@@ -1104,7 +1104,7 @@ export const RemoveFromPlanResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
-        createdAt: zod.date(),
+        createdAt: zod.coerce.date(),
       }),
     }),
   ),
@@ -1118,7 +1118,7 @@ export const CreateOrderBody = zod.object({
   customerName: zod.string(),
   customerEmail: zod.string(),
   customerPhone: zod.string().nullish(),
-  eventDate: zod.date().nullish(),
+  eventDate: zod.coerce.date().nullish(),
   eventType: zod.string().nullish(),
   guestCount: zod.number().nullish(),
   serviceStyle: zod.string().nullish(),
@@ -1146,7 +1146,7 @@ export const AdminListOrdersResponseItem = zod.object({
   customerName: zod.string(),
   customerEmail: zod.string(),
   customerPhone: zod.string().nullish(),
-  eventDate: zod.date().nullish(),
+  eventDate: zod.coerce.date().nullish(),
   eventType: zod.string().nullish(),
   guestCount: zod.number().nullish(),
   serviceStyle: zod.string().nullish(),
@@ -1168,7 +1168,7 @@ export const AdminListOrdersResponseItem = zod.object({
       quantity: zod.number(),
     }),
   ),
-  createdAt: zod.date(),
+  createdAt: zod.coerce.date(),
 });
 export const AdminListOrdersResponse = zod.array(AdminListOrdersResponseItem);
 
@@ -1195,7 +1195,7 @@ export const UpdateOrderStatusResponse = zod.object({
   customerName: zod.string(),
   customerEmail: zod.string(),
   customerPhone: zod.string().nullish(),
-  eventDate: zod.date().nullish(),
+  eventDate: zod.coerce.date().nullish(),
   eventType: zod.string().nullish(),
   guestCount: zod.number().nullish(),
   serviceStyle: zod.string().nullish(),
@@ -1217,7 +1217,7 @@ export const UpdateOrderStatusResponse = zod.object({
       quantity: zod.number(),
     }),
   ),
-  createdAt: zod.date(),
+  createdAt: zod.coerce.date(),
 });
 
 /**
@@ -1309,7 +1309,7 @@ export const SuggestMenuItemsResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
-        createdAt: zod.date(),
+        createdAt: zod.coerce.date(),
       }),
       recommendedQuantity: zod.number(),
       reason: zod.string(),
@@ -1331,8 +1331,8 @@ export const GetAdminStatsResponse = zod.object({
  * @summary Background traffic counters since the server last restarted
  */
 export const GetAdminIdleActivityResponse = zod.object({
-  serverStartedAt: zod.date(),
-  asOf: zod.date(),
+  serverStartedAt: zod.coerce.date(),
+  asOf: zod.coerce.date(),
   ejoinPolls: zod.object({
     lastHour: zod.object({
       count: zod.number(),
@@ -1361,7 +1361,7 @@ export const GetAdminIdleActivityResponse = zod.object({
   }),
   instagramPolls: zod.object({
     last24h: zod.number(),
-    lastRunAt: zod.date().nullable(),
+    lastRunAt: zod.coerce.date().nullable(),
   }),
   clientPolls: zod.object({
     windowMinutes: zod.number(),
@@ -1399,7 +1399,7 @@ export const GetAdminIdleActivityResponse = zod.object({
 export const ListOpenaiConversationsResponseItem = zod.object({
   id: zod.number(),
   title: zod.string(),
-  createdAt: zod.date(),
+  createdAt: zod.coerce.date(),
 });
 export const ListOpenaiConversationsResponse = zod.array(
   ListOpenaiConversationsResponseItem,
@@ -1422,14 +1422,14 @@ export const GetOpenaiConversationParams = zod.object({
 export const GetOpenaiConversationResponse = zod.object({
   id: zod.number(),
   title: zod.string(),
-  createdAt: zod.date(),
+  createdAt: zod.coerce.date(),
   messages: zod.array(
     zod.object({
       id: zod.number(),
       conversationId: zod.number(),
       role: zod.string(),
       content: zod.string(),
-      createdAt: zod.date(),
+      createdAt: zod.coerce.date(),
     }),
   ),
 });
@@ -1453,7 +1453,7 @@ export const ListOpenaiMessagesResponseItem = zod.object({
   conversationId: zod.number(),
   role: zod.string(),
   content: zod.string(),
-  createdAt: zod.date(),
+  createdAt: zod.coerce.date(),
 });
 export const ListOpenaiMessagesResponse = zod.array(
   ListOpenaiMessagesResponseItem,
