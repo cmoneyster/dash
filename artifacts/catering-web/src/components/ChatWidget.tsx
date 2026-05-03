@@ -137,7 +137,7 @@ export function ChatWidget() {
                   <ChefHat className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-display font-semibold text-lg leading-tight">Catering Concierge</h3>
+                  <h3 className="font-display font-semibold text-lg leading-tight">Dashy</h3>
                   <p className="text-primary-foreground/80 text-xs">AI Assistant</p>
                 </div>
               </div>
