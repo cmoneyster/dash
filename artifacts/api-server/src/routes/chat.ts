@@ -2,21 +2,16 @@ import { Router, type IRouter } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
 import { menuItemsTable } from "@workspace/db/schema";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionMessageToolCall,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions";
 import {
   CHAT_TOOL_DEFS,
   getOrCreateSnapshot,
   runChatTool,
 } from "../lib/chatMenuTools";
-type ChatMessage =
-  | { role: "system" | "user"; content: string }
-  | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
-  | { role: "tool"; tool_call_id: string; content: string };
-
-type ToolCall = {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-};
 
 const router: IRouter = Router();
 
@@ -64,13 +59,13 @@ router.post("/chat/message", async (req, res): Promise<void> => {
   try {
     const snap = await getOrCreateSnapshot(sessionId);
 
-    const chatHistory: ChatMessage[] = (Array.isArray(history) ? history : [])
+    const chatHistory: ChatCompletionMessageParam[] = (Array.isArray(history) ? history : [])
       .filter((h): h is { role: "user" | "assistant"; content: string } =>
         h && typeof h === "object" && (h.role === "user" || h.role === "assistant") && typeof h.content === "string",
       )
       .map((h) => ({ role: h.role, content: h.content }));
 
-    const messages: ChatMessage[] = [
+    const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: SYSTEM_PROMPT },
       ...chatHistory,
       { role: "user", content: message },
@@ -81,14 +76,14 @@ router.post("/chat/message", async (req, res): Promise<void> => {
       const resp = await openai.chat.completions.create({
         model: "gpt-5.2",
         max_completion_tokens: 2048,
-        messages: messages as never,
-        tools: CHAT_TOOL_DEFS,
+        messages,
+        tools: CHAT_TOOL_DEFS as ChatCompletionTool[],
         tool_choice: "auto",
       });
       const choice = resp.choices[0]?.message;
       if (!choice) break;
 
-      const toolCalls: ToolCall[] = (choice.tool_calls ?? []) as ToolCall[];
+      const toolCalls: ChatCompletionMessageToolCall[] = choice.tool_calls ?? [];
       if (toolCalls.length === 0) {
         finalContent = choice.content ?? "";
         break;

@@ -217,6 +217,9 @@ importers:
       nodemailer:
         specifier: ^8.0.4
         version: 8.0.4
+      openai:
+        specifier: ^6.32.0
+        version: 6.32.0(zod@4.3.6)
       pdfkit:
         specifier: ^0.18.0
         version: 0.18.0

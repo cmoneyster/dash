@@ -99,18 +99,56 @@ export async function getOrCreateSnapshot(sessionId: string): Promise<Snapshot> 
   return promise;
 }
 
-// Conservative dietary-to-allergen mapping. The bot is told to use this
-// to filter, but is also told not to over-claim — if the snapshot has
-// nothing matching, we'd rather it say so than guess.
-const DIETARY_EXCLUDES: Record<string, string[]> = {
-  vegetarian: ["meat", "beef", "pork", "chicken", "poultry", "lamb", "fish", "seafood", "shellfish"],
-  vegan: [
-    "meat", "beef", "pork", "chicken", "poultry", "lamb", "fish", "seafood", "shellfish",
-    "dairy", "milk", "cheese", "egg", "eggs", "honey",
-  ],
-  gluten_free: ["gluten", "wheat"],
-  nut_free: ["nuts", "tree nuts", "peanut", "peanuts"],
-  dairy_free: ["dairy", "milk", "cheese"],
+// Conservative dietary filter rules. Real-world allergen tags rarely
+// list "beef" or "shrimp" — they're more likely to call out cross-cuts
+// like "gluten" or "dairy". So for diet types where the underlying
+// concept is "no animal flesh", we ALSO scan the item's name,
+// description, and category for those terms. We'd rather miss an
+// edge-case vegetarian item than hand the guest a chicken dish under
+// "vegetarian".
+type DietaryRule = {
+  // Strings to look for inside name + description + category.
+  textTerms?: string[];
+  // Strings to compare to entries of the item's allergens array (case-insensitive).
+  allergens?: string[];
+};
+const DIETARY_RULES: Record<string, DietaryRule> = {
+  vegetarian: {
+    textTerms: [
+      "meat", "beef", "steak", "pork", "bacon", "ham", "sausage", "chorizo",
+      "chicken", "poultry", "turkey", "duck", "lamb", "veal", "venison",
+      "fish", "salmon", "tuna", "cod", "anchovy", "anchovies",
+      "seafood", "shrimp", "prawn", "crab", "lobster", "shellfish", "mussel",
+      "oyster", "scallop", "clam", "octopus", "squid", "calamari",
+    ],
+    allergens: ["fish", "shellfish"],
+  },
+  vegan: {
+    textTerms: [
+      // Same as vegetarian:
+      "meat", "beef", "steak", "pork", "bacon", "ham", "sausage", "chorizo",
+      "chicken", "poultry", "turkey", "duck", "lamb", "veal", "venison",
+      "fish", "salmon", "tuna", "cod", "anchovy", "anchovies",
+      "seafood", "shrimp", "prawn", "crab", "lobster", "shellfish", "mussel",
+      "oyster", "scallop", "clam", "octopus", "squid", "calamari",
+      // Plus animal byproducts:
+      "milk", "cheese", "butter", "cream", "yogurt", "yoghurt", "ghee",
+      "egg", "eggs", "honey",
+    ],
+    allergens: ["fish", "shellfish", "dairy", "milk", "egg", "eggs"],
+  },
+  gluten_free: {
+    textTerms: [], // gluten is usually only reliably tagged via the allergen
+    allergens: ["gluten", "wheat"],
+  },
+  nut_free: {
+    textTerms: [],
+    allergens: ["nuts", "tree nuts", "tree-nuts", "peanut", "peanuts"],
+  },
+  dairy_free: {
+    textTerms: [],
+    allergens: ["dairy", "milk", "cheese"],
+  },
 };
 
 export type SearchArgs = {
@@ -125,11 +163,17 @@ export function searchMenu(snap: Snapshot, args: SearchArgs) {
   const q = args.query?.trim().toLowerCase() ?? "";
   const cat = args.category?.trim().toLowerCase() ?? "";
   const limit = Math.min(Math.max(args.limit ?? 10, 1), 25);
-  const excludes = new Set<string>();
-  for (const d of args.dietary ?? []) {
-    for (const a of DIETARY_EXCLUDES[d] ?? []) excludes.add(a.toLowerCase());
+
+  const dietary = args.dietary ?? [];
+  const textTermExcludes = new Set<string>();
+  const allergenExcludes = new Set<string>();
+  for (const d of dietary) {
+    const rule = DIETARY_RULES[d];
+    if (!rule) continue;
+    for (const t of rule.textTerms ?? []) textTermExcludes.add(t.toLowerCase());
+    for (const a of rule.allergens ?? []) allergenExcludes.add(a.toLowerCase());
   }
-  for (const a of args.excludeAllergens ?? []) excludes.add(a.toLowerCase());
+  for (const a of args.excludeAllergens ?? []) allergenExcludes.add(a.toLowerCase());
 
   const matches = snap.items.filter((item) => {
     if (cat && item.category.toLowerCase() !== cat) return false;
@@ -137,10 +181,19 @@ export function searchMenu(snap: Snapshot, args: SearchArgs) {
       const hay = `${item.name} ${item.description} ${item.category}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
-    if (excludes.size > 0) {
+    if (allergenExcludes.size > 0) {
       const itemAllergens = item.allergens.map((a) => a.toLowerCase());
-      for (const x of excludes) {
+      for (const x of allergenExcludes) {
         if (itemAllergens.includes(x)) return false;
+      }
+    }
+    if (textTermExcludes.size > 0) {
+      const haystack = `${item.name} ${item.description} ${item.category}`.toLowerCase();
+      for (const term of textTermExcludes) {
+        // Word-ish boundary so "ham" doesn't strike "hamlet" but does
+        // strike "ham", "ham,", "ham." etc.
+        const re = new RegExp(`(?:^|[^a-z])${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:[^a-z]|$)`);
+        if (re.test(haystack)) return false;
       }
     }
     return true;
