@@ -378,7 +378,7 @@ export const CHAT_TOOL_DEFS = [
     function: {
       name: "check_event_date",
       description:
-        "Check date availability AND day load for a specific date. Use whenever the guest mentions or asks about a date. Pass YYYY-MM-DD. Optionally pass guestCount and/or serviceStyle to get a tailored verdict — the tool will tell you if the day is blacked out, how full it already is, whether the guest's specific service style still has a slot, and (when full or blacked out) up to 3 nearby open dates. Use the response to either confirm cheerfully, suggest a different service style on the same day, or apologize and offer alternate dates.",
+        "Check date availability AND day load for a specific date. Use whenever the guest mentions or asks about a date. Pass the date as YYYY-MM-DD (tool input format). The response includes both YYYY-MM-DD fields (`date`, `suggestedDates`) and pre-formatted US-style MM/DD/YYYY fields (`dateDisplay`, `suggestedDatesDisplay`) — when echoing dates back to the guest you MUST use the `*Display` fields, never the YYYY-MM-DD ones. Optionally pass guestCount and/or serviceStyle to get a tailored verdict — the tool will tell you if the day is blacked out, how full it already is, whether the guest's specific service style still has a slot, and (when full or blacked out) up to 3 nearby open dates. Use the response to either confirm cheerfully, suggest a different service style on the same day, or apologize and offer alternate dates.",
       parameters: {
         type: "object",
         properties: {
@@ -701,6 +701,15 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// Format an ISO YYYY-MM-DD string as US-style MM/DD/YYYY for guest-facing
+// echoes from the chat bot. Falls back to the input if it isn't shaped like
+// YYYY-MM-DD so we never crash on unexpected values.
+function formatDateUS(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  return `${m[2]}/${m[3]}/${m[1]}`;
+}
+
 async function checkEventDate(args: {
   date: string;
   guestCount?: number;
@@ -778,6 +787,9 @@ async function checkEventDate(args: {
 
   return {
     date,
+    // Pre-formatted MM/DD/YYYY copy of `date` so the model can quote the
+    // date back to the guest in US format without having to reformat it.
+    dateDisplay: formatDateUS(date),
     available: !load.blackedOut && load.load !== "full",
     blackedOut: load.blackedOut,
     load: load.load,
@@ -787,6 +799,10 @@ async function checkEventDate(args: {
     guestCountFits,
     alternateStyles,
     suggestedDates,
+    // Same suggested dates pre-formatted as MM/DD/YYYY for guest-facing
+    // replies. The model should ALWAYS quote dates from this list, never
+    // from `suggestedDates` (which stays in YYYY-MM-DD for tool calls).
+    suggestedDatesDisplay: suggestedDates.map(formatDateUS),
     summary: {
       confirmedGuestCount: load.totals.confirmedGuestCount,
       dailyGuestCap: load.capacity.dailyGuestCap,
