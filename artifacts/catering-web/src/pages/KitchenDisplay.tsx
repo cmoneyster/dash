@@ -1164,6 +1164,15 @@ export default function KitchenDisplay() {
             >
               {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
+            <a
+              href="/admin/printers"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open printer settings (opens admin in a new tab)"
+              className="p-2 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+            >
+              <Printer className="w-4 h-4" />
+            </a>
             <button
               onClick={signOut}
               title="Sign out of kitchen display"
