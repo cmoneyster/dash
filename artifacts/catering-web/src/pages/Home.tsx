@@ -77,7 +77,7 @@ export default function Home() {
               </div>
               <h3 className="font-display font-bold text-2xl mb-3">Seamless Planning</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Use our intelligent planning tools and Dashy, our AI assistant, to effortlessly design the perfect menu for your guest count.
+                Use our intelligent planning tools and dashy, our AI assistant, to effortlessly design the perfect menu for your guest count.
               </p>
             </div>
           </div>
