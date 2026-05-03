@@ -49,9 +49,16 @@ async function loadAdminPackage(id: number) {
     servesGuests: p.servesGuests,
     hidden: p.hidden,
     sortOrder: p.sortOrder,
+    updatedAt: p.updatedAt,
     partiallyAvailable,
     items,
   };
+}
+
+type SizedMenuRow = typeof menuItemsTable.$inferSelect;
+const sizeLabelKeys = ["size1Label","size2Label","size3Label","size4Label","size5Label"] as const;
+function getSizeLabel(mi: SizedMenuRow, slot: 1 | 2 | 3 | 4 | 5): string | null {
+  return mi[sizeLabelKeys[slot - 1]] ?? null;
 }
 
 // List
@@ -71,6 +78,7 @@ router.get("/admin/menu-packages", async (req, res) => {
         servesGuests: p.servesGuests,
         hidden: p.hidden,
         sortOrder: p.sortOrder,
+        updatedAt: p.updatedAt,
         partiallyAvailable,
         itemCount: items.length,
       };
@@ -123,10 +131,16 @@ router.post("/admin/menu-packages", async (req, res): Promise<void> => {
         if (!mi) { res.status(400).json({ error: `menu item ${it.menuItemId} not found` }); return; }
         if (mi.pricingTemplate === "pan_sizes") {
           if (it.sizeKey == null) { res.status(400).json({ error: `sizeKey required for pan-size item ${mi.name}` }); return; }
-          const lbl = (mi as any)[`size${it.sizeKey}Label`];
+          const lbl = getSizeLabel(mi, it.sizeKey as 1|2|3|4|5);
           if (lbl == null) { res.status(400).json({ error: `size slot ${it.sizeKey} not configured for ${mi.name}` }); return; }
         }
       }
+    }
+
+    // Visible packages must contain at least one item — a hidden package
+    // can be saved as a draft with no items while the admin builds it.
+    if (!(hidden === true) && parsedItems.length === 0) {
+      res.status(400).json({ error: "A visible package must contain at least one item" }); return;
     }
 
     const [maxRow] = await db
@@ -209,10 +223,25 @@ router.put("/admin/menu-packages/:id", async (req, res): Promise<void> => {
           if (!mi) { res.status(400).json({ error: `menu item ${it.menuItemId} not found` }); return; }
           if (mi.pricingTemplate === "pan_sizes") {
             if (it.sizeKey == null) { res.status(400).json({ error: `sizeKey required for pan-size item ${mi.name}` }); return; }
-            const lbl = (mi as any)[`size${it.sizeKey}Label`];
+            const lbl = getSizeLabel(mi, it.sizeKey as 1|2|3|4|5);
             if (lbl == null) { res.status(400).json({ error: `size slot ${it.sizeKey} not configured for ${mi.name}` }); return; }
           }
         }
+      }
+    }
+
+    // Visible packages must have at least one item — but only enforce
+    // when we know the final state. Fetch current row to combine with
+    // partial updates.
+    const [current] = await db.select().from(menuPackagesTable).where(eq(menuPackagesTable.id, id));
+    if (!current) { res.status(404).json({ error: "Package not found" }); return; }
+    const finalHidden = updates.hidden !== undefined ? updates.hidden : current.hidden;
+    if (!finalHidden) {
+      const finalItemCount = parsedItems !== null
+        ? parsedItems.length
+        : (await db.select({ id: menuPackageItemsTable.id }).from(menuPackageItemsTable).where(eq(menuPackageItemsTable.packageId, id))).length;
+      if (finalItemCount === 0) {
+        res.status(400).json({ error: "A visible package must contain at least one item" }); return;
       }
     }
 

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { X as XIcon, Users, AlertTriangle, ShoppingBag, Heart, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { X as XIcon, Users, AlertTriangle, ShoppingBag, Heart, Loader2, ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -10,9 +10,11 @@ import {
   type PublicMenuPackage,
   type LoadMode,
 } from "@/lib/menuPackages";
+import { sizeLabel as sizeLabelOf, sizePrice as sizePriceOf } from "@/lib/sizeSlotHelpers";
 import { MergeReplaceDialog, type MergeReplaceChoice } from "@/components/MergeReplaceDialog";
 import { useCategories, buildPlannerGroupMap } from "@/lib/categories";
 import { getSessionId } from "@/lib/session";
+import { formatCurrency } from "@/lib/utils";
 import { getGetCartQueryKey, getGetPlanQueryKey, useGetCart, useGetPlan } from "@workspace/api-client-react";
 
 type Props = {
@@ -45,6 +47,25 @@ export function PackageDetail({ packageId, onClose }: Props) {
 
   const cartHasItems = (cart?.items?.length ?? 0) > 0;
   const planHasItems = (plan?.items?.length ?? 0) > 0;
+
+  // Per-item subtotal: pan-size items use the size price; everything
+  // else uses the unit price. Total is the sum.
+  const breakdown = useMemo(() => {
+    if (!pkg) return { rows: [] as { id: number; unitPrice: number; subtotal: number }[], total: 0 };
+    let total = 0;
+    const rows = pkg.items.map((it) => {
+      let unitPrice = it.menuItem.price;
+      if (it.sizeKey != null && it.sizeKey >= 1 && it.sizeKey <= 5) {
+        const slot = it.sizeKey as 1 | 2 | 3 | 4 | 5;
+        const sp = sizePriceOf(it.menuItem, slot);
+        if (sp != null) unitPrice = sp;
+      }
+      const subtotal = unitPrice * it.quantity;
+      total += subtotal;
+      return { id: it.id, unitPrice, subtotal };
+    });
+    return { rows, total };
+  }, [pkg]);
 
   const performLoad = async (target: "cart" | "plan", mode: LoadMode) => {
     if (!pkg) return;
@@ -133,22 +154,49 @@ export function PackageDetail({ packageId, onClose }: Props) {
                 {pkg.items.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">No available items in this package right now.</p>
                 ) : (
-                  <ul className="space-y-2">
-                    {pkg.items.map((it) => {
-                      const sizeLbl = it.sizeKey != null
-                        ? (it.menuItem as any)[`size${it.sizeKey}Label`]
-                        : null;
-                      return (
-                        <li key={it.id} className="flex justify-between items-baseline gap-3 text-sm">
-                          <span>
-                            <span className="font-semibold">{it.menuItem.name}</span>
-                            {sizeLbl && <span className="text-muted-foreground"> — {sizeLbl}</span>}
-                          </span>
-                          <span className="text-muted-foreground tabular-nums shrink-0">× {it.quantity}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <>
+                    <ul className="divide-y divide-border/50">
+                      {pkg.items.map((it, idx) => {
+                        const slot = it.sizeKey != null && it.sizeKey >= 1 && it.sizeKey <= 5
+                          ? (it.sizeKey as 1 | 2 | 3 | 4 | 5)
+                          : null;
+                        const sizeLbl = slot ? sizeLabelOf(it.menuItem, slot) : null;
+                        const row = breakdown.rows[idx];
+                        return (
+                          <li key={it.id} className="flex items-center gap-3 py-2">
+                            {it.menuItem.imageUrl ? (
+                              <img
+                                src={it.menuItem.imageUrl}
+                                alt=""
+                                className="w-12 h-12 rounded-lg object-cover bg-background shrink-0"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg bg-background flex items-center justify-center shrink-0">
+                                <ImageIcon className="w-5 h-5 text-muted-foreground/60" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-sm truncate">{it.menuItem.name}</div>
+                              {sizeLbl && (
+                                <div className="text-xs text-muted-foreground truncate">{sizeLbl}</div>
+                              )}
+                            </div>
+                            <div className="text-right shrink-0 text-sm">
+                              <div className="text-muted-foreground tabular-nums">× {it.quantity}</div>
+                              {row && (
+                                <div className="font-semibold tabular-nums">{formatCurrency(row.subtotal)}</div>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <div className="mt-3 pt-3 border-t border-border flex justify-between items-baseline">
+                      <span className="font-bold">Package total</span>
+                      <span className="font-bold text-lg tabular-nums">{formatCurrency(breakdown.total)}</span>
+                    </div>
+                  </>
                 )}
               </div>
 

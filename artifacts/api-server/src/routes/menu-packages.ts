@@ -103,7 +103,7 @@ router.get("/menu-packages", async (req, res) => {
       .where(eq(menuPackagesTable.hidden, false))
       .orderBy(asc(menuPackagesTable.sortOrder), asc(menuPackagesTable.id));
 
-    const out = await Promise.all(pkgs.map(async (p) => {
+    const all = await Promise.all(pkgs.map(async (p) => {
       const { items, partiallyAvailable } = await loadPackageItems(p.id, { onlyAvailable: true });
       return {
         id: p.id,
@@ -116,7 +116,9 @@ router.get("/menu-packages", async (req, res) => {
         items,
       };
     }));
-    res.json(out);
+    // Drop packages whose items are all unavailable — nothing for the
+    // guest to load means the card is just clutter.
+    res.json(all.filter((p) => p.items.length > 0));
   } catch (err) {
     req.log.error({ err }, "Error listing menu packages");
     res.status(500).json({ error: "Failed to list menu packages" });

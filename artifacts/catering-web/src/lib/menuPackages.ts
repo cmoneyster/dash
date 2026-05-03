@@ -2,7 +2,66 @@
 // fetchers, and the load-into-planner / load-into-cart flows used by
 // both the customer Menu page and the admin Edit page.
 
+import { getAdminToken } from "@/components/AdminGuard";
+import { sizeLabel as sizeLabelOf, sizePrice as sizePriceOf } from "@/lib/sizeSlotHelpers";
+
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function adminHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return { ...extra, Authorization: `Bearer ${getAdminToken() ?? ""}` };
+}
+
+export const adminMenuPackagesApi = {
+  list: async (): Promise<AdminMenuPackageSummary[]> => {
+    const r = await fetch(`${API_BASE}/api/admin/menu-packages`, { headers: adminHeaders() });
+    if (!r.ok) throw new Error("Failed to load packages");
+    return r.json();
+  },
+  get: async (id: number): Promise<AdminMenuPackage> => {
+    const r = await fetch(`${API_BASE}/api/admin/menu-packages/${id}`, { headers: adminHeaders() });
+    if (!r.ok) throw new Error("Failed to load package");
+    return r.json();
+  },
+  create: async (body: Record<string, unknown>): Promise<AdminMenuPackage> => {
+    const r = await fetch(`${API_BASE}/api/admin/menu-packages`, {
+      method: "POST",
+      headers: adminHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e?.error ?? "Create failed");
+    }
+    return r.json();
+  },
+  update: async (id: number, body: Record<string, unknown>): Promise<AdminMenuPackage> => {
+    const r = await fetch(`${API_BASE}/api/admin/menu-packages/${id}`, {
+      method: "PUT",
+      headers: adminHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e?.error ?? "Save failed");
+    }
+    return r.json();
+  },
+  remove: async (id: number): Promise<void> => {
+    const r = await fetch(`${API_BASE}/api/admin/menu-packages/${id}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+    if (!r.ok) throw new Error("Delete failed");
+  },
+  reorder: async (ids: number[]): Promise<void> => {
+    const r = await fetch(`${API_BASE}/api/admin/menu-packages/reorder`, {
+      method: "POST",
+      headers: adminHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ ids }),
+    });
+    if (!r.ok) throw new Error("Reorder failed");
+  },
+};
 
 export type PackageSizeMenuItem = {
   id: number;
@@ -44,12 +103,13 @@ export type PublicMenuPackage = {
   items: PublicPackageItem[];
 };
 
-export type AdminMenuPackageSummary = PublicMenuPackage & {
+export type AdminMenuPackageSummary = Omit<PublicMenuPackage, "items"> & {
   hidden: boolean;
   itemCount: number;
+  updatedAt?: string;
 };
 
-export type AdminMenuPackage = PublicMenuPackage & { hidden: boolean };
+export type AdminMenuPackage = PublicMenuPackage & { hidden: boolean; updatedAt?: string };
 
 const PLANNER_STORAGE_KEY = "dash_plan_planner_v1";
 
@@ -112,12 +172,13 @@ export async function loadPackageIntoCart(
       menuItemId: it.menuItemId,
       quantity: it.quantity,
     };
-    if (isPan && it.sizeKey != null) {
-      const lbl = (it.menuItem as any)[`size${it.sizeKey}Label`];
-      const prc = (it.menuItem as any)[`size${it.sizeKey}Price`];
-      body.sizeSlot = it.sizeKey;
+    if (isPan && it.sizeKey != null && it.sizeKey >= 1 && it.sizeKey <= 5) {
+      const slot = it.sizeKey as 1 | 2 | 3 | 4 | 5;
+      const lbl = sizeLabelOf(it.menuItem, slot);
+      const prc = sizePriceOf(it.menuItem, slot);
+      body.sizeSlot = slot;
       if (lbl) body.sizeLabel = lbl;
-      if (prc != null) body.sizePrice = parseFloat(String(prc));
+      if (prc != null) body.sizePrice = prc;
     }
     const res = await fetch(`${API_BASE}/api/cart`, {
       method: "POST",
