@@ -344,6 +344,46 @@ export const DeleteMenuItemParams = zod.object({
 });
 
 /**
+ * @summary Combined blackout + per-service-style + global guest-cap view for a single date
+ */
+export const GetDayLoadQueryParams = zod.object({
+  date: zod.date(),
+});
+
+export const GetDayLoadResponse = zod
+  .object({
+    date: zod.date(),
+    blackedOut: zod.boolean(),
+    load: zod.enum(["open", "filling", "near_full", "full"]),
+    totals: zod.object({
+      confirmedGuestCount: zod.number(),
+      pendingGuestCount: zod.number(),
+      confirmedCount: zod.number(),
+      pendingCount: zod.number(),
+      byServiceStyle: zod.record(
+        zod.string(),
+        zod.object({
+          confirmed: zod.number(),
+          pending: zod.number(),
+        }),
+      ),
+    }),
+    capacity: zod.object({
+      dailyGuestCap: zod.number().nullable(),
+      slotsByServiceStyle: zod.record(zod.string(), zod.number()),
+    }),
+    remaining: zod.object({
+      guestCount: zod.number().nullable(),
+      slotsByServiceStyle: zod.record(zod.string(), zod.number()),
+    }),
+    conflicts: zod.array(zod.string()),
+    suggestedDates: zod.array(zod.date()),
+  })
+  .describe(
+    "Combined blackout, per-service-style slot, and global guest-cap view for a single date.",
+  );
+
+/**
  * @summary Check availability for a date range
  */
 export const CheckAvailabilityQueryParams = zod.object({

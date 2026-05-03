@@ -167,6 +167,31 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   # Event / Calendar endpoints
+  /events/day-load:
+    get:
+      operationId: getDayLoad
+      tags: [events]
+      summary: Combined blackout + per-service-style + global guest-cap view for a single date
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Day-load summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayLoadResponse"
+        "400":
+          description: Invalid date
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /events/availability:
     get:
       operationId: checkAvailability
@@ -1092,6 +1117,93 @@ components:
           nullable: true
       required:
         - date
+
+    ServiceStyleKey:
+      type: string
+      enum: [drop_off, on_the_dash, buffet, grazing, made_to_order, unknown]
+
+    DayLoadStyleTotals:
+      type: object
+      properties:
+        confirmed:
+          type: integer
+        pending:
+          type: integer
+      required: [confirmed, pending]
+
+    DayLoadResponse:
+      type: object
+      description: Combined blackout, per-service-style slot, and global guest-cap view for a single date.
+      properties:
+        date:
+          type: string
+          format: date
+        blackedOut:
+          type: boolean
+        load:
+          type: string
+          enum: [open, filling, near_full, full]
+        totals:
+          type: object
+          properties:
+            confirmedGuestCount:
+              type: integer
+            pendingGuestCount:
+              type: integer
+            confirmedCount:
+              type: integer
+            pendingCount:
+              type: integer
+            byServiceStyle:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/DayLoadStyleTotals"
+          required:
+            - confirmedGuestCount
+            - pendingGuestCount
+            - confirmedCount
+            - pendingCount
+            - byServiceStyle
+        capacity:
+          type: object
+          properties:
+            dailyGuestCap:
+              type: integer
+              nullable: true
+            slotsByServiceStyle:
+              type: object
+              additionalProperties:
+                type: integer
+          required: [dailyGuestCap, slotsByServiceStyle]
+        remaining:
+          type: object
+          properties:
+            guestCount:
+              type: integer
+              nullable: true
+            slotsByServiceStyle:
+              type: object
+              additionalProperties:
+                type: integer
+          required: [guestCount, slotsByServiceStyle]
+        conflicts:
+          type: array
+          items:
+            type: string
+        suggestedDates:
+          type: array
+          items:
+            type: string
+            format: date
+      required:
+        - date
+        - blackedOut
+        - load
+        - totals
+        - capacity
+        - remaining
+        - conflicts
+        - suggestedDates
 
     AvailabilityResponse:
       type: object

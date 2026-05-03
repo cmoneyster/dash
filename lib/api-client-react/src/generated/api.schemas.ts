@@ -175,6 +175,77 @@ export interface CreateBlackoutDateBody {
   reason?: string | null;
 }
 
+export type ServiceStyleKey =
+  (typeof ServiceStyleKey)[keyof typeof ServiceStyleKey];
+
+export const ServiceStyleKey = {
+  drop_off: "drop_off",
+  on_the_dash: "on_the_dash",
+  buffet: "buffet",
+  grazing: "grazing",
+  made_to_order: "made_to_order",
+  unknown: "unknown",
+} as const;
+
+export interface DayLoadStyleTotals {
+  confirmed: number;
+  pending: number;
+}
+
+export type DayLoadResponseLoad =
+  (typeof DayLoadResponseLoad)[keyof typeof DayLoadResponseLoad];
+
+export const DayLoadResponseLoad = {
+  open: "open",
+  filling: "filling",
+  near_full: "near_full",
+  full: "full",
+} as const;
+
+export type DayLoadResponseTotalsByServiceStyle = {
+  [key: string]: DayLoadStyleTotals;
+};
+
+export type DayLoadResponseTotals = {
+  confirmedGuestCount: number;
+  pendingGuestCount: number;
+  confirmedCount: number;
+  pendingCount: number;
+  byServiceStyle: DayLoadResponseTotalsByServiceStyle;
+};
+
+export type DayLoadResponseCapacitySlotsByServiceStyle = {
+  [key: string]: number;
+};
+
+export type DayLoadResponseCapacity = {
+  dailyGuestCap: number | null;
+  slotsByServiceStyle: DayLoadResponseCapacitySlotsByServiceStyle;
+};
+
+export type DayLoadResponseRemainingSlotsByServiceStyle = {
+  [key: string]: number;
+};
+
+export type DayLoadResponseRemaining = {
+  guestCount: number | null;
+  slotsByServiceStyle: DayLoadResponseRemainingSlotsByServiceStyle;
+};
+
+/**
+ * Combined blackout, per-service-style slot, and global guest-cap view for a single date.
+ */
+export interface DayLoadResponse {
+  date: string;
+  blackedOut: boolean;
+  load: DayLoadResponseLoad;
+  totals: DayLoadResponseTotals;
+  capacity: DayLoadResponseCapacity;
+  remaining: DayLoadResponseRemaining;
+  conflicts: string[];
+  suggestedDates: string[];
+}
+
 export interface AvailabilityResponse {
   available: boolean;
   blackoutDates: string[];
@@ -474,6 +545,10 @@ export interface OpenaiError {
 export type ListMenuItemsParams = {
   category?: string;
   available?: boolean;
+};
+
+export type GetDayLoadParams = {
+  date: string;
 };
 
 export type CheckAvailabilityParams = {

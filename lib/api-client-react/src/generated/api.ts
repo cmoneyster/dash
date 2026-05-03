@@ -31,8 +31,10 @@ import type {
   CreateMenuItemBody,
   CreateOpenaiConversationBody,
   CreateOrderBody,
+  DayLoadResponse,
   ErrorResponse,
   GetCartParams,
+  GetDayLoadParams,
   GetPlanParams,
   HealthStatus,
   IdleActivitySnapshot,
@@ -653,6 +655,100 @@ export const useDeleteMenuItem = <
 > => {
   return useMutation(getDeleteMenuItemMutationOptions(options));
 };
+
+/**
+ * @summary Combined blackout + per-service-style + global guest-cap view for a single date
+ */
+export const getGetDayLoadUrl = (params: GetDayLoadParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/events/day-load?${stringifiedParams}`
+    : `/api/events/day-load`;
+};
+
+export const getDayLoad = async (
+  params: GetDayLoadParams,
+  options?: RequestInit,
+): Promise<DayLoadResponse> => {
+  return customFetch<DayLoadResponse>(getGetDayLoadUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDayLoadQueryKey = (params?: GetDayLoadParams) => {
+  return [`/api/events/day-load`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetDayLoadQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDayLoad>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetDayLoadParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDayLoad>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDayLoadQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDayLoad>>> = ({
+    signal,
+  }) => getDayLoad(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDayLoad>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDayLoadQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDayLoad>>
+>;
+export type GetDayLoadQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Combined blackout + per-service-style + global guest-cap view for a single date
+ */
+
+export function useGetDayLoad<
+  TData = Awaited<ReturnType<typeof getDayLoad>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetDayLoadParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDayLoad>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDayLoadQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Check availability for a date range
