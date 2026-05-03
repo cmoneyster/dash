@@ -315,9 +315,9 @@ export default function AiRecommendations() {
           <AddItemModal
             existingIds={new Set(sorted.map((r) => r.menuItemId))}
             onClose={() => setShowAddModal(false)}
-            onAdded={(name) => {
+            onAdded={(msg) => {
               invalidate();
-              flashSuccess(`Added "${name}" to the recommended list.`);
+              flashSuccess(msg);
               setShowAddModal(false);
             }}
             onError={(msg) => setError(msg)}
@@ -604,12 +604,13 @@ function AddItemModal({
 }: {
   existingIds: Set<number>;
   onClose: () => void;
-  onAdded: (name: string) => void;
+  onAdded: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
   const { data: items, isLoading: loading, error: loadError } = useAdminListMenuItems();
   const addMut = useAdminAddRecommendation();
-  const [adding, setAdding] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -629,14 +630,60 @@ function AddItemModal({
       .slice(0, 200);
   }, [items, existingIds, search]);
 
-  async function handleAdd(item: MenuItem) {
-    setAdding(item.id);
-    try {
-      await addMut.mutateAsync({ data: { menuItemId: item.id } });
-      onAdded(item.name);
-    } catch (e) {
-      onError(getErrorMessage(e, "Failed to add item"));
-      setAdding(null);
+  function toggle(id: number) {
+    if (submitting) return;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    if (submitting) return;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const it of filtered) next.add(it.id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    if (submitting) return;
+    setSelected(new Set());
+  }
+
+  async function handleAddSelected() {
+    if (selected.size === 0 || submitting) return;
+    const all = (items ?? []) as MenuItem[];
+    const byId = new Map(all.map((m) => [m.id, m] as const));
+    const ids = Array.from(selected);
+    setSubmitting(true);
+    let added = 0;
+    let firstError: string | null = null;
+    let firstErrorName: string | null = null;
+    for (const id of ids) {
+      try {
+        await addMut.mutateAsync({ data: { menuItemId: id } });
+        added += 1;
+      } catch (e) {
+        if (firstError == null) {
+          firstError = getErrorMessage(e, "Failed to add item");
+          firstErrorName = byId.get(id)?.name ?? `item ${id}`;
+        }
+      }
+    }
+    setSubmitting(false);
+    if (added > 0) {
+      const single = ids.length === 1 ? byId.get(ids[0]!)?.name : null;
+      const msg = single
+        ? `Added "${single}" to the recommended list.`
+        : `Added ${added} item${added === 1 ? "" : "s"} to the recommended list.`;
+      onAdded(msg);
+    }
+    if (firstError) {
+      onError(`${firstErrorName ? `${firstErrorName}: ` : ""}${firstError}`);
     }
   }
 
@@ -673,6 +720,34 @@ function AddItemModal({
           />
         </div>
 
+        <div className="flex items-center justify-between mb-2 text-xs text-muted-foreground">
+          <span>
+            {selected.size > 0
+              ? `${selected.size} selected`
+              : "Tick the items you want to add"}
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              disabled={submitting || filtered.length === 0}
+              className="hover:text-foreground disabled:opacity-40"
+              data-testid="add-select-all"
+            >
+              Select all shown
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              disabled={submitting || selected.size === 0}
+              className="hover:text-foreground disabled:opacity-40"
+              data-testid="add-clear"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
         <div className="flex-1 overflow-auto border rounded-lg">
           {loading ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground">
@@ -686,32 +761,61 @@ function AddItemModal({
             </div>
           ) : (
             <ul className="divide-y">
-              {filtered.map((it) => (
-                <li
-                  key={it.id}
-                  className="px-3 py-2 flex items-center justify-between gap-3"
-                  data-testid={`add-row-${it.id}`}
-                >
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{it.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {it.category}
-                      {!it.available && " · unavailable"}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleAdd(it)}
-                    disabled={adding != null}
-                    className="px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
-                    data-testid={`add-button-${it.id}`}
+              {filtered.map((it) => {
+                const checked = selected.has(it.id);
+                return (
+                  <li
+                    key={it.id}
+                    className={`px-3 py-2 flex items-center gap-3 cursor-pointer hover:bg-secondary/50 ${checked ? "bg-secondary/40" : ""}`}
+                    onClick={() => toggle(it.id)}
+                    data-testid={`add-row-${it.id}`}
                   >
-                    {adding === it.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    Add
-                  </button>
-                </li>
-              ))}
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(it.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      disabled={submitting}
+                      aria-label={`Select ${it.name}`}
+                      className="w-4 h-4 accent-primary"
+                      data-testid={`add-check-${it.id}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{it.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {it.category}
+                        {!it.available && " · unavailable"}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 mt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-secondary disabled:opacity-50"
+            data-testid="add-cancel"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleAddSelected}
+            disabled={submitting || selected.size === 0}
+            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium disabled:opacity-50 inline-flex items-center gap-2"
+            data-testid="add-submit"
+          >
+            {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+            {selected.size === 0
+              ? "Add"
+              : `Add ${selected.size} item${selected.size === 1 ? "" : "s"}`}
+          </button>
         </div>
       </div>
     </div>
