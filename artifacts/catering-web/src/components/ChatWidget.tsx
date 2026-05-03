@@ -24,7 +24,9 @@ function isSafeSameOriginPath(raw: string): string | null {
   }
 }
 
-function renderMessageContent(text: string): ReactNode[] {
+// Render plain text and `[label](url)` links inside a single non-bold
+// segment. Pulled out so the bold pass can call it for each chunk.
+function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const parts: ReactNode[] = [];
   const re = /\[([^\]]+)\]\(([^)\s]+)\)/g;
   let last = 0;
@@ -32,11 +34,11 @@ function renderMessageContent(text: string): ReactNode[] {
   let key = 0;
   while ((match = re.exec(text)) !== null) {
     const safeHref = isSafeSameOriginPath(match[2]);
-    if (safeHref === null) continue; // leave unsafe links as plain text
+    if (safeHref === null) continue;
     if (match.index > last) parts.push(text.slice(last, match.index));
     parts.push(
       <a
-        key={`l${key++}`}
+        key={`${keyPrefix}l${key++}`}
         href={safeHref}
         className="underline font-semibold text-primary hover:text-primary/80"
       >
@@ -46,6 +48,32 @@ function renderMessageContent(text: string): ReactNode[] {
     last = match.index + match[0].length;
   }
   if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function renderMessageContent(text: string): ReactNode[] {
+  // First split out **bold** spans, then render links inside each segment.
+  // Single `*` (italic) is intentionally not supported — the prompt tells
+  // the bot to use bold sparingly and avoid italics.
+  const parts: ReactNode[] = [];
+  const re = /\*\*([^*\n]+)\*\*/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) {
+      parts.push(...renderInline(text.slice(last, match.index), `s${key}`));
+    }
+    parts.push(
+      <strong key={`b${key++}`} className="font-semibold">
+        {renderInline(match[1], `b${key}`)}
+      </strong>,
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) {
+    parts.push(...renderInline(text.slice(last), `s${key}`));
+  }
   return parts;
 }
 
