@@ -65,7 +65,7 @@ export default function DemoOrder() {
   const [submitErr, setSubmitErr] = useState<string | null>(null);
   const { data: categoriesData } = useCategories();
 
-  const categoriesRef = useRef<HTMLDivElement | null>(null);
+  const categoriesRef = useRef<HTMLHeadingElement | null>(null);
   const itemCardRef = useRef<HTMLButtonElement | null>(null);
   const cartRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
@@ -173,10 +173,15 @@ export default function DemoOrder() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-8">
-            <div ref={categoriesRef}>
+            <div>
               {categories.map((cat, catIdx) => (
                 <div key={cat} className={catIdx > 0 ? "mt-8" : ""}>
-                  <h2 className="font-display font-bold text-lg mb-3 pb-2 border-b border-border">{cat}</h2>
+                  <h2
+                    ref={catIdx === 0 ? categoriesRef : undefined}
+                    className="font-display font-bold text-lg mb-3 pb-2 border-b border-border inline-block"
+                  >
+                    {cat}
+                  </h2>
                   <div className="space-y-3">
                     {menu.filter((i) => i.category === cat).map((item, itemIdx) => {
                       const qty = quantities[item.id] ?? 0;
