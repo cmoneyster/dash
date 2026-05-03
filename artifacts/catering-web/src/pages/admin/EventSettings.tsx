@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon } from "lucide-react";
+import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon, CalendarDays } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -115,6 +115,14 @@ export default function EventSettings() {
   const [otdIncludedHours, setOtdIncludedHours] = useState<string>("2");
   const [otdAdditionalHourRate, setOtdAdditionalHourRate] = useState<string>("100");
   const [otdMaxAdditionalHours, setOtdMaxAdditionalHours] = useState<string>("3");
+  // ── Daily booking capacity ── all string-backed so admins can leave
+  // any field blank to mean "unlimited / no cap configured".
+  const [dailyGuestCap, setDailyGuestCap] = useState<string>("");
+  const [dailyDropOffSlots, setDailyDropOffSlots] = useState<string>("");
+  const [dailyOnTheDashSlots, setDailyOnTheDashSlots] = useState<string>("");
+  const [dailyBuffetSlots, setDailyBuffetSlots] = useState<string>("");
+  const [dailyGrazingSlots, setDailyGrazingSlots] = useState<string>("");
+  const [dailyMadeToOrderSlots, setDailyMadeToOrderSlots] = useState<string>("");
   const [hasOrderPassword, setHasOrderPassword] = useState(false);
   const [hasKitchenPassword, setHasKitchenPassword] = useState(false);
   const [hasEventTakerPassword, setHasEventTakerPassword] = useState(false);
@@ -149,6 +157,12 @@ export default function EventSettings() {
         if (data.otdIncludedHours != null) setOtdIncludedHours(String(data.otdIncludedHours));
         if (data.otdAdditionalHourRate != null) setOtdAdditionalHourRate(String(data.otdAdditionalHourRate));
         if (data.otdMaxAdditionalHours != null) setOtdMaxAdditionalHours(String(data.otdMaxAdditionalHours));
+        setDailyGuestCap(data.dailyGuestCap != null ? String(data.dailyGuestCap) : "");
+        setDailyDropOffSlots(data.dailyDropOffSlots != null ? String(data.dailyDropOffSlots) : "");
+        setDailyOnTheDashSlots(data.dailyOnTheDashSlots != null ? String(data.dailyOnTheDashSlots) : "");
+        setDailyBuffetSlots(data.dailyBuffetSlots != null ? String(data.dailyBuffetSlots) : "");
+        setDailyGrazingSlots(data.dailyGrazingSlots != null ? String(data.dailyGrazingSlots) : "");
+        setDailyMadeToOrderSlots(data.dailyMadeToOrderSlots != null ? String(data.dailyMadeToOrderSlots) : "");
       })
       .catch(() => setError("Failed to load event settings"))
       .finally(() => setLoading(false));
@@ -191,6 +205,13 @@ export default function EventSettings() {
         otdIncludedHours: otdIncludedHours.trim() === "" ? 0 : Number(otdIncludedHours),
         otdAdditionalHourRate: otdAdditionalHourRate.trim() === "" ? 0 : Number(otdAdditionalHourRate),
         otdMaxAdditionalHours: otdMaxAdditionalHours.trim() === "" ? 0 : Number(otdMaxAdditionalHours),
+        // Capacity caps — empty string means "unlimited" (sent as null).
+        dailyGuestCap: dailyGuestCap.trim() === "" ? null : Number(dailyGuestCap),
+        dailyDropOffSlots: dailyDropOffSlots.trim() === "" ? null : Number(dailyDropOffSlots),
+        dailyOnTheDashSlots: dailyOnTheDashSlots.trim() === "" ? null : Number(dailyOnTheDashSlots),
+        dailyBuffetSlots: dailyBuffetSlots.trim() === "" ? null : Number(dailyBuffetSlots),
+        dailyGrazingSlots: dailyGrazingSlots.trim() === "" ? null : Number(dailyGrazingSlots),
+        dailyMadeToOrderSlots: dailyMadeToOrderSlots.trim() === "" ? null : Number(dailyMadeToOrderSlots),
       };
       if (clearOrderPassword) body.orderPassword = null;
       else if (orderPassword) body.orderPassword = orderPassword;
@@ -210,6 +231,12 @@ export default function EventSettings() {
         throw new Error(data?.error || "Save failed");
       }
       const data = await res.json() as any;
+      setDailyGuestCap(data.dailyGuestCap != null ? String(data.dailyGuestCap) : "");
+      setDailyDropOffSlots(data.dailyDropOffSlots != null ? String(data.dailyDropOffSlots) : "");
+      setDailyOnTheDashSlots(data.dailyOnTheDashSlots != null ? String(data.dailyOnTheDashSlots) : "");
+      setDailyBuffetSlots(data.dailyBuffetSlots != null ? String(data.dailyBuffetSlots) : "");
+      setDailyGrazingSlots(data.dailyGrazingSlots != null ? String(data.dailyGrazingSlots) : "");
+      setDailyMadeToOrderSlots(data.dailyMadeToOrderSlots != null ? String(data.dailyMadeToOrderSlots) : "");
       setEventName(data.eventName);
       setHasOrderPassword(data.hasOrderPassword ?? false);
       setHasKitchenPassword(data.hasKitchenPassword ?? false);
@@ -507,6 +534,116 @@ export default function EventSettings() {
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
               {saving ? "Saving…" : saved ? "Saved!" : "Save On the Dash Pricing"}
+            </button>
+          </form>
+
+          <form onSubmit={handleSave} className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="w-5 h-5 text-muted-foreground" />
+              <h2 className="font-display font-bold text-xl">Daily Booking Capacity</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Caps used by the chat bot's date-availability tool. Confirmed orders count
+              against caps; pending orders are visible but don't block. Leave any field
+              blank to mean "no cap configured" for that dimension.
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Total guests per day</label>
+              <input
+                type="number"
+                min={0}
+                max={1000}
+                step={1}
+                value={dailyGuestCap}
+                onChange={e => setDailyGuestCap(e.target.value)}
+                placeholder="Unlimited"
+                className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Across every booking that day, regardless of service style.</p>
+            </div>
+            <div className="border-t border-border pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Slots per service style</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Standard drop-off</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    step={1}
+                    value={dailyDropOffSlots}
+                    onChange={e => setDailyDropOffSlots(e.target.value)}
+                    placeholder="Unlimited"
+                    className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">On the Dash (food trailer)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    step={1}
+                    value={dailyOnTheDashSlots}
+                    onChange={e => setDailyOnTheDashSlots(e.target.value)}
+                    placeholder="Unlimited"
+                    className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Most teams set this to 1 — only one trailer per day.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Buffet</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    step={1}
+                    value={dailyBuffetSlots}
+                    onChange={e => setDailyBuffetSlots(e.target.value)}
+                    placeholder="Unlimited"
+                    className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Grazing</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    step={1}
+                    value={dailyGrazingSlots}
+                    onChange={e => setDailyGrazingSlots(e.target.value)}
+                    placeholder="Unlimited"
+                    className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Made-to-order</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    step={1}
+                    value={dailyMadeToOrderSlots}
+                    onChange={e => setDailyMadeToOrderSlots(e.target.value)}
+                    placeholder="Unlimited"
+                    className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                Buffet, grazing, and made-to-order aren't yet captured by checkout — these
+                caps will start enforcing automatically when those modes ship.
+              </p>
+            </div>
+            {error && <p className="text-destructive text-sm">{error}</p>}
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
+              {saving ? "Saving…" : saved ? "Saved!" : "Save Capacity"}
             </button>
           </form>
 

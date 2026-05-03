@@ -32,6 +32,16 @@ router.get("/admin/event-settings", async (req, res) => {
       otdIncludedHours: settings?.otdIncludedHours != null ? parseFloat(settings.otdIncludedHours) : 2,
       otdAdditionalHourRate: settings?.otdAdditionalHourRate != null ? parseFloat(settings.otdAdditionalHourRate) : 100,
       otdMaxAdditionalHours: settings?.otdMaxAdditionalHours ?? 3,
+      // ── Daily booking capacity (Option B: per-style slots) ──
+      // NULL on any field is the wire-level "unlimited" signal — admin
+      // UI surfaces blank inputs for those, server treats them as no
+      // cap when computing day load.
+      dailyGuestCap: settings?.dailyGuestCap ?? null,
+      dailyDropOffSlots: settings?.dailyDropOffSlots ?? null,
+      dailyOnTheDashSlots: settings?.dailyOnTheDashSlots ?? null,
+      dailyBuffetSlots: settings?.dailyBuffetSlots ?? null,
+      dailyGrazingSlots: settings?.dailyGrazingSlots ?? null,
+      dailyMadeToOrderSlots: settings?.dailyMadeToOrderSlots ?? null,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching event settings");
@@ -47,6 +57,8 @@ router.put("/admin/event-settings", async (req, res) => {
       venmoHandle, venmoQrImageUrl,
       otdSetupFee, otdFeeWaiverThreshold, otdIncludedHours,
       otdAdditionalHourRate, otdMaxAdditionalHours,
+      dailyGuestCap, dailyDropOffSlots, dailyOnTheDashSlots,
+      dailyBuffetSlots, dailyGrazingSlots, dailyMadeToOrderSlots,
     } = req.body as {
       eventName?: string;
       orderPassword?: string;
@@ -61,6 +73,12 @@ router.put("/admin/event-settings", async (req, res) => {
       otdIncludedHours?: number | string | null;
       otdAdditionalHourRate?: number | string | null;
       otdMaxAdditionalHours?: number | string | null;
+      dailyGuestCap?: number | string | null;
+      dailyDropOffSlots?: number | string | null;
+      dailyOnTheDashSlots?: number | string | null;
+      dailyBuffetSlots?: number | string | null;
+      dailyGrazingSlots?: number | string | null;
+      dailyMadeToOrderSlots?: number | string | null;
     };
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
 
@@ -79,6 +97,12 @@ router.put("/admin/event-settings", async (req, res) => {
       otdIncludedHours: s.otdIncludedHours != null ? parseFloat(s.otdIncludedHours) : 2,
       otdAdditionalHourRate: s.otdAdditionalHourRate != null ? parseFloat(s.otdAdditionalHourRate) : 100,
       otdMaxAdditionalHours: s.otdMaxAdditionalHours ?? 3,
+      dailyGuestCap: s.dailyGuestCap ?? null,
+      dailyDropOffSlots: s.dailyDropOffSlots ?? null,
+      dailyOnTheDashSlots: s.dailyOnTheDashSlots ?? null,
+      dailyBuffetSlots: s.dailyBuffetSlots ?? null,
+      dailyGrazingSlots: s.dailyGrazingSlots ?? null,
+      dailyMadeToOrderSlots: s.dailyMadeToOrderSlots ?? null,
     });
 
     // OTD numeric helpers — money/hour values stored as numeric strings.
@@ -111,6 +135,21 @@ router.put("/admin/event-settings", async (req, res) => {
       const n = Number(v);
       if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > 24) {
         throw Object.assign(new Error("otdMaxAdditionalHours must be an integer between 0 and 24"), { status: 400 });
+      }
+      return n;
+    }
+    // Capacity helper — null/empty/undefined are all treated as
+    // "unlimited" and stored as NULL. Anything else must coerce to a
+    // non-negative integer between 0 and 1000 (enough headroom for any
+    // realistic per-day cap; rejects bad UI input early).
+    function normalizeCap(v: number | string | null | undefined, field: string): number | null {
+      if (v === null || v === undefined || v === "") return null;
+      const n = Number(v);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > 1000) {
+        throw Object.assign(
+          new Error(`${field} must be a whole number between 0 and 1000, or blank for unlimited`),
+          { status: 400 },
+        );
       }
       return n;
     }
@@ -162,6 +201,12 @@ router.put("/admin/event-settings", async (req, res) => {
       if (otdMaxAdditionalHours !== undefined) {
         updates.otdMaxAdditionalHours = normalizeOtdMaxAdditionalHours(otdMaxAdditionalHours);
       }
+      if (dailyGuestCap !== undefined) updates.dailyGuestCap = normalizeCap(dailyGuestCap, "dailyGuestCap");
+      if (dailyDropOffSlots !== undefined) updates.dailyDropOffSlots = normalizeCap(dailyDropOffSlots, "dailyDropOffSlots");
+      if (dailyOnTheDashSlots !== undefined) updates.dailyOnTheDashSlots = normalizeCap(dailyOnTheDashSlots, "dailyOnTheDashSlots");
+      if (dailyBuffetSlots !== undefined) updates.dailyBuffetSlots = normalizeCap(dailyBuffetSlots, "dailyBuffetSlots");
+      if (dailyGrazingSlots !== undefined) updates.dailyGrazingSlots = normalizeCap(dailyGrazingSlots, "dailyGrazingSlots");
+      if (dailyMadeToOrderSlots !== undefined) updates.dailyMadeToOrderSlots = normalizeCap(dailyMadeToOrderSlots, "dailyMadeToOrderSlots");
       const [updated] = await db.update(eventSettingsTable).set(updates).where(eq(eventSettingsTable.id, 1)).returning();
       res.json(buildResponse(updated));
     } else {

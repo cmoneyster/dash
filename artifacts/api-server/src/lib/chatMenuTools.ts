@@ -3,9 +3,15 @@ import {
   menuItemsTable,
   menuCategoriesTable,
   recommendedMenuItemsTable,
-  blackoutDatesTable,
 } from "@workspace/db/schema";
 import { asc } from "drizzle-orm";
+import {
+  computeDayLoad,
+  findOpenAlternates,
+  isRealCalendarDate,
+  SERVICE_STYLE_KEYS,
+  type ServiceStyleKey,
+} from "./dayLoad";
 
 // Per-session snapshot of the menu the chat bot is allowed to talk about.
 // Built once at first message of a session, then reused for the rest of
@@ -330,15 +336,21 @@ export const CHAT_TOOL_DEFS = [
   {
     type: "function" as const,
     function: {
-      name: "check_event_date_availability",
+      name: "check_event_date",
       description:
-        "Check whether a specific date is available for catering (i.e. not on the team's blackout list). Use whenever the guest mentions or asks about a specific date. Pass the date as YYYY-MM-DD. Returns { available: boolean, date: string, suggestedDates: string[] } — when unavailable, suggestedDates contains up to 3 nearby open dates.",
+        "Check date availability AND day load for a specific date. Use whenever the guest mentions or asks about a date. Pass YYYY-MM-DD. Optionally pass guestCount and/or serviceStyle to get a tailored verdict — the tool will tell you if the day is blacked out, how full it already is, whether the guest's specific service style still has a slot, and (when full or blacked out) up to 3 nearby open dates. Use the response to either confirm cheerfully, suggest a different service style on the same day, or apologize and offer alternate dates.",
       parameters: {
         type: "object",
         properties: {
-          date: {
+          date: { type: "string", description: "Event date in YYYY-MM-DD format." },
+          guestCount: {
+            type: "number",
+            description: "Optional expected guest count. Used to flag when the requested headcount won't fit under the daily guest cap.",
+          },
+          serviceStyle: {
             type: "string",
-            description: "Event date in YYYY-MM-DD format.",
+            enum: ["drop_off", "on_the_dash", "buffet", "grazing", "made_to_order"],
+            description: "Optional canonical service style the guest is leaning toward. on_the_dash = our on-site food trailer.",
           },
         },
         required: ["date"],
@@ -348,36 +360,100 @@ export const CHAT_TOOL_DEFS = [
   },
 ];
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-function isRealCalendarDate(date: string): boolean {
-  if (!DATE_RE.test(date)) return false;
-  const parsed = new Date(`${date}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) return false;
-  return parsed.toISOString().split("T")[0] === date;
-}
-
-async function checkEventDateAvailability(date: string) {
+async function checkEventDate(args: {
+  date: string;
+  guestCount?: number;
+  serviceStyle?: ServiceStyleKey;
+}) {
+  const { date, guestCount, serviceStyle } = args;
   if (!isRealCalendarDate(date)) {
     return { error: "Date must be a real calendar date in YYYY-MM-DD format." };
   }
-  const all = await db.select().from(blackoutDatesTable);
-  const blackoutSet = new Set(all.map((b) => b.date));
-  const available = !blackoutSet.has(date);
-  const suggestedDates: string[] = [];
-  if (!available) {
-    const start = new Date(`${date}T00:00:00Z`);
-    const probe = new Date(start);
-    probe.setUTCDate(probe.getUTCDate() + 1);
-    let safety = 0;
-    while (suggestedDates.length < 3 && safety < 365) {
-      const ds = probe.toISOString().split("T")[0]!;
-      if (!blackoutSet.has(ds)) suggestedDates.push(ds);
-      probe.setUTCDate(probe.getUTCDate() + 1);
-      safety++;
+  if (
+    serviceStyle !== undefined &&
+    !SERVICE_STYLE_KEYS.includes(serviceStyle)
+  ) {
+    return { error: `Unknown serviceStyle: ${serviceStyle}` };
+  }
+  const load = await computeDayLoad(date);
+
+  // Tailored verdict for the model. We summarize the salient stuff so
+  // the bot doesn't have to reason about the full payload — but we also
+  // include a compact `summary` block so it can quote concrete numbers
+  // when helpful.
+  const styleSlot =
+    serviceStyle && load.capacity.slotsByServiceStyle[serviceStyle] != null
+      ? {
+          cap: load.capacity.slotsByServiceStyle[serviceStyle]!,
+          confirmed: load.totals.byServiceStyle[serviceStyle].confirmed,
+          remaining: load.remaining.slotsByServiceStyle[serviceStyle] ?? 0,
+        }
+      : null;
+
+  const requestedStyleAvailable =
+    serviceStyle == null
+      ? null
+      : styleSlot == null
+        ? true // no cap configured for that style → always available
+        : styleSlot.remaining > 0;
+
+  const guestCountFits =
+    guestCount == null || load.capacity.dailyGuestCap == null
+      ? null
+      : (load.remaining.guestCount ?? 0) >= guestCount;
+
+  const needsAlternateDate =
+    load.blackedOut ||
+    load.load === "full" ||
+    (requestedStyleAvailable === false && load.load === "near_full") ||
+    guestCountFits === false;
+
+  const suggestedDates = needsAlternateDate
+    ? await findOpenAlternates(date, 3)
+    : [];
+
+  // Collect alternate styles that still have room when the requested
+  // style is full but the day itself is not.
+  const alternateStyles: ServiceStyleKey[] = [];
+  if (
+    serviceStyle &&
+    requestedStyleAvailable === false &&
+    !load.blackedOut &&
+    load.load !== "full"
+  ) {
+    for (const k of Object.keys(load.remaining.slotsByServiceStyle) as ServiceStyleKey[]) {
+      if (k === serviceStyle) continue;
+      if ((load.remaining.slotsByServiceStyle[k] ?? 0) > 0) alternateStyles.push(k);
+    }
+    // If a style has no cap configured at all, treat it as available.
+    for (const k of SERVICE_STYLE_KEYS) {
+      if (k === "unknown") continue;
+      if (k === serviceStyle) continue;
+      if (!(k in load.capacity.slotsByServiceStyle) && !alternateStyles.includes(k)) {
+        alternateStyles.push(k);
+      }
     }
   }
-  return { available, date, suggestedDates };
+
+  return {
+    date,
+    available: !load.blackedOut && load.load !== "full",
+    blackedOut: load.blackedOut,
+    load: load.load,
+    requestedStyle: serviceStyle ?? null,
+    requestedStyleAvailable,
+    requestedGuestCount: guestCount ?? null,
+    guestCountFits,
+    alternateStyles,
+    suggestedDates,
+    summary: {
+      confirmedGuestCount: load.totals.confirmedGuestCount,
+      dailyGuestCap: load.capacity.dailyGuestCap,
+      remainingGuests: load.remaining.guestCount,
+      conflicts: load.conflicts,
+      styleSlot,
+    },
+  };
 }
 
 export async function runChatTool(name: string, args: unknown, snap: Snapshot): Promise<unknown> {
@@ -394,9 +470,18 @@ export async function runChatTool(name: string, args: unknown, snap: Snapshot): 
       if (!Number.isFinite(id)) return null;
       return getMenuItem(snap, id);
     }
-    case "check_event_date_availability": {
+    case "check_event_date": {
       const date = typeof a.date === "string" ? a.date : "";
-      return checkEventDateAvailability(date);
+      const guestCount =
+        typeof a.guestCount === "number" && Number.isFinite(a.guestCount)
+          ? a.guestCount
+          : undefined;
+      const serviceStyleRaw = typeof a.serviceStyle === "string" ? a.serviceStyle : undefined;
+      const serviceStyle =
+        serviceStyleRaw && (SERVICE_STYLE_KEYS as readonly string[]).includes(serviceStyleRaw)
+          ? (serviceStyleRaw as ServiceStyleKey)
+          : undefined;
+      return checkEventDate({ date, guestCount, serviceStyle });
     }
     default:
       return { error: `Unknown tool: ${name}` };

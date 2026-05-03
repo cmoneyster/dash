@@ -110,6 +110,21 @@ export const eventSettingsTable = pgTable("event_settings", {
   otdIncludedHours: numeric("otd_included_hours", { precision: 5, scale: 2 }).notNull().default("2"),
   otdAdditionalHourRate: numeric("otd_additional_hour_rate", { precision: 10, scale: 2 }).notNull().default("100"),
   otdMaxAdditionalHours: integer("otd_max_additional_hours").notNull().default(3),
+  // ── Daily booking capacity ────────────────────────────────────────────────
+  // Per-day caps used by /events/day-load and the chat bot's check_event_date
+  // tool. NULL on any column means "unlimited / no cap configured" for that
+  // dimension. Slots count confirmed orders as hard load and pending orders as
+  // soft load (still surfaced, but not blocking). Cancelled orders are
+  // ignored. The five per-style slot columns mirror the service-style labels
+  // the chat bot uses; only drop_off and on_the_dash are populated by the
+  // current cart, but reserving columns for the others avoids a follow-up
+  // migration when those modes ship to checkout.
+  dailyGuestCap: integer("daily_guest_cap"),
+  dailyDropOffSlots: integer("daily_drop_off_slots"),
+  dailyOnTheDashSlots: integer("daily_on_the_dash_slots"),
+  dailyBuffetSlots: integer("daily_buffet_slots"),
+  dailyGrazingSlots: integer("daily_grazing_slots"),
+  dailyMadeToOrderSlots: integer("daily_made_to_order_slots"),
   // ── Site & Social ──────────────────────────────────────────────────────────
   // Brand Instagram handle (no leading @). Empty string = not configured.
   // Used by the public footer link AND by the hashtag-wall auto-approve rule

@@ -1,9 +1,33 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { blackoutDatesTable, eventSettingsTable } from "@workspace/db/schema";
-import { eq, between } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { computeDayLoad, findOpenAlternates, isRealCalendarDate } from "../lib/dayLoad";
 
 const router: IRouter = Router();
+
+// Day-load: combined blackout + per-service-style + global guest-cap view
+// for a single date. Powers the chat bot's date-aware reasoning and any
+// future calendar UI that wants to render load tiers. No auth — same
+// posture as /events/availability above.
+router.get("/events/day-load", async (req, res): Promise<void> => {
+  try {
+    const { date } = req.query as { date?: string };
+    if (!date || !isRealCalendarDate(date)) {
+      res.status(400).json({ error: "date must be a real calendar date in YYYY-MM-DD format" });
+      return;
+    }
+    const load = await computeDayLoad(date);
+    let suggestedDates: string[] = [];
+    if (load.blackedOut || load.load === "full") {
+      suggestedDates = await findOpenAlternates(date, 3);
+    }
+    res.json({ ...load, suggestedDates });
+  } catch (err) {
+    req.log.error({ err }, "Error computing day load");
+    res.status(500).json({ error: "Failed to compute day load" });
+  }
+});
 
 // Public OTD pricing config — read by Cart and Plan toggles to render
 // the live setup-fee summary, waiver hint, and explainer copy without
