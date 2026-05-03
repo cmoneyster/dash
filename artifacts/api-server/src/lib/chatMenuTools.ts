@@ -346,10 +346,18 @@ export const CHAT_TOOL_DEFS = [
     function: {
       name: "request_human_contact",
       description:
-        "Hand the conversation off to a real human on the catering team. Call this ONLY after the guest has explicitly asked to talk to a person AND has provided their preferred contact channel and the actual contact value. The team will be notified immediately by email and SMS, and (when channel is 'sms') a real text-message thread will be opened with the guest. Never invent a phone number or email — only call this with values the guest typed in this conversation. Call at most once per conversation unless the guest gives a different contact.",
+        "Hand the conversation off to a real human on the catering team. Call this ONLY after the guest has explicitly asked to talk to a person AND you have collected ALL of: (1) their name, (2) a one-or-two-sentence question/reason describing what they want help with, (3) their preferred contact channel, and (4) the actual contact value. The team will be notified immediately by email and SMS, and (when channel is 'sms') a real text-message thread will be opened with the guest. Never invent a name, phone number, email, or reason — only call this with values the guest typed in this conversation. Call at most once per conversation unless the guest gives a different contact.",
       parameters: {
         type: "object",
         properties: {
+          name: {
+            type: "string",
+            description: "Guest's name as they typed it. Required so the team can greet them. Ask for it before calling this tool if it hasn't been shared.",
+          },
+          summary: {
+            type: "string",
+            description: "One or two sentences in the guest's own words describing what they want help with (event date, guest count, dietary needs, specific question, etc.). Required so the team shows up prepared. Ask for it before calling this tool if the guest hasn't already explained their question.",
+          },
           channel: {
             type: "string",
             enum: ["phone", "email", "sms"],
@@ -359,16 +367,8 @@ export const CHAT_TOOL_DEFS = [
             type: "string",
             description: "The actual contact value: phone number for 'phone' or 'sms', email address for 'email'. Use what the guest typed verbatim.",
           },
-          name: {
-            type: "string",
-            description: "Guest's name if they shared one. Optional.",
-          },
-          summary: {
-            type: "string",
-            description: "One or two sentences summarizing what the guest is asking about (event date, guest count, dietary needs, specific question, etc.). Helps the team show up prepared.",
-          },
         },
-        required: ["channel", "contact"],
+        required: ["name", "summary", "channel", "contact"],
         additionalProperties: false,
       },
     },
@@ -443,6 +443,20 @@ async function requestHumanContact(
   const name = typeof raw.name === "string" ? raw.name.trim().slice(0, 120) : "";
   const summary = typeof raw.summary === "string" ? raw.summary.trim().slice(0, 800) : "";
 
+  if (!name) {
+    return {
+      ok: false,
+      error:
+        "Please ask the guest for their name first, then call this tool again with name set.",
+    };
+  }
+  if (!summary || summary.length < 3) {
+    return {
+      ok: false,
+      error:
+        "Please ask the guest a one-or-two-sentence question describing what they need (event date, guest count, dietary needs, specific question, etc.), then call this tool again with summary set.",
+    };
+  }
   if (channel !== "phone" && channel !== "email" && channel !== "sms") {
     return { ok: false, error: "channel must be 'phone', 'email', or 'sms'." };
   }
