@@ -12,7 +12,7 @@ export function useChatStream() {
     {
       id: "welcome",
       role: "assistant",
-      content: "Welcome! Would you like to browse our menu, or tell me about your event so I can help you plan? (e.g., date, number of guests, style of service)",
+      content: "Hi! Want to browse our menu, or get a hand planning your event?",
     },
   ]);
   const [isTyping, setIsTyping] = useState(false);
