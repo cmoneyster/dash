@@ -260,5 +260,14 @@ The previous per-device localStorage browser auto-print dropdowns (`AUTO_PRINT_K
 
 Manual reprint: `POST /api/admin/event-orders/:id/reprint` re-fans an order through the same code path, ignoring `auto_print_on_new_order` (this is an explicit "send to printers" request from staff). Print jobs queued via this path show up in the `Printers` admin page like any other job.
 
+### Per-order item labels (Kitchen Display)
+Each Kitchen Display order card has a **Print labels** button (replacing the old browser-print "Print receipt" button) that opens a per-order modal listing every line item with a Print button per item plus a Print all button. Each press calls `POST /api/event-ordering/orders/:id/print-labels` (kitchen password, body `{ itemId? }`) which routes through `fanoutItemLabelsForEventOrderId` in `printFanout.ts`. That helper:
+- enqueues only `item_label` jobs (no kitchen ticket, no plate labels — those have their own paths),
+- selects label printers in `manual` mode so `auto_print_on_new_order` is ignored,
+- honors per-printer `suppress_item_labels_for_plate_lines` exactly like the auto path, and
+- respects the `kitchen_send` allowed-kinds matrix as defense in depth.
+
+So per-item label reprints fan out to the same admin-managed CloudPRNT printers as the automatic flow and show up in the admin print-jobs view.
+
 ### Renderer
 `artifacts/api-server/src/lib/printRenderer.ts` emits 80mm-width text/plain with embedded ESC/POS escapes (bold, double-size, full cut). Default printer mode for TSP143IV's CloudPRNT-side processing accepts text/plain and applies ESC/POS escapes; older TSP650/700/800 will need the same content-type with raster-image rendering — present scaffolding (`renderJob` returns `{ bytes, contentType }`) supports both branches when added later.

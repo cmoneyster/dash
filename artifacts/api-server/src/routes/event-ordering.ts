@@ -10,7 +10,7 @@ import {
   fireLowStockAlertIfAny,
   DEFAULT_LOW_STOCK_THRESHOLD,
 } from "../lib/lowStockAlerts";
-import { fanoutPrintForEventOrder } from "../lib/printFanout";
+import { fanoutPrintForEventOrder, fanoutItemLabelsForEventOrderId } from "../lib/printFanout";
 
 const router: IRouter = Router();
 
@@ -133,6 +133,44 @@ router.patch("/event-ordering/printers/:id", verifyKitchenPassword, async (req, 
     res.status(500).json({ error: "Failed to update printer" });
   }
 });
+
+/**
+ * Manual "Print Individual Item Labels" trigger from the Kitchen Display
+ * per-order modal. Routes through the same printer-selection + label
+ * expansion path as the auto fan-out, but ignores
+ * `auto_print_on_new_order` (this is an explicit staff request) and
+ * skips kitchen tickets / plate labels — only item labels are produced.
+ *
+ * Body: `{ itemId?: number }` — narrow to a single line item, or omit
+ * to print labels for every item on the order ("Print all").
+ */
+router.post(
+  "/event-ordering/orders/:id/print-labels",
+  verifyKitchenPassword,
+  async (req, res): Promise<void> => {
+    try {
+      const orderId = parseInt(String(req.params.id));
+      if (!Number.isFinite(orderId)) {
+        res.status(400).json({ error: "invalid order id" });
+        return;
+      }
+      const rawItemId = (req.body as { itemId?: unknown })?.itemId;
+      const itemId =
+        rawItemId === undefined || rawItemId === null
+          ? undefined
+          : Number(rawItemId);
+      if (itemId !== undefined && !Number.isFinite(itemId)) {
+        res.status(400).json({ error: "invalid itemId" });
+        return;
+      }
+      const enqueued = await fanoutItemLabelsForEventOrderId({ orderId, itemId });
+      res.json({ enqueued });
+    } catch (err) {
+      req.log.error({ err }, "kitchen print item labels failed");
+      res.status(500).json({ error: "Failed to enqueue item labels" });
+    }
+  },
+);
 
 router.get("/event-ordering/settings", async (req, res) => {
   try {

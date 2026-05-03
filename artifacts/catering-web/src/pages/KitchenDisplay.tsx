@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Receipt, Printer, Pause, Play, Ban, ShoppingBag, Users, X, AlertTriangle, Minus, Plus } from "lucide-react";
+import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Printer, Tag, Pause, Play, Ban, ShoppingBag, Users, X, AlertTriangle, Minus, Plus } from "lucide-react";
 import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
+import { ItemLabelsModal } from "@/components/ItemLabelsModal";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -933,6 +934,10 @@ export default function KitchenDisplay() {
   // Server-backed printer settings modal (scoped to the Kitchen surface).
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
 
+  // Per-order "Print Item Labels" modal. Holds the order whose labels
+  // we're currently triaging. Reset to null on close.
+  const [labelsForOrder, setLabelsForOrder] = useState<EventOrder | null>(null);
+
   // Server-synced "Fire totals" tap. Optimistically toggles the itemId in
   // the order's firedItemIds array, then PATCHes the server which is the
   // source of truth for auto-advancing pending → preparing once every line
@@ -1042,6 +1047,16 @@ export default function KitchenDisplay() {
         open={printerModalOpen}
         onClose={() => setPrinterModalOpen(false)}
         surface="kitchen"
+        authToken={authedPassword}
+      />
+
+      <ItemLabelsModal
+        open={labelsForOrder != null}
+        onClose={() => setLabelsForOrder(null)}
+        orderId={labelsForOrder?.id ?? null}
+        orderNumber={labelsForOrder ? String(labelsForOrder.id) : ""}
+        guestName={labelsForOrder?.guestName ?? ""}
+        items={(labelsForOrder?.items ?? []).map(i => ({ itemId: i.itemId, name: i.name, quantity: i.quantity }))}
         authToken={authedPassword}
       />
 
@@ -1393,6 +1408,7 @@ export default function KitchenDisplay() {
                           onAdvance={() => advanceStatus(order)}
                           onRevert={() => revertStatus(order)}
                           onPrint={(mode) => printOrder(order, mode)}
+                          onPrintLabels={() => setLabelsForOrder(order)}
                           onTogglePlateLine={(plateIdx, itemId, packed) => patchKitchenProgress(order, { plateIdx, itemId, packed })}
                           onTogglePlate={(plateIdx, allPacked) => patchKitchenProgress(order, { plateIdx, allPacked })}
                         />
@@ -1410,7 +1426,7 @@ export default function KitchenDisplay() {
                 <h3 className="text-white/40 text-sm font-semibold uppercase tracking-wider mb-3">Completed</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {doneOrders.map(order => (
-                    <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} onPrint={(mode) => printOrder(order, mode)} onTogglePlateLine={() => {}} onTogglePlate={() => {}} />
+                    <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} onPrint={(mode) => printOrder(order, mode)} onPrintLabels={() => setLabelsForOrder(order)} onTogglePlateLine={() => {}} onTogglePlate={() => {}} />
                   ))}
                 </div>
               </div>
@@ -1422,7 +1438,7 @@ export default function KitchenDisplay() {
   );
 }
 
-function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance, onRevert, onPrint, onTogglePlateLine, onTogglePlate }: {
+function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance, onRevert, onPrint, onPrintLabels, onTogglePlateLine, onTogglePlate }: {
   order: EventOrder;
   isNew: boolean;
   isUpdating: boolean;
@@ -1431,6 +1447,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   onAdvance: () => void;
   onRevert: () => void;
   onPrint: (mode: "receipt" | "kitchen") => void;
+  onPrintLabels: () => void;
   onTogglePlateLine: (plateIdx: number | "unassigned", itemId: number, packed: boolean) => void;
   onTogglePlate: (plateIdx: number, allPacked: boolean) => void;
 }) {
@@ -1861,11 +1878,12 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
           <Printer size={12} /> Print ticket
         </button>
         <button
-          onClick={() => onPrint("receipt")}
+          onClick={() => onPrintLabels()}
           className="flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors"
-          title="Print customer receipt (with prices)"
+          title="Print individual item labels (routed through admin printers)"
+          data-testid="button-open-item-labels"
         >
-          <Receipt size={12} /> Print receipt
+          <Tag size={12} /> Print labels
         </button>
       </div>
     </div>

@@ -279,3 +279,135 @@ export async function fanoutPrintForEventOrderId(
   }
   return fanoutPrintForEventOrder({ order, source });
 }
+
+/**
+ * Print item labels for a single order, optionally restricted to one
+ * line item. Used by the Kitchen Display "Print Individual Item Labels"
+ * modal so cooks can re-fire labels for a specific item without
+ * triggering the full kitchen ticket / plate-label fan-out.
+ *
+ * - Always uses `kitchen_send` source (manual mode → ignores
+ *   `auto_print_on_new_order`).
+ * - Skips plate labels (this path is item labels only).
+ * - Honors per-printer `suppress_item_labels_for_plate_lines` so plated
+ *   units stay suppressed exactly like the auto path.
+ * - Returns the number of labels enqueued (0 if no label printers are
+ *   configured / enabled).
+ */
+export async function fanoutItemLabelsForEventOrderId(args: {
+  orderId: number;
+  itemId?: number;
+}): Promise<number> {
+  const { orderId, itemId } = args;
+  const [order] = await db
+    .select()
+    .from(eventOrdersTable)
+    .where(eq(eventOrdersTable.id, orderId));
+  if (!order) {
+    logger.warn({ orderId }, "[print-fanout] item-labels: order not found");
+    return 0;
+  }
+
+  // The kitchen_send surface IS authorized for item_label, but we still
+  // honor the matrix as defense in depth.
+  const allowed = ALLOWED_KINDS_BY_SOURCE.kitchen_send;
+  if (!allowed.has("item_label")) return 0;
+
+  const itemIds = (order.items ?? []).map((i) => i.itemId);
+  if (itemIds.length === 0) return 0;
+
+  // Resolve label policy for the items we might print.
+  const menuRows = await db
+    .select({
+      id: menuItemsTable.id,
+      labelPolicy: menuItemsTable.labelPolicy,
+      labelBoxSize: menuItemsTable.labelBoxSize,
+    })
+    .from(menuItemsTable)
+    .where(inArray(menuItemsTable.id, itemIds));
+  const policyById = new Map<number, { policy: LabelPolicy; boxSize: number | null }>();
+  for (const r of menuRows) {
+    policyById.set(r.id, {
+      policy: (r.labelPolicy as LabelPolicy) ?? "per_unit",
+      boxSize: r.labelBoxSize ?? null,
+    });
+  }
+
+  // Manual mode = ignore auto_print_on_new_order.
+  const labelPrinters = await selectPrintersFor("item_label", "manual");
+  if (labelPrinters.length === 0) return 0;
+
+  const placedAt = (order.createdAt ?? new Date()).toISOString();
+  const orderNumber = String(order.id);
+  const guestName = order.guestName;
+
+  // Build the candidate item set, optionally narrowed to one item.
+  const candidateItems = itemId != null
+    ? (order.items ?? []).filter((it) => it.itemId === itemId)
+    : (order.items ?? []);
+  if (candidateItems.length === 0) {
+    logger.warn(
+      { orderId, itemId },
+      "[print-fanout] item-labels: itemId not on order — nothing enqueued"
+    );
+    return 0;
+  }
+
+  // Plated qty per item — same calculation as the auto path so
+  // `suppress_item_labels_for_plate_lines` behaves consistently.
+  const plateQtyByItem = new Map<number, number>();
+  for (const plate of order.plateGroups ?? []) {
+    for (const pi of plate.items) {
+      plateQtyByItem.set(pi.itemId, (plateQtyByItem.get(pi.itemId) ?? 0) + pi.quantity);
+    }
+  }
+
+  let enqueued = 0;
+  for (const printer of labelPrinters) {
+    const linesForLabels: LabelLineInput[] = candidateItems
+      .map((it) => {
+        const policy = policyById.get(it.itemId);
+        const plateQty = plateQtyByItem.get(it.itemId) ?? 0;
+        const qty = printer.suppressItemLabelsForPlateLines
+          ? Math.max(0, it.quantity - plateQty)
+          : it.quantity;
+        return {
+          itemId: it.itemId,
+          itemName: it.name,
+          quantity: qty,
+          labelPolicy: policy?.policy ?? "per_unit",
+          labelBoxSize: policy?.boxSize ?? null,
+        };
+      })
+      .filter((l) => l.quantity > 0);
+
+    const expanded = expandAllItemLabels(linesForLabels);
+    for (const lbl of expanded) {
+      const payload: ItemLabelPayload = {
+        type: "item_label",
+        orderNumber,
+        guestName,
+        itemName: lbl.itemName,
+        quantity: lbl.quantity,
+        notes: lbl.notes ?? null,
+        modifiers: lbl.modifiers,
+        isFullBox: lbl.isFullBox,
+        placedAt,
+      };
+      await enqueuePrintJob({
+        printerId: printer.id,
+        jobType: "item_label",
+        payload: payload as unknown as Record<string, unknown>,
+        orderSource: "event_order",
+        orderId: order.id,
+      });
+      enqueued++;
+    }
+  }
+
+  logger.info(
+    { orderId, itemId: itemId ?? null, enqueued },
+    "[print-fanout] enqueued item labels (manual, kitchen)"
+  );
+  return enqueued;
+}
