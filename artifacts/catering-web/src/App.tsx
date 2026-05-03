@@ -38,6 +38,7 @@ import SmsSettings from "@/pages/admin/SmsSettings";
 import UnmatchedMessages from "@/pages/admin/UnmatchedMessages";
 import IdleActivity from "@/pages/admin/IdleActivity";
 import DemoMenu from "@/pages/admin/DemoMenu";
+import AiRecommendations from "@/pages/admin/AiRecommendations";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -118,6 +119,9 @@ function Router() {
       </Route>
       <Route path="/admin/demo-menu">
         {() => <AdminGuard><DemoMenu /></AdminGuard>}
+      </Route>
+      <Route path="/admin/ai-recommendations">
+        {() => <AdminGuard><AiRecommendations /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />

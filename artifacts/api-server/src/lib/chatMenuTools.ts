@@ -1,5 +1,9 @@
 import { db } from "@workspace/db";
-import { menuItemsTable, menuCategoriesTable } from "@workspace/db/schema";
+import {
+  menuItemsTable,
+  menuCategoriesTable,
+  recommendedMenuItemsTable,
+} from "@workspace/db/schema";
 import { asc } from "drizzle-orm";
 
 // Per-session snapshot of the menu the chat bot is allowed to talk about.
@@ -25,6 +29,12 @@ export type SnapshotItem = {
 export type Snapshot = {
   items: SnapshotItem[];
   categoryOrder: string[];
+  // Curated, admin-managed list of menu item ids the bot prefers when the
+  // guest asks open-ended things like "what do you recommend?" or
+  // "what's popular?". Stored in admin-set order. Items that aren't in
+  // `items` (because they were turned off or hidden mid-snapshot) are
+  // already filtered out at snapshot build time.
+  recommendedItemIds: number[];
   createdAt: number;
 };
 
@@ -63,9 +73,16 @@ export async function getOrCreateSnapshot(sessionId: string): Promise<Snapshot> 
   if (pending) return pending;
 
   const promise = (async (): Promise<Snapshot> => {
-    const [items, cats] = await Promise.all([
+    const [items, cats, recs] = await Promise.all([
       db.select().from(menuItemsTable).orderBy(asc(menuItemsTable.sortOrder), asc(menuItemsTable.id)),
       db.select().from(menuCategoriesTable).orderBy(asc(menuCategoriesTable.sortOrder)),
+      db
+        .select({ menuItemId: recommendedMenuItemsTable.menuItemId })
+        .from(recommendedMenuItemsTable)
+        .orderBy(
+          asc(recommendedMenuItemsTable.sortOrder),
+          asc(recommendedMenuItemsTable.menuItemId),
+        ),
     ]);
     const hidden = new Set(cats.filter((c) => !c.visible).map((c) => c.name));
     const filtered: SnapshotItem[] = items
@@ -88,7 +105,20 @@ export async function getOrCreateSnapshot(sessionId: string): Promise<Snapshot> 
       ...Array.from(present).filter((c) => !orderedFromCats.includes(c)),
     ];
 
-    const snap: Snapshot = { items: filtered, categoryOrder, createdAt: Date.now() };
+    // Recommendations may include items that have since been turned off
+    // or moved into a hidden category — filter through the snapshot's
+    // visible items so the bot can never surface a stale pick.
+    const visibleIds = new Set(filtered.map((i) => i.id));
+    const recommendedItemIds = recs
+      .map((r) => r.menuItemId)
+      .filter((id) => visibleIds.has(id));
+
+    const snap: Snapshot = {
+      items: filtered,
+      categoryOrder,
+      recommendedItemIds,
+      createdAt: Date.now(),
+    };
     cache.set(sessionId, snap);
     return snap;
   })().finally(() => {
@@ -215,6 +245,22 @@ export function listCategories(snap: Snapshot): string[] {
   return snap.categoryOrder;
 }
 
+export function listRecommendedItems(snap: Snapshot) {
+  return snap.recommendedItemIds
+    .map((id) => snap.items.find((i) => i.id === id))
+    .filter((i): i is SnapshotItem => i != null)
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      description: item.description,
+      servingSize: item.servingSize,
+      unit: item.unit,
+      allergens: item.allergens,
+      link: buildMenuLink(item.category),
+    }));
+}
+
 export function getMenuItem(snap: Snapshot, id: number) {
   const item = snap.items.find((i) => i.id === id);
   if (!item) return null;
@@ -269,6 +315,15 @@ export const CHAT_TOOL_DEFS = [
   {
     type: "function" as const,
     function: {
+      name: "list_recommended_items",
+      description:
+        "Return the admin-curated list of recommended menu items, in admin-set order. Use this FIRST when the guest asks open-ended things like 'what do you recommend?', 'what's popular?', 'what should I get?', 'your favorites?'. Returns an empty array if the team hasn't curated a list yet — in that case fall back to search_menu and stay honest about it.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
       name: "get_menu_item",
       description: "Fetch a single available menu item's full description by id. Returns null if the id isn't on the live menu.",
       parameters: {
@@ -288,6 +343,8 @@ export function runChatTool(name: string, args: unknown, snap: Snapshot): unknow
       return searchMenu(snap, a as SearchArgs);
     case "list_categories":
       return listCategories(snap);
+    case "list_recommended_items":
+      return listRecommendedItems(snap);
     case "get_menu_item": {
       const id = Number(a.id);
       if (!Number.isFinite(id)) return null;

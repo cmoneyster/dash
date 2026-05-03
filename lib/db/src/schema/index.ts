@@ -19,3 +19,4 @@ export * from "./phone-blocklist";
 export * from "./owner-forwards";
 export * from "./demo-menu-items";
 export * from "./demo-orders";
+export * from "./recommended-menu-items";

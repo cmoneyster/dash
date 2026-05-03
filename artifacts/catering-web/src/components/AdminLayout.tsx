@@ -141,6 +141,9 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
       <AdminNavLink href="/admin/messages/unmatched" icon={Inbox} onClick={onNavigate} badge={unmatchedBadge}>
         Unmatched Inbox
       </AdminNavLink>
+      <AdminNavLink href="/admin/ai-recommendations" icon={Sparkles} onClick={onNavigate}>
+        Chat Bot
+      </AdminNavLink>
       <div className="pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Catering</p>
       </div>
