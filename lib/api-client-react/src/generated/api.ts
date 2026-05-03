@@ -17,8 +17,10 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AddRecommendationBody,
   AddToCartBody,
   AddToPlanBody,
+  AdminListTopSellersParams,
   AdminStats,
   AvailabilityResponse,
   BlackoutDate,
@@ -42,9 +44,14 @@ import type {
   OpenaiMessage,
   Order,
   Plan,
+  RecommendedItem,
+  ReorderRecommendationsBody,
   SendOpenaiMessageBody,
   SuggestItemsBody,
   SuggestItemsResponse,
+  SyncRecommendationsBody,
+  SyncRecommendationsResponse,
+  TopSeller,
   UpdateCartItemBody,
   UpdateMenuItemBody,
   UpdateOrderStatusBody,
@@ -743,6 +750,533 @@ export function useCheckAvailability<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List curated chat-bot recommendations
+ */
+export const getAdminListRecommendationsUrl = () => {
+  return `/api/admin/recommendations`;
+};
+
+export const adminListRecommendations = async (
+  options?: RequestInit,
+): Promise<RecommendedItem[]> => {
+  return customFetch<RecommendedItem[]>(getAdminListRecommendationsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAdminListRecommendationsQueryKey = () => {
+  return [`/api/admin/recommendations`] as const;
+};
+
+export const getAdminListRecommendationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof adminListRecommendations>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof adminListRecommendations>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getAdminListRecommendationsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof adminListRecommendations>>
+  > = ({ signal }) => adminListRecommendations({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof adminListRecommendations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type AdminListRecommendationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof adminListRecommendations>>
+>;
+export type AdminListRecommendationsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List curated chat-bot recommendations
+ */
+
+export function useAdminListRecommendations<
+  TData = Awaited<ReturnType<typeof adminListRecommendations>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof adminListRecommendations>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getAdminListRecommendationsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a menu item to the recommendations list
+ */
+export const getAdminAddRecommendationUrl = () => {
+  return `/api/admin/recommendations`;
+};
+
+export const adminAddRecommendation = async (
+  addRecommendationBody: AddRecommendationBody,
+  options?: RequestInit,
+): Promise<RecommendedItem[]> => {
+  return customFetch<RecommendedItem[]>(getAdminAddRecommendationUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(addRecommendationBody),
+  });
+};
+
+export const getAdminAddRecommendationMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminAddRecommendation>>,
+    TError,
+    { data: BodyType<AddRecommendationBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminAddRecommendation>>,
+  TError,
+  { data: BodyType<AddRecommendationBody> },
+  TContext
+> => {
+  const mutationKey = ["adminAddRecommendation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminAddRecommendation>>,
+    { data: BodyType<AddRecommendationBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return adminAddRecommendation(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminAddRecommendationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminAddRecommendation>>
+>;
+export type AdminAddRecommendationMutationBody =
+  BodyType<AddRecommendationBody>;
+export type AdminAddRecommendationMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Add a menu item to the recommendations list
+ */
+export const useAdminAddRecommendation = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminAddRecommendation>>,
+    TError,
+    { data: BodyType<AddRecommendationBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminAddRecommendation>>,
+  TError,
+  { data: BodyType<AddRecommendationBody> },
+  TContext
+> => {
+  return useMutation(getAdminAddRecommendationMutationOptions(options));
+};
+
+/**
+ * @summary Remove a menu item from the recommendations list
+ */
+export const getAdminRemoveRecommendationUrl = (menuItemId: number) => {
+  return `/api/admin/recommendations/${menuItemId}`;
+};
+
+export const adminRemoveRecommendation = async (
+  menuItemId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getAdminRemoveRecommendationUrl(menuItemId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getAdminRemoveRecommendationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminRemoveRecommendation>>,
+    TError,
+    { menuItemId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminRemoveRecommendation>>,
+  TError,
+  { menuItemId: number },
+  TContext
+> => {
+  const mutationKey = ["adminRemoveRecommendation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminRemoveRecommendation>>,
+    { menuItemId: number }
+  > = (props) => {
+    const { menuItemId } = props ?? {};
+
+    return adminRemoveRecommendation(menuItemId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminRemoveRecommendationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminRemoveRecommendation>>
+>;
+
+export type AdminRemoveRecommendationMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Remove a menu item from the recommendations list
+ */
+export const useAdminRemoveRecommendation = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminRemoveRecommendation>>,
+    TError,
+    { menuItemId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminRemoveRecommendation>>,
+  TError,
+  { menuItemId: number },
+  TContext
+> => {
+  return useMutation(getAdminRemoveRecommendationMutationOptions(options));
+};
+
+/**
+ * @summary Reorder the recommendations list
+ */
+export const getAdminReorderRecommendationsUrl = () => {
+  return `/api/admin/recommendations/reorder`;
+};
+
+export const adminReorderRecommendations = async (
+  reorderRecommendationsBody: ReorderRecommendationsBody,
+  options?: RequestInit,
+): Promise<RecommendedItem[]> => {
+  return customFetch<RecommendedItem[]>(getAdminReorderRecommendationsUrl(), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(reorderRecommendationsBody),
+  });
+};
+
+export const getAdminReorderRecommendationsMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminReorderRecommendations>>,
+    TError,
+    { data: BodyType<ReorderRecommendationsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminReorderRecommendations>>,
+  TError,
+  { data: BodyType<ReorderRecommendationsBody> },
+  TContext
+> => {
+  const mutationKey = ["adminReorderRecommendations"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminReorderRecommendations>>,
+    { data: BodyType<ReorderRecommendationsBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return adminReorderRecommendations(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminReorderRecommendationsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminReorderRecommendations>>
+>;
+export type AdminReorderRecommendationsMutationBody =
+  BodyType<ReorderRecommendationsBody>;
+export type AdminReorderRecommendationsMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Reorder the recommendations list
+ */
+export const useAdminReorderRecommendations = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminReorderRecommendations>>,
+    TError,
+    { data: BodyType<ReorderRecommendationsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminReorderRecommendations>>,
+  TError,
+  { data: BodyType<ReorderRecommendationsBody> },
+  TContext
+> => {
+  return useMutation(getAdminReorderRecommendationsMutationOptions(options));
+};
+
+/**
+ * @summary Compute top-selling menu items from real order data
+ */
+export const getAdminListTopSellersUrl = (
+  params?: AdminListTopSellersParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/recommendations/top-sellers?${stringifiedParams}`
+    : `/api/admin/recommendations/top-sellers`;
+};
+
+export const adminListTopSellers = async (
+  params?: AdminListTopSellersParams,
+  options?: RequestInit,
+): Promise<TopSeller[]> => {
+  return customFetch<TopSeller[]>(getAdminListTopSellersUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAdminListTopSellersQueryKey = (
+  params?: AdminListTopSellersParams,
+) => {
+  return [
+    `/api/admin/recommendations/top-sellers`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getAdminListTopSellersQueryOptions = <
+  TData = Awaited<ReturnType<typeof adminListTopSellers>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: AdminListTopSellersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof adminListTopSellers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getAdminListTopSellersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof adminListTopSellers>>
+  > = ({ signal }) =>
+    adminListTopSellers(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof adminListTopSellers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type AdminListTopSellersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof adminListTopSellers>>
+>;
+export type AdminListTopSellersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Compute top-selling menu items from real order data
+ */
+
+export function useAdminListTopSellers<
+  TData = Awaited<ReturnType<typeof adminListTopSellers>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: AdminListTopSellersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof adminListTopSellers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getAdminListTopSellersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Apply top sellers to the recommendations list (replace or merge)
+ */
+export const getAdminSyncRecommendationsUrl = () => {
+  return `/api/admin/recommendations/sync`;
+};
+
+export const adminSyncRecommendations = async (
+  syncRecommendationsBody: SyncRecommendationsBody,
+  options?: RequestInit,
+): Promise<SyncRecommendationsResponse> => {
+  return customFetch<SyncRecommendationsResponse>(
+    getAdminSyncRecommendationsUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(syncRecommendationsBody),
+    },
+  );
+};
+
+export const getAdminSyncRecommendationsMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminSyncRecommendations>>,
+    TError,
+    { data: BodyType<SyncRecommendationsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminSyncRecommendations>>,
+  TError,
+  { data: BodyType<SyncRecommendationsBody> },
+  TContext
+> => {
+  const mutationKey = ["adminSyncRecommendations"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminSyncRecommendations>>,
+    { data: BodyType<SyncRecommendationsBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return adminSyncRecommendations(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminSyncRecommendationsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminSyncRecommendations>>
+>;
+export type AdminSyncRecommendationsMutationBody =
+  BodyType<SyncRecommendationsBody>;
+export type AdminSyncRecommendationsMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Apply top sellers to the recommendations list (replace or merge)
+ */
+export const useAdminSyncRecommendations = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminSyncRecommendations>>,
+    TError,
+    { data: BodyType<SyncRecommendationsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminSyncRecommendations>>,
+  TError,
+  { data: BodyType<SyncRecommendationsBody> },
+  TContext
+> => {
+  return useMutation(getAdminSyncRecommendationsMutationOptions(options));
+};
 
 /**
  * @summary List all blackout dates

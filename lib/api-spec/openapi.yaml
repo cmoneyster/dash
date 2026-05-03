@@ -193,6 +193,138 @@ paths:
               schema:
                 $ref: "#/components/schemas/AvailabilityResponse"
 
+  # Admin chat-bot recommended items
+  /admin/recommendations:
+    get:
+      operationId: adminListRecommendations
+      tags: [admin]
+      summary: List curated chat-bot recommendations
+      responses:
+        "200":
+          description: Recommended items in display order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecommendedItem"
+    post:
+      operationId: adminAddRecommendation
+      tags: [admin]
+      summary: Add a menu item to the recommendations list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddRecommendationBody"
+      responses:
+        "201":
+          description: Updated recommendations list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecommendedItem"
+        "404":
+          description: Menu item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Item already in the recommendations list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/recommendations/{menuItemId}:
+    delete:
+      operationId: adminRemoveRecommendation
+      tags: [admin]
+      summary: Remove a menu item from the recommendations list
+      parameters:
+        - name: menuItemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed
+  /admin/recommendations/reorder:
+    patch:
+      operationId: adminReorderRecommendations
+      tags: [admin]
+      summary: Reorder the recommendations list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderRecommendationsBody"
+      responses:
+        "200":
+          description: Updated recommendations list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecommendedItem"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/recommendations/top-sellers:
+    get:
+      operationId: adminListTopSellers
+      tags: [admin]
+      summary: Compute top-selling menu items from real order data
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: Top sellers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TopSeller"
+  /admin/recommendations/sync:
+    post:
+      operationId: adminSyncRecommendations
+      tags: [admin]
+      summary: Apply top sellers to the recommendations list (replace or merge)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncRecommendationsBody"
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncRecommendationsResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/blackout-dates:
     get:
       operationId: listBlackoutDates
@@ -829,6 +961,106 @@ components:
           nullable: true
         otdEligible:
           type: boolean
+
+    RecommendedItem:
+      type: object
+      properties:
+        menuItemId:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+        available:
+          type: boolean
+        sortOrder:
+          type: integer
+        source:
+          type: string
+          enum: [manual, sync]
+      required:
+        - menuItemId
+        - name
+        - category
+        - available
+        - sortOrder
+        - source
+
+    TopSeller:
+      type: object
+      properties:
+        menuItemId:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+        totalQuantity:
+          type: integer
+        isCurrentlyRecommended:
+          type: boolean
+      required:
+        - menuItemId
+        - name
+        - category
+        - totalQuantity
+        - isCurrentlyRecommended
+
+    AddRecommendationBody:
+      type: object
+      properties:
+        menuItemId:
+          type: integer
+          minimum: 1
+      required:
+        - menuItemId
+
+    ReorderRecommendationsBody:
+      type: object
+      properties:
+        menuItemIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+      required:
+        - menuItemIds
+
+    SyncRecommendationsBody:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [replace, merge]
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+        menuItemIds:
+          description: Optional subset of top-seller menu item IDs to apply. When omitted, all top sellers up to `limit` are applied.
+          type: array
+          items:
+            type: integer
+            minimum: 1
+      required:
+        - mode
+
+    SyncRecommendationsResponse:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [replace, merge]
+        applied:
+          type: integer
+        list:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecommendedItem"
+      required:
+        - mode
+        - applied
+        - list
 
     BlackoutDate:
       type: object

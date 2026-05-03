@@ -96,6 +96,73 @@ export interface UpdateMenuItemBody {
   otdEligible?: boolean;
 }
 
+export type RecommendedItemSource =
+  (typeof RecommendedItemSource)[keyof typeof RecommendedItemSource];
+
+export const RecommendedItemSource = {
+  manual: "manual",
+  sync: "sync",
+} as const;
+
+export interface RecommendedItem {
+  menuItemId: number;
+  name: string;
+  category: string;
+  available: boolean;
+  sortOrder: number;
+  source: RecommendedItemSource;
+}
+
+export interface TopSeller {
+  menuItemId: number;
+  name: string;
+  category: string;
+  totalQuantity: number;
+  isCurrentlyRecommended: boolean;
+}
+
+export interface AddRecommendationBody {
+  /** @minimum 1 */
+  menuItemId: number;
+}
+
+export interface ReorderRecommendationsBody {
+  menuItemIds: number[];
+}
+
+export type SyncRecommendationsBodyMode =
+  (typeof SyncRecommendationsBodyMode)[keyof typeof SyncRecommendationsBodyMode];
+
+export const SyncRecommendationsBodyMode = {
+  replace: "replace",
+  merge: "merge",
+} as const;
+
+export interface SyncRecommendationsBody {
+  mode: SyncRecommendationsBodyMode;
+  /**
+   * @minimum 1
+   * @maximum 50
+   */
+  limit?: number;
+  /** Optional subset of top-seller menu item IDs to apply. When omitted, all top sellers up to `limit` are applied. */
+  menuItemIds?: number[];
+}
+
+export type SyncRecommendationsResponseMode =
+  (typeof SyncRecommendationsResponseMode)[keyof typeof SyncRecommendationsResponseMode];
+
+export const SyncRecommendationsResponseMode = {
+  replace: "replace",
+  merge: "merge",
+} as const;
+
+export interface SyncRecommendationsResponse {
+  mode: SyncRecommendationsResponseMode;
+  applied: number;
+  list: RecommendedItem[];
+}
+
 export interface BlackoutDate {
   id: number;
   date: string;
@@ -412,6 +479,14 @@ export type ListMenuItemsParams = {
 export type CheckAvailabilityParams = {
   startDate: string;
   endDate: string;
+};
+
+export type AdminListTopSellersParams = {
+  /**
+   * @minimum 1
+   * @maximum 50
+   */
+  limit?: number;
 };
 
 export type GetCartParams = {

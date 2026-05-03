@@ -10,6 +10,13 @@ import {
   type EventOrderItem,
 } from "@workspace/db/schema";
 import { asc, eq, sql, isNull, ne } from "drizzle-orm";
+import {
+  AdminAddRecommendationBody,
+  AdminReorderRecommendationsBody,
+  AdminListTopSellersQueryParams,
+  AdminSyncRecommendationsBody,
+  AdminRemoveRecommendationParams,
+} from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -48,16 +55,16 @@ async function listRecommendations(): Promise<ListRow[]> {
   }));
 }
 
-// Aggregate quantities sold across real, completed catering orders and
-// real event (POS / on-site) orders. Demo orders are deliberately
-// excluded — they're public sandbox submissions, not sales.
+// Aggregate quantities sold across real catering orders and real event
+// (POS / on-site) orders. Demo orders are deliberately excluded — they're
+// public sandbox submissions, not sales.
 async function computeTopSellers(limit: number): Promise<
   { menuItemId: number; name: string; category: string; totalQuantity: number }[]
 > {
   const safeLimit = Math.max(1, Math.min(limit, TOP_SELLERS_MAX_LIMIT));
 
-  // Catering orders (drop-off / OTD) — flat order_items table joined to
-  // orders so we can drop cancelled orders.
+  // Catering orders (drop-off / OTD) — flat order_items joined to orders
+  // so we can drop cancelled orders.
   const cateringRows = await db
     .select({
       menuItemId: orderItemsTable.menuItemId,
@@ -103,7 +110,7 @@ async function computeTopSellers(limit: number): Promise<
   const cats = await db.select().from(menuCategoriesTable);
   const hidden = new Set(cats.filter((c) => !c.visible).map((c) => c.name));
 
-  const enriched = items
+  return items
     .filter((i) => i.available && !hidden.has(i.category))
     .map((i) => ({
       menuItemId: i.id,
@@ -113,8 +120,6 @@ async function computeTopSellers(limit: number): Promise<
     }))
     .sort((a, b) => b.totalQuantity - a.totalQuantity || a.name.localeCompare(b.name))
     .slice(0, safeLimit);
-
-  return enriched;
 }
 
 router.get("/admin/recommendations", async (req, res) => {
@@ -128,23 +133,16 @@ router.get("/admin/recommendations", async (req, res) => {
 });
 
 router.post("/admin/recommendations", async (req, res): Promise<void> => {
+  const parsed = AdminAddRecommendationBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "menuItemId is required" });
+    return;
+  }
+  const { menuItemId } = parsed.data;
   try {
-    const menuItemId = Number(req.body?.menuItemId);
-    if (!Number.isInteger(menuItemId) || menuItemId <= 0) {
-      res.status(400).json({ error: "menuItemId is required" });
-      return;
-    }
     const [item] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, menuItemId));
     if (!item) {
       res.status(404).json({ error: "Menu item not found" });
-      return;
-    }
-    const [existing] = await db
-      .select()
-      .from(recommendedMenuItemsTable)
-      .where(eq(recommendedMenuItemsTable.menuItemId, menuItemId));
-    if (existing) {
-      res.status(409).json({ error: "Item is already in the recommendations list" });
       return;
     }
     const [maxRow] = await db
@@ -173,15 +171,15 @@ router.post("/admin/recommendations", async (req, res): Promise<void> => {
 });
 
 router.delete("/admin/recommendations/:menuItemId", async (req, res): Promise<void> => {
+  const parsed = AdminRemoveRecommendationParams.safeParse(req.params);
+  if (!parsed.success || parsed.data.menuItemId <= 0) {
+    res.status(400).json({ error: "Invalid menuItemId" });
+    return;
+  }
   try {
-    const menuItemId = parseInt(String(req.params.menuItemId), 10);
-    if (!Number.isInteger(menuItemId) || menuItemId <= 0) {
-      res.status(400).json({ error: "Invalid menuItemId" });
-      return;
-    }
     await db
       .delete(recommendedMenuItemsTable)
-      .where(eq(recommendedMenuItemsTable.menuItemId, menuItemId));
+      .where(eq(recommendedMenuItemsTable.menuItemId, parsed.data.menuItemId));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Error removing recommendation");
@@ -190,18 +188,18 @@ router.delete("/admin/recommendations/:menuItemId", async (req, res): Promise<vo
 });
 
 router.patch("/admin/recommendations/reorder", async (req, res): Promise<void> => {
+  const parsed = AdminReorderRecommendationsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "menuItemIds (positive integer array) is required" });
+    return;
+  }
+  const idList = parsed.data.menuItemIds;
+  const newSet = new Set<number>(idList);
+  if (newSet.size !== idList.length) {
+    res.status(400).json({ error: "menuItemIds must not contain duplicates" });
+    return;
+  }
   try {
-    const ids = Array.isArray(req.body?.menuItemIds) ? req.body.menuItemIds : null;
-    if (!ids || ids.some((x: unknown) => !Number.isInteger(x))) {
-      res.status(400).json({ error: "menuItemIds (integer array) is required" });
-      return;
-    }
-    const idList = ids as number[];
-    const newSet = new Set<number>(idList);
-    if (newSet.size !== idList.length) {
-      res.status(400).json({ error: "menuItemIds must not contain duplicates" });
-      return;
-    }
     const current = await db
       .select({ menuItemId: recommendedMenuItemsTable.menuItemId })
       .from(recommendedMenuItemsTable);
@@ -216,8 +214,8 @@ router.patch("/admin/recommendations/reorder", async (req, res): Promise<void> =
       return;
     }
     await db.transaction(async (tx) => {
-      for (let i = 0; i < (ids as number[]).length; i++) {
-        const id = (ids as number[])[i]!;
+      for (let i = 0; i < idList.length; i++) {
+        const id = idList[i]!;
         await tx
           .update(recommendedMenuItemsTable)
           .set({ sortOrder: i * 10 })
@@ -232,12 +230,14 @@ router.patch("/admin/recommendations/reorder", async (req, res): Promise<void> =
   }
 });
 
-router.get("/admin/recommendations/top-sellers", async (req, res) => {
+router.get("/admin/recommendations/top-sellers", async (req, res): Promise<void> => {
+  const parsed = AdminListTopSellersQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid limit" });
+    return;
+  }
+  const limit = parsed.data.limit ?? TOP_SELLERS_DEFAULT_LIMIT;
   try {
-    const limitRaw = Number(req.query.limit);
-    const limit = Number.isFinite(limitRaw) && limitRaw > 0
-      ? Math.min(limitRaw, TOP_SELLERS_MAX_LIMIT)
-      : TOP_SELLERS_DEFAULT_LIMIT;
     const top = await computeTopSellers(limit);
     const current = new Set(
       (await db
@@ -257,13 +257,24 @@ router.get("/admin/recommendations/top-sellers", async (req, res) => {
 });
 
 router.post("/admin/recommendations/sync", async (req, res): Promise<void> => {
+  const parsed = AdminSyncRecommendationsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res
+      .status(400)
+      .json({ error: "Invalid body. mode must be 'replace' or 'merge', limit 1–50." });
+    return;
+  }
+  const { mode } = parsed.data;
+  const limit = parsed.data.limit ?? TOP_SELLERS_DEFAULT_LIMIT;
+  const selected = parsed.data.menuItemIds ? new Set(parsed.data.menuItemIds) : null;
+  if (selected && new Set(parsed.data.menuItemIds!).size !== parsed.data.menuItemIds!.length) {
+    res.status(400).json({ error: "menuItemIds must not contain duplicates" });
+    return;
+  }
   try {
-    const limitRaw = Number(req.body?.limit);
-    const limit = Number.isFinite(limitRaw) && limitRaw > 0
-      ? Math.min(limitRaw, TOP_SELLERS_MAX_LIMIT)
-      : TOP_SELLERS_DEFAULT_LIMIT;
-    const mode = req.body?.mode === "replace" ? "replace" : "merge";
-    const top = await computeTopSellers(limit);
+    const topAll = await computeTopSellers(limit);
+    // When the admin deselected rows in the UI, only apply the chosen subset.
+    const top = selected ? topAll.filter((t) => selected.has(t.menuItemId)) : topAll;
 
     await db.transaction(async (tx) => {
       if (mode === "replace") {

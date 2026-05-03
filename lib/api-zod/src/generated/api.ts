@@ -358,6 +358,115 @@ export const CheckAvailabilityResponse = zod.object({
 });
 
 /**
+ * @summary List curated chat-bot recommendations
+ */
+export const AdminListRecommendationsResponseItem = zod.object({
+  menuItemId: zod.number(),
+  name: zod.string(),
+  category: zod.string(),
+  available: zod.boolean(),
+  sortOrder: zod.number(),
+  source: zod.enum(["manual", "sync"]),
+});
+export const AdminListRecommendationsResponse = zod.array(
+  AdminListRecommendationsResponseItem,
+);
+
+/**
+ * @summary Add a menu item to the recommendations list
+ */
+
+export const AdminAddRecommendationBody = zod.object({
+  menuItemId: zod.number().min(1),
+});
+
+/**
+ * @summary Remove a menu item from the recommendations list
+ */
+export const AdminRemoveRecommendationParams = zod.object({
+  menuItemId: zod.coerce.number(),
+});
+
+/**
+ * @summary Reorder the recommendations list
+ */
+
+export const AdminReorderRecommendationsBody = zod.object({
+  menuItemIds: zod.array(zod.number().min(1)),
+});
+
+export const AdminReorderRecommendationsResponseItem = zod.object({
+  menuItemId: zod.number(),
+  name: zod.string(),
+  category: zod.string(),
+  available: zod.boolean(),
+  sortOrder: zod.number(),
+  source: zod.enum(["manual", "sync"]),
+});
+export const AdminReorderRecommendationsResponse = zod.array(
+  AdminReorderRecommendationsResponseItem,
+);
+
+/**
+ * @summary Compute top-selling menu items from real order data
+ */
+export const adminListTopSellersQueryLimitMax = 50;
+
+export const AdminListTopSellersQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(adminListTopSellersQueryLimitMax)
+    .optional(),
+});
+
+export const AdminListTopSellersResponseItem = zod.object({
+  menuItemId: zod.number(),
+  name: zod.string(),
+  category: zod.string(),
+  totalQuantity: zod.number(),
+  isCurrentlyRecommended: zod.boolean(),
+});
+export const AdminListTopSellersResponse = zod.array(
+  AdminListTopSellersResponseItem,
+);
+
+/**
+ * @summary Apply top sellers to the recommendations list (replace or merge)
+ */
+export const adminSyncRecommendationsBodyLimitMax = 50;
+
+export const AdminSyncRecommendationsBody = zod.object({
+  mode: zod.enum(["replace", "merge"]),
+  limit: zod
+    .number()
+    .min(1)
+    .max(adminSyncRecommendationsBodyLimitMax)
+    .optional(),
+  menuItemIds: zod
+    .array(zod.number().min(1))
+    .optional()
+    .describe(
+      "Optional subset of top-seller menu item IDs to apply. When omitted, all top sellers up to `limit` are applied.",
+    ),
+});
+
+export const AdminSyncRecommendationsResponse = zod.object({
+  mode: zod.enum(["replace", "merge"]),
+  applied: zod.number(),
+  list: zod.array(
+    zod.object({
+      menuItemId: zod.number(),
+      name: zod.string(),
+      category: zod.string(),
+      available: zod.boolean(),
+      sortOrder: zod.number(),
+      source: zod.enum(["manual", "sync"]),
+    }),
+  ),
+});
+
+/**
  * @summary List all blackout dates
  */
 export const ListBlackoutDatesResponseItem = zod.object({

@@ -12,16 +12,18 @@ import {
   AlertTriangle,
   Sparkles,
 } from "lucide-react";
-import { getAdminToken } from "@/components/AdminGuard";
+import {
+  useAdminListMenuItems,
+  type MenuItem,
+} from "@workspace/api-client-react";
 import {
   RECOMMENDATIONS_QUERY_KEY,
-  useAdminRecommendations,
-  adminAddRecommendation,
-  adminRemoveRecommendation,
-  adminReorderRecommendations,
-  adminFetchTopSellers,
-  adminSyncRecommendations,
-  type RecommendedItem,
+  useAdminListRecommendations,
+  useAdminAddRecommendation,
+  useAdminRemoveRecommendation,
+  useAdminReorderRecommendations,
+  useAdminListTopSellers,
+  useAdminSyncRecommendations,
   type TopSeller,
 } from "@/lib/recommendations";
 import {
@@ -42,13 +44,12 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-interface MinimalMenuItem {
-  id: number;
-  name: string;
-  category: string;
-  available: boolean;
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === "object" && "message" in err) {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === "string" && msg) return msg;
+  }
+  return fallback;
 }
 
 function SortableRow({
@@ -99,12 +100,16 @@ function SortableRow({
 
 export default function AiRecommendations() {
   const queryClient = useQueryClient();
-  const { data: recs, isLoading } = useAdminRecommendations();
-  const [busy, setBusy] = useState(false);
+  const { data: recs, isLoading } = useAdminListRecommendations();
+  const removeMut = useAdminRemoveRecommendation();
+  const reorderMut = useAdminReorderRecommendations();
+
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  const busy = removeMut.isPending || reorderMut.isPending;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -127,16 +132,13 @@ export default function AiRecommendations() {
   }
 
   async function handleRemove(menuItemId: number) {
-    setBusy(true);
     setError(null);
     try {
-      await adminRemoveRecommendation(menuItemId);
+      await removeMut.mutateAsync({ menuItemId });
       invalidate();
       flashSuccess("Item removed from the recommended list.");
     } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
+      setError(getErrorMessage(e, "Failed to remove item"));
     }
   }
 
@@ -148,15 +150,12 @@ export default function AiRecommendations() {
     const newIndex = ids.indexOf(Number(over.id));
     if (oldIndex === -1 || newIndex === -1) return;
     const next = arrayMove(ids, oldIndex, newIndex);
-    setBusy(true);
     setError(null);
     try {
-      await adminReorderRecommendations(next);
+      await reorderMut.mutateAsync({ data: { menuItemIds: next } });
       invalidate();
     } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
+      setError(getErrorMessage(e, "Failed to reorder"));
     }
   }
 
@@ -355,43 +354,78 @@ function SyncModal({
 }) {
   const [limit, setLimit] = useState(12);
   const [mode, setMode] = useState<"merge" | "replace">("merge");
-  const [topSellers, setTopSellers] = useState<TopSeller[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [applying, setApplying] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [touched, setTouched] = useState(false);
+
+  const { data: topSellers, isLoading: loading, error: topError } = useAdminListTopSellers(
+    { limit },
+  );
+  const syncMut = useAdminSyncRecommendations();
+
+  // When the top-seller list changes (e.g. limit changed), default to all
+  // selected. After the admin has interacted with the checkboxes, preserve
+  // their selections that still exist in the new list.
+  useEffect(() => {
+    if (!topSellers) return;
+    setSelected((prev) => {
+      const incomingIds = topSellers.map((t: TopSeller) => t.menuItemId);
+      if (!touched) return new Set(incomingIds);
+      const next = new Set<number>();
+      for (const id of incomingIds) {
+        if (prev.has(id)) next.add(id);
+      }
+      return next;
+    });
+  }, [topSellers, touched]);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    adminFetchTopSellers(limit)
-      .then((data) => {
-        if (!cancelled) setTopSellers(data);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) onError((e as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [limit, onError]);
+    if (topError) onError(getErrorMessage(topError, "Failed to load top sellers"));
+  }, [topError, onError]);
+
+  function toggle(id: number) {
+    setTouched(true);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    if (!topSellers) return;
+    setTouched(true);
+    setSelected(new Set(topSellers.map((t: TopSeller) => t.menuItemId)));
+  }
+  function selectNone() {
+    setTouched(true);
+    setSelected(new Set());
+  }
 
   async function handleApply() {
-    setApplying(true);
+    if (!topSellers || selected.size === 0) return;
     try {
-      const result = await adminSyncRecommendations(mode, limit);
+      const ids = topSellers
+        .map((t: TopSeller) => t.menuItemId)
+        .filter((id: number) => selected.has(id));
+      const result = await syncMut.mutateAsync({
+        data: {
+          mode,
+          limit,
+          menuItemIds: ids,
+        },
+      });
       const msg =
         mode === "replace"
           ? `Replaced the list with ${result.applied} top-selling items.`
           : `Merged top sellers — list now has ${result.list.length} items.`;
       onApplied(msg);
     } catch (e) {
-      onError((e as Error).message);
-    } finally {
-      setApplying(false);
+      onError(getErrorMessage(e, "Failed to sync"));
     }
   }
+
+  const applying = syncMut.isPending;
 
   return (
     <div
@@ -407,7 +441,7 @@ function SyncModal({
             <h3 className="font-display font-bold text-xl">Sync from order data</h3>
             <p className="text-sm text-muted-foreground mt-1">
               Pulls top-selling items from your real catering and event orders.
-              Demo orders are excluded.
+              Demo orders are excluded. Uncheck rows you don't want.
             </p>
           </div>
           <button
@@ -457,6 +491,32 @@ function SyncModal({
           </div>
         </div>
 
+        {topSellers && topSellers.length > 0 && (
+          <div className="flex items-center justify-between mb-2 text-xs text-muted-foreground">
+            <span>
+              {selected.size} of {topSellers.length} selected
+            </span>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={selectAll}
+                className="underline hover:text-foreground"
+                data-testid="sync-select-all"
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={selectNone}
+                className="underline hover:text-foreground"
+                data-testid="sync-select-none"
+              >
+                Select none
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto border rounded-lg">
           {loading ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground">
@@ -471,6 +531,7 @@ function SyncModal({
             <table className="w-full text-sm">
               <thead className="bg-secondary/40 text-left sticky top-0">
                 <tr>
+                  <th className="px-3 py-2 w-10"></th>
                   <th className="px-3 py-2 font-medium">Item</th>
                   <th className="px-3 py-2 font-medium">Category</th>
                   <th className="px-3 py-2 font-medium text-right">Sold</th>
@@ -478,18 +539,34 @@ function SyncModal({
                 </tr>
               </thead>
               <tbody>
-                {topSellers.map((t) => (
-                  <tr key={t.menuItemId} className="border-t">
-                    <td className="px-3 py-2">{t.name}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{t.category}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {t.totalQuantity}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {t.isCurrentlyRecommended ? "Yes" : "—"}
-                    </td>
-                  </tr>
-                ))}
+                {topSellers.map((t: TopSeller) => {
+                  const checked = selected.has(t.menuItemId);
+                  return (
+                    <tr
+                      key={t.menuItemId}
+                      className="border-t"
+                      data-testid={`sync-row-${t.menuItemId}`}
+                    >
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggle(t.menuItemId)}
+                          aria-label={`Include ${t.name}`}
+                          data-testid={`sync-check-${t.menuItemId}`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">{t.name}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{t.category}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {t.totalQuantity}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {t.isCurrentlyRecommended ? "Yes" : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -505,12 +582,16 @@ function SyncModal({
           </button>
           <button
             onClick={handleApply}
-            disabled={applying || loading || !topSellers || topSellers.length === 0}
+            disabled={
+              applying || loading || !topSellers || topSellers.length === 0 || selected.size === 0
+            }
             className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 font-medium disabled:opacity-50 inline-flex items-center gap-2"
             data-testid="sync-apply"
           >
             {applying && <Loader2 className="w-4 h-4 animate-spin" />}
-            {mode === "replace" ? "Replace list" : "Merge into list"}
+            {mode === "replace"
+              ? `Replace list with ${selected.size}`
+              : `Merge ${selected.size} into list`}
           </button>
         </div>
       </div>
@@ -529,33 +610,17 @@ function AddItemModal({
   onAdded: (name: string) => void;
   onError: (msg: string) => void;
 }) {
-  const [items, setItems] = useState<MinimalMenuItem[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: items, isLoading: loading, error: loadError } = useAdminListMenuItems();
+  const addMut = useAdminAddRecommendation();
   const [adding, setAdding] = useState<number | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
-    fetch(`${BASE}/api/admin/menu`, {
-      headers: { Authorization: `Bearer ${getAdminToken()}` },
-    })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: MinimalMenuItem[]) => {
-        if (!cancelled) setItems(data);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) onError((e as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [onError]);
+    if (loadError) onError(getErrorMessage(loadError, "Failed to load menu"));
+  }, [loadError, onError]);
 
   const filtered = useMemo(() => {
-    const all = (items ?? []).filter((i) => !existingIds.has(i.id));
+    const all = ((items ?? []) as MenuItem[]).filter((i) => !existingIds.has(i.id));
     const q = search.trim().toLowerCase();
     if (!q) return all.slice(0, 200);
     return all
@@ -567,13 +632,13 @@ function AddItemModal({
       .slice(0, 200);
   }, [items, existingIds, search]);
 
-  async function handleAdd(item: MinimalMenuItem) {
+  async function handleAdd(item: MenuItem) {
     setAdding(item.id);
     try {
-      await adminAddRecommendation(item.id);
+      await addMut.mutateAsync({ data: { menuItemId: item.id } });
       onAdded(item.name);
     } catch (e) {
-      onError((e as Error).message);
+      onError(getErrorMessage(e, "Failed to add item"));
       setAdding(null);
     }
   }
