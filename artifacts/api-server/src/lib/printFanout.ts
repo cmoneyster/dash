@@ -24,6 +24,24 @@ export type FanoutSource =
   | "demo";           // demo flow — never prints
 
 /**
+ * Per-surface allowed-kind matrix. Each surface may only enqueue jobs of
+ * its allowed kinds — even if a printer is configured to accept a kind
+ * that isn't on this list. Admin/manual paths use `kitchen_send`.
+ *
+ * Staff Order Taker:    kitchen ticket + customer receipt
+ * Guest Event Ordering: kitchen ticket + item/plate labels
+ * Kitchen (manual):     kitchen ticket + item/plate labels
+ * Demo:                 nothing (hard-blocked above)
+ */
+type JobKind = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label";
+const ALLOWED_KINDS_BY_SOURCE: Record<FanoutSource, ReadonlySet<JobKind>> = {
+  event_taker: new Set<JobKind>(["kitchen_ticket", "customer_receipt"]),
+  event_order: new Set<JobKind>(["kitchen_ticket", "item_label", "plate_label"]),
+  kitchen_send: new Set<JobKind>(["kitchen_ticket", "item_label", "plate_label"]),
+  demo: new Set<JobKind>(),
+};
+
+/**
  * Fan an event-order out to all enabled printers per their toggles.
  *
  * Demo orders are hard-blocked at the door (logged + early-return), so
@@ -51,6 +69,10 @@ export async function fanoutPrintForEventOrder(args: {
   // pressing the button. Auto fan-out from order submission still
   // respects the toggle so quiet hours / event-only printers stay quiet.
   const selectMode: "auto" | "manual" = source === "kitchen_send" ? "manual" : "auto";
+
+  // Per-surface allowed-kind matrix. A surface that isn't authorized
+  // for a kind cannot enqueue it, even if a printer would accept it.
+  const allowed = ALLOWED_KINDS_BY_SOURCE[source];
 
   const itemIds = (order.items ?? []).map((i) => i.itemId);
   if (itemIds.length === 0) return 0;
@@ -84,7 +106,9 @@ export async function fanoutPrintForEventOrder(args: {
 
   // ── Kitchen ticket ─────────────────────────────────────────────────────
   let enqueued = 0;
-  const kitchenPrinters = await selectPrintersFor("kitchen_ticket", selectMode);
+  const kitchenPrinters = allowed.has("kitchen_ticket")
+    ? await selectPrintersFor("kitchen_ticket", selectMode)
+    : [];
   if (kitchenPrinters.length > 0) {
     const payload: KitchenTicketPayload = {
       type: "kitchen_ticket",
@@ -110,7 +134,9 @@ export async function fanoutPrintForEventOrder(args: {
   }
 
   // ── Customer receipt (only when totals are present, i.e. staff orders) ─
-  const receiptPrinters = await selectPrintersFor("customer_receipt", selectMode);
+  const receiptPrinters = allowed.has("customer_receipt")
+    ? await selectPrintersFor("customer_receipt", selectMode)
+    : [];
   if (receiptPrinters.length > 0 && order.subtotal != null && order.total != null) {
     const payload: CustomerReceiptPayload = {
       type: "customer_receipt",
@@ -141,7 +167,11 @@ export async function fanoutPrintForEventOrder(args: {
   }
 
   // ── Item labels (per_unit / combined / per_box) ─────────────────────────
-  const labelPrinters = await selectPrintersFor("item_label", selectMode);
+  // Plate labels piggyback on item-label printers + the same allowed-kind
+  // gate, so we treat them as a single conceptual kind here.
+  const labelPrinters = allowed.has("item_label") || allowed.has("plate_label")
+    ? await selectPrintersFor("item_label", selectMode)
+    : [];
   if (labelPrinters.length > 0) {
     // Compute the set of item-quantities that are part of a plate. Those
     // get a single plate-label per plate group; we subtract them from

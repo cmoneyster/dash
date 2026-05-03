@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TAX_DISCLOSURE, TAX_INCLUDED_NOTE } from "@/lib/tax";
 import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers, Pencil } from "lucide-react";
+import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
-const AUTO_PRINT_KEY = "event_taker_auto_print";
+// Auto-print policy now lives server-side in the admin printer rows
+// (printers.auto_print_on_new_order + per-kind toggles). The Taker
+// reads/writes those rows via /api/event-taker/printers, scoped to
+// kinds the Taker surface is allowed to send (kitchen ticket + customer
+// receipt). The previous per-device localStorage browser-print dropdown
+// was retired; manual "Print" buttons on the confirmation screen remain
+// as a browser-print backup.
 // Per-device self-reported employee name shown in the header and required
 // when voiding an order. Persisted in localStorage (not sessionStorage) so
 // a register that's logged in stays attributed across page reloads.
@@ -21,24 +28,6 @@ function setStoredEmployee(v: string | null) {
     if (v && v.trim()) localStorage.setItem(EMPLOYEE_KEY, v.trim());
     else localStorage.removeItem(EMPLOYEE_KEY);
   } catch {}
-}
-
-// Auto-print mode: which document(s) print automatically when an order is
-// placed. "off" = no auto-print, "both" = kitchen + receipt, or print just
-// one of them. Persisted in localStorage. Backwards-compatible with the
-// older boolean value: "1" → "both", "0" → "off".
-type AutoPrintMode = "off" | "both" | "kitchen" | "receipt";
-function getStoredAutoPrint(): AutoPrintMode {
-  try {
-    const v = localStorage.getItem(AUTO_PRINT_KEY);
-    if (v === "1") return "both";
-    if (v === "0" || v === null) return "off";
-    if (v === "both" || v === "kitchen" || v === "receipt" || v === "off") return v;
-    return "off";
-  } catch { return "off"; }
-}
-function setStoredAutoPrint(v: AutoPrintMode) {
-  try { localStorage.setItem(AUTO_PRINT_KEY, v); } catch {}
 }
 
 interface MenuItem {
@@ -201,8 +190,8 @@ export default function EventTakerOrder() {
     if (stockWarnTimer.current) clearTimeout(stockWarnTimer.current);
   }, []);
   const [printMode, setPrintMode] = useState<"receipt" | "kitchen">("receipt");
-  const [autoPrintMode, setAutoPrintMode] = useState<AutoPrintMode>(getStoredAutoPrint());
-  const autoPrintedFor = useRef<string | null>(null);
+  // Server-backed printer settings modal (scoped to the Taker surface).
+  const [printerModalOpen, setPrinterModalOpen] = useState(false);
 
   // Per-ticket print status so staff can see whether each auto-print actually
   // reached the printer. `idle` = not attempted yet, `printing` = dialog open,
@@ -212,11 +201,6 @@ export default function EventTakerOrder() {
   type PrintStatus = "idle" | "printing" | "printed" | "canceled" | "blocked";
   const [kitchenStatus, setKitchenStatus] = useState<PrintStatus>("idle");
   const [receiptStatus, setReceiptStatus] = useState<PrintStatus>("idle");
-
-  function chooseAutoPrintMode(mode: AutoPrintMode) {
-    setAutoPrintMode(mode);
-    setStoredAutoPrint(mode);
-  }
 
   // Run a single print and resolve with whether it actually printed,
   // was canceled, or never opened a dialog. We bracket `window.print()` with
@@ -281,34 +265,10 @@ export default function EventTakerOrder() {
     setReceiptStatus("idle");
   }, [lastReceipt?.id]);
 
-  // Auto-print: when a fresh confirmation appears, print whichever document(s)
-  // the cashier selected — both, kitchen only, receipt only, or off.
-  // Special case: on an override→paid transition (server flags `wasOverride`),
-  // the kitchen ticket was already printed at override time — possibly from
-  // another device or before a page reload. We skip the kitchen leg of
-  // auto-print so we never double-fire the kitchen ticket. The customer
-  // receipt still prints because that's actually new (they just paid).
-  useEffect(() => {
-    if (autoPrintMode === "off") return;
-    if (!confirmation || !lastReceipt) return;
-    if (autoPrintedFor.current === lastReceipt.id) return;
-    autoPrintedFor.current = lastReceipt.id;
-    const wasOverride = confirmation.wasOverride;
-    // Tiny delay so the confirmation screen has rendered the printable nodes.
-    const t = setTimeout(() => {
-      if (wasOverride) {
-        // Suppress kitchen, only print receipt — and only if the cashier
-        // had any kind of receipt printing on at all.
-        if (autoPrintMode === "receipt" || autoPrintMode === "both") {
-          handlePrint("receipt");
-        }
-        return;
-      }
-      if (autoPrintMode === "both") void printBoth();
-      else handlePrint(autoPrintMode); // "kitchen" | "receipt"
-    }, 200);
-    return () => clearTimeout(t);
-  }, [autoPrintMode, confirmation, lastReceipt]);
+  // Auto-print on order placement is now handled server-side via the
+  // CloudPRNT fan-out (printFanout.ts), gated by per-printer
+  // auto_print_on_new_order toggles plus the per-surface allowed-kinds
+  // matrix. The Taker no longer triggers a browser print on confirmation.
 
   // Public settings — re-polled so the kitchen pause/stop state stays current.
   useEffect(() => {
@@ -1008,6 +968,12 @@ export default function EventTakerOrder() {
   // ── Main POS layout ──────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-secondary/30">
+      <PrinterSettingsModal
+        open={printerModalOpen}
+        onClose={() => setPrinterModalOpen(false)}
+        surface="taker"
+        authToken={password}
+      />
       <header className="bg-card border-b border-border sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -1052,27 +1018,6 @@ export default function EventTakerOrder() {
               <span className="hidden sm:inline">Sent orders:</span>
               <span className="font-bold">{sentOrders.length}</span>
             </button>
-            <label
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-semibold transition-colors border cursor-pointer ${
-                autoPrintMode !== "off"
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                  : "bg-secondary text-muted-foreground border-transparent hover:text-foreground"
-              }`}
-              title="Choose what auto-prints when an order is placed"
-            >
-              {autoPrintMode !== "off" ? <PrinterCheck className="w-4 h-4" /> : <Printer className="w-4 h-4" />}
-              <span className="hidden sm:inline">Auto-print:</span>
-              <select
-                value={autoPrintMode}
-                onChange={e => chooseAutoPrintMode(e.target.value as AutoPrintMode)}
-                className="bg-transparent font-semibold focus:outline-none cursor-pointer"
-              >
-                <option value="off">Off</option>
-                <option value="both">Both</option>
-                <option value="kitchen">Kitchen only</option>
-                <option value="receipt">Receipt only</option>
-              </select>
-            </label>
             {/* Employee chip — who's currently on this register. Click to
                 switch without re-typing the staff password. The name is
                 attached to every void this device records. */}
@@ -1094,16 +1039,15 @@ export default function EventTakerOrder() {
                 </button>
               </div>
             )}
-            <a
-              href="/admin/printers"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => setPrinterModalOpen(true)}
               className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
-              title="Open printer settings (opens admin in a new tab)"
-              data-testid="link-printer-settings"
+              title="Printer settings (synced with admin)"
+              data-testid="button-printer-settings"
             >
               <Printer className="w-5 h-5" />
-            </a>
+            </button>
             <button
               onClick={handleLogout}
               className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"

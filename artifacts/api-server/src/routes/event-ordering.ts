@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { menuItemsTable, eventOrdersTable, eventSettingsTable, eventSessionsTable, menuCategoriesTable } from "@workspace/db/schema";
+import { menuItemsTable, eventOrdersTable, eventSettingsTable, eventSessionsTable, menuCategoriesTable, printersTable } from "@workspace/db/schema";
 import type { EventOrderItem, EventOrderPlate, EventOrderKitchenProgress, EventOrderKitchenProgressLine } from "@workspace/db/schema";
 import { eq, desc, and, or, sql, inArray } from "drizzle-orm";
 import { sendOrderConfirmation, sendOrderReady } from "../lib/sms";
@@ -83,6 +83,56 @@ export async function getOrderingChannelStates() {
     taker: resolveChannelState(s?.takerOrderingState, s?.takerOrderingPausedUntil ?? null, s?.takerOrderingPausedMessage ?? null),
   };
 }
+
+// ── Scoped printer settings (Kitchen Display) ───────────────────────────
+// Kitchen surface can configure per-printer toggles for the kinds it is
+// authorized to send: kitchen_ticket and item_label (+ plate-line
+// suppression). Admin's /admin/printers remains the canonical surface;
+// this endpoint reads from the same printers table and writes back an
+// allow-listed subset of fields, keeping admin/kitchen in sync.
+router.get("/event-ordering/printers", verifyKitchenPassword, async (req, res) => {
+  try {
+    const rows = await db.select().from(printersTable).orderBy(printersTable.id);
+    res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "kitchen list printers failed");
+    res.status(500).json({ error: "Failed to list printers" });
+  }
+});
+
+router.patch("/event-ordering/printers/:id", verifyKitchenPassword, async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(String(req.params.id));
+    const b = req.body as Record<string, unknown>;
+    const updates: Record<string, unknown> = {};
+    for (const k of [
+      "enabled",
+      "autoPrintOnNewOrder",
+      "printsKitchenTicket",
+      "printsItemLabels",
+      "suppressItemLabelsForPlateLines",
+    ] as const) {
+      if (b[k] !== undefined) updates[k] = !!b[k];
+    }
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ error: "no allowed fields supplied" });
+      return;
+    }
+    const [row] = await db
+      .update(printersTable)
+      .set(updates)
+      .where(eq(printersTable.id, id))
+      .returning();
+    if (!row) {
+      res.status(404).json({ error: "not found" });
+      return;
+    }
+    res.json(row);
+  } catch (err) {
+    req.log.error({ err }, "kitchen update printer failed");
+    res.status(500).json({ error: "Failed to update printer" });
+  }
+});
 
 router.get("/event-ordering/settings", async (req, res) => {
   try {

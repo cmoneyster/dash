@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { menuItemsTable, eventOrdersTable, eventSettingsTable } from "@workspace/db/schema";
+import { menuItemsTable, eventOrdersTable, eventSettingsTable, printersTable } from "@workspace/db/schema";
 import { eq, sql, inArray, and, desc, isNull } from "drizzle-orm";
 import { sendOrderConfirmation } from "../lib/sms";
 import { getOrderingChannelStates } from "./event-ordering";
@@ -112,6 +112,56 @@ const verifyTakerPassword = async function (req: Request, res: Response, next: N
   }
   next();
 };
+
+// ── Scoped printer settings (Staff Order Taker) ─────────────────────────
+// Staff Order Taker can configure per-printer toggles for the kinds it is
+// authorized to send: kitchen_ticket and customer_receipt. Admin's
+// /admin/printers remains the canonical surface; this endpoint reads from
+// the same printers table and writes back an allow-listed subset of fields,
+// so admin and the Taker stay in sync automatically.
+router.get("/event-taker/printers", verifyTakerPassword, async (req, res) => {
+  try {
+    const rows = await db.select().from(printersTable).orderBy(printersTable.id);
+    res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "taker list printers failed");
+    res.status(500).json({ error: "Failed to list printers" });
+  }
+});
+
+router.patch("/event-taker/printers/:id", verifyTakerPassword, async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(String(req.params.id));
+    const b = req.body as Record<string, unknown>;
+    const updates: Record<string, unknown> = {};
+    // Allow-list: only the fields a Taker surface is allowed to influence.
+    for (const k of [
+      "enabled",
+      "autoPrintOnNewOrder",
+      "printsKitchenTicket",
+      "printsCustomerReceipt",
+    ] as const) {
+      if (b[k] !== undefined) updates[k] = !!b[k];
+    }
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ error: "no allowed fields supplied" });
+      return;
+    }
+    const [row] = await db
+      .update(printersTable)
+      .set(updates)
+      .where(eq(printersTable.id, id))
+      .returning();
+    if (!row) {
+      res.status(404).json({ error: "not found" });
+      return;
+    }
+    res.json(row);
+  } catch (err) {
+    req.log.error({ err }, "taker update printer failed");
+    res.status(500).json({ error: "Failed to update printer" });
+  }
+});
 
 router.get("/event-taker/settings", async (req, res) => {
   try {

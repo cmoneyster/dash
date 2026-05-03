@@ -239,6 +239,23 @@ Star Micronics TSP-series receipt printers (TSP143IV by default; TSP100IV / TSP6
 - One customer receipt per receipt printer (only when staff-order totals are present).
 - Item labels expanded by `label_policy` per item, optionally skipping units that are part of a plate (when `suppress_item_labels_for_plate_lines` is on), plus one plate-label per configured plate.
 
+### Per-surface allowed-kinds matrix
+The fan-out is gated by `ALLOWED_KINDS_BY_SOURCE` in `printFanout.ts` so each surface can only auto-enqueue the job kinds that make sense for it, regardless of how a per-printer toggle is configured:
+- **Staff Order Taker** (`source: "event_taker"`): `kitchen_ticket`, `customer_receipt`.
+- **Kitchen Display** (`source: "kitchen_send"`) and **Guest Ordering** (`source: "event_order"`): `kitchen_ticket`, `item_label`, `plate_label`.
+
+Customer receipts therefore never auto-fire from guest or kitchen flows even if a printer has `prints_customer_receipt` on, and item/plate labels never auto-fire from the Taker. Manual admin reprint (`POST /api/admin/event-orders/:id/reprint`) bypasses this matrix — it's an explicit staff request — and respects only the per-printer output toggles.
+
+### Scoped printer-settings endpoints
+The Admin printers page remains the source of truth, but the Kitchen Display and Staff Order Taker each have a header "Printer" button that opens an embedded modal listing printers with the toggles relevant to that surface. The modal reads/writes the canonical `printers` table via scoped endpoints (Bearer auth = the surface's session password):
+- `GET/PATCH /api/event-taker/printers[/:id]` — `verifyTakerPassword`. PATCH allow-list: `enabled`, `auto_print_on_new_order`, `prints_kitchen_ticket`, `prints_customer_receipt`.
+- `GET/PATCH /api/event-ordering/printers[/:id]` — `verifyKitchenPassword`. PATCH allow-list: `enabled`, `auto_print_on_new_order`, `prints_kitchen_ticket`, `prints_item_labels`, `suppress_item_labels_for_plate_lines`.
+
+Any field not in a surface's allow-list is rejected server-side. The shared client component is `artifacts/catering-web/src/components/PrinterSettingsModal.tsx`.
+
+### Browser-print retirement
+The previous per-device localStorage browser auto-print dropdowns (`AUTO_PRINT_KEY` on Taker, `KITCHEN_AUTO_PRINT_KEY` on Kitchen) have been removed. Auto-print policy now lives only on the admin printer rows. Manual per-card "Print ticket / Print receipt" buttons (Kitchen Display) and the confirmation-screen "Print" buttons (Taker) remain as a browser-print backup; they were intentionally retained.
+
 **Demo orders never print.** Demo orders use a separate `/api/demo/orders` route that does not insert into `event_orders`, so they never reach this fan-out path. The fan-out helper additionally hard-blocks `source: "demo"` with a logged warning as a defense in depth.
 
 Manual reprint: `POST /api/admin/event-orders/:id/reprint` re-fans an order through the same code path, ignoring `auto_print_on_new_order` (this is an explicit "send to printers" request from staff). Print jobs queued via this path show up in the `Printers` admin page like any other job.
