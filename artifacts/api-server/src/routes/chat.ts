@@ -125,12 +125,24 @@ router.post("/chat/message", async (req, res): Promise<void> => {
   }
 });
 
+const PRICE_REGEX = /\$\s*\d[\d,]*(?:\.\d+)?|\b\d[\d,]*(?:\.\d+)?\s*(?:dollars?|usd|cents?)\b|\b(?:per[-\s]?(?:unit|pan|person|head|guest|plate|serving)|price|pricing|cost|costs?|budget|cheap|expensive|affordable|quote)\b/gi;
+
+function stripPricing(text: string): string {
+  return text.replace(PRICE_REGEX, "").replace(/\s{2,}/g, " ").trim();
+}
+
 router.post("/chat/suggest-items", async (req, res): Promise<void> => {
   try {
     const { guestCount, serviceStyle, preferences } = req.body;
 
     if (!guestCount || !serviceStyle) {
       res.status(400).json({ error: "guestCount and serviceStyle are required" });
+      return;
+    }
+
+    const guestCountNum = Math.floor(Number(guestCount));
+    if (!Number.isFinite(guestCountNum) || guestCountNum <= 0) {
+      res.status(400).json({ error: "guestCount must be a positive number" });
       return;
     }
 
@@ -142,22 +154,32 @@ router.post("/chat/suggest-items", async (req, res): Promise<void> => {
       return;
     }
 
+    const safeServiceStyle = stripPricing(String(serviceStyle));
+    const safePreferences: string[] = Array.isArray(preferences)
+      ? preferences
+          .filter((p): p is string => typeof p === "string")
+          .map(stripPricing)
+          .filter((p) => p.length > 0)
+      : [];
+
     const menuSummary = availableItems
-      .map((i) => `ID:${i.id} | ${i.name} (${i.category}) - $${i.price}/unit, serves ${i.servingSize} people per ${i.unit}`)
+      .map((i) => `ID:${i.id} | ${i.name} (${i.category}) - serves ${i.servingSize} people per ${i.unit}`)
       .join("\n");
 
     const prompt = `You are a catering expert. Based on the event details below, suggest appropriate menu items and quantities.
 
-Event: ${guestCount} guests, Service style: ${serviceStyle}
-${preferences && preferences.length > 0 ? `Preferences: ${preferences.join(", ")}` : ""}
+Event: ${guestCountNum} guests, Service style: ${safeServiceStyle}
+${safePreferences.length > 0 ? `Preferences: ${safePreferences.join(", ")}` : ""}
 
 Available menu items:
 ${menuSummary}
 
 Return a JSON array of suggestions (pick at most 6 items). Each suggestion should have:
 - menuItemId: number (the ID from the list above)
-- recommendedQuantity: number (how many units to order for ${guestCount} guests)
+- recommendedQuantity: number (how many units to order for ${guestCountNum} guests)
 - reason: string (brief explanation why this item and quantity)
+
+IMPORTANT: Do not mention prices, dollar amounts, per-unit cost, or per-pan cost in the reason field. Pricing is not provided here. If pricing comes up, refer guests to our menu page for current pricing. The reason should focus on flavor, fit for the service style, dietary needs, and serving math — never cost.
 
 Respond with ONLY valid JSON, no markdown:
 {"suggestions": [...]}`;
@@ -180,10 +202,15 @@ Respond with ONLY valid JSON, no markdown:
       .map((s) => {
         const item = availableItems.find((i) => i.id === s.menuItemId);
         if (!item) return null;
+        const rawReason = typeof s.reason === "string" ? s.reason : "";
+        const cleanedReason = stripPricing(rawReason);
+        const reason = cleanedReason.length > 0
+          ? cleanedReason
+          : `A great fit for your ${safeServiceStyle || "event"}.`;
         return {
           menuItemId: s.menuItemId,
           recommendedQuantity: s.recommendedQuantity,
-          reason: s.reason,
+          reason,
           menuItem: { ...item, price: parseFloat(item.price), allergens: item.allergens ?? [] },
         };
       })
