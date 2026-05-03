@@ -389,8 +389,8 @@ export const CHAT_TOOL_DEFS = [
           },
           serviceStyle: {
             type: "string",
-            enum: ["drop_off", "on_the_dash", "buffet", "grazing", "made_to_order"],
-            description: "Optional canonical service style the guest is leaning toward. on_the_dash = our on-site food trailer.",
+            enum: ["drop_off", "on_the_dash"],
+            description: "Optional canonical service style the guest is leaning toward. drop_off = Standard Drop-Off (pre-cooked & delivered). on_the_dash = our on-site food trailer cooking fresh. These are the ONLY two styles we offer — do not pass anything else.",
           },
         },
         required: ["date"],
@@ -763,7 +763,11 @@ async function checkEventDate(args: {
     : [];
 
   // Collect alternate styles that still have room when the requested
-  // style is full but the day itself is not.
+  // style is full but the day itself is not. We only ever surface the
+  // two service styles we actually offer (drop_off, on_the_dash) so the
+  // bot never gets handed buffet/grazing/made_to_order as a suggestion
+  // even if the admin happened to leave caps unconfigured for them.
+  const OFFERED_STYLES: ServiceStyleKey[] = ["drop_off", "on_the_dash"];
   const alternateStyles: ServiceStyleKey[] = [];
   if (
     serviceStyle &&
@@ -771,15 +775,13 @@ async function checkEventDate(args: {
     !load.blackedOut &&
     load.load !== "full"
   ) {
-    for (const k of Object.keys(load.remaining.slotsByServiceStyle) as ServiceStyleKey[]) {
+    for (const k of OFFERED_STYLES) {
       if (k === serviceStyle) continue;
-      if ((load.remaining.slotsByServiceStyle[k] ?? 0) > 0) alternateStyles.push(k);
-    }
-    // If a style has no cap configured at all, treat it as available.
-    for (const k of SERVICE_STYLE_KEYS) {
-      if (k === "unknown") continue;
-      if (k === serviceStyle) continue;
-      if (!(k in load.capacity.slotsByServiceStyle) && !alternateStyles.includes(k)) {
+      const cap = load.capacity.slotsByServiceStyle[k];
+      if (cap == null) {
+        // No cap configured → always available.
+        alternateStyles.push(k);
+      } else if ((load.remaining.slotsByServiceStyle[k] ?? 0) > 0) {
         alternateStyles.push(k);
       }
     }
