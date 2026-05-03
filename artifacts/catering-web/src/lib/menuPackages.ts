@@ -194,6 +194,27 @@ export async function loadPackageIntoCart(
 
 type PlanItemRow = { id: number; menuItemId: number };
 
+// Fetches the current plan/cart item counts. Used by load actions to
+// decide whether to prompt merge-or-replace, since react-query data
+// may still be `undefined` on first click.
+export async function fetchCurrentItemCount(target: "cart" | "plan", sessionId: string): Promise<number> {
+  try {
+    const url = target === "cart"
+      ? `${API_BASE}/api/cart?sessionId=${encodeURIComponent(sessionId)}`
+      : `${API_BASE}/api/plan?sessionId=${encodeURIComponent(sessionId)}`;
+    const res = await fetch(url);
+    if (!res.ok) return 0;
+    const data: unknown = await res.json();
+    if (data && typeof data === "object" && "items" in data) {
+      const items = (data as { items: unknown }).items;
+      if (Array.isArray(items)) return items.length;
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
 async function fetchPlanItems(sessionId: string): Promise<PlanItemRow[]> {
   const res = await fetch(`${API_BASE}/api/plan?sessionId=${encodeURIComponent(sessionId)}`);
   if (!res.ok) return [];

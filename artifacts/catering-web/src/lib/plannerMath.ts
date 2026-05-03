@@ -1,7 +1,6 @@
-// Coverage math (need vs have, in pieces and entrée servings) extracted
-// for reuse. Currently consumed by the admin Menu Package editor's
-// coverage check; the customer Plan/SharedPlan pages still inline
-// equivalent math and can migrate to this helper later.
+// Coverage math (need vs have, in pieces and entrée servings) shared
+// by the customer Plan/SharedPlan pages and the admin Menu Package
+// editor's coverage check, so all surfaces stay in sync.
 
 export type PlannerGroup = "savory" | "sweet" | "entree" | "other";
 

@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   fetchPublicPackage,
+  fetchCurrentItemCount,
   loadPackageIntoCart,
   loadPackageIntoPlanner,
   type PublicMenuPackage,
@@ -15,7 +16,7 @@ import { MergeReplaceDialog, type MergeReplaceChoice } from "@/components/MergeR
 import { useCategories, buildPlannerGroupMap } from "@/lib/categories";
 import { getSessionId } from "@/lib/session";
 import { formatCurrency } from "@/lib/utils";
-import { getGetCartQueryKey, getGetPlanQueryKey, useGetCart, useGetPlan } from "@workspace/api-client-react";
+import { getGetCartQueryKey, getGetPlanQueryKey } from "@workspace/api-client-react";
 
 type Props = {
   packageId: number;
@@ -27,12 +28,11 @@ export function PackageDetail({ packageId, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [pendingTarget, setPendingTarget] = useState<"cart" | "plan" | null>(null);
+  const [pendingExisting, setPendingExisting] = useState(0);
   const sessionId = getSessionId();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [, navigate] = useLocation();
-  const { data: cart } = useGetCart({ sessionId });
-  const { data: plan } = useGetPlan({ sessionId });
   const { data: categoryRows } = useCategories({ includeHidden: true });
   const groupMap = buildPlannerGroupMap(categoryRows);
   const groupOf = (cat: string) => groupMap.get(cat) ?? "other";
@@ -44,9 +44,6 @@ export function PackageDetail({ packageId, onClose }: Props) {
       .catch(() => toast({ title: "Couldn't load package", variant: "destructive" }))
       .finally(() => setLoading(false));
   }, [packageId, toast]);
-
-  const cartHasItems = (cart?.items?.length ?? 0) > 0;
-  const planHasItems = (plan?.items?.length ?? 0) > 0;
 
   // Per-item subtotal: pan-size items use the size price; everything
   // else uses the unit price. Total is the sum.
@@ -93,10 +90,21 @@ export function PackageDetail({ packageId, onClose }: Props) {
     }
   };
 
-  const handleClick = (target: "cart" | "plan") => {
-    const hasExisting = target === "cart" ? cartHasItems : planHasItems;
-    if (hasExisting) setPendingTarget(target);
-    else performLoad(target, "merge");
+  const handleClick = async (target: "cart" | "plan") => {
+    if (busy) return;
+    setBusy(true);
+    // Always re-fetch the current count on click. The react-query
+    // hooks above might still be loading on first interaction, which
+    // would otherwise let us silently merge into an empty-looking
+    // cart/plan that is actually populated.
+    const count = await fetchCurrentItemCount(target, sessionId);
+    setBusy(false);
+    if (count > 0) {
+      setPendingExisting(count);
+      setPendingTarget(target);
+    } else {
+      performLoad(target, "merge");
+    }
   };
 
   const handleChoice = (choice: MergeReplaceChoice) => {
@@ -224,7 +232,7 @@ export function PackageDetail({ packageId, onClose }: Props) {
       <MergeReplaceDialog
         open={pendingTarget !== null}
         busy={busy}
-        existingCount={pendingTarget === "cart" ? (cart?.items?.length ?? 0) : (plan?.items?.length ?? 0)}
+        existingCount={pendingExisting}
         incomingCount={pkg?.items.length ?? 0}
         title={pendingTarget === "cart" ? "Cart already has items" : "Plan already has items"}
         message={
