@@ -55,16 +55,11 @@ async function listRecommendations(): Promise<ListRow[]> {
   }));
 }
 
-// Aggregate quantities sold across real catering orders and real event
-// (POS / on-site) orders. Demo orders are deliberately excluded — they're
-// public sandbox submissions, not sales.
 async function computeTopSellers(limit: number): Promise<
   { menuItemId: number; name: string; category: string; totalQuantity: number }[]
 > {
   const safeLimit = Math.max(1, Math.min(limit, TOP_SELLERS_MAX_LIMIT));
 
-  // Catering orders (drop-off / OTD) — flat order_items joined to orders
-  // so we can drop cancelled orders.
   const cateringRows = await db
     .select({
       menuItemId: orderItemsTable.menuItemId,
@@ -80,8 +75,6 @@ async function computeTopSellers(limit: number): Promise<
     totals.set(r.menuItemId, (totals.get(r.menuItemId) ?? 0) + Number(r.qty ?? 0));
   }
 
-  // Event orders — items live in a jsonb column; voidedAt rows are
-  // excluded since they were pulled back by staff.
   const eventOrders = await db
     .select({ items: eventOrdersTable.items })
     .from(eventOrdersTable)
@@ -96,7 +89,6 @@ async function computeTopSellers(limit: number): Promise<
 
   if (totals.size === 0) return [];
 
-  // Resolve to live menu items (only available + visible category).
   const ids = Array.from(totals.keys());
   const items = await db
     .select({
@@ -273,7 +265,6 @@ router.post("/admin/recommendations/sync", async (req, res): Promise<void> => {
   }
   try {
     const topAll = await computeTopSellers(limit);
-    // When the admin deselected rows in the UI, only apply the chosen subset.
     const top = selected ? topAll.filter((t) => selected.has(t.menuItemId)) : topAll;
 
     await db.transaction(async (tx) => {

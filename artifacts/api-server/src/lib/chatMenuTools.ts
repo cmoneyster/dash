@@ -29,11 +29,6 @@ export type SnapshotItem = {
 export type Snapshot = {
   items: SnapshotItem[];
   categoryOrder: string[];
-  // Curated, admin-managed list of menu item ids the bot prefers when the
-  // guest asks open-ended things like "what do you recommend?" or
-  // "what's popular?". Stored in admin-set order. Items that aren't in
-  // `items` (because they were turned off or hidden mid-snapshot) are
-  // already filtered out at snapshot build time.
   recommendedItemIds: number[];
   createdAt: number;
 };
@@ -105,9 +100,6 @@ export async function getOrCreateSnapshot(sessionId: string): Promise<Snapshot> 
       ...Array.from(present).filter((c) => !orderedFromCats.includes(c)),
     ];
 
-    // Recommendations may include items that have since been turned off
-    // or moved into a hidden category — filter through the snapshot's
-    // visible items so the bot can never surface a stale pick.
     const visibleIds = new Set(filtered.map((i) => i.id));
     const recommendedItemIds = recs
       .map((r) => r.menuItemId)

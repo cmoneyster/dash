@@ -1,8 +1,3 @@
-// Thin re-exports of generated hooks/types so the admin page consumes
-// the OpenAPI-generated TanStack Query hooks (per the contract-first
-// convention in the pnpm-workspace skill). The query key helper from the
-// generated client is re-exported as RECOMMENDATIONS_QUERY_KEY for
-// invalidation in the page.
 import {
   getAdminListRecommendationsQueryKey,
   useAdminListRecommendations,

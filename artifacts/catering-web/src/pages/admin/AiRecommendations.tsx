@@ -362,9 +362,6 @@ function SyncModal({
   );
   const syncMut = useAdminSyncRecommendations();
 
-  // When the top-seller list changes (e.g. limit changed), default to all
-  // selected. After the admin has interacted with the checkboxes, preserve
-  // their selections that still exist in the new list.
   useEffect(() => {
     if (!topSellers) return;
     setSelected((prev) => {
