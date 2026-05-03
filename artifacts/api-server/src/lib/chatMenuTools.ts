@@ -3,6 +3,7 @@ import {
   menuItemsTable,
   menuCategoriesTable,
   recommendedMenuItemsTable,
+  blackoutDatesTable,
 } from "@workspace/db/schema";
 import { asc } from "drizzle-orm";
 
@@ -326,9 +327,60 @@ export const CHAT_TOOL_DEFS = [
       },
     },
   },
+  {
+    type: "function" as const,
+    function: {
+      name: "check_event_date_availability",
+      description:
+        "Check whether a specific date is available for catering (i.e. not on the team's blackout list). Use whenever the guest mentions or asks about a specific date. Pass the date as YYYY-MM-DD. Returns { available: boolean, date: string, suggestedDates: string[] } — when unavailable, suggestedDates contains up to 3 nearby open dates.",
+      parameters: {
+        type: "object",
+        properties: {
+          date: {
+            type: "string",
+            description: "Event date in YYYY-MM-DD format.",
+          },
+        },
+        required: ["date"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
-export function runChatTool(name: string, args: unknown, snap: Snapshot): unknown {
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isRealCalendarDate(date: string): boolean {
+  if (!DATE_RE.test(date)) return false;
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return parsed.toISOString().split("T")[0] === date;
+}
+
+async function checkEventDateAvailability(date: string) {
+  if (!isRealCalendarDate(date)) {
+    return { error: "Date must be a real calendar date in YYYY-MM-DD format." };
+  }
+  const all = await db.select().from(blackoutDatesTable);
+  const blackoutSet = new Set(all.map((b) => b.date));
+  const available = !blackoutSet.has(date);
+  const suggestedDates: string[] = [];
+  if (!available) {
+    const start = new Date(`${date}T00:00:00Z`);
+    const probe = new Date(start);
+    probe.setUTCDate(probe.getUTCDate() + 1);
+    let safety = 0;
+    while (suggestedDates.length < 3 && safety < 365) {
+      const ds = probe.toISOString().split("T")[0]!;
+      if (!blackoutSet.has(ds)) suggestedDates.push(ds);
+      probe.setUTCDate(probe.getUTCDate() + 1);
+      safety++;
+    }
+  }
+  return { available, date, suggestedDates };
+}
+
+export async function runChatTool(name: string, args: unknown, snap: Snapshot): Promise<unknown> {
   const a = (args ?? {}) as Record<string, unknown>;
   switch (name) {
     case "search_menu":
@@ -341,6 +393,10 @@ export function runChatTool(name: string, args: unknown, snap: Snapshot): unknow
       const id = Number(a.id);
       if (!Number.isFinite(id)) return null;
       return getMenuItem(snap, id);
+    }
+    case "check_event_date_availability": {
+      const date = typeof a.date === "string" ? a.date : "";
+      return checkEventDateAvailability(date);
     }
     default:
       return { error: `Unknown tool: ${name}` };
