@@ -26,13 +26,15 @@ const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 export default function Menu() {
   // Seed the category filter from a `?category=` query param so the chat
   // bot (and any other deep link) can drop a guest into a specific
-  // section of the menu.
+  // section of the menu. We validate against the loaded category list
+  // below — an unknown value falls back to "All Items".
   const initialCategory = (() => {
     if (typeof window === "undefined") return "";
     const c = new URLSearchParams(window.location.search).get("category");
     return c ?? "";
   })();
   const [category, setCategory] = useState<string>(initialCategory);
+  const [categoryFromUrlChecked, setCategoryFromUrlChecked] = useState<boolean>(!initialCategory);
   const [pickerItem, setPickerItem] = useState<PanSizeMenuItem | null>(null);
   const [pickerLoading, setPickerLoading] = useState(false);
   const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());
@@ -129,6 +131,17 @@ export default function Menu() {
     { value: "", label: "All Items" },
     ...(categoryData ?? []).map((c) => ({ value: c.name, label: c.name })),
   ];
+
+  // Once the category list loads, drop any unknown URL-seeded category
+  // back to "All Items" so a stale or mistyped link doesn't leave the
+  // page showing an empty grid.
+  useEffect(() => {
+    if (categoryFromUrlChecked) return;
+    if (!categoryData) return;
+    const known = new Set(categoryData.map((c) => c.name));
+    if (category && !known.has(category)) setCategory("");
+    setCategoryFromUrlChecked(true);
+  }, [categoryData, category, categoryFromUrlChecked]);
 
   return (
     <Layout>

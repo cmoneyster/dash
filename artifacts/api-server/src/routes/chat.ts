@@ -6,7 +6,6 @@ import {
   CHAT_TOOL_DEFS,
   getOrCreateSnapshot,
   runChatTool,
-  trustedPublicOrigin,
 } from "../lib/chatMenuTools";
 type ChatMessage =
   | { role: "system" | "user"; content: string }
@@ -63,7 +62,6 @@ router.post("/chat/message", async (req, res): Promise<void> => {
   res.setHeader("Connection", "keep-alive");
 
   try {
-    const publicOrigin = trustedPublicOrigin();
     const snap = await getOrCreateSnapshot(sessionId);
 
     const chatHistory: ChatMessage[] = (Array.isArray(history) ? history : [])
@@ -109,7 +107,7 @@ router.post("/chat/message", async (req, res): Promise<void> => {
         } catch {
           args = {};
         }
-        const result = runChatTool(tc.function.name, args, snap, publicOrigin);
+        const result = runChatTool(tc.function.name, args, snap);
         messages.push({
           role: "tool",
           tool_call_id: tc.id,

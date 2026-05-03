@@ -33,18 +33,13 @@ const cache = new Map<string, Snapshot>();
 // for the same session don't trigger duplicate DB queries.
 const inflight = new Map<string, Promise<Snapshot>>();
 
-export function trustedPublicOrigin(): string {
-  const explicit = process.env.PUBLIC_APP_URL?.trim();
-  if (explicit) return explicit.replace(/\/+$/, "");
-  const first = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
-  if (first) return `https://${first}`;
-  const dev = process.env.REPLIT_DEV_DOMAIN?.trim();
-  if (dev) return `https://${dev}`;
-  return "http://localhost";
-}
-
-export function buildMenuLink(publicOrigin: string, category: string): string {
-  return `${publicOrigin}/menu?category=${encodeURIComponent(category)}`;
+// Links exposed to the model are kept relative (`/menu?category=...`) so
+// the chat widget's safe-link renderer (which only allows same-origin
+// `/...` URLs) can turn them into real <a> tags. Returning absolute
+// URLs would defeat that filter and the links would render as plain
+// text.
+export function buildMenuLink(category: string): string {
+  return `/menu?category=${encodeURIComponent(category)}`;
 }
 
 function evictExpiredAndCap(now: number) {
@@ -126,7 +121,7 @@ export type SearchArgs = {
   limit?: number;
 };
 
-export function searchMenu(snap: Snapshot, args: SearchArgs, publicOrigin: string) {
+export function searchMenu(snap: Snapshot, args: SearchArgs) {
   const q = args.query?.trim().toLowerCase() ?? "";
   const cat = args.category?.trim().toLowerCase() ?? "";
   const limit = Math.min(Math.max(args.limit ?? 10, 1), 25);
@@ -159,7 +154,7 @@ export function searchMenu(snap: Snapshot, args: SearchArgs, publicOrigin: strin
     servingSize: item.servingSize,
     unit: item.unit,
     allergens: item.allergens,
-    link: buildMenuLink(publicOrigin, item.category),
+    link: buildMenuLink(item.category),
   }));
 }
 
@@ -167,7 +162,7 @@ export function listCategories(snap: Snapshot): string[] {
   return snap.categoryOrder;
 }
 
-export function getMenuItem(snap: Snapshot, id: number, publicOrigin: string) {
+export function getMenuItem(snap: Snapshot, id: number) {
   const item = snap.items.find((i) => i.id === id);
   if (!item) return null;
   return {
@@ -178,7 +173,7 @@ export function getMenuItem(snap: Snapshot, id: number, publicOrigin: string) {
     servingSize: item.servingSize,
     unit: item.unit,
     allergens: item.allergens,
-    link: buildMenuLink(publicOrigin, item.category),
+    link: buildMenuLink(item.category),
   };
 }
 
@@ -233,17 +228,17 @@ export const CHAT_TOOL_DEFS = [
   },
 ];
 
-export function runChatTool(name: string, args: unknown, snap: Snapshot, publicOrigin: string): unknown {
+export function runChatTool(name: string, args: unknown, snap: Snapshot): unknown {
   const a = (args ?? {}) as Record<string, unknown>;
   switch (name) {
     case "search_menu":
-      return searchMenu(snap, a as SearchArgs, publicOrigin);
+      return searchMenu(snap, a as SearchArgs);
     case "list_categories":
       return listCategories(snap);
     case "get_menu_item": {
       const id = Number(a.id);
       if (!Number.isFinite(id)) return null;
-      return getMenuItem(snap, id, publicOrigin);
+      return getMenuItem(snap, id);
     }
     default:
       return { error: `Unknown tool: ${name}` };
