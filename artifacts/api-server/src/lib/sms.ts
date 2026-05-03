@@ -84,7 +84,7 @@ export async function sendOrderReady(opts: {
 
 export async function sendNewInquiryAlert(opts: {
   clientName: string;
-  source: "form" | "cart";
+  source: "form" | "cart" | "chat";
   eventDate?: string | null;
   guestCount?: number | null;
   total?: string | null;       // pre-formatted, e.g. "$123.45"
@@ -97,7 +97,12 @@ export async function sendNewInquiryAlert(opts: {
     console.warn("[SMS] no owner notification phone configured — skipping inquiry alert");
     return;
   }
-  const sourceLabel = opts.source === "cart" ? "cart order" : "form inquiry";
+  const sourceLabel =
+    opts.source === "cart"
+      ? "cart order"
+      : opts.source === "chat"
+        ? "chat handoff"
+        : "form inquiry";
   const lines: string[] = [
     `New catering ${sourceLabel} from ${opts.clientName}`,
   ];

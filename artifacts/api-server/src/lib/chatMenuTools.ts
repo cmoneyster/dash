@@ -3,6 +3,8 @@ import {
   menuItemsTable,
   menuCategoriesTable,
   recommendedMenuItemsTable,
+  cateringInquiriesTable,
+  contactRequestsTable,
 } from "@workspace/db/schema";
 import { asc } from "drizzle-orm";
 import {
@@ -12,6 +14,11 @@ import {
   SERVICE_STYLE_KEYS,
   type ServiceStyleKey,
 } from "./dayLoad";
+import { sendNewInquiryAlert, sendSms } from "./sms";
+import { sendMail } from "./mail";
+import { sendToCustomerGuarded, normalizePhoneDigits } from "./sms-inbox";
+import { getChatPort } from "./sms-ejoin";
+import { logger } from "./logger";
 
 // Per-session snapshot of the menu the chat bot is allowed to talk about.
 // Built once at first message of a session, then reused for the rest of
@@ -336,6 +343,38 @@ export const CHAT_TOOL_DEFS = [
   {
     type: "function" as const,
     function: {
+      name: "request_human_contact",
+      description:
+        "Hand the conversation off to a real human on the catering team. Call this ONLY after the guest has explicitly asked to talk to a person AND has provided their preferred contact channel and the actual contact value. The team will be notified immediately by email and SMS, and (when channel is 'sms') a real text-message thread will be opened with the guest. Never invent a phone number or email — only call this with values the guest typed in this conversation. Call at most once per conversation unless the guest gives a different contact.",
+      parameters: {
+        type: "object",
+        properties: {
+          channel: {
+            type: "string",
+            enum: ["phone", "email", "sms"],
+            description: "How the guest wants to be reached. 'phone' = team will call them, 'email' = team will email them, 'sms' = open a real text-message thread now.",
+          },
+          contact: {
+            type: "string",
+            description: "The actual contact value: phone number for 'phone' or 'sms', email address for 'email'. Use what the guest typed verbatim.",
+          },
+          name: {
+            type: "string",
+            description: "Guest's name if they shared one. Optional.",
+          },
+          summary: {
+            type: "string",
+            description: "One or two sentences summarizing what the guest is asking about (event date, guest count, dietary needs, specific question, etc.). Helps the team show up prepared.",
+          },
+        },
+        required: ["channel", "contact"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
       name: "check_event_date",
       description:
         "Check date availability AND day load for a specific date. Use whenever the guest mentions or asks about a date. Pass YYYY-MM-DD. Optionally pass guestCount and/or serviceStyle to get a tailored verdict — the tool will tell you if the day is blacked out, how full it already is, whether the guest's specific service style still has a slot, and (when full or blacked out) up to 3 nearby open dates. Use the response to either confirm cheerfully, suggest a different service style on the same day, or apologize and offer alternate dates.",
@@ -359,6 +398,274 @@ export const CHAT_TOOL_DEFS = [
     },
   },
 ];
+
+// ── Human-contact handoff ────────────────────────────────────────────────────
+//
+// The chat bot calls request_human_contact when the guest explicitly
+// asks for a real person AND provides a contact value. We:
+//   1. Always log the request to contact_requests (system of record).
+//   2. Always email Corey + SMS the owner so the handoff isn't missed.
+//   3. For channel="sms" we ALSO create a catering_inquiries row keyed
+//      to the guest's normalized phone and send a welcome SMS via the
+//      chat port. From that point on, the existing customer-chat
+//      pipeline (sms-inbox) routes every inbound text from that
+//      number to the inquiry, owner-forwards it, and lets the owner
+//      reply with `#<inquiryId> <message>`.
+//
+// Per-session de-dup keeps a confused model from spamming the team
+// when the guest re-confirms.
+
+type RequestHumanContactArgs = {
+  channel?: unknown;
+  contact?: unknown;
+  name?: unknown;
+  summary?: unknown;
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const handoffsBySession = new Map<string, number>();
+const HANDOFF_TTL_MS = 24 * 60 * 60 * 1000;
+const HANDOFF_MAX_PER_SESSION = 3;
+
+function pruneHandoffs(now: number) {
+  for (const [k, t] of handoffsBySession) {
+    if (now - t > HANDOFF_TTL_MS) handoffsBySession.delete(k);
+  }
+}
+
+async function requestHumanContact(
+  raw: RequestHumanContactArgs,
+  ctx: RunChatToolContext,
+) {
+  const channel = typeof raw.channel === "string" ? raw.channel.trim().toLowerCase() : "";
+  const contactRaw = typeof raw.contact === "string" ? raw.contact.trim() : "";
+  const name = typeof raw.name === "string" ? raw.name.trim().slice(0, 120) : "";
+  const summary = typeof raw.summary === "string" ? raw.summary.trim().slice(0, 800) : "";
+
+  if (channel !== "phone" && channel !== "email" && channel !== "sms") {
+    return { ok: false, error: "channel must be 'phone', 'email', or 'sms'." };
+  }
+  if (!contactRaw) {
+    return { ok: false, error: "contact is required." };
+  }
+
+  let normalizedContact = contactRaw;
+  if (channel === "phone" || channel === "sms") {
+    const digits = normalizePhoneDigits(contactRaw);
+    if (digits.length < 10) {
+      return { ok: false, error: "Phone number looks incomplete — please confirm a 10-digit US number." };
+    }
+    normalizedContact = digits;
+  } else if (channel === "email") {
+    if (!EMAIL_RE.test(contactRaw) || contactRaw.length > 254) {
+      return { ok: false, error: "Email address looks invalid — please double-check it." };
+    }
+    normalizedContact = contactRaw.toLowerCase();
+  }
+
+  // Soft per-session abuse guard. Don't let one chat trigger an
+  // unbounded number of handoff alerts even if the model loops.
+  const now = Date.now();
+  pruneHandoffs(now);
+  const sessionKey = ctx.sessionId ?? "anon";
+  const recentCount = Array.from(handoffsBySession.entries()).filter(
+    ([k]) => k.startsWith(`${sessionKey}|`),
+  ).length;
+  if (recentCount >= HANDOFF_MAX_PER_SESSION) {
+    return {
+      ok: false,
+      error: "Already handed off to the team for this conversation. The team will reach out shortly.",
+      alreadyHandedOff: true,
+    };
+  }
+  const dedupKey = `${sessionKey}|${channel}|${normalizedContact}`;
+  if (handoffsBySession.has(dedupKey)) {
+    return {
+      ok: true,
+      duplicate: true,
+      message: "We already let the team know — they'll be in touch shortly.",
+    };
+  }
+
+  const channelLabel =
+    channel === "phone" ? "phone call" : channel === "email" ? "email" : "text message";
+  const guestName = name || "Guest";
+
+  let inquiryId: number | null = null;
+
+  // For SMS handoffs we bridge into the existing customer-chat
+  // pipeline by creating a real inquiry row keyed to the guest's
+  // phone. Future inbound texts from that number will auto-match by
+  // normalizePhoneDigits and forward to the owner with the
+  // [Catering #N] tag the owner already knows how to reply to.
+  if (channel === "sms") {
+    try {
+      const adminNote = [
+        "Initiated via website AI chat (handoff to text).",
+        summary ? `Summary: ${summary}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const [row] = await db
+        .insert(cateringInquiriesTable)
+        .values({
+          clientName: guestName,
+          clientPhone: normalizedContact,
+          adminNotes: adminNote || null,
+          source: "chat",
+          status: "inquiry",
+        } as typeof cateringInquiriesTable.$inferInsert)
+        .returning({ id: cateringInquiriesTable.id });
+      inquiryId = row?.id ?? null;
+    } catch (err) {
+      logger.error({ err }, "[chat] failed to create inquiry for SMS handoff");
+    }
+  }
+
+  // Persist the handoff request itself. Best-effort — failing to log
+  // shouldn't stop the alerts.
+  try {
+    await db.insert(contactRequestsTable).values({
+      name: guestName === "Guest" ? null : guestName,
+      channel,
+      contactValue: normalizedContact,
+      summary: summary || null,
+      chatSessionId: ctx.sessionId ?? null,
+      inquiryId,
+    });
+  } catch (err) {
+    logger.warn({ err }, "[chat] failed to persist contact_requests row");
+  }
+
+  // SMS-channel: send a welcome text to the customer via the chat
+  // port so the thread is "live" the moment the bot tells them we'll
+  // text. Subsequent customer texts auto-match the inquiry above.
+  let smsBridgeStatus: "sent" | "blocked" | "no-chat-port" | "failed" | null = null;
+  if (channel === "sms") {
+    try {
+      const port = await getChatPort();
+      if (port == null) {
+        smsBridgeStatus = "no-chat-port";
+        logger.warn("[chat] SMS handoff requested but no chat port configured");
+      } else {
+        const firstName = guestName.split(/\s+/)[0] || "there";
+        const welcome = `Hi ${firstName}, this is Hollywood East Cafe. Thanks for reaching out via our website. Reply here and a team member will help plan your event. Reply STOP to opt out.`;
+        const result = await sendToCustomerGuarded({
+          to: normalizedContact,
+          body: welcome,
+          inquiryId,
+          source: "system",
+        });
+        smsBridgeStatus = result.status === "sent" ? "sent" : "blocked";
+      }
+    } catch (err) {
+      smsBridgeStatus = "failed";
+      logger.error({ err }, "[chat] failed to send SMS handoff welcome");
+    }
+  }
+
+  // Owner SMS alert. For SMS-channel we use the catering-inquiry
+  // alert so the owner sees the inquiry id (and can reply to the
+  // guest with #<id> <body>). For phone/email we send a leaner ad-hoc
+  // alert so the owner has the contact value ready to dial / reply.
+  try {
+    if (channel === "sms" && inquiryId != null) {
+      await sendNewInquiryAlert({
+        clientName: guestName,
+        source: "chat",
+        clientPhone: normalizedContact,
+        link: null,
+      });
+    } else {
+      // Reuse sendNewInquiryAlert's owner-phone resolution + formatter
+      // by mapping the handoff into its supported fields. clientPhone
+      // already prints as "Phone: ..." for callbacks; for email we
+      // stash the address into venueAddress so it prints on its own
+      // line as "Venue: Email: ...". Summary is intentionally NOT
+      // passed (the email below carries the full context); keeping
+      // the SMS short avoids multi-segment cost.
+      await sendNewInquiryAlert({
+        clientName: `${guestName} (chat ${channelLabel})`,
+        source: "chat",
+        clientPhone: channel === "phone" ? normalizedContact : null,
+        venueAddress: channel === "email" ? `Email ${normalizedContact}` : null,
+      });
+    }
+  } catch (err) {
+    logger.warn({ err }, "[chat] owner SMS handoff alert failed");
+  }
+
+  // Owner email — Corey gets a copy regardless of channel so the
+  // handoff has an audit trail in the inbox even when SMS is down.
+  try {
+    const subjectChannel =
+      channel === "phone" ? "phone callback" : channel === "email" ? "email reply" : "text message";
+    const html = [
+      `<p><strong>${escapeHtml(guestName)}</strong> asked the website chat to be reached by ${escapeHtml(subjectChannel)}.</p>`,
+      `<p><strong>Contact:</strong> ${escapeHtml(normalizedContact)}</p>`,
+      summary ? `<p><strong>Summary:</strong><br/>${escapeHtml(summary).replace(/\n/g, "<br/>")}</p>` : "",
+      inquiryId != null
+        ? `<p>Inquiry created: <strong>#${inquiryId}</strong>. Reply to the guest by texting <code>#${inquiryId} your message</code> to the catering chat number.</p>`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const text = [
+      `${guestName} asked the website chat to be reached by ${subjectChannel}.`,
+      `Contact: ${normalizedContact}`,
+      summary ? `Summary: ${summary}` : null,
+      inquiryId != null ? `Inquiry #${inquiryId} created (reply with #${inquiryId} <msg>).` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    await sendMail({
+      to: "Corey@HollywoodEastCafe.com",
+      subject: `Catering chat handoff (${subjectChannel}) — ${guestName}`,
+      text,
+      html,
+    });
+  } catch (err) {
+    logger.warn({ err }, "[chat] owner email handoff alert failed");
+  }
+
+  handoffsBySession.set(dedupKey, now);
+
+  // Reply tailored so the model can quote the right reassurance back
+  // to the guest. We deliberately do NOT include phone numbers or
+  // promised callback windows the team hasn't authorized.
+  if (channel === "sms") {
+    const successText =
+      smsBridgeStatus === "sent"
+        ? "We just sent you a quick text from our catering line — reply there and a team member will help plan your event."
+        : smsBridgeStatus === "no-chat-port"
+          ? "We have your number and the team will text you shortly."
+          : "We have your number and the team will text you shortly.";
+    return {
+      ok: true,
+      channel,
+      smsBridge: smsBridgeStatus,
+      inquiryId,
+      message: successText,
+    };
+  }
+  return {
+    ok: true,
+    channel,
+    message:
+      channel === "phone"
+        ? "We have your number and a team member will give you a call as soon as they can."
+        : "We have your email and a team member will reply as soon as they can.",
+  };
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 async function checkEventDate(args: {
   date: string;
@@ -456,9 +763,20 @@ async function checkEventDate(args: {
   };
 }
 
-export async function runChatTool(name: string, args: unknown, snap: Snapshot): Promise<unknown> {
+export type RunChatToolContext = {
+  sessionId?: string;
+};
+
+export async function runChatTool(
+  name: string,
+  args: unknown,
+  snap: Snapshot,
+  ctx: RunChatToolContext = {},
+): Promise<unknown> {
   const a = (args ?? {}) as Record<string, unknown>;
   switch (name) {
+    case "request_human_contact":
+      return requestHumanContact(a as RequestHumanContactArgs, ctx);
     case "search_menu":
       return searchMenu(snap, a as SearchArgs);
     case "list_categories":

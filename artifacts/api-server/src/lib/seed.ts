@@ -391,6 +391,32 @@ async function runStandaloneMigrations(): Promise<void> {
       fetched_at timestamp NOT NULL DEFAULT now()
     )
   `);
+
+  // ── Chat-bot human-handoff requests ──────────────────────────────────────
+  // Captures every "speak with a human" handoff initiated from the AI
+  // concierge chat. Phone/email handoffs land here as the system of
+  // record (admin reviews + marks handled). SMS handoffs ALSO bridge to
+  // a real catering_inquiries row so the existing customer-chat
+  // pipeline takes over — the contact_requests row stores the link via
+  // inquiry_id. Safe to re-run.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS contact_requests (
+      id serial PRIMARY KEY,
+      name text,
+      channel text NOT NULL,
+      contact_value text NOT NULL,
+      summary text,
+      chat_session_id text,
+      inquiry_id integer,
+      status text NOT NULL DEFAULT 'open',
+      created_at timestamp NOT NULL DEFAULT now(),
+      handled_at timestamp
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS contact_requests_status_idx
+      ON contact_requests (status, created_at DESC)
+  `);
 }
 
 async function backfillCategories(): Promise<void> {
