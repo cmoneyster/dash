@@ -1,6 +1,7 @@
 import { Link, useRoute } from "wouter";
 import { ShoppingBag, Heart, MapPin } from "lucide-react";
 import { ChatWidget } from "./ChatWidget";
+import { ThemeToggle } from "./ThemeToggle";
 import { useGetCart, getGetCartQueryKey } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -36,7 +37,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex flex-col relative">
-      <header className="sticky top-0 z-40 bg-white border-b border-border/50">
+      <header className="sticky top-0 z-40 bg-card border-b border-border/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <Link href="/" className="flex items-center group">
             <img
@@ -61,6 +62,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-4">
+            <ThemeToggle />
             <Link
               href="/plan"
               className="p-2 text-foreground/70 hover:text-primary transition-colors"

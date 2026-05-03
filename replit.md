@@ -271,3 +271,12 @@ So per-item label reprints fan out to the same admin-managed CloudPRNT printers 
 
 ### Renderer
 `artifacts/api-server/src/lib/printRenderer.ts` emits 80mm-width text/plain with embedded ESC/POS escapes (bold, double-size, full cut). Default printer mode for TSP143IV's CloudPRNT-side processing accepts text/plain and applies ESC/POS escapes; older TSP650/700/800 will need the same content-type with raster-image rendering — present scaffolding (`renderJob` returns `{ bytes, contentType }`) supports both branches when added later.
+
+### Dark mode (catering-web)
+Site-wide light/dark theme using Tailwind v4's class-based dark variant.
+- `src/index.css` declares `@custom-variant dark (&:where(.dark, .dark *))` and a `.dark { ... }` block that overrides the same `--background`/`--foreground`/`--card`/`--primary`/`--secondary`/`--muted`/`--accent`/`--destructive`/`--border`/`--ring` HSL tokens used by the `@theme inline` mapping. Any component already using token-driven utilities (`bg-background`, `bg-card`, `bg-secondary`, `text-foreground`, `text-muted-foreground`, `border-border`, etc.) inherits dark styling automatically — no per-component `dark:` overrides required for those.
+- `src/hooks/useTheme.ts` persists the user's choice in `localStorage["catering_web_theme"]` as `"light" | "dark" | "system"`, applies/removes `.dark` on `<html>`, and live-reacts to OS `prefers-color-scheme` changes when in `system` mode. `initTheme()` is called from `main.tsx` before `createRoot().render()` so the first paint matches the persisted choice (no light-mode flash).
+- `src/components/ThemeToggle.tsx` is the shared button (icon-only or `withLabel` for sidebars). Toggle flips between explicit light/dark, collapsing `system` to whatever is currently effective.
+- Mounted in: customer site header (`Layout.tsx`), Admin sidebar footer + mobile drawer + mobile top bar (`AdminLayout.tsx`), Staff Order Taker header (`EventTakerOrder.tsx`).
+- Kitchen Display is intentionally always-dark (its own fixed dark palette) and does not show the toggle.
+- Components that hard-code `bg-white` / `text-black` (e.g. some inline modals) still need a `dark:` override per usage; only token-driven surfaces auto-adapt. The Layout header was migrated from `bg-white` → `bg-card` for this reason.

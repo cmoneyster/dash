@@ -3,6 +3,7 @@ import { Link, useRoute, useLocation } from "wouter";
 import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity, Sparkles, Package as PackageIcon, Printer as PrinterIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken, getAdminToken } from "@/components/AdminGuard";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const LOGO_URL = `${import.meta.env.BASE_URL}images/dash-logo.png`;
 
@@ -211,10 +212,11 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 p-4 space-y-2">
           <NavLinks />
         </nav>
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border space-y-2">
+          <ThemeToggle withLabel />
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl font-medium text-foreground/70 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl font-medium text-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-all duration-200"
           >
             <LogOut className="w-5 h-5" />
             Sign Out
@@ -256,6 +258,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <NavLinks onNavigate={() => setDrawerOpen(false)} />
         </nav>
         <div className="p-4 border-t border-border space-y-2">
+          <ThemeToggle withLabel />
           <Link
             href="/"
             onClick={() => setDrawerOpen(false)}
@@ -266,7 +269,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </Link>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl font-medium text-foreground/70 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl font-medium text-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-all duration-200"
           >
             <LogOut className="w-5 h-5" />
             Sign Out
@@ -287,6 +290,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </button>
           <img src={LOGO_URL} alt="" className="h-8 w-8 rounded-lg object-cover" />
           <span className="font-bold text-sm">Admin Portal</span>
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
         </header>
 
         <main className="flex-1 overflow-auto">

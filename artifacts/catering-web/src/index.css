@@ -1,6 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300..700;1,300..700&display=swap');
 @import "tailwindcss";
 
+/* Tailwind v4 dark variant — class-based, applies to descendants of .dark */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --font-sans: 'DM Sans', sans-serif;
   --font-display: 'DM Sans', sans-serif;
@@ -27,32 +30,63 @@
 }
 
 :root {
-  /* Clean, modern, Asian-inspired catering palette */
-  --background: 0 0% 100%;      
-  --foreground: 0 0% 15%;      
-  
+  /* Clean, modern, Asian-inspired catering palette (light) */
+  --background: 0 0% 100%;
+  --foreground: 0 0% 15%;
+
   --card: 0 0% 100%;
   --card-foreground: 0 0% 15%;
-  
-  --primary: 0 0% 38%;         
+
+  --primary: 0 0% 38%;
   --primary-foreground: 0 0% 100%;
-  
-  --secondary: 0 0% 95%;       
+
+  --secondary: 0 0% 95%;
   --secondary-foreground: 0 0% 15%;
-  
+
   --muted: 0 0% 92%;
   --muted-foreground: 0 0% 50%;
-  
-  --accent: 0 0% 25%;         
+
+  --accent: 0 0% 25%;
   --accent-foreground: 0 0% 100%;
-  
+
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  
+
   --border: 0 0% 88%;
   --ring: 0 0% 38%;
 
   --radius: 0.75rem;
+}
+
+/* Dark theme — applied when <html class="dark"> is set. Token-driven
+   surfaces (bg-background / bg-card / bg-secondary / text-foreground /
+   border-border / etc.) automatically pick up these values. Components
+   that hard-code bg-white / text-black still need a `dark:` override
+   per usage. */
+.dark {
+  --background: 0 0% 8%;
+  --foreground: 0 0% 95%;
+
+  --card: 0 0% 12%;
+  --card-foreground: 0 0% 95%;
+
+  --primary: 0 0% 80%;
+  --primary-foreground: 0 0% 10%;
+
+  --secondary: 0 0% 16%;
+  --secondary-foreground: 0 0% 95%;
+
+  --muted: 0 0% 18%;
+  --muted-foreground: 0 0% 65%;
+
+  --accent: 0 0% 75%;
+  --accent-foreground: 0 0% 10%;
+
+  --destructive: 0 70% 55%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 0 0% 22%;
+  --ring: 0 0% 70%;
 }
 
 @layer base {
@@ -72,9 +106,9 @@
 
 @layer utilities {
   .glass-panel {
-    @apply bg-white/80 backdrop-blur-md border border-white/40 shadow-xl shadow-black/5;
+    @apply bg-card/80 backdrop-blur-md border border-border/60 shadow-xl shadow-black/5;
   }
-  
+
   .text-balance {
     text-wrap: balance;
   }

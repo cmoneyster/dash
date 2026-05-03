@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TAX_DISCLOSURE, TAX_INCLUDED_NOTE } from "@/lib/tax";
 import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers, Pencil } from "lucide-react";
 import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
@@ -1039,6 +1040,7 @@ export default function EventTakerOrder() {
                 </button>
               </div>
             )}
+            <ThemeToggle />
             <button
               type="button"
               onClick={() => setPrinterModalOpen(true)}

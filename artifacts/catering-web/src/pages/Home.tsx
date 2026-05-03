@@ -40,7 +40,7 @@ export default function Home() {
               </Link>
               <Link 
                 href="/plan" 
-                className="px-8 py-4 bg-white text-foreground font-bold rounded-xl border border-border shadow-sm hover:border-primary/50 hover:bg-secondary/50 transition-all text-center"
+                className="px-8 py-4 bg-card text-foreground font-bold rounded-xl border border-border shadow-sm hover:border-primary/50 hover:bg-secondary/50 transition-all text-center"
               >
                 Start Planning
               </Link>

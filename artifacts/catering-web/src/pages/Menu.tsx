@@ -211,7 +211,7 @@ export default function Menu() {
                 className={`px-5 py-2 rounded-full font-medium text-sm transition-all ${
                   category === c.value
                     ? "bg-primary text-primary-foreground shadow-md"
-                    : "bg-white border border-border text-foreground hover:border-primary/50"
+                    : "bg-card border border-border text-foreground hover:border-primary/50"
                 }`}
               >
                 {c.label}
