@@ -14,6 +14,8 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 type ServerState = {
   smsActivePorts: number[];
   ownerNotificationPhone: string | null;
+  ownerNotificationEmail: string | null;
+  ownerNotificationEmailSource: "db" | "hardcoded";
   lowStockAlertPhones: string[];
   lowStockAlertThreshold: number | null;
   ejoinConfigured: boolean;
@@ -21,6 +23,8 @@ type ServerState = {
   smsChatPort: number | null;
   smsChatOwnerPhone: string | null;
   smsChatOwnerPhoneSource: "db-chat" | "db-owner" | "env" | "none";
+  smsChatOwnerEmail: string | null;
+  smsChatOwnerEmailSource: "db-chat" | "db-owner" | "hardcoded";
   smsOwnerForwardEnabled: boolean;
   smsOwnerForwardCapPer24h: number | null;
   smsOwnerForwardUnmatchedEnabled: boolean;
@@ -154,6 +158,21 @@ export default function SmsSettings() {
   const [savedChatOwnerPhone, setSavedChatOwnerPhone] = useState(false);
   const [chatOwnerPhoneError, setChatOwnerPhoneError] = useState("");
 
+  // Customer-chat owner-email override (the address that receives chat
+  // human-handoff alert emails). Empty = fall back to the Owner
+  // Notifications email below, then to the legacy hardcoded recipient.
+  const [chatOwnerEmail, setChatOwnerEmail] = useState<string>("");
+  const [savingChatOwnerEmail, setSavingChatOwnerEmail] = useState(false);
+  const [savedChatOwnerEmail, setSavedChatOwnerEmail] = useState(false);
+  const [chatOwnerEmailError, setChatOwnerEmailError] = useState("");
+
+  // Owner Notifications email (DB-managed fallback for chat handoffs
+  // and any future owner email alerts).
+  const [ownerEmail, setOwnerEmail] = useState<string>("");
+  const [savingOwnerEmail, setSavingOwnerEmail] = useState(false);
+  const [savedOwnerEmail, setSavedOwnerEmail] = useState(false);
+  const [ownerEmailError, setOwnerEmailError] = useState("");
+
   // Customer-chat behavior card form state.
   // The three booleans (forward / forward-unmatched / owner-reply)
   // each auto-save on click via the per-toggle handler below — the
@@ -270,6 +289,8 @@ export default function SmsSettings() {
       setThreshold(data.lowStockAlertThreshold != null ? String(data.lowStockAlertThreshold) : "");
       setChatPort(data.smsChatPort != null ? String(data.smsChatPort) : "");
       setChatOwnerPhone(data.smsChatOwnerPhone ?? "");
+      setChatOwnerEmail(data.smsChatOwnerEmail ?? "");
+      setOwnerEmail(data.ownerNotificationEmail ?? "");
       setForwardEnabled(!!data.smsOwnerForwardEnabled);
       setForwardUnmatchedEnabled(!!data.smsOwnerForwardUnmatchedEnabled);
       setForwardCap(data.smsOwnerForwardCapPer24h == null ? "" : String(data.smsOwnerForwardCapPer24h));
@@ -526,6 +547,69 @@ export default function SmsSettings() {
       setChatOwnerPhoneError(e?.message || "Save failed");
     } finally {
       setSavingChatOwnerPhone(false);
+    }
+  }
+
+  // ── Customer-chat owner email override ─────────────────────────────────────
+  // Mirrors saveChatOwnerPhone but for the alert email recipient used
+  // by the chat human-handoff tool. Resolution order at send time:
+  // smsChatOwnerEmail → ownerNotificationEmail → hardcoded ALERT_TO.
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  async function saveChatOwnerEmail() {
+    setSavingChatOwnerEmail(true);
+    setChatOwnerEmailError("");
+    setSavedChatOwnerEmail(false);
+    try {
+      const trimmed = chatOwnerEmail.trim();
+      const value = trimmed === "" ? null : trimmed;
+      if (value !== null && (value.length > 254 || !EMAIL_RE.test(value))) {
+        throw new Error("Email must be a valid address.");
+      }
+      const r = await fetch(`${BASE}/api/admin/sms-settings`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ smsChatOwnerEmail: value }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Save failed");
+      const next = data as ServerState;
+      setServer(next);
+      setChatOwnerEmail(next.smsChatOwnerEmail ?? "");
+      setSavedChatOwnerEmail(true);
+      setTimeout(() => setSavedChatOwnerEmail(false), 2000);
+    } catch (e: any) {
+      setChatOwnerEmailError(e?.message || "Save failed");
+    } finally {
+      setSavingChatOwnerEmail(false);
+    }
+  }
+
+  async function saveOwnerEmail() {
+    setSavingOwnerEmail(true);
+    setOwnerEmailError("");
+    setSavedOwnerEmail(false);
+    try {
+      const trimmed = ownerEmail.trim();
+      const value = trimmed === "" ? null : trimmed;
+      if (value !== null && (value.length > 254 || !EMAIL_RE.test(value))) {
+        throw new Error("Email must be a valid address.");
+      }
+      const r = await fetch(`${BASE}/api/admin/sms-settings`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ ownerNotificationEmail: value }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Save failed");
+      const next = data as ServerState;
+      setServer(next);
+      setOwnerEmail(next.ownerNotificationEmail ?? "");
+      setSavedOwnerEmail(true);
+      setTimeout(() => setSavedOwnerEmail(false), 2000);
+    } catch (e: any) {
+      setOwnerEmailError(e?.message || "Save failed");
+    } finally {
+      setSavingOwnerEmail(false);
     }
   }
 
@@ -895,11 +979,11 @@ export default function SmsSettings() {
               </div>
             </section>
 
-            {/* ── Card 1b: Customer Chat Port (single SIM) ──────────────── */}
+            {/* ── Card 1b: Customer Chat (port + phone + email) ────────── */}
             <section className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <MessagesSquare className="w-4 h-4 text-muted-foreground" />
-                <h2 className="font-display font-bold text-lg">Customer Chat Port</h2>
+                <h2 className="font-display font-bold text-lg">Customer Chat</h2>
                 <StatusPill
                   ok={server?.smsChatPort != null}
                   okLabel={`Port ${server?.smsChatPort}`}
@@ -909,6 +993,11 @@ export default function SmsSettings() {
                   Inbound: {server?.smsInboundMode === "push" ? "webhook (push)" : "poller (pull)"}
                 </span>
               </div>
+
+              {/* ── Customer Chat Port subsection ──────────────────────── */}
+              <h3 className="font-display font-semibold text-sm text-foreground/80 uppercase tracking-wide">
+                Customer Chat Port
+              </h3>
               <p className="text-sm text-muted-foreground">
                 The single SIM that customers see when they receive any catering text — quotes, change-request replies,
                 invoice notifications, event reminders, and the inquiry chat composer all go through this one port.
@@ -1046,6 +1135,65 @@ export default function SmsSettings() {
                   </p>
                 )}
               </div>
+
+              {/* ── Email for customer chat ─────────────────────────────── */}
+              <div className="border-t border-border pt-4 space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label
+                    className="block text-sm font-medium text-foreground"
+                    htmlFor="chatOwnerEmailInput"
+                  >
+                    Email for customer chat
+                  </label>
+                  {server?.smsChatOwnerEmailSource === "db-chat" && (
+                    <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      Active
+                    </span>
+                  )}
+                  {server?.smsChatOwnerEmailSource === "db-owner" && (
+                    <span className="text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                      Falling back to Owner Notifications email
+                    </span>
+                  )}
+                  {server?.smsChatOwnerEmailSource === "hardcoded" && (
+                    <span className="text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                      Falling back to legacy hardcoded email
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Inbox that receives the chat human-handoff alert email when a guest asks to be reached by phone, email,
+                  or text from the website chat. Leave blank to fall back to the Owner Notifications email below.
+                </p>
+                <input
+                  id="chatOwnerEmailInput"
+                  type="email"
+                  value={chatOwnerEmail}
+                  onChange={e => setChatOwnerEmail(e.target.value)}
+                  placeholder="catering@example.com"
+                  className="w-full max-w-xs px-4 py-2 border border-border rounded-xl bg-background"
+                />
+                {chatOwnerEmailError && (
+                  <p className="text-destructive text-sm">{chatOwnerEmailError}</p>
+                )}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={saveChatOwnerEmail}
+                    disabled={savingChatOwnerEmail}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+                  >
+                    {savingChatOwnerEmail ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : savedChatOwnerEmail ? (
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    {savingChatOwnerEmail ? "Saving…" : savedChatOwnerEmail ? "Saved!" : "Save Chat Owner Email"}
+                  </button>
+                </div>
+              </div>
             </section>
 
             {/* ── Card 2: Owner Notifications ────────────────────────────── */}
@@ -1133,6 +1281,58 @@ export default function SmsSettings() {
                   {ownerTestFeedback.message}
                 </p>
               )}
+
+              {/* ── Owner email (fallback for chat handoff emails) ─────── */}
+              <div className="border-t border-border pt-4 space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label
+                    className="block text-sm font-medium text-foreground"
+                    htmlFor="ownerEmailInput"
+                  >
+                    Owner email
+                  </label>
+                  {server?.ownerNotificationEmailSource === "db" && (
+                    <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      Active
+                    </span>
+                  )}
+                  {server?.ownerNotificationEmailSource === "hardcoded" && (
+                    <span className="text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                      Using legacy hardcoded email
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Default inbox for owner email alerts. Used as the fallback recipient for chat human-handoff emails when
+                  no chat-specific email is set above. Leave blank to fall back to the legacy hardcoded address.
+                </p>
+                <input
+                  id="ownerEmailInput"
+                  type="email"
+                  value={ownerEmail}
+                  onChange={e => setOwnerEmail(e.target.value)}
+                  placeholder="owner@example.com"
+                  className="w-full max-w-xs px-4 py-2 border border-border rounded-xl bg-background"
+                />
+                {ownerEmailError && <p className="text-destructive text-sm">{ownerEmailError}</p>}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={saveOwnerEmail}
+                    disabled={savingOwnerEmail}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+                  >
+                    {savingOwnerEmail ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : savedOwnerEmail ? (
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    {savingOwnerEmail ? "Saving…" : savedOwnerEmail ? "Saved!" : "Save Owner Email"}
+                  </button>
+                </div>
+              </div>
             </section>
 
             {/* ── Card 2a': SIM Gateway Poll Cadence ─────────────────────

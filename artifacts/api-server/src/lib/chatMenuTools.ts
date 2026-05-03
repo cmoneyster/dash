@@ -5,8 +5,9 @@ import {
   recommendedMenuItemsTable,
   cateringInquiriesTable,
   contactRequestsTable,
+  eventSettingsTable,
 } from "@workspace/db/schema";
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import {
   computeDayLoad,
   findOpenAlternates,
@@ -15,7 +16,7 @@ import {
   type ServiceStyleKey,
 } from "./dayLoad";
 import { sendNewInquiryAlert, sendSms } from "./sms";
-import { sendMail } from "./mail";
+import { sendMail, ALERT_TO } from "./mail";
 import { sendToCustomerGuarded, normalizePhoneDigits } from "./sms-inbox";
 import { getChatPort } from "./sms-ejoin";
 import { logger } from "./logger";
@@ -618,8 +619,27 @@ async function requestHumanContact(
     ]
       .filter(Boolean)
       .join("\n");
+    // Resolve recipient via the same chain the SMS Settings UI shows:
+    // smsChatOwnerEmail → ownerNotificationEmail → legacy hardcoded
+    // ALERT_TO (sendMail's default when `to` is omitted).
+    let resolvedTo = ALERT_TO;
+    try {
+      const [settings] = await db
+        .select({
+          chatOwner: eventSettingsTable.smsChatOwnerEmail,
+          owner: eventSettingsTable.ownerNotificationEmail,
+        })
+        .from(eventSettingsTable)
+        .where(eq(eventSettingsTable.id, 1));
+      resolvedTo =
+        settings?.chatOwner?.trim() ||
+        settings?.owner?.trim() ||
+        ALERT_TO;
+    } catch (err) {
+      logger.warn({ err }, "[chat] failed to resolve chat-owner email; falling back to default ALERT_TO");
+    }
     await sendMail({
-      to: "Corey@HollywoodEastCafe.com",
+      to: resolvedTo,
       subject: `Catering chat handoff (${subjectChannel}) — ${guestName}`,
       text,
       html,

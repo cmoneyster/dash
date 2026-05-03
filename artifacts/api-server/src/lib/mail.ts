@@ -4,7 +4,11 @@
 
 import nodemailer from "nodemailer";
 
-const ALERT_TO   = "Corey@HollywoodEastCafe.com";
+// Exported so chat-handoff callers can use it as the final link in the
+// smsChatOwnerEmail → ownerNotificationEmail → ALERT_TO fallback chain
+// (kept hardcoded so a fresh deploy with no DB-managed email still
+// reaches a real human).
+export const ALERT_TO   = "Corey@HollywoodEastCafe.com";
 const ALERT_FROM = "dash@HollywoodEastCafe.com";
 
 function getTransport() {

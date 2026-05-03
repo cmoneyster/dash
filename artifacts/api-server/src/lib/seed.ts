@@ -333,6 +333,16 @@ async function runStandaloneMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS otd_max_additional_hours integer NOT NULL DEFAULT 3
   `);
 
+  // ── Owner / chat-owner notification email columns ────────────────────────
+  // Both nullable. Resolution order at chat-handoff send time:
+  // sms_chat_owner_email → owner_notification_email → legacy hardcoded
+  // ALERT_TO in lib/mail.ts. Safe to re-run.
+  await db.execute(sql`
+    ALTER TABLE event_settings
+      ADD COLUMN IF NOT EXISTS owner_notification_email text,
+      ADD COLUMN IF NOT EXISTS sms_chat_owner_email text
+  `);
+
   // ── Site & Social + Instagram hashtag-wall ───────────────────────────────
   // Single-row event_settings gains the brand Instagram handle plus the
   // hashtag-wall config (watched tags, on/off toggle, placement, auto-rules,

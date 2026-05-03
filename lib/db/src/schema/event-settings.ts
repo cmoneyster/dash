@@ -41,6 +41,12 @@ export const eventSettingsTable = pgTable("event_settings", {
   // takes precedence over the OWNER_PHONE env var. Stored as the admin
   // typed it (E.164-ish) — sender normalizes before dispatch.
   ownerNotificationPhone: text("owner_notification_phone"),
+  // Owner email for non-SMS owner notifications (currently used as the
+  // fallback recipient for chat human-handoff alert emails when no
+  // chat-specific email is set). When blank, callers fall back to the
+  // legacy hardcoded ALERT_TO address in lib/mail.ts. Stored as the
+  // admin typed it; consumers should trim before use.
+  ownerNotificationEmail: text("owner_notification_email"),
   // ── Customer chat port ────────────────────────────────────────────────────
   // Single physical SIM port on the gateway dedicated to two-way customer
   // SMS chat (quote sends, change-request replies, the inquiry composer,
@@ -58,6 +64,13 @@ export const eventSettingsTable = pgTable("event_settings", {
   // → OWNER_PHONE env var → null. Stored as the admin typed it; sender
   // normalizes before dispatch.
   smsChatOwnerPhone: text("sms_chat_owner_phone"),
+  // Optional email address that receives chat human-handoff alerts
+  // (when a guest asks the website chat to be reached by phone, email,
+  // or text). Lets the admin route chat alerts to a different inbox
+  // than the regular ownerNotificationEmail. Resolution order at send
+  // time: smsChatOwnerEmail → ownerNotificationEmail → legacy
+  // hardcoded ALERT_TO. Stored as the admin typed it.
+  smsChatOwnerEmail: text("sms_chat_owner_email"),
   // Toggle: forward inbound customer messages to the owner phone.
   // This controls forwards for messages tied to a real catering inquiry
   // (e.g. "[Catering #123 · Jane] ..."). Unmatched-sender forwards

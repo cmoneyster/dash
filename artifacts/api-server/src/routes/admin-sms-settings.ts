@@ -42,10 +42,12 @@ type SmsSettingsUpdate = Partial<
     typeof eventSettingsTable.$inferInsert,
     | "smsActivePorts"
     | "ownerNotificationPhone"
+    | "ownerNotificationEmail"
     | "lowStockAlertPhones"
     | "lowStockAlertThreshold"
     | "smsChatPort"
     | "smsChatOwnerPhone"
+    | "smsChatOwnerEmail"
     | "smsOwnerForwardEnabled"
     | "smsOwnerForwardCapPer24h"
     | "smsOwnerForwardUnmatchedEnabled"
@@ -130,6 +132,36 @@ function normalizeChatOwnerPhone(v: unknown): string | null {
     throw new HttpError("smsChatOwnerPhone must contain at least 7 digits");
   }
   return trimmed.slice(0, 32);
+}
+
+// Email validators for the new chat-owner / owner notification email
+// fields. Empty / null clears the value (caller falls back to the next
+// link in the chain). Anything else must look like an email and fit in
+// 254 chars (RFC 5321 path limit).
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function normalizeOwnerEmail(v: unknown): string | null {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v !== "string") {
+    throw new HttpError("ownerNotificationEmail must be a string");
+  }
+  const trimmed = v.trim();
+  if (trimmed === "") return null;
+  if (trimmed.length > 254 || !EMAIL_RE.test(trimmed)) {
+    throw new HttpError("ownerNotificationEmail must be a valid email address");
+  }
+  return trimmed;
+}
+function normalizeChatOwnerEmail(v: unknown): string | null {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v !== "string") {
+    throw new HttpError("smsChatOwnerEmail must be a string");
+  }
+  const trimmed = v.trim();
+  if (trimmed === "") return null;
+  if (trimmed.length > 254 || !EMAIL_RE.test(trimmed)) {
+    throw new HttpError("smsChatOwnerEmail must be a valid email address");
+  }
+  return trimmed;
 }
 
 function normalizeAlertPhones(v: unknown): string[] {
@@ -232,6 +264,8 @@ const DEFAULT_EVENT_NAME = "dash by Hollywood East Cafe";
 function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   smsActivePorts: number[];
   ownerNotificationPhone: string | null;
+  ownerNotificationEmail: string | null;
+  ownerNotificationEmailSource: "db" | "hardcoded";
   lowStockAlertPhones: string[];
   lowStockAlertThreshold: number | null;
   ejoinConfigured: boolean;
@@ -239,6 +273,8 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   smsChatPort: number | null;
   smsChatOwnerPhone: string | null;
   smsChatOwnerPhoneSource: "db-chat" | "db-owner" | "env" | "none";
+  smsChatOwnerEmail: string | null;
+  smsChatOwnerEmailSource: "db-chat" | "db-owner" | "hardcoded";
   smsOwnerForwardEnabled: boolean;
   smsOwnerForwardCapPer24h: number | null;
   smsOwnerForwardUnmatchedEnabled: boolean;
@@ -260,9 +296,18 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   const dbChatOwner = s?.smsChatOwnerPhone?.trim() || null;
   const smsChatOwnerPhoneSource: "db-chat" | "db-owner" | "env" | "none" =
     dbChatOwner ? "db-chat" : dbOwner ? "db-owner" : envOwner ? "env" : "none";
+  // Email fallback chain mirrors the phone one but has no env link —
+  // the legacy fallback is the hardcoded ALERT_TO in lib/mail.ts.
+  const dbOwnerEmail = s?.ownerNotificationEmail?.trim() || null;
+  const dbChatOwnerEmail = s?.smsChatOwnerEmail?.trim() || null;
+  const ownerNotificationEmailSource: "db" | "hardcoded" = dbOwnerEmail ? "db" : "hardcoded";
+  const smsChatOwnerEmailSource: "db-chat" | "db-owner" | "hardcoded" =
+    dbChatOwnerEmail ? "db-chat" : dbOwnerEmail ? "db-owner" : "hardcoded";
   return {
     smsActivePorts: s?.smsActivePorts ?? [7],
     ownerNotificationPhone: dbOwner,
+    ownerNotificationEmail: dbOwnerEmail,
+    ownerNotificationEmailSource,
     lowStockAlertPhones: s?.lowStockAlertPhones ?? [],
     lowStockAlertThreshold: s?.lowStockAlertThreshold ?? null,
     ejoinConfigured: isEjoinConfigured(),
@@ -272,6 +317,8 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
     smsChatPort: s?.smsChatPort ?? null,
     smsChatOwnerPhone: dbChatOwner,
     smsChatOwnerPhoneSource,
+    smsChatOwnerEmail: dbChatOwnerEmail,
+    smsChatOwnerEmailSource,
     smsOwnerForwardEnabled: !!s?.smsOwnerForwardEnabled,
     smsOwnerForwardCapPer24h: s?.smsOwnerForwardCapPer24h ?? null,
     smsOwnerForwardUnmatchedEnabled: !!s?.smsOwnerForwardUnmatchedEnabled,
@@ -304,10 +351,12 @@ router.put("/admin/sms-settings", async (req, res) => {
     const body = req.body as {
       smsActivePorts?: unknown;
       ownerNotificationPhone?: unknown;
+      ownerNotificationEmail?: unknown;
       lowStockAlertPhones?: unknown;
       lowStockAlertThreshold?: unknown;
       smsChatPort?: unknown;
       smsChatOwnerPhone?: unknown;
+      smsChatOwnerEmail?: unknown;
       smsOwnerForwardEnabled?: unknown;
       smsOwnerForwardCapPer24h?: unknown;
       smsOwnerForwardUnmatchedEnabled?: unknown;
@@ -323,6 +372,9 @@ router.put("/admin/sms-settings", async (req, res) => {
     if (body.ownerNotificationPhone !== undefined) {
       updates.ownerNotificationPhone = normalizeOwnerPhone(body.ownerNotificationPhone);
     }
+    if (body.ownerNotificationEmail !== undefined) {
+      updates.ownerNotificationEmail = normalizeOwnerEmail(body.ownerNotificationEmail);
+    }
     if (body.lowStockAlertPhones !== undefined) {
       updates.lowStockAlertPhones = normalizeAlertPhones(body.lowStockAlertPhones);
     }
@@ -334,6 +386,9 @@ router.put("/admin/sms-settings", async (req, res) => {
     }
     if (body.smsChatOwnerPhone !== undefined) {
       updates.smsChatOwnerPhone = normalizeChatOwnerPhone(body.smsChatOwnerPhone);
+    }
+    if (body.smsChatOwnerEmail !== undefined) {
+      updates.smsChatOwnerEmail = normalizeChatOwnerEmail(body.smsChatOwnerEmail);
     }
     if (body.smsOwnerForwardEnabled !== undefined) {
       updates.smsOwnerForwardEnabled = normalizeBool(body.smsOwnerForwardEnabled, "smsOwnerForwardEnabled");
@@ -393,9 +448,11 @@ router.put("/admin/sms-settings", async (req, res) => {
           eventPassword: process.env.EVENT_PASSWORD ?? "",
           smsActivePorts: updates.smsActivePorts ?? [7],
           ownerNotificationPhone: updates.ownerNotificationPhone ?? null,
+          ownerNotificationEmail: updates.ownerNotificationEmail ?? null,
           lowStockAlertPhones: updates.lowStockAlertPhones ?? [],
           lowStockAlertThreshold: updates.lowStockAlertThreshold ?? null,
           smsChatOwnerPhone: updates.smsChatOwnerPhone ?? null,
+          smsChatOwnerEmail: updates.smsChatOwnerEmail ?? null,
           smsOwnerForwardEnabled: updates.smsOwnerForwardEnabled ?? false,
           smsOwnerForwardCapPer24h: updates.smsOwnerForwardCapPer24h ?? 1,
           smsOwnerForwardUnmatchedEnabled: updates.smsOwnerForwardUnmatchedEnabled ?? false,
