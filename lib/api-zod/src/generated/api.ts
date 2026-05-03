@@ -80,6 +80,16 @@ export const ListMenuItemsResponseItem = zod.object({
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
+  labelPolicy: zod
+    .enum(["per_unit", "combined", "per_box"])
+    .optional()
+    .describe("How many physical item labels to print per quantity ordered."),
+  labelBoxSize: zod
+    .number()
+    .nullish()
+    .describe(
+      "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
+    ),
   createdAt: zod.coerce.date(),
 });
 export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
@@ -149,6 +159,16 @@ export const GetMenuItemResponse = zod.object({
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
+  labelPolicy: zod
+    .enum(["per_unit", "combined", "per_box"])
+    .optional()
+    .describe("How many physical item labels to print per quantity ordered."),
+  labelBoxSize: zod
+    .number()
+    .nullish()
+    .describe(
+      "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
+    ),
   createdAt: zod.coerce.date(),
 });
 
@@ -213,6 +233,16 @@ export const AdminListMenuItemsResponseItem = zod.object({
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
+  labelPolicy: zod
+    .enum(["per_unit", "combined", "per_box"])
+    .optional()
+    .describe("How many physical item labels to print per quantity ordered."),
+  labelBoxSize: zod
+    .number()
+    .nullish()
+    .describe(
+      "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
+    ),
   createdAt: zod.coerce.date(),
 });
 export const AdminListMenuItemsResponse = zod.array(
@@ -243,6 +273,8 @@ export const CreateMenuItemBody = zod.object({
   eventTakerPrice: zod.number().nullish(),
   eventStock: zod.number().nullish(),
   otdEligible: zod.boolean().optional(),
+  labelPolicy: zod.enum(["per_unit", "combined", "per_box"]).optional(),
+  labelBoxSize: zod.number().nullish(),
 });
 
 /**
@@ -273,6 +305,8 @@ export const UpdateMenuItemBody = zod.object({
   eventTakerPrice: zod.number().nullish(),
   eventStock: zod.number().nullish(),
   otdEligible: zod.boolean().optional(),
+  labelPolicy: zod.enum(["per_unit", "combined", "per_box"]).optional(),
+  labelBoxSize: zod.number().nullish(),
 });
 
 export const updateMenuItemResponseMinimumOrderQtyDefault = 1;
@@ -332,6 +366,16 @@ export const UpdateMenuItemResponse = zod.object({
     .optional()
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+    ),
+  labelPolicy: zod
+    .enum(["per_unit", "combined", "per_box"])
+    .optional()
+    .describe("How many physical item labels to print per quantity ordered."),
+  labelBoxSize: zod
+    .number()
+    .nullish()
+    .describe(
+      "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
     ),
   createdAt: zod.coerce.date(),
 });
@@ -605,6 +649,18 @@ export const GetCartResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
+        labelPolicy: zod
+          .enum(["per_unit", "combined", "per_box"])
+          .optional()
+          .describe(
+            "How many physical item labels to print per quantity ordered.",
+          ),
+        labelBoxSize: zod
+          .number()
+          .nullish()
+          .describe(
+            "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
+          ),
         createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
@@ -691,6 +747,18 @@ export const AddToCartResponse = zod.object({
           .optional()
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
+        labelPolicy: zod
+          .enum(["per_unit", "combined", "per_box"])
+          .optional()
+          .describe(
+            "How many physical item labels to print per quantity ordered.",
+          ),
+        labelBoxSize: zod
+          .number()
+          .nullish()
+          .describe(
+            "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
         createdAt: zod.coerce.date(),
       }),
@@ -781,6 +849,18 @@ export const UpdateCartItemResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
+        labelPolicy: zod
+          .enum(["per_unit", "combined", "per_box"])
+          .optional()
+          .describe(
+            "How many physical item labels to print per quantity ordered.",
+          ),
+        labelBoxSize: zod
+          .number()
+          .nullish()
+          .describe(
+            "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
+          ),
         createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
@@ -865,6 +945,18 @@ export const RemoveFromCartResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
+        labelPolicy: zod
+          .enum(["per_unit", "combined", "per_box"])
+          .optional()
+          .describe(
+            "How many physical item labels to print per quantity ordered.",
+          ),
+        labelBoxSize: zod
+          .number()
+          .nullish()
+          .describe(
+            "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
+          ),
         createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
@@ -947,6 +1039,18 @@ export const GetPlanResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
+        labelPolicy: zod
+          .enum(["per_unit", "combined", "per_box"])
+          .optional()
+          .describe(
+            "How many physical item labels to print per quantity ordered.",
+          ),
+        labelBoxSize: zod
+          .number()
+          .nullish()
+          .describe(
+            "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
+          ),
         createdAt: zod.coerce.date(),
       }),
     }),
@@ -1024,6 +1128,18 @@ export const AddToPlanResponse = zod.object({
           .optional()
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
+        labelPolicy: zod
+          .enum(["per_unit", "combined", "per_box"])
+          .optional()
+          .describe(
+            "How many physical item labels to print per quantity ordered.",
+          ),
+        labelBoxSize: zod
+          .number()
+          .nullish()
+          .describe(
+            "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
         createdAt: zod.coerce.date(),
       }),
@@ -1103,6 +1219,18 @@ export const RemoveFromPlanResponse = zod.object({
           .optional()
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
+        labelPolicy: zod
+          .enum(["per_unit", "combined", "per_box"])
+          .optional()
+          .describe(
+            "How many physical item labels to print per quantity ordered.",
+          ),
+        labelBoxSize: zod
+          .number()
+          .nullish()
+          .describe(
+            "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
         createdAt: zod.coerce.date(),
       }),
@@ -1309,6 +1437,18 @@ export const SuggestMenuItemsResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
+        labelPolicy: zod
+          .enum(["per_unit", "combined", "per_box"])
+          .optional()
+          .describe(
+            "How many physical item labels to print per quantity ordered.",
+          ),
+        labelBoxSize: zod
+          .number()
+          .nullish()
+          .describe(
+            "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
+          ),
         createdAt: zod.coerce.date(),
       }),
       recommendedQuantity: zod.number(),
@@ -1468,4 +1608,213 @@ export const SendOpenaiMessageParams = zod.object({
 
 export const SendOpenaiMessageBody = zod.object({
   content: zod.string(),
+});
+
+/**
+ * @summary List all configured printers
+ */
+export const ListPrintersResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  model: zod
+    .string()
+    .describe("Star printer model (e.g. TSP143IV, TSP100IV, TSP650II)"),
+  cloudprntToken: zod
+    .string()
+    .describe(
+      "Per-printer secret token; the printer polls \/api\/cloudprnt\/{token}.",
+    ),
+  lanIp: zod
+    .string()
+    .nullish()
+    .describe("Trailer-LAN IP for the WebPRNT browser-side fallback."),
+  location: zod.string().nullish(),
+  printsKitchenTicket: zod.boolean(),
+  printsCustomerReceipt: zod.boolean(),
+  printsItemLabels: zod.boolean(),
+  autoPrintOnNewOrder: zod.boolean(),
+  allowLanFallback: zod.boolean(),
+  suppressItemLabelsForPlateLines: zod.boolean(),
+  enabled: zod.boolean(),
+  status: zod.enum(["online", "offline", "error", "disabled"]),
+  lastPolledAt: zod.coerce.date().nullish(),
+  lastError: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const ListPrintersResponse = zod.array(ListPrintersResponseItem);
+
+/**
+ * @summary Register a new CloudPRNT printer
+ */
+export const CreatePrinterBody = zod.object({
+  name: zod.string(),
+  model: zod.string().optional(),
+  lanIp: zod.string().nullish(),
+  location: zod.string().nullish(),
+  printsKitchenTicket: zod.boolean().optional(),
+  printsCustomerReceipt: zod.boolean().optional(),
+  printsItemLabels: zod.boolean().optional(),
+  autoPrintOnNewOrder: zod.boolean().optional(),
+  allowLanFallback: zod.boolean().optional(),
+  suppressItemLabelsForPlateLines: zod.boolean().optional(),
+  enabled: zod.boolean().optional(),
+});
+
+/**
+ * @summary Update a printer's configuration
+ */
+export const UpdatePrinterParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdatePrinterBody = zod.object({
+  name: zod.string().optional(),
+  model: zod.string().optional(),
+  lanIp: zod.string().nullish(),
+  location: zod.string().nullish(),
+  printsKitchenTicket: zod.boolean().optional(),
+  printsCustomerReceipt: zod.boolean().optional(),
+  printsItemLabels: zod.boolean().optional(),
+  autoPrintOnNewOrder: zod.boolean().optional(),
+  allowLanFallback: zod.boolean().optional(),
+  suppressItemLabelsForPlateLines: zod.boolean().optional(),
+  enabled: zod.boolean().optional(),
+});
+
+export const UpdatePrinterResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  model: zod
+    .string()
+    .describe("Star printer model (e.g. TSP143IV, TSP100IV, TSP650II)"),
+  cloudprntToken: zod
+    .string()
+    .describe(
+      "Per-printer secret token; the printer polls \/api\/cloudprnt\/{token}.",
+    ),
+  lanIp: zod
+    .string()
+    .nullish()
+    .describe("Trailer-LAN IP for the WebPRNT browser-side fallback."),
+  location: zod.string().nullish(),
+  printsKitchenTicket: zod.boolean(),
+  printsCustomerReceipt: zod.boolean(),
+  printsItemLabels: zod.boolean(),
+  autoPrintOnNewOrder: zod.boolean(),
+  allowLanFallback: zod.boolean(),
+  suppressItemLabelsForPlateLines: zod.boolean(),
+  enabled: zod.boolean(),
+  status: zod.enum(["online", "offline", "error", "disabled"]),
+  lastPolledAt: zod.coerce.date().nullish(),
+  lastError: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Delete a printer
+ */
+export const DeletePrinterParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Send a test print job to a printer
+ */
+export const TestPrintPrinterParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const testPrintPrinterBodyJobTypeDefault = `test`;
+
+export const TestPrintPrinterBody = zod.object({
+  jobType: zod
+    .enum(["kitchen_ticket", "customer_receipt", "item_label", "test"])
+    .default(testPrintPrinterBodyJobTypeDefault),
+  message: zod.string().nullish(),
+});
+
+export const TestPrintPrinterResponse = zod.object({
+  id: zod.number(),
+  printerId: zod.number(),
+  jobType: zod.enum([
+    "kitchen_ticket",
+    "customer_receipt",
+    "item_label",
+    "plate_label",
+    "test",
+  ]),
+  orderSource: zod.enum(["order", "event_order"]).nullish(),
+  orderId: zod.number().nullish(),
+  contentType: zod.string(),
+  status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
+  attempts: zod.number(),
+  deliveredVia: zod.enum(["cloudprnt", "lan_fallback"]).nullish(),
+  error: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  deliveredAt: zod.coerce.date().nullish(),
+  printedAt: zod.coerce.date().nullish(),
+});
+
+/**
+ * @summary Recent print jobs (most recent first)
+ */
+export const listPrintJobsQueryLimitDefault = 100;
+
+export const ListPrintJobsQueryParams = zod.object({
+  printerId: zod.coerce.number().optional(),
+  limit: zod.coerce.number().default(listPrintJobsQueryLimitDefault),
+});
+
+export const ListPrintJobsResponseItem = zod.object({
+  id: zod.number(),
+  printerId: zod.number(),
+  jobType: zod.enum([
+    "kitchen_ticket",
+    "customer_receipt",
+    "item_label",
+    "plate_label",
+    "test",
+  ]),
+  orderSource: zod.enum(["order", "event_order"]).nullish(),
+  orderId: zod.number().nullish(),
+  contentType: zod.string(),
+  status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
+  attempts: zod.number(),
+  deliveredVia: zod.enum(["cloudprnt", "lan_fallback"]).nullish(),
+  error: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  deliveredAt: zod.coerce.date().nullish(),
+  printedAt: zod.coerce.date().nullish(),
+});
+export const ListPrintJobsResponse = zod.array(ListPrintJobsResponseItem);
+
+/**
+ * @summary Re-queue a failed print job
+ */
+export const RetryPrintJobParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RetryPrintJobResponse = zod.object({
+  id: zod.number(),
+  printerId: zod.number(),
+  jobType: zod.enum([
+    "kitchen_ticket",
+    "customer_receipt",
+    "item_label",
+    "plate_label",
+    "test",
+  ]),
+  orderSource: zod.enum(["order", "event_order"]).nullish(),
+  orderId: zod.number().nullish(),
+  contentType: zod.string(),
+  status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
+  attempts: zod.number(),
+  deliveredVia: zod.enum(["cloudprnt", "lan_fallback"]).nullish(),
+  error: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  deliveredAt: zod.coerce.date().nullish(),
+  printedAt: zod.coerce.date().nullish(),
 });

@@ -31,6 +31,7 @@ import type {
   CreateMenuItemBody,
   CreateOpenaiConversationBody,
   CreateOrderBody,
+  CreatePrinterBody,
   DayLoadResponse,
   ErrorResponse,
   GetCartParams,
@@ -39,6 +40,7 @@ import type {
   HealthStatus,
   IdleActivitySnapshot,
   ListMenuItemsParams,
+  ListPrintJobsParams,
   MenuItem,
   OpenaiConversation,
   OpenaiConversationWithMessages,
@@ -46,6 +48,8 @@ import type {
   OpenaiMessage,
   Order,
   Plan,
+  PrintJob,
+  Printer,
   RecommendedItem,
   ReorderRecommendationsBody,
   SendOpenaiMessageBody,
@@ -53,10 +57,12 @@ import type {
   SuggestItemsResponse,
   SyncRecommendationsBody,
   SyncRecommendationsResponse,
+  TestPrintBody,
   TopSeller,
   UpdateCartItemBody,
   UpdateMenuItemBody,
   UpdateOrderStatusBody,
+  UpdatePrinterBody,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -3298,4 +3304,601 @@ export const useSendOpenaiMessage = <
   TContext
 > => {
   return useMutation(getSendOpenaiMessageMutationOptions(options));
+};
+
+/**
+ * @summary List all configured printers
+ */
+export const getListPrintersUrl = () => {
+  return `/api/admin/printers`;
+};
+
+export const listPrinters = async (
+  options?: RequestInit,
+): Promise<Printer[]> => {
+  return customFetch<Printer[]>(getListPrintersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPrintersQueryKey = () => {
+  return [`/api/admin/printers`] as const;
+};
+
+export const getListPrintersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPrinters>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPrinters>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPrintersQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPrinters>>> = ({
+    signal,
+  }) => listPrinters({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPrinters>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPrintersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPrinters>>
+>;
+export type ListPrintersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all configured printers
+ */
+
+export function useListPrinters<
+  TData = Awaited<ReturnType<typeof listPrinters>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPrinters>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPrintersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Register a new CloudPRNT printer
+ */
+export const getCreatePrinterUrl = () => {
+  return `/api/admin/printers`;
+};
+
+export const createPrinter = async (
+  createPrinterBody: CreatePrinterBody,
+  options?: RequestInit,
+): Promise<Printer> => {
+  return customFetch<Printer>(getCreatePrinterUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createPrinterBody),
+  });
+};
+
+export const getCreatePrinterMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPrinter>>,
+    TError,
+    { data: BodyType<CreatePrinterBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createPrinter>>,
+  TError,
+  { data: BodyType<CreatePrinterBody> },
+  TContext
+> => {
+  const mutationKey = ["createPrinter"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createPrinter>>,
+    { data: BodyType<CreatePrinterBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createPrinter(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreatePrinterMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createPrinter>>
+>;
+export type CreatePrinterMutationBody = BodyType<CreatePrinterBody>;
+export type CreatePrinterMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Register a new CloudPRNT printer
+ */
+export const useCreatePrinter = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPrinter>>,
+    TError,
+    { data: BodyType<CreatePrinterBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createPrinter>>,
+  TError,
+  { data: BodyType<CreatePrinterBody> },
+  TContext
+> => {
+  return useMutation(getCreatePrinterMutationOptions(options));
+};
+
+/**
+ * @summary Update a printer's configuration
+ */
+export const getUpdatePrinterUrl = (id: number) => {
+  return `/api/admin/printers/${id}`;
+};
+
+export const updatePrinter = async (
+  id: number,
+  updatePrinterBody: UpdatePrinterBody,
+  options?: RequestInit,
+): Promise<Printer> => {
+  return customFetch<Printer>(getUpdatePrinterUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updatePrinterBody),
+  });
+};
+
+export const getUpdatePrinterMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePrinter>>,
+    TError,
+    { id: number; data: BodyType<UpdatePrinterBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updatePrinter>>,
+  TError,
+  { id: number; data: BodyType<UpdatePrinterBody> },
+  TContext
+> => {
+  const mutationKey = ["updatePrinter"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updatePrinter>>,
+    { id: number; data: BodyType<UpdatePrinterBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updatePrinter(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdatePrinterMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updatePrinter>>
+>;
+export type UpdatePrinterMutationBody = BodyType<UpdatePrinterBody>;
+export type UpdatePrinterMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a printer's configuration
+ */
+export const useUpdatePrinter = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePrinter>>,
+    TError,
+    { id: number; data: BodyType<UpdatePrinterBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updatePrinter>>,
+  TError,
+  { id: number; data: BodyType<UpdatePrinterBody> },
+  TContext
+> => {
+  return useMutation(getUpdatePrinterMutationOptions(options));
+};
+
+/**
+ * @summary Delete a printer
+ */
+export const getDeletePrinterUrl = (id: number) => {
+  return `/api/admin/printers/${id}`;
+};
+
+export const deletePrinter = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeletePrinterUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeletePrinterMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePrinter>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deletePrinter>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deletePrinter"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deletePrinter>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deletePrinter(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeletePrinterMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deletePrinter>>
+>;
+
+export type DeletePrinterMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a printer
+ */
+export const useDeletePrinter = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePrinter>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deletePrinter>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeletePrinterMutationOptions(options));
+};
+
+/**
+ * @summary Send a test print job to a printer
+ */
+export const getTestPrintPrinterUrl = (id: number) => {
+  return `/api/admin/printers/${id}/test-print`;
+};
+
+export const testPrintPrinter = async (
+  id: number,
+  testPrintBody: TestPrintBody,
+  options?: RequestInit,
+): Promise<PrintJob> => {
+  return customFetch<PrintJob>(getTestPrintPrinterUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(testPrintBody),
+  });
+};
+
+export const getTestPrintPrinterMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testPrintPrinter>>,
+    TError,
+    { id: number; data: BodyType<TestPrintBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof testPrintPrinter>>,
+  TError,
+  { id: number; data: BodyType<TestPrintBody> },
+  TContext
+> => {
+  const mutationKey = ["testPrintPrinter"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof testPrintPrinter>>,
+    { id: number; data: BodyType<TestPrintBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return testPrintPrinter(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TestPrintPrinterMutationResult = NonNullable<
+  Awaited<ReturnType<typeof testPrintPrinter>>
+>;
+export type TestPrintPrinterMutationBody = BodyType<TestPrintBody>;
+export type TestPrintPrinterMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Send a test print job to a printer
+ */
+export const useTestPrintPrinter = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testPrintPrinter>>,
+    TError,
+    { id: number; data: BodyType<TestPrintBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof testPrintPrinter>>,
+  TError,
+  { id: number; data: BodyType<TestPrintBody> },
+  TContext
+> => {
+  return useMutation(getTestPrintPrinterMutationOptions(options));
+};
+
+/**
+ * @summary Recent print jobs (most recent first)
+ */
+export const getListPrintJobsUrl = (params?: ListPrintJobsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/print-jobs?${stringifiedParams}`
+    : `/api/admin/print-jobs`;
+};
+
+export const listPrintJobs = async (
+  params?: ListPrintJobsParams,
+  options?: RequestInit,
+): Promise<PrintJob[]> => {
+  return customFetch<PrintJob[]>(getListPrintJobsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPrintJobsQueryKey = (params?: ListPrintJobsParams) => {
+  return [`/api/admin/print-jobs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPrintJobsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPrintJobs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPrintJobsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPrintJobs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPrintJobsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPrintJobs>>> = ({
+    signal,
+  }) => listPrintJobs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPrintJobs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPrintJobsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPrintJobs>>
+>;
+export type ListPrintJobsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Recent print jobs (most recent first)
+ */
+
+export function useListPrintJobs<
+  TData = Awaited<ReturnType<typeof listPrintJobs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPrintJobsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPrintJobs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPrintJobsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Re-queue a failed print job
+ */
+export const getRetryPrintJobUrl = (id: number) => {
+  return `/api/admin/print-jobs/${id}/retry`;
+};
+
+export const retryPrintJob = async (
+  id: number,
+  options?: RequestInit,
+): Promise<PrintJob> => {
+  return customFetch<PrintJob>(getRetryPrintJobUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRetryPrintJobMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryPrintJob>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryPrintJob>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["retryPrintJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryPrintJob>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return retryPrintJob(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryPrintJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryPrintJob>>
+>;
+
+export type RetryPrintJobMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Re-queue a failed print job
+ */
+export const useRetryPrintJob = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryPrintJob>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryPrintJob>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRetryPrintJobMutationOptions(options));
 };

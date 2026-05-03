@@ -35,6 +35,8 @@ import adminSmsSettingsRouter from "./admin-sms-settings";
 import adminSmsMessagesRouter from "./admin-sms-messages";
 import webhooksSmsRouter from "./webhooks-sms";
 import demoRouter, { adminDemoRouter } from "./demo";
+import cloudprntRouter from "./cloudprnt";
+import adminPrintersRouter from "./admin-printers";
 
 const router: IRouter = Router();
 
@@ -58,6 +60,9 @@ router.use(quotePublicRouter);
 router.use(webhooksSquareRouter);
 router.use(webhooksSmsRouter);
 router.use(demoRouter);
+// CloudPRNT polling is unauthenticated by design — printers can't send
+// auth headers, so the per-printer token in the URL acts as the secret.
+router.use(cloudprntRouter);
 
 router.use(adminAuthRouter);
 
@@ -79,6 +84,9 @@ router.use("/admin/menu-packages", requireAdminAuth);
 router.use("/admin/instagram", requireAdminAuth);
 router.use("/admin/messages", requireAdminAuth);
 router.use("/admin/demo-menu", requireAdminAuth);
+router.use("/admin/printers", requireAdminAuth);
+router.use("/admin/print-jobs", requireAdminAuth);
+router.use("/admin/event-orders", requireAdminAuth);
 
 router.use(adminMenuRouter);
 router.use(adminMenuCsvRouter);
@@ -96,5 +104,6 @@ router.use(adminInstagramRouter);
 router.use(adminSmsSettingsRouter);
 router.use(adminSmsMessagesRouter);
 router.use(adminDemoRouter);
+router.use(adminPrintersRouter);
 
 export default router;

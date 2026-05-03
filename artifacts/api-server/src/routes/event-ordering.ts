@@ -10,6 +10,7 @@ import {
   fireLowStockAlertIfAny,
   DEFAULT_LOW_STOCK_THRESHOLD,
 } from "../lib/lowStockAlerts";
+import { fanoutPrintForEventOrder } from "../lib/printFanout";
 
 const router: IRouter = Router();
 
@@ -356,6 +357,12 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
     }
 
     fireLowStockAlertIfAny(req, lowStockCrossings, lowStockSettings);
+
+    // Fire-and-forget fan-out to network printers. Demo orders use a
+    // separate route and never reach this path.
+    fanoutPrintForEventOrder({ order, source: "event_order" }).catch((err) => {
+      req.log.error({ err, orderId: order.id }, "print fan-out failed");
+    });
 
     res.status(201).json(order);
   } catch (err: any) {

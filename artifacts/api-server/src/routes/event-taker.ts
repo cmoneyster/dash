@@ -5,6 +5,7 @@ import { eq, sql, inArray, and, desc, isNull } from "drizzle-orm";
 import { sendOrderConfirmation } from "../lib/sms";
 import { getOrderingChannelStates } from "./event-ordering";
 import { detectAndMarkLowStockCrossings, fireLowStockAlertIfAny, DEFAULT_LOW_STOCK_THRESHOLD } from "../lib/lowStockAlerts";
+import { fanoutPrintForEventOrder } from "../lib/printFanout";
 
 const router: IRouter = Router();
 
@@ -368,6 +369,12 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
     // once payment is recorded (or override is invoked). The low-stock alert
     // does fire now, since the stock has actually been decremented.
     fireLowStockAlertIfAny(req, lowStockCrossings, lowStockSettings);
+
+    // Fire-and-forget fan-out to network printers. Failures are logged but
+    // never block order placement — staff can re-print from the kitchen UI.
+    fanoutPrintForEventOrder({ order, source: "event_taker" }).catch((err) => {
+      req.log.error({ err, orderId: order.id }, "print fan-out failed");
+    });
 
     res.status(201).json(serializeOrder(order));
   } catch (err: any) {

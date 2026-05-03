@@ -366,6 +366,8 @@ export default function MenuManager() {
     reset({
       available: true, servingSize: 1, unit: "tray", price: 0, imageUrl: "", minimumOrderQty: 1,
       otdEligible: false,
+      labelPolicy: "per_unit",
+      labelBoxSize: "",
       pricingTemplate: "per_unit",
       size1Label: "Small Pan",  size1Servings: 15, size1Price: "",
       size2Label: "Medium Pan", size2Servings: 30, size2Price: "",
@@ -390,6 +392,8 @@ export default function MenuManager() {
       size4Label: item.size4Label ?? "",       size4Servings: item.size4Servings ?? "",  size4Price: item.size4Price ?? "",
       size5Label: item.size5Label ?? "",       size5Servings: item.size5Servings ?? "",  size5Price: item.size5Price ?? "",
       pricingTemplate: item.pricingTemplate ?? "per_unit",
+      labelPolicy: item.labelPolicy ?? "per_unit",
+      labelBoxSize: item.labelBoxSize ?? "",
     });
     setPreviewUrl(item.imageUrl ?? "");
     setIsNewCategory(false);
@@ -959,6 +963,40 @@ export default function MenuManager() {
                         <span className="text-muted-foreground"> — show on the staff <code>/event-taker</code> POS page</span>
                       </span>
                     </label>
+                  </div>
+                </div>
+
+                <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <label className="block text-sm font-semibold text-slate-900">Item Label Printing</label>
+                  <p className="text-xs text-slate-700/80 -mt-2">
+                    Controls how many physical labels print per quantity ordered. Plates from the staff order-taker always
+                    get one plate-label regardless of this setting.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium mb-1">Label policy</label>
+                      <select
+                        {...register("labelPolicy")}
+                        className="w-full px-3 py-2 border rounded-xl text-sm bg-white"
+                      >
+                        <option value="per_unit">Per unit (1 label per qty)</option>
+                        <option value="combined">Combined (1 label total)</option>
+                        <option value="per_box">Per box of N</option>
+                      </select>
+                    </div>
+                    {watch("labelPolicy") === "per_box" && (
+                      <div className="w-full sm:w-32">
+                        <label className="block text-xs font-medium mb-1">Box size</label>
+                        <input
+                          {...register("labelBoxSize")}
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="e.g. 6"
+                          className="w-full px-3 py-2 border rounded-xl text-sm"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 

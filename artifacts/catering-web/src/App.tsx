@@ -41,6 +41,7 @@ import DemoMenu from "@/pages/admin/DemoMenu";
 import AiRecommendations from "@/pages/admin/AiRecommendations";
 import MenuPackages from "@/pages/admin/MenuPackages";
 import MenuPackageEdit from "@/pages/admin/MenuPackageEdit";
+import Printers from "@/pages/admin/Printers";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -127,6 +128,9 @@ function Router() {
       </Route>
       <Route path="/admin/menu-packages">
         {() => <AdminGuard><MenuPackages /></AdminGuard>}
+      </Route>
+      <Route path="/admin/printers">
+        {() => <AdminGuard><Printers /></AdminGuard>}
       </Route>
       <Route path="/admin/menu-packages/:id">
         {() => <AdminGuard><MenuPackageEdit /></AdminGuard>}

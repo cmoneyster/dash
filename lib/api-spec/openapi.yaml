@@ -19,6 +19,8 @@ tags:
     description: AI chat agent operations
   - name: admin
     description: Admin dashboard operations
+  - name: printers
+    description: Network receipt printer management (Star CloudPRNT)
   - name: openai
     description: OpenAI AI chat, image, and audio operations
 paths:
@@ -768,6 +770,139 @@ paths:
           content:
             text/event-stream: {}
 
+  /admin/printers:
+    get:
+      operationId: listPrinters
+      tags: [printers]
+      summary: List all configured printers
+      responses:
+        "200":
+          description: List of printers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Printer"
+    post:
+      operationId: createPrinter
+      tags: [printers]
+      summary: Register a new CloudPRNT printer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePrinterBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Printer"
+
+  /admin/printers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    patch:
+      operationId: updatePrinter
+      tags: [printers]
+      summary: Update a printer's configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePrinterBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Printer"
+    delete:
+      operationId: deletePrinter
+      tags: [printers]
+      summary: Delete a printer
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/printers/{id}/test-print:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: testPrintPrinter
+      tags: [printers]
+      summary: Send a test print job to a printer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestPrintBody"
+      responses:
+        "200":
+          description: Test job queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintJob"
+
+  /admin/print-jobs:
+    get:
+      operationId: listPrintJobs
+      tags: [printers]
+      summary: Recent print jobs (most recent first)
+      parameters:
+        - name: printerId
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: List of recent print jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PrintJob"
+
+  /admin/print-jobs/{id}/retry:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: retryPrintJob
+      tags: [printers]
+      summary: Re-queue a failed print job
+      responses:
+        "200":
+          description: Job re-queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintJob"
+
 components:
   schemas:
     HealthStatus:
@@ -854,6 +989,14 @@ components:
         otdEligible:
           type: boolean
           description: Whether this item can be cooked fresh on-site as part of the "On the Dash Experience" food trailer service. Drop-off-only items default to false.
+        labelPolicy:
+          type: string
+          enum: [per_unit, combined, per_box]
+          description: How many physical item labels to print per quantity ordered.
+        labelBoxSize:
+          type: integer
+          nullable: true
+          description: Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).
         createdAt:
           type: string
           format: date-time
@@ -923,6 +1066,12 @@ components:
           nullable: true
         otdEligible:
           type: boolean
+        labelPolicy:
+          type: string
+          enum: [per_unit, combined, per_box]
+        labelBoxSize:
+          type: integer
+          nullable: true
       required:
         - name
         - description
@@ -986,6 +1135,12 @@ components:
           nullable: true
         otdEligible:
           type: boolean
+        labelPolicy:
+          type: string
+          enum: [per_unit, combined, per_box]
+        labelBoxSize:
+          type: integer
+          nullable: true
 
     RecommendedItem:
       type: object
@@ -1741,3 +1896,191 @@ components:
           type: string
       required:
         - error
+
+    Printer:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        model:
+          type: string
+          description: Star printer model (e.g. TSP143IV, TSP100IV, TSP650II)
+        cloudprntToken:
+          type: string
+          description: Per-printer secret token; the printer polls /api/cloudprnt/{token}.
+        lanIp:
+          type: string
+          nullable: true
+          description: Trailer-LAN IP for the WebPRNT browser-side fallback.
+        location:
+          type: string
+          nullable: true
+        printsKitchenTicket:
+          type: boolean
+        printsCustomerReceipt:
+          type: boolean
+        printsItemLabels:
+          type: boolean
+        autoPrintOnNewOrder:
+          type: boolean
+        allowLanFallback:
+          type: boolean
+        suppressItemLabelsForPlateLines:
+          type: boolean
+        enabled:
+          type: boolean
+        status:
+          type: string
+          enum: [online, offline, error, disabled]
+        lastPolledAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastError:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - model
+        - cloudprntToken
+        - printsKitchenTicket
+        - printsCustomerReceipt
+        - printsItemLabels
+        - autoPrintOnNewOrder
+        - allowLanFallback
+        - suppressItemLabelsForPlateLines
+        - enabled
+        - status
+        - createdAt
+        - updatedAt
+
+    CreatePrinterBody:
+      type: object
+      properties:
+        name:
+          type: string
+        model:
+          type: string
+        lanIp:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+        printsKitchenTicket:
+          type: boolean
+        printsCustomerReceipt:
+          type: boolean
+        printsItemLabels:
+          type: boolean
+        autoPrintOnNewOrder:
+          type: boolean
+        allowLanFallback:
+          type: boolean
+        suppressItemLabelsForPlateLines:
+          type: boolean
+        enabled:
+          type: boolean
+      required:
+        - name
+
+    UpdatePrinterBody:
+      type: object
+      properties:
+        name:
+          type: string
+        model:
+          type: string
+        lanIp:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+        printsKitchenTicket:
+          type: boolean
+        printsCustomerReceipt:
+          type: boolean
+        printsItemLabels:
+          type: boolean
+        autoPrintOnNewOrder:
+          type: boolean
+        allowLanFallback:
+          type: boolean
+        suppressItemLabelsForPlateLines:
+          type: boolean
+        enabled:
+          type: boolean
+
+    TestPrintBody:
+      type: object
+      properties:
+        jobType:
+          type: string
+          enum: [kitchen_ticket, customer_receipt, item_label, test]
+          default: test
+        message:
+          type: string
+          nullable: true
+      required:
+        - jobType
+
+    PrintJob:
+      type: object
+      properties:
+        id:
+          type: integer
+        printerId:
+          type: integer
+        jobType:
+          type: string
+          enum: [kitchen_ticket, customer_receipt, item_label, plate_label, test]
+        orderSource:
+          type: string
+          nullable: true
+          enum: [order, event_order]
+        orderId:
+          type: integer
+          nullable: true
+        contentType:
+          type: string
+        status:
+          type: string
+          enum: [queued, delivered, printed, failed, canceled]
+        attempts:
+          type: integer
+        deliveredVia:
+          type: string
+          nullable: true
+          enum: [cloudprnt, lan_fallback]
+        error:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        printedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - printerId
+        - jobType
+        - contentType
+        - status
+        - attempts
+        - createdAt

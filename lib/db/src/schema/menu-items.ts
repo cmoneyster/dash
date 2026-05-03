@@ -45,6 +45,15 @@ export const menuItemsTable = pgTable("menu_items", {
   size5Servings: integer("size5_servings"),
   size5Price: numeric("size5_price", { precision: 10, scale: 2 }),
   internalNotes: text("internal_notes"),
+  // ── Item-label printing policy ────────────────────────────────────────────
+  // Controls how many physical labels print for an ordered quantity:
+  //   "per_unit"  → 1 label per unit (default; entrees, plates)
+  //   "combined"  → 1 label total no matter the qty (small bites in 1 box)
+  //   "per_box"   → 1 label per box of N (label_box_size); leftover gets its
+  //                 own label (e.g. box of 6, qty 14 → 6,6,2)
+  // See artifacts/api-server/src/lib/labelExpand.ts for the expansion.
+  labelPolicy: text("label_policy").notNull().default("per_unit"),
+  labelBoxSize: integer("label_box_size"),
   // ── On the Dash Experience eligibility ────────────────────────────────────
   // True when the food trailer can prepare this item fresh on-site at the
   // event. False (default) means the item is drop-off-only — selecting "On

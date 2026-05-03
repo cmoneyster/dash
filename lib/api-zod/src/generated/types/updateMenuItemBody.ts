@@ -5,6 +5,7 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdateMenuItemBodyLabelPolicy } from "./updateMenuItemBodyLabelPolicy";
 
 export interface UpdateMenuItemBody {
   name?: string;
@@ -27,4 +28,6 @@ export interface UpdateMenuItemBody {
   eventTakerPrice?: number | null;
   eventStock?: number | null;
   otdEligible?: boolean;
+  labelPolicy?: UpdateMenuItemBodyLabelPolicy;
+  labelBoxSize?: number | null;
 }

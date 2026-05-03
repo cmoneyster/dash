@@ -91,6 +91,8 @@ router.post("/admin/menu", async (req, res) => {
       size5Label, size5Servings, size5Price,
       internalNotes,
       otdEligible,
+      labelPolicy,
+      labelBoxSize,
     } = req.body;
     // New items always land at the bottom of their category.
     const sortOrder = await nextSortOrderForCategory(db, String(category ?? "").trim());
@@ -133,6 +135,8 @@ router.post("/admin/menu", async (req, res) => {
       size5Price: size5Price != null ? String(size5Price) : null,
       internalNotes: internalNotes ? String(internalNotes).trim() || null : null,
       otdEligible: otdEligible ?? false,
+      labelPolicy: labelPolicy === "combined" || labelPolicy === "per_box" ? labelPolicy : "per_unit",
+      labelBoxSize: labelBoxSize != null && labelBoxSize !== "" ? parseInt(String(labelBoxSize)) : null,
     }).returning();
     await ensureCategoryExists(category);
     res.status(201).json(formatItem(item));
@@ -160,6 +164,8 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
       size5Label, size5Servings, size5Price,
       internalNotes,
       otdEligible,
+      labelPolicy,
+      labelBoxSize,
     } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined)             updates.name = name;
@@ -199,6 +205,8 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
     if (size5Price !== undefined)       updates.size5Price = size5Price === null ? null : String(size5Price);
     if (internalNotes !== undefined)    updates.internalNotes = internalNotes ? String(internalNotes).trim() || null : null;
     if (otdEligible !== undefined)      updates.otdEligible = otdEligible === true || otdEligible === "true";
+    if (labelPolicy !== undefined)      updates.labelPolicy = labelPolicy === "combined" || labelPolicy === "per_box" ? labelPolicy : "per_unit";
+    if (labelBoxSize !== undefined)     updates.labelBoxSize = labelBoxSize === null || labelBoxSize === "" ? null : parseInt(String(labelBoxSize));
 
     // If the category is being changed to a different value, drop the
     // item at the bottom of the destination category so it doesn't

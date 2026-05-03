@@ -13,6 +13,18 @@ export interface ErrorResponse {
   error: string;
 }
 
+/**
+ * How many physical item labels to print per quantity ordered.
+ */
+export type MenuItemLabelPolicy =
+  (typeof MenuItemLabelPolicy)[keyof typeof MenuItemLabelPolicy];
+
+export const MenuItemLabelPolicy = {
+  per_unit: "per_unit",
+  combined: "combined",
+  per_box: "per_box",
+} as const;
+
 export interface MenuItem {
   id: number;
   name: string;
@@ -47,8 +59,21 @@ export interface MenuItem {
   eventStock?: number | null;
   /** Whether this item can be cooked fresh on-site as part of the "On the Dash Experience" food trailer service. Drop-off-only items default to false. */
   otdEligible?: boolean;
+  /** How many physical item labels to print per quantity ordered. */
+  labelPolicy?: MenuItemLabelPolicy;
+  /** Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2). */
+  labelBoxSize?: number | null;
   createdAt: string;
 }
+
+export type CreateMenuItemBodyLabelPolicy =
+  (typeof CreateMenuItemBodyLabelPolicy)[keyof typeof CreateMenuItemBodyLabelPolicy];
+
+export const CreateMenuItemBodyLabelPolicy = {
+  per_unit: "per_unit",
+  combined: "combined",
+  per_box: "per_box",
+} as const;
 
 export interface CreateMenuItemBody {
   name: string;
@@ -71,7 +96,18 @@ export interface CreateMenuItemBody {
   eventTakerPrice?: number | null;
   eventStock?: number | null;
   otdEligible?: boolean;
+  labelPolicy?: CreateMenuItemBodyLabelPolicy;
+  labelBoxSize?: number | null;
 }
+
+export type UpdateMenuItemBodyLabelPolicy =
+  (typeof UpdateMenuItemBodyLabelPolicy)[keyof typeof UpdateMenuItemBodyLabelPolicy];
+
+export const UpdateMenuItemBodyLabelPolicy = {
+  per_unit: "per_unit",
+  combined: "combined",
+  per_box: "per_box",
+} as const;
 
 export interface UpdateMenuItemBody {
   name?: string;
@@ -94,6 +130,8 @@ export interface UpdateMenuItemBody {
   eventTakerPrice?: number | null;
   eventStock?: number | null;
   otdEligible?: boolean;
+  labelPolicy?: UpdateMenuItemBodyLabelPolicy;
+  labelBoxSize?: number | null;
 }
 
 export type RecommendedItemSource =
@@ -542,6 +580,138 @@ export interface OpenaiError {
   error: string;
 }
 
+export type PrinterStatus = (typeof PrinterStatus)[keyof typeof PrinterStatus];
+
+export const PrinterStatus = {
+  online: "online",
+  offline: "offline",
+  error: "error",
+  disabled: "disabled",
+} as const;
+
+export interface Printer {
+  id: number;
+  name: string;
+  /** Star printer model (e.g. TSP143IV, TSP100IV, TSP650II) */
+  model: string;
+  /** Per-printer secret token; the printer polls /api/cloudprnt/{token}. */
+  cloudprntToken: string;
+  /** Trailer-LAN IP for the WebPRNT browser-side fallback. */
+  lanIp?: string | null;
+  location?: string | null;
+  printsKitchenTicket: boolean;
+  printsCustomerReceipt: boolean;
+  printsItemLabels: boolean;
+  autoPrintOnNewOrder: boolean;
+  allowLanFallback: boolean;
+  suppressItemLabelsForPlateLines: boolean;
+  enabled: boolean;
+  status: PrinterStatus;
+  lastPolledAt?: string | null;
+  lastError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePrinterBody {
+  name: string;
+  model?: string;
+  lanIp?: string | null;
+  location?: string | null;
+  printsKitchenTicket?: boolean;
+  printsCustomerReceipt?: boolean;
+  printsItemLabels?: boolean;
+  autoPrintOnNewOrder?: boolean;
+  allowLanFallback?: boolean;
+  suppressItemLabelsForPlateLines?: boolean;
+  enabled?: boolean;
+}
+
+export interface UpdatePrinterBody {
+  name?: string;
+  model?: string;
+  lanIp?: string | null;
+  location?: string | null;
+  printsKitchenTicket?: boolean;
+  printsCustomerReceipt?: boolean;
+  printsItemLabels?: boolean;
+  autoPrintOnNewOrder?: boolean;
+  allowLanFallback?: boolean;
+  suppressItemLabelsForPlateLines?: boolean;
+  enabled?: boolean;
+}
+
+export type TestPrintBodyJobType =
+  (typeof TestPrintBodyJobType)[keyof typeof TestPrintBodyJobType];
+
+export const TestPrintBodyJobType = {
+  kitchen_ticket: "kitchen_ticket",
+  customer_receipt: "customer_receipt",
+  item_label: "item_label",
+  test: "test",
+} as const;
+
+export interface TestPrintBody {
+  jobType: TestPrintBodyJobType;
+  message?: string | null;
+}
+
+export type PrintJobJobType =
+  (typeof PrintJobJobType)[keyof typeof PrintJobJobType];
+
+export const PrintJobJobType = {
+  kitchen_ticket: "kitchen_ticket",
+  customer_receipt: "customer_receipt",
+  item_label: "item_label",
+  plate_label: "plate_label",
+  test: "test",
+} as const;
+
+export type PrintJobOrderSource =
+  | (typeof PrintJobOrderSource)[keyof typeof PrintJobOrderSource]
+  | null;
+
+export const PrintJobOrderSource = {
+  order: "order",
+  event_order: "event_order",
+} as const;
+
+export type PrintJobStatus =
+  (typeof PrintJobStatus)[keyof typeof PrintJobStatus];
+
+export const PrintJobStatus = {
+  queued: "queued",
+  delivered: "delivered",
+  printed: "printed",
+  failed: "failed",
+  canceled: "canceled",
+} as const;
+
+export type PrintJobDeliveredVia =
+  | (typeof PrintJobDeliveredVia)[keyof typeof PrintJobDeliveredVia]
+  | null;
+
+export const PrintJobDeliveredVia = {
+  cloudprnt: "cloudprnt",
+  lan_fallback: "lan_fallback",
+} as const;
+
+export interface PrintJob {
+  id: number;
+  printerId: number;
+  jobType: PrintJobJobType;
+  orderSource?: PrintJobOrderSource;
+  orderId?: number | null;
+  contentType: string;
+  status: PrintJobStatus;
+  attempts: number;
+  deliveredVia?: PrintJobDeliveredVia;
+  error?: string | null;
+  createdAt: string;
+  deliveredAt?: string | null;
+  printedAt?: string | null;
+}
+
 export type ListMenuItemsParams = {
   category?: string;
   available?: boolean;
@@ -570,4 +740,9 @@ export type GetCartParams = {
 
 export type GetPlanParams = {
   sessionId: string;
+};
+
+export type ListPrintJobsParams = {
+  printerId?: number;
+  limit?: number;
 };

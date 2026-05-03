@@ -214,3 +214,34 @@ When inbound texts aren't appearing in the catering inquiry chat modal or in the
 5. **Text STOP** from any phone you control. Expect the sender's digits to be added to the phone blocklist with reason `customer-opt-out`, the inbound to still be stored (so the chat thread shows the opt-out event), and the log to show `status:"opted-out"`. Subsequent outbound to that number is blocked at the send boundary.
 
 If a step's expected log line never appears, the failure is at that stage. If the diagnostics endpoint shows the gateway has rows the log isn't seeing, the live poller is wedged and the page should be reloaded after a workflow restart. The diagnostics endpoint never writes anything, so it's safe to hit repeatedly while debugging.
+
+## Network Printers (Star CloudPRNT)
+
+Star Micronics TSP-series receipt printers (TSP143IV by default; TSP100IV / TSP650II / TSP700II / TSP800II / mC-Print3 supported by setting model in admin). Printers poll the api-server over HTTPS via Star CloudPRNT — no port-forwarding, works on any venue WiFi. Browser-side WebPRNT over LAN is wired as a future fallback path (per-printer `allow_lan_fallback` toggle).
+
+### Tables
+- `printers` — one row per physical printer with a unique `cloudprnt_token` used in the public poll URL, output toggles (`prints_kitchen_ticket` / `prints_customer_receipt` / `prints_item_labels`), `auto_print_on_new_order`, `allow_lan_fallback`, `suppress_item_labels_for_plate_lines` (skip per-item labels for items already on a staff-built plate), `lan_ip` (for the WebPRNT fallback), and a polled `status` + `last_polled_at`.
+- `print_jobs` — queued jobs with `printer_id`, `job_type` (kitchen_ticket / customer_receipt / item_label / plate_label / test), `payload` jsonb, `status` (queued / delivered / printed / failed / canceled), `attempts`, `delivered_via` (cloudprnt | lan_fallback), and order back-references.
+- `menu_items.label_policy` (`per_unit` / `combined` / `per_box`) + `label_box_size` — drives how many physical labels a given menu item produces per qty ordered. Set in **Admin → Menu Manager** under "Item Label Printing".
+
+### CloudPRNT endpoints (no auth — gated by token)
+- `GET /api/cloudprnt/:token` — printer poll. Returns `{ jobReady: true, mediaTypes: [...], clientAction: { url } }` if queued, else `{ jobReady: false }`. Updates `last_polled_at`.
+- `GET /api/cloudprnt/:token/content/:jobId` — printer fetches rendered bytes. Atomic claim via `UPDATE … RETURNING` with `FOR UPDATE SKIP LOCKED` so concurrent CloudPRNT + LAN fallback can't double-print.
+- `POST /api/cloudprnt/:token` — printer status update; marks printed/failed.
+
+### Admin console
+**Admin → Printers** (`/admin/printers`):
+- Add / edit / delete printers, copy each printer's CloudPRNT URL into the printer's web UI, send Test page / kitchen ticket / receipt / label, view recent print jobs with retry, live status pill (online / offline / error).
+
+### Server-side fan-out
+`fanoutPrintForEventOrder({ order, source })` in `artifacts/api-server/src/lib/printFanout.ts` is called from event-taker submit and event-ordering submit (post-commit). Walks enabled printers per output toggle and enqueues:
+- One kitchen ticket per kitchen printer.
+- One customer receipt per receipt printer (only when staff-order totals are present).
+- Item labels expanded by `label_policy` per item, optionally skipping units that are part of a plate (when `suppress_item_labels_for_plate_lines` is on), plus one plate-label per configured plate.
+
+**Demo orders never print.** Demo orders use a separate `/api/demo/orders` route that does not insert into `event_orders`, so they never reach this fan-out path. The fan-out helper additionally hard-blocks `source: "demo"` with a logged warning as a defense in depth.
+
+Manual reprint: `POST /api/admin/event-orders/:id/reprint` re-fans an order through the same code path, ignoring `auto_print_on_new_order` (this is an explicit "send to printers" request from staff). Print jobs queued via this path show up in the `Printers` admin page like any other job.
+
+### Renderer
+`artifacts/api-server/src/lib/printRenderer.ts` emits 80mm-width text/plain with embedded ESC/POS escapes (bold, double-size, full cut). Default printer mode for TSP143IV's CloudPRNT-side processing accepts text/plain and applies ESC/POS escapes; older TSP650/700/800 will need the same content-type with raster-image rendering — present scaffolding (`renderJob` returns `{ bytes, contentType }`) supports both branches when added later.
