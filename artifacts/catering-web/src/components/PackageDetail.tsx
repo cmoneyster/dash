@@ -93,10 +93,9 @@ export function PackageDetail({ packageId, onClose }: Props) {
   const handleClick = async (target: "cart" | "plan") => {
     if (busy) return;
     setBusy(true);
-    // Always re-fetch the current count on click. The react-query
-    // hooks above might still be loading on first interaction, which
-    // would otherwise let us silently merge into an empty-looking
-    // cart/plan that is actually populated.
+    // Always re-fetch the current cart/plan count on click so we
+    // never silently merge into a populated cart/plan whose state
+    // hasn't loaded yet.
     const count = await fetchCurrentItemCount(target, sessionId);
     setBusy(false);
     if (count > 0) {
