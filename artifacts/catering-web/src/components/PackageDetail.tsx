@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { X as XIcon, Users, AlertTriangle, ShoppingBag, Heart, Loader2, ImageIcon } from "lucide-react";
+import { X as XIcon, Users, AlertTriangle, ShoppingBag, Heart, Loader2, ImageIcon, Flame } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -144,6 +144,15 @@ export function PackageDetail({ packageId, onClose }: Props) {
                 <span className="inline-flex items-center gap-1 text-sm text-muted-foreground bg-secondary px-3 py-1 rounded-full">
                   <Users className="w-4 h-4" /> Serves about {pkg.servesGuests}
                 </span>
+                {pkg.otdEligible === true && (
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-white bg-orange-600/90 px-3 py-1 rounded-full"
+                    title="On the Dash Experience — every item in this package can be cooked fresh on-site from our food trailer."
+                  >
+                    <Flame className="w-3.5 h-3.5" />
+                    On the Dash
+                  </span>
+                )}
               </div>
               {pkg.description && (
                 <p className="text-muted-foreground mb-6 whitespace-pre-line">{pkg.description}</p>

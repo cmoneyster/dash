@@ -63,6 +63,7 @@ function toRichMenuItem(mi: MenuItem | RichMenuItem): PackageSizeMenuItem {
     minimumOrderQty: r.minimumOrderQty ?? null,
     pricingTemplate: r.pricingTemplate ?? null,
     available: r.available ?? true,
+    otdEligible: (r as { otdEligible?: boolean }).otdEligible === true,
     size1Label: r.size1Label ?? null, size1Price: r.size1Price ?? null, size1Servings: r.size1Servings ?? null,
     size2Label: r.size2Label ?? null, size2Price: r.size2Price ?? null, size2Servings: r.size2Servings ?? null,
     size3Label: r.size3Label ?? null, size3Price: r.size3Price ?? null, size3Servings: r.size3Servings ?? null,

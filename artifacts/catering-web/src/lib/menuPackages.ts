@@ -76,6 +76,7 @@ export type PackageSizeMenuItem = {
   minimumOrderQty: number | null;
   pricingTemplate: string | null;
   available: boolean;
+  otdEligible: boolean;
   size1Label: string | null; size1Price: string | null; size1Servings: number | null;
   size2Label: string | null; size2Price: string | null; size2Servings: number | null;
   size3Label: string | null; size3Price: string | null; size3Servings: number | null;
@@ -100,6 +101,10 @@ export type PublicMenuPackage = {
   servesGuests: number;
   sortOrder: number;
   partiallyAvailable: boolean;
+  // True only when every available item in the package is on-the-dash
+  // eligible (i.e. the food trailer can cook them on-site). Older API
+  // builds may omit this — treat missing as false on the client.
+  otdEligible?: boolean;
   items: PublicPackageItem[];
 };
 

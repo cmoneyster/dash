@@ -29,6 +29,7 @@ type PublicItem = {
     minimumOrderQty: number | null;
     pricingTemplate: string | null;
     available: boolean;
+    otdEligible: boolean;
     size1Label: string | null; size1Price: string | null; size1Servings: number | null;
     size2Label: string | null; size2Price: string | null; size2Servings: number | null;
     size3Label: string | null; size3Price: string | null; size3Servings: number | null;
@@ -82,6 +83,7 @@ async function loadPackageItems(packageId: number, opts: { onlyAvailable: boolea
         minimumOrderQty: mi.minimumOrderQty ?? null,
         pricingTemplate: mi.pricingTemplate ?? null,
         available: mi.available,
+        otdEligible: mi.otdEligible === true,
         size1Label: mi.size1Label ?? null, size1Price: mi.size1Price ?? null, size1Servings: mi.size1Servings ?? null,
         size2Label: mi.size2Label ?? null, size2Price: mi.size2Price ?? null, size2Servings: mi.size2Servings ?? null,
         size3Label: mi.size3Label ?? null, size3Price: mi.size3Price ?? null, size3Servings: mi.size3Servings ?? null,
@@ -105,6 +107,10 @@ router.get("/menu-packages", async (req, res) => {
 
     const all = await Promise.all(pkgs.map(async (p) => {
       const { items, partiallyAvailable } = await loadPackageItems(p.id, { onlyAvailable: true });
+      // A package is on-the-dash eligible only when every available item
+      // can be cooked on-site by the food trailer. Empty packages are not
+      // eligible (we drop them below anyway).
+      const otdEligible = items.length > 0 && items.every((i) => i.menuItem.otdEligible);
       return {
         id: p.id,
         name: p.name,
@@ -113,6 +119,7 @@ router.get("/menu-packages", async (req, res) => {
         servesGuests: p.servesGuests,
         sortOrder: p.sortOrder,
         partiallyAvailable,
+        otdEligible,
         items,
       };
     }));
@@ -141,6 +148,7 @@ router.get("/menu-packages/:id", async (req, res): Promise<void> => {
       return;
     }
     const { items, partiallyAvailable } = await loadPackageItems(p.id, { onlyAvailable: true });
+    const otdEligible = items.length > 0 && items.every((i) => i.menuItem.otdEligible);
     res.json({
       id: p.id,
       name: p.name,
@@ -149,6 +157,7 @@ router.get("/menu-packages/:id", async (req, res): Promise<void> => {
       servesGuests: p.servesGuests,
       sortOrder: p.sortOrder,
       partiallyAvailable,
+      otdEligible,
       items,
     });
   } catch (err) {

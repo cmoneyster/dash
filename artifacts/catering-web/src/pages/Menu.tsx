@@ -5,7 +5,7 @@ import { MenuCard, MenuCardCompact } from "@/components/MenuCard";
 import { PanSizePicker } from "@/components/PanSizePicker";
 import { PackageDetail } from "@/components/PackageDetail";
 import { fetchPublicPackages, type PublicMenuPackage } from "@/lib/menuPackages";
-import { Users, Package as PackageIcon } from "lucide-react";
+import { Users, Package as PackageIcon, Flame } from "lucide-react";
 import { 
   useListMenuItems, 
   useAddToCart, 
@@ -196,7 +196,7 @@ export default function Menu() {
             </div>
             <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory">
               {packages.slice(0, 6).map((p) => (
-                <PackageCard key={p.id} pkg={p} onOpen={() => setOpenPackageId(p.id)} />
+                <PackageCard key={p.id} pkg={p} serviceMode={serviceMode} onOpen={() => setOpenPackageId(p.id)} />
               ))}
             </div>
           </section>
@@ -230,7 +230,7 @@ export default function Menu() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {packages.map(p => (
-                <PackageCard key={p.id} pkg={p} onOpen={() => setOpenPackageId(p.id)} />
+                <PackageCard key={p.id} pkg={p} serviceMode={serviceMode} onOpen={() => setOpenPackageId(p.id)} />
               ))}
             </div>
           )
@@ -288,25 +288,48 @@ export default function Menu() {
   );
 }
 
-function PackageCard({ pkg, onOpen }: { pkg: PublicMenuPackage; onOpen: () => void }) {
+function PackageCard({
+  pkg,
+  serviceMode,
+  onOpen,
+}: {
+  pkg: PublicMenuPackage;
+  serviceMode: ServiceMode;
+  onOpen: () => void;
+}) {
+  const otdEligible = pkg.otdEligible === true;
+  const blockedByOtd = serviceMode === "on_the_dash" && !otdEligible;
   return (
     <button
       onClick={onOpen}
-      className="text-left bg-card rounded-3xl border border-border shadow-sm hover:shadow-lg transition-all overflow-hidden group min-w-[280px] sm:min-w-0 snap-start flex flex-col"
+      className={`text-left bg-card rounded-3xl border border-border shadow-sm hover:shadow-lg transition-all overflow-hidden group min-w-[280px] sm:min-w-0 snap-start flex flex-col ${
+        blockedByOtd ? "opacity-60" : ""
+      }`}
     >
-      {pkg.imageUrl ? (
-        <div className="aspect-[16/10] overflow-hidden bg-secondary">
-          <img
-            src={pkg.imageUrl}
-            alt={pkg.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          />
-        </div>
-      ) : (
-        <div className="aspect-[16/10] bg-gradient-to-br from-primary/20 to-secondary flex items-center justify-center">
-          <PackageIcon className="w-12 h-12 text-primary/40" />
-        </div>
-      )}
+      <div className="relative">
+        {pkg.imageUrl ? (
+          <div className="aspect-[16/10] overflow-hidden bg-secondary">
+            <img
+              src={pkg.imageUrl}
+              alt={pkg.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+          </div>
+        ) : (
+          <div className="aspect-[16/10] bg-gradient-to-br from-primary/20 to-secondary flex items-center justify-center">
+            <PackageIcon className="w-12 h-12 text-primary/40" />
+          </div>
+        )}
+        {otdEligible && (
+          <span
+            className="absolute top-3 left-3 px-3 py-1 bg-orange-600/90 text-white backdrop-blur-sm text-xs font-bold uppercase tracking-wider rounded-full shadow-sm flex items-center gap-1"
+            title="On the Dash Experience — every item in this package can be cooked fresh on-site from our food trailer."
+          >
+            <Flame className="w-3 h-3" />
+            On the Dash
+          </span>
+        )}
+      </div>
       <div className="p-5 flex-1 flex flex-col">
         <h3 className="font-display font-bold text-xl mb-1">{pkg.name}</h3>
         <div className="text-sm text-muted-foreground flex items-center gap-1 mb-2">
@@ -316,6 +339,12 @@ function PackageCard({ pkg, onOpen }: { pkg: PublicMenuPackage; onOpen: () => vo
         </div>
         {pkg.description && (
           <p className="text-sm text-muted-foreground line-clamp-3 flex-1">{pkg.description}</p>
+        )}
+        {blockedByOtd && (
+          <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800 flex items-center gap-1.5">
+            <Flame className="w-3 h-3 shrink-0" />
+            Only available with Standard Drop-Off
+          </div>
         )}
         <span className="mt-4 text-sm font-semibold text-primary">View details →</span>
       </div>
