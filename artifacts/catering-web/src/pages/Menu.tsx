@@ -3,6 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { MenuCard, MenuCardCompact } from "@/components/MenuCard";
 import { PanSizePicker } from "@/components/PanSizePicker";
+import { PackageDetail } from "@/components/PackageDetail";
+import { fetchPublicPackages, type PublicMenuPackage } from "@/lib/menuPackages";
+import { Users, Package as PackageIcon } from "lucide-react";
 import { 
   useListMenuItems, 
   useAddToCart, 
@@ -127,10 +130,19 @@ export default function Menu() {
   };
 
   const { data: categoryData } = useCategories();
+  const PACKAGES_FILTER = "__packages__";
   const categories = [
     { value: "", label: "All Items" },
+    { value: PACKAGES_FILTER, label: "Packages" },
     ...(categoryData ?? []).map((c) => ({ value: c.name, label: c.name })),
   ];
+
+  // ── Pre-built menu packages ──
+  const [packages, setPackages] = useState<PublicMenuPackage[]>([]);
+  const [openPackageId, setOpenPackageId] = useState<number | null>(null);
+  useEffect(() => {
+    fetchPublicPackages().then(setPackages).catch(() => setPackages([]));
+  }, []);
 
   // Once the category list loads, drop any unknown URL-seeded category
   // back to "All Items" so a stale or mistyped link doesn't leave the
@@ -153,6 +165,9 @@ export default function Menu() {
           loading={pickerLoading}
         />
       )}
+      {openPackageId !== null && (
+        <PackageDetail packageId={openPackageId} onClose={() => setOpenPackageId(null)} />
+      )}
       <div className="bg-secondary/30 py-16 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="font-display font-bold text-5xl mb-4">Curated Offerings</h1>
@@ -164,6 +179,28 @@ export default function Menu() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <ServiceModeBanner mode={serviceMode} onChange={setServiceMode} />
+
+        {/* Featured packages strip — only on the default "All Items" view */}
+        {!category && packages.length > 0 && (
+          <section className="mb-12">
+            <div className="flex items-baseline justify-between mb-4">
+              <h2 className="font-display font-bold text-2xl flex items-center gap-2">
+                <PackageIcon className="w-6 h-6 text-primary" /> Pre-Built Packages
+              </h2>
+              <button
+                onClick={() => setCategory(PACKAGES_FILTER)}
+                className="text-sm font-semibold text-primary hover:underline"
+              >
+                See all
+              </button>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory">
+              {packages.slice(0, 6).map((p) => (
+                <PackageCard key={p.id} pkg={p} onOpen={() => setOpenPackageId(p.id)} />
+              ))}
+            </div>
+          </section>
+        )}
         {/* Filters */}
         <div className="flex flex-col sm:flex-row justify-between items-center mb-12 gap-6">
           <div className="flex flex-wrap gap-2 justify-center">
@@ -183,7 +220,21 @@ export default function Menu() {
           </div>
         </div>
 
-        {isLoading ? (
+        {category === PACKAGES_FILTER ? (
+          packages.length === 0 ? (
+            <div className="text-center py-24 bg-card rounded-3xl border border-border border-dashed">
+              <PackageIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+              <h3 className="font-display font-bold text-2xl mb-2">No packages yet</h3>
+              <p className="text-muted-foreground">Check back soon — pre-built packages will show up here.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {packages.map(p => (
+                <PackageCard key={p.id} pkg={p} onOpen={() => setOpenPackageId(p.id)} />
+              ))}
+            </div>
+          )
+        ) : isLoading ? (
           <div className="flex justify-center py-24">
             <Loader2 className="w-12 h-12 text-primary animate-spin" />
           </div>
@@ -234,5 +285,40 @@ export default function Menu() {
         })()}
       </div>
     </Layout>
+  );
+}
+
+function PackageCard({ pkg, onOpen }: { pkg: PublicMenuPackage; onOpen: () => void }) {
+  return (
+    <button
+      onClick={onOpen}
+      className="text-left bg-card rounded-3xl border border-border shadow-sm hover:shadow-lg transition-all overflow-hidden group min-w-[280px] sm:min-w-0 snap-start flex flex-col"
+    >
+      {pkg.imageUrl ? (
+        <div className="aspect-[16/10] overflow-hidden bg-secondary">
+          <img
+            src={pkg.imageUrl}
+            alt={pkg.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        </div>
+      ) : (
+        <div className="aspect-[16/10] bg-gradient-to-br from-primary/20 to-secondary flex items-center justify-center">
+          <PackageIcon className="w-12 h-12 text-primary/40" />
+        </div>
+      )}
+      <div className="p-5 flex-1 flex flex-col">
+        <h3 className="font-display font-bold text-xl mb-1">{pkg.name}</h3>
+        <div className="text-sm text-muted-foreground flex items-center gap-1 mb-2">
+          <Users className="w-3.5 h-3.5" /> Serves about {pkg.servesGuests}
+          <span className="mx-1.5">•</span>
+          {pkg.items.length} item{pkg.items.length !== 1 ? "s" : ""}
+        </div>
+        {pkg.description && (
+          <p className="text-sm text-muted-foreground line-clamp-3 flex-1">{pkg.description}</p>
+        )}
+        <span className="mt-4 text-sm font-semibold text-primary">View details →</span>
+      </div>
+    </button>
   );
 }

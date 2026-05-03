@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity, Sparkles } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity, Sparkles, Package as PackageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken, getAdminToken } from "@/components/AdminGuard";
 
@@ -150,6 +150,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
       <AdminNavLink href="/admin/catering" icon={Briefcase} onClick={onNavigate}>Catering Inquiries</AdminNavLink>
       <AdminNavLink href="/admin/catering/upcoming" icon={CalendarRange} onClick={onNavigate}>Upcoming Caterings</AdminNavLink>
       <AdminNavLink href="/admin/catering/plans" icon={ClipboardList} onClick={onNavigate}>Event Plans</AdminNavLink>
+      <AdminNavLink href="/admin/menu-packages" icon={PackageIcon} onClick={onNavigate}>Menu Packages</AdminNavLink>
       <div className="pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Site &amp; Social</p>
       </div>
