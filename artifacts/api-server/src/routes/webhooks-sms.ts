@@ -1,29 +1,53 @@
 // Public webhook for the ejointech gateway's "push" delivery mode.
 // When EJOIN_INBOUND_MODE=push, the gateway is configured (in its own
-// admin UI) to POST every received SMS to {API_BASE}/api/sms/inbound,
-// optionally including a shared-secret header so we can authenticate
-// the call without sitting behind the admin auth middleware.
+// admin UI) to forward every received SMS to {API_BASE}/api/sms/inbound,
+// optionally including a shared-secret so we can authenticate the call
+// without sitting behind the admin auth middleware.
 //
-// Authentication: header `X-Sms-Webhook-Secret` must equal env
-// SMS_WEBHOOK_SECRET. If the env is unset the webhook 401s every
-// request — push mode requires a configured secret.
+// Two transports are supported on the same route:
 //
-// Body shape: we accept a permissive set of field names because the
-// gateway firmware is configurable (admin can pick variable names in
-// the gateway's "HTTP Push" UI). We extract:
-//   - id  (or messageId, msgid, sms_id)
-//   - port (or sim, line, channel)
-//   - from (or src, sender, phone)
-//   - body (or content, text, message)
-//   - ts   (or time, date, occurredAt) — ISO or yyyy-MM-dd HH:mm:ss
+//   POST /api/sms/inbound  (JSON or form body)
+//   GET  /api/sms/inbound  (query string)
+//
+// EJOIN's "SMS to HTTP" panel typically forwards as an HTTP GET with
+// template variables in the URL (e.g. $port, $sn / $phone, $sm / $sms,
+// $tm / $time). Use a URL like:
+//
+//   https://<host>/api/sms/inbound?secret=<SMS_WEBHOOK_SECRET>&port=$port&from=$sn&body=$sm&ts=$tm
+//
+// Some firmwares also expose an HTTP-Push (POST) mode; both shapes hit
+// the same handler.
+//
+// Authentication: either the `X-Sms-Webhook-Secret` header OR a
+// `secret` query/body param must equal env SMS_WEBHOOK_SECRET. If the
+// env is unset the webhook 401s every request — push mode requires a
+// configured secret. The query-param form exists specifically because
+// EJOIN's GET-mode URL template cannot set custom headers.
+//
+// Field names accepted (case-insensitive, first match wins):
+//   - id    : id, messageId, msgid, sms_id, smsid
+//   - port  : port, sim, line, channel, slot
+//   - from  : from, src, sender, phone, sn
+//   - body  : body, content, text, message, sm, sms
+//   - ts    : ts, time, date, occurredAt, tm
 //
 // Only messages on the configured chat port are ingested; others are
 // acknowledged with 200 + status='ignored-port' so the gateway won't
 // retry forever.
 
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
+import { timingSafeEqual } from "crypto";
 import { ingestInbound } from "../lib/sms-inbox";
 import { getChatPort } from "../lib/sms-ejoin";
+
+function secretsMatch(a: string, b: string): boolean {
+  // Constant-time equality so attackers can't probe the secret one
+  // byte at a time via response-latency differences.
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 const router: IRouter = Router();
 
@@ -43,6 +67,7 @@ function pick(obj: Record<string, unknown>, keys: string[]): unknown {
 function asString(v: unknown): string | null {
   if (typeof v === "string") return v.trim();
   if (typeof v === "number") return String(v);
+  if (Array.isArray(v) && v.length > 0) return asString(v[0]);
   return null;
 }
 
@@ -63,8 +88,12 @@ function parseTs(v: unknown): Date {
   return new Date();
 }
 
-// Mounted under /api in app.ts, so the public path is /api/sms/inbound.
-router.post("/sms/inbound", async (req, res) => {
+/**
+ * Shared handler for POST (JSON/form body) and GET (query string).
+ * `raw` is the merged params bag — the caller picks which Express
+ * source to pass in.
+ */
+async function handleInbound(req: Request, res: Response, raw: Record<string, unknown>): Promise<void> {
   try {
     const secret = process.env.SMS_WEBHOOK_SECRET?.trim();
     if (!secret) {
@@ -73,18 +102,22 @@ router.post("/sms/inbound", async (req, res) => {
       res.status(401).json({ error: "Webhook secret not configured" });
       return;
     }
-    const supplied = (req.header("X-Sms-Webhook-Secret") ?? "").trim();
-    if (supplied !== secret) {
+    // Accept the secret either as a header (preferred for POST) or as a
+    // `secret` query/body param (required for EJOIN's GET-mode URL
+    // template, which cannot set custom headers).
+    const headerSecret = (req.header("X-Sms-Webhook-Secret") ?? "").trim();
+    const paramSecret = asString(pick(raw, ["secret", "token", "key"])) ?? "";
+    const supplied = headerSecret || paramSecret;
+    if (!supplied || !secretsMatch(supplied, secret)) {
       res.status(401).json({ error: "Invalid webhook secret" });
       return;
     }
 
-    const raw = (req.body ?? {}) as Record<string, unknown>;
-    const id = asString(pick(raw, ["id", "messageId", "msgid", "sms_id"]));
-    const portRaw = pick(raw, ["port", "sim", "line", "channel"]);
-    const from = asString(pick(raw, ["from", "src", "sender", "phone"]));
-    const body = asString(pick(raw, ["body", "content", "text", "message"]));
-    const ts = parseTs(pick(raw, ["ts", "time", "date", "occurredAt"]));
+    const id = asString(pick(raw, ["id", "messageId", "msgid", "sms_id", "smsid"]));
+    const portRaw = pick(raw, ["port", "sim", "line", "channel", "slot"]);
+    const from = asString(pick(raw, ["from", "src", "sender", "phone", "sn"]));
+    const body = asString(pick(raw, ["body", "content", "text", "message", "sm", "sms"]));
+    const ts = parseTs(pick(raw, ["ts", "time", "date", "occurredAt", "tm"]));
 
     const port = Number(portRaw);
     if (!Number.isInteger(port) || port < 1 || port > 8) {
@@ -125,6 +158,17 @@ router.post("/sms/inbound", async (req, res) => {
     req.log.error({ err }, "Error in /api/sms/inbound webhook");
     res.status(500).json({ error: "Webhook processing failed" });
   }
+}
+
+// Mounted under /api in app.ts, so the public path is /api/sms/inbound.
+router.post("/sms/inbound", async (req, res) => {
+  await handleInbound(req, res, (req.body ?? {}) as Record<string, unknown>);
+});
+
+// EJOIN "SMS to HTTP" forwards as a GET with template vars in the URL
+// (and no custom headers). The secret travels as `?secret=...`.
+router.get("/sms/inbound", async (req, res) => {
+  await handleInbound(req, res, (req.query ?? {}) as Record<string, unknown>);
 });
 
 export default router;

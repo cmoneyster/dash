@@ -280,3 +280,20 @@ Site-wide light/dark theme using Tailwind v4's class-based dark variant.
 - Mounted in: customer site header (`Layout.tsx`), Admin sidebar footer + mobile drawer + mobile top bar (`AdminLayout.tsx`), Staff Order Taker header (`EventTakerOrder.tsx`).
 - Kitchen Display is intentionally always-dark (its own fixed dark palette) and does not show the toggle.
 - Components that hard-code `bg-white` / `text-black` (e.g. some inline modals) still need a `dark:` override per usage; only token-driven surfaces auto-adapt. The Layout header was migrated from `bg-white` → `bg-card` for this reason.
+
+### EJOIN inbound: HTTP GET push (SMS to HTTP)
+The same `/api/sms/inbound` webhook now accepts both POST (JSON/form body) and GET (query string). The GET shape exists specifically so the EJOIN gateway's "SMS to HTTP" panel can forward inbound messages without us having to poll.
+
+Configure on the gateway as a GET URL like:
+
+```
+https://<host>/api/sms/inbound?secret=<SMS_WEBHOOK_SECRET>&port=$port&from=$sn&body=$sm&ts=$tm
+```
+
+EJOIN's variable names differ slightly between firmwares — the handler accepts a permissive set of aliases (case-insensitive, first match wins): `port|sim|line|channel|slot`, `from|src|sender|phone|sn`, `body|content|text|message|sm|sms`, `ts|time|date|occurredAt|tm`, `id|messageId|msgid|sms_id|smsid`. URL-encode `$sm` if your firmware doesn't auto-encode.
+
+Auth: the secret may be supplied as either the `X-Sms-Webhook-Secret` header (preferred for POST) or as a `?secret=` query/body param (required for GET, since EJOIN's GET-mode template can't set headers). If `SMS_WEBHOOK_SECRET` is unset the route 401s every request — push mode requires a configured secret. Alias query param names: `secret|token|key`.
+
+Set `EJOIN_INBOUND_MODE=push` to flip the runtime out of poll-mode; the periodic poller continues to run as a low-frequency safety-net (per the comments in `sms-scheduler.ts`).
+
+Same downstream pipeline as POST and as the poller: dedupe by `gatewayMessageId`, chat-port gating, opt-out detection, blocklist, inquiry matching, owner forwarding, and the SSE event for the live admin chat.
