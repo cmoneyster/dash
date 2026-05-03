@@ -22,6 +22,8 @@ import { useCategories, splitCategoryName, type Category } from "@/lib/categorie
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
 import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
 import { computePlannerCoverage } from "@/lib/plannerMath";
+import { MergeReplaceDialog, type MergeReplaceChoice } from "@/components/MergeReplaceDialog";
+import { fetchCurrentItemCount } from "@/lib/menuPackages";
 
 // ── Category helpers (derived from API) ──────────────────────────────────────
 
@@ -206,6 +208,7 @@ export default function Plan() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [addingAll, setAddingAll] = useState(false);
+  const [cartMergePrompt, setCartMergePrompt] = useState<{ existingCount: number } | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
 
   // ── Categories from API ──
@@ -325,10 +328,17 @@ export default function Plan() {
     },
   });
 
-  const handleAddAllToCart = async () => {
-    if (!plan?.items.length || addingAll) return;
+  const performAddAllToCart = async (mode: "merge" | "replace") => {
+    if (!plan?.items.length) return;
     setAddingAll(true);
     try {
+      if (mode === "replace") {
+        await fetch("/api/cart", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        });
+      }
       for (const item of plan.items) {
         const isPanSizes = (item.menuItem as any).pricingTemplate === "pan_sizes";
         if (isPanSizes) {
@@ -355,13 +365,33 @@ export default function Plan() {
         }
       }
       queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
-      toast({ title: "Added to cart!", description: `${plan.items.length} item${plan.items.length !== 1 ? "s" : ""} added — ready to checkout.` });
+      const verb = mode === "replace" ? "now in your cart" : "added — ready to checkout.";
+      toast({ title: mode === "replace" ? "Cart replaced" : "Added to cart!", description: `${plan.items.length} item${plan.items.length !== 1 ? "s" : ""} ${verb}` });
       navigate("/cart");
     } catch {
       toast({ title: "Something went wrong", description: "Some items may not have been added. Please try again.", variant: "destructive" });
     } finally {
       setAddingAll(false);
     }
+  };
+
+  const handleAddAllToCart = async () => {
+    if (!plan?.items.length || addingAll) return;
+    setAddingAll(true);
+    const cartCount = await fetchCurrentItemCount("cart", sessionId);
+    setAddingAll(false);
+    if (cartCount > 0) {
+      setCartMergePrompt({ existingCount: cartCount });
+    } else {
+      performAddAllToCart("merge");
+    }
+  };
+
+  const handleCartMergeChoice = (choice: MergeReplaceChoice) => {
+    if (choice === "cancel") { setCartMergePrompt(null); return; }
+    const mode = choice;
+    setCartMergePrompt(null);
+    performAddAllToCart(mode);
   };
 
   const handleClearPlan = async () => {
@@ -1458,6 +1488,16 @@ export default function Plan() {
           </div>
         )}
       </div>
+
+      <MergeReplaceDialog
+        open={cartMergePrompt !== null}
+        busy={addingAll}
+        existingCount={cartMergePrompt?.existingCount ?? 0}
+        incomingCount={plan?.items.length ?? 0}
+        title="Cart already has items"
+        message="Do you want to add this event plan to your existing cart, or replace what's there?"
+        onChoose={handleCartMergeChoice}
+      />
     </Layout>
   );
 }

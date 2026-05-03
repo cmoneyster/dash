@@ -194,7 +194,7 @@ function SortableRow({
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.id });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: p.id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -204,6 +204,8 @@ function SortableRow({
   return (
     <div ref={setNodeRef} style={style} className="bg-card rounded-2xl border border-border p-4 flex items-center gap-4">
       <button
+        type="button"
+        ref={setActivatorNodeRef}
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing p-1 text-muted-foreground hover:text-foreground touch-none"
