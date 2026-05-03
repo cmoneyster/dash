@@ -21,6 +21,7 @@ import { ImageLightbox } from "@/components/ImageLightbox";
 import { useCategories, splitCategoryName, type Category } from "@/lib/categories";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
 import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
+import { computePlannerCoverage } from "@/lib/plannerMath";
 
 // ── Category helpers (derived from API) ──────────────────────────────────────
 
@@ -585,39 +586,24 @@ export default function Plan() {
     [plan, catMaps],
   );
 
-  const needSavory  = guests * savoryPPG;
-  const needSweet   = guests * sweetPPG;
-  const needSbTotal = needSavory + needSweet;
-  const needEntrees = guests * servingsPPG;
+  const groupOfPlanner = (c: string): "savory" | "sweet" | "entree" | "other" =>
+    isSavory(c) ? "savory" : isSweet(c) ? "sweet" : isEntree(c) ? "entree" : "other";
 
-  const haveSavory = useMemo(
-    () => smallBiteItems.filter(i => isSavory(i.menuItem.category))
-      .reduce((s, i) => {
-        if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
-          const slots = panQtys[i.id] ?? {};
-          return s + Object.entries(slots).reduce((ss, [idxStr, qty]) => {
-            const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? (i.menuItem as any).servingSize ?? 1;
-            return ss + qty * spu;
-          }, 0);
-        }
-        return s + (piecesMap[i.id] ?? 0) * ((i.menuItem as any).servingSize ?? 1);
-      }, 0),
-    [smallBiteItems, piecesMap, panQtys],
+  const coverage = useMemo(
+    () => computePlannerCoverage({
+      guests, savoryPPG, sweetPPG, servingsPPG,
+      items: plan?.items ?? [],
+      piecesMap, servingsMap, panQtys,
+      groupOf: groupOfPlanner,
+    }),
+    [guests, savoryPPG, sweetPPG, servingsPPG, plan?.items, piecesMap, servingsMap, panQtys, catMaps],
   );
-  const haveSweet = useMemo(
-    () => smallBiteItems.filter(i => isSweet(i.menuItem.category))
-      .reduce((s, i) => {
-        if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
-          const slots = panQtys[i.id] ?? {};
-          return s + Object.entries(slots).reduce((ss, [idxStr, qty]) => {
-            const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? (i.menuItem as any).servingSize ?? 1;
-            return ss + qty * spu;
-          }, 0);
-        }
-        return s + (piecesMap[i.id] ?? 0) * ((i.menuItem as any).servingSize ?? 1);
-      }, 0),
-    [smallBiteItems, piecesMap, panQtys],
-  );
+  const needSavory  = coverage.needSavory;
+  const needSweet   = coverage.needSweet;
+  const needSbTotal = needSavory + needSweet;
+  const needEntrees = coverage.needEntrees;
+  const haveSavory  = coverage.haveSavory;
+  const haveSweet   = coverage.haveSweet;
   const haveSbTotal = haveSavory + haveSweet;
 
   const entreeServingsBycat = useMemo(() => {

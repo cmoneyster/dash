@@ -21,15 +21,16 @@ function parseItems(raw: unknown): ItemInput[] | string {
   const out: ItemInput[] = [];
   for (const r of raw) {
     if (!r || typeof r !== "object") return "each item must be an object";
-    const mid = Number((r as any).menuItemId);
-    const qty = Number((r as any).quantity);
-    const sz = (r as any).sizeKey;
-    if (!Number.isFinite(mid) || mid <= 0) return "menuItemId required";
-    if (!Number.isFinite(qty) || qty <= 0) return "quantity must be positive";
+    const rec = r as Record<string, unknown>;
+    const mid = Number(rec.menuItemId);
+    const qty = Number(rec.quantity);
+    const sz = rec.sizeKey;
+    if (!Number.isInteger(mid) || mid <= 0) return "menuItemId must be a positive integer";
+    if (!Number.isInteger(qty) || qty <= 0) return "quantity must be a positive integer";
     let sizeKey: number | null = null;
     if (sz != null && sz !== "") {
       const n = Number(sz);
-      if (!Number.isFinite(n) || n < 1 || n > 5) return "sizeKey must be 1..5 or null";
+      if (!Number.isInteger(n) || n < 1 || n > 5) return "sizeKey must be an integer 1..5 or null";
       sizeKey = n;
     }
     out.push({ menuItemId: mid, quantity: qty, sizeKey });
@@ -110,7 +111,7 @@ router.post("/admin/menu-packages", async (req, res): Promise<void> => {
       res.status(400).json({ error: "name required" }); return;
     }
     const guests = Number(servesGuests);
-    if (!Number.isFinite(guests) || guests <= 0 || guests > 100000) {
+    if (!Number.isInteger(guests) || guests <= 0 || guests > 100000) {
       res.status(400).json({ error: "servesGuests must be a positive integer" }); return;
     }
     const parsedItems = parseItems(items ?? []);
@@ -152,7 +153,7 @@ router.post("/admin/menu-packages", async (req, res): Promise<void> => {
       name: name.trim(),
       description: typeof description === "string" ? description : "",
       imageUrl: typeof imageUrl === "string" && imageUrl.trim() ? imageUrl.trim() : null,
-      servesGuests: Math.floor(guests),
+      servesGuests: guests,
       hidden: hidden === true,
       sortOrder: nextSort,
     }).returning();
@@ -163,7 +164,7 @@ router.post("/admin/menu-packages", async (req, res): Promise<void> => {
       await db.insert(menuPackageItemsTable).values(parsedItems.map((it, idx) => ({
         packageId: pkg.id,
         menuItemId: it.menuItemId,
-        quantity: Math.floor(it.quantity),
+        quantity: it.quantity,
         sizeKey: it.sizeKey,
         sortOrder: idx * 10,
       })));
@@ -198,10 +199,10 @@ router.put("/admin/menu-packages/:id", async (req, res): Promise<void> => {
     }
     if (servesGuests !== undefined) {
       const guests = Number(servesGuests);
-      if (!Number.isFinite(guests) || guests <= 0 || guests > 100000) {
+      if (!Number.isInteger(guests) || guests <= 0 || guests > 100000) {
         res.status(400).json({ error: "servesGuests must be a positive integer" }); return;
       }
-      updates.servesGuests = Math.floor(guests);
+      updates.servesGuests = guests;
     }
     if (hidden !== undefined) updates.hidden = hidden === true;
 
@@ -253,7 +254,7 @@ router.put("/admin/menu-packages/:id", async (req, res): Promise<void> => {
           await tx.insert(menuPackageItemsTable).values(parsedItems.map((it, idx) => ({
             packageId: id,
             menuItemId: it.menuItemId,
-            quantity: Math.floor(it.quantity),
+            quantity: it.quantity,
             sizeKey: it.sizeKey,
             sortOrder: idx * 10,
           })));

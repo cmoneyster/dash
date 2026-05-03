@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
 import { saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
 import { useCategories, buildPlannerGroupMap, splitCategoryName, type PlannerGroup } from "@/lib/categories";
+import { computePlannerCoverage } from "@/lib/plannerMath";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -392,42 +393,37 @@ export default function SharedPlan() {
   const hasEntrees     = entreeItems.length > 0;
   const showPlanner    = hasSmallBites || hasEntrees;
 
-  const needSavory  = guests * savoryPPG;
-  const needSweet   = guests * sweetPPG;
-  const needEntrees = guests * servingsPPG;
-
-  const haveSavory  = useMemo(() => smallBiteItems.filter(i => groupOf(i.menuItem.category) === "savory").reduce((s, i) => {
-    if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
-      const slots = panQtys[String(i.id)] ?? {};
-      return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
-        const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? i.menuItem.servingSize ?? 1;
-        return ss + Number(q) * spu;
-      }, 0);
+  const numKeyMap = (m: Record<string, number>): Record<number, number> => {
+    const out: Record<number, number> = {};
+    for (const [k, v] of Object.entries(m)) out[Number(k)] = Number(v) || 0;
+    return out;
+  };
+  const numKeyPanQtys = (m: Record<string, Record<string, number>>): Record<number, Record<number, number>> => {
+    const out: Record<number, Record<number, number>> = {};
+    for (const [k, slots] of Object.entries(m)) {
+      const inner: Record<number, number> = {};
+      for (const [sk, sv] of Object.entries(slots)) inner[Number(sk)] = Number(sv) || 0;
+      out[Number(k)] = inner;
     }
-    return s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1);
-  }, 0), [smallBiteItems, piecesMap, panQtys, groupOf]);
-  const haveSweet   = useMemo(() => smallBiteItems.filter(i => groupOf(i.menuItem.category) === "sweet").reduce((s, i) => {
-    if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
-      const slots = panQtys[String(i.id)] ?? {};
-      return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
-        const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? i.menuItem.servingSize ?? 1;
-        return ss + Number(q) * spu;
-      }, 0);
-    }
-    return s + (Number(piecesMap[String(i.id)]) || 0) * (i.menuItem.servingSize ?? 1);
-  }, 0), [smallBiteItems, piecesMap, panQtys, groupOf]);
-  const haveEntrees = useMemo(() => entreeItems.reduce((s, i) => {
-    const isPanSizes = (i.menuItem as any).pricingTemplate === "pan_sizes";
-    if (isPanSizes) {
-      const slots = panQtys[String(i.id)] ?? {};
-      return s + Object.entries(slots).reduce((ss, [idxStr, q]) => {
-        const spu = (i.menuItem as any)[`size${idxStr}Servings`] ?? (i.menuItem as any).servingSize ?? 1;
-        return ss + Number(q) * spu;
-      }, 0);
-    }
-    const srvPerUnit = (i.menuItem as any).servingSize ?? 1;
-    return s + (Number(servingsMap[String(i.id)]) || 0) * srvPerUnit;
-  }, 0), [entreeItems, servingsMap, panQtys]);
+    return out;
+  };
+  const coverage = useMemo(
+    () => computePlannerCoverage({
+      guests, savoryPPG, sweetPPG, servingsPPG,
+      items: plan?.items ?? [],
+      piecesMap: numKeyMap(piecesMap),
+      servingsMap: numKeyMap(servingsMap),
+      panQtys: numKeyPanQtys(panQtys),
+      groupOf,
+    }),
+    [guests, savoryPPG, sweetPPG, servingsPPG, plan?.items, piecesMap, servingsMap, panQtys, groupOf],
+  );
+  const needSavory  = coverage.needSavory;
+  const needSweet   = coverage.needSweet;
+  const needEntrees = coverage.needEntrees;
+  const haveSavory  = coverage.haveSavory;
+  const haveSweet   = coverage.haveSweet;
+  const haveEntrees = coverage.haveEntrees;
 
   // ── Item actions ──
   const handleRemove = async (itemId: number) => {

@@ -197,8 +197,19 @@ type PlanItemRow = { id: number; menuItemId: number };
 async function fetchPlanItems(sessionId: string): Promise<PlanItemRow[]> {
   const res = await fetch(`${API_BASE}/api/plan?sessionId=${encodeURIComponent(sessionId)}`);
   if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data?.items) ? data.items.map((i: any) => ({ id: i.id, menuItemId: i.menuItemId })) : [];
+  const data: unknown = await res.json();
+  const items = (data && typeof data === "object" && "items" in data) ? (data as { items: unknown }).items : null;
+  if (!Array.isArray(items)) return [];
+  const rows: PlanItemRow[] = [];
+  for (const i of items) {
+    if (i && typeof i === "object") {
+      const rec = i as Record<string, unknown>;
+      const id = Number(rec.id);
+      const menuItemId = Number(rec.menuItemId);
+      if (Number.isFinite(id) && Number.isFinite(menuItemId)) rows.push({ id, menuItemId });
+    }
+  }
+  return rows;
 }
 
 export type PlannerGroupResolver = (category: string) => "savory" | "sweet" | "entree" | "other";
