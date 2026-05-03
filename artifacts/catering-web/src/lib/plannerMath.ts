@@ -1,8 +1,23 @@
-// Shared planner math used by both the customer Plan/SharedPlan pages
-// and the admin Menu Package editor's embedded planner. Computes the
-// savory / sweet / entrée coverage so all three surfaces stay in sync.
+// Coverage math (need vs have, in pieces and entrée servings) extracted
+// for reuse. Currently consumed by the admin Menu Package editor's
+// coverage check; the customer Plan/SharedPlan pages still inline
+// equivalent math and can migrate to this helper later.
 
 export type PlannerGroup = "savory" | "sweet" | "entree" | "other";
+
+type PanSizedItem = {
+  servingSize?: number | null;
+  size1Servings?: number | null; size2Servings?: number | null;
+  size3Servings?: number | null; size4Servings?: number | null;
+  size5Servings?: number | null;
+};
+const SIZE_SERVINGS_KEYS = ["size1Servings","size2Servings","size3Servings","size4Servings","size5Servings"] as const;
+function servingsForSlot(mi: PanSizedItem, slot: number): number {
+  const idx = slot - 1;
+  if (idx < 0 || idx >= SIZE_SERVINGS_KEYS.length) return mi.servingSize ?? 1;
+  const key = SIZE_SERVINGS_KEYS[idx]!;
+  return mi[key] ?? mi.servingSize ?? 1;
+}
 
 export interface PlannerMathItem {
   id: number;            // plan-item id used as map key
@@ -39,11 +54,11 @@ export interface PlannerCoverage {
 
 function panServings(item: PlannerMathItem, panQtys: Record<number, Record<number, number>>) {
   const slots = panQtys[item.id] ?? {};
-  const mi = item.menuItem as any;
   let total = 0;
   for (const [idxStr, qty] of Object.entries(slots)) {
-    const spu = mi[`size${idxStr}Servings`] ?? mi.servingSize ?? 1;
-    total += Number(qty) * spu;
+    const slot = Number(idxStr);
+    if (!Number.isFinite(slot)) continue;
+    total += Number(qty) * servingsForSlot(item.menuItem, slot);
   }
   return total;
 }

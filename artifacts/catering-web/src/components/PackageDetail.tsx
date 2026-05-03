@@ -106,11 +106,11 @@ export function PackageDetail({ packageId, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4 overflow-auto">
-      <div className="bg-card rounded-3xl shadow-2xl max-w-3xl w-full my-8 relative">
+    <div className="fixed inset-0 z-[110] bg-black/60 sm:flex sm:items-center sm:justify-center sm:p-4 overflow-auto">
+      <div className="bg-card sm:rounded-3xl shadow-2xl sm:max-w-3xl w-full sm:my-8 relative min-h-screen sm:min-h-0">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center hover:bg-secondary"
+          className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center hover:bg-secondary shadow-md"
           aria-label="Close"
         >
           <XIcon className="w-5 h-5" />
@@ -128,7 +128,7 @@ export function PackageDetail({ packageId, onClose }: Props) {
               <img
                 src={pkg.imageUrl}
                 alt={pkg.name}
-                className="w-full h-64 object-cover rounded-t-3xl"
+                className="w-full h-56 sm:h-64 object-cover sm:rounded-t-3xl"
               />
             )}
             <div className="p-6 sm:p-8">
@@ -224,6 +224,8 @@ export function PackageDetail({ packageId, onClose }: Props) {
       <MergeReplaceDialog
         open={pendingTarget !== null}
         busy={busy}
+        existingCount={pendingTarget === "cart" ? (cart?.items?.length ?? 0) : (plan?.items?.length ?? 0)}
+        incomingCount={pkg?.items.length ?? 0}
         title={pendingTarget === "cart" ? "Cart already has items" : "Plan already has items"}
         message={
           pendingTarget === "cart"
