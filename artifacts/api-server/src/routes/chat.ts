@@ -2,37 +2,59 @@ import { Router, type IRouter } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
 import { menuItemsTable } from "@workspace/db/schema";
+import {
+  CHAT_TOOL_DEFS,
+  getOrCreateSnapshot,
+  runChatTool,
+  trustedPublicOrigin,
+} from "../lib/chatMenuTools";
+type ChatMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+type ToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
 
 const router: IRouter = Router();
 
-const SYSTEM_PROMPT = `You are a friendly and helpful AI assistant for a catering business. Your job is to help prospective event hosts plan their catering.
+const SYSTEM_PROMPT = `You are the Catering Concierge, a friendly assistant for an authentic, passionate local catering business. You help prospective event hosts plan their catering.
 
 When a user first reaches out:
-1. Warmly greet them and ask if they'd like to browse the menu or get help planning their specific event.
+- Warmly greet them and ask if they'd like to browse the menu or get help planning their event.
 
-When helping them plan:
-- Ask for their event date (we'll check availability)
-- Ask how many guests they're expecting
-- Ask what type of service they'd prefer:
-  * Finger foods / appetizers (grazing style)
-  * Buffet line (sit-down with buffet)
-  * Made-to-order (guests order from the menu, up to ~6 items chosen by host)
-  * Pre-cooked and delivered (we cook ahead and deliver everything)
-  * Food trailer on-site (we bring our trailer and cook fresh for guests)
-- Based on their answers, suggest appropriate menu items with quantities
-- If a date is unavailable, be empathetic and suggest alternative dates
+When helping them plan, gather:
+- Event date (we'll check availability)
+- Guest count
+- Service style: grazing finger foods, buffet line, made-to-order from a chosen list (~6 items), pre-cooked & delivered, or our food trailer on-site cooking fresh.
 
-Keep responses warm, conversational, and concise. Use casual but professional language.
-If they want to browse the menu, encourage them to visit the Menu page.
-If they've decided on items, encourage them to add to cart and check out.
+You have tools to look up the LIVE menu in real time:
+- search_menu — search by keyword, category, dietary need, or allergen exclusion.
+- list_categories — list categories that have available items right now.
+- get_menu_item — look up a specific item by id.
 
-IMPORTANT: You represent an authentic, passionate local catering business. Emphasize freshness, quality, and personalized service.`;
+RULES — these are non-negotiable:
+1. Whenever the guest asks about food, categories, dietary fit, allergens, or what's available, USE THE TOOLS. Never invent items, never describe items from memory, never assume an item exists.
+2. Never quote a specific price, dollar amount, per-person cost, or pan price. If asked, reply with something like "Pricing is on our menu page — here's the link." and include the link returned by the tool.
+3. When you name a specific menu item, format it as a markdown link using the link the tool returned, e.g. "[Smoked Brisket](/menu?category=Entr%C3%A9es)". Always include the link the tool gave you — don't hand-craft URLs.
+4. If a tool returns nothing for the guest's request (e.g. no vegan options today), say so honestly and offer to flag it for the team. Don't fudge it.
+5. Keep replies warm, concise, and conversational. Emphasize freshness, quality, and personalized service. Avoid jargon.
+6. If they want to browse, point them to the menu page. If they're decided, encourage them to add to cart and check out.`;
+
+const MAX_TOOL_ROUNDS = 4;
 
 router.post("/chat/message", async (req, res): Promise<void> => {
-  const { sessionId, message, history } = req.body;
+  const { sessionId, message, history } = req.body ?? {};
 
-  if (!message) {
+  if (!message || typeof message !== "string") {
     res.status(400).json({ error: "message is required" });
+    return;
+  }
+  if (!sessionId || typeof sessionId !== "string") {
+    res.status(400).json({ error: "sessionId is required" });
     return;
   }
 
@@ -41,29 +63,66 @@ router.post("/chat/message", async (req, res): Promise<void> => {
   res.setHeader("Connection", "keep-alive");
 
   try {
-    const chatHistory = (history ?? []).map((h: { role: string; content: string }) => ({
-      role: h.role as "user" | "assistant",
-      content: h.content,
-    }));
+    const publicOrigin = trustedPublicOrigin();
+    const snap = await getOrCreateSnapshot(sessionId);
 
-    const stream = await openai.chat.completions.create({
-      model: "gpt-5.2",
-      max_completion_tokens: 8192,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...chatHistory,
-        { role: "user", content: message },
-      ],
-      stream: true,
-    });
+    const chatHistory: ChatMessage[] = (Array.isArray(history) ? history : [])
+      .filter((h): h is { role: "user" | "assistant"; content: string } =>
+        h && typeof h === "object" && (h.role === "user" || h.role === "assistant") && typeof h.content === "string",
+      )
+      .map((h) => ({ role: h.role, content: h.content }));
 
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        res.write(`data: ${JSON.stringify({ content })}\n\n`);
+    const messages: ChatMessage[] = [
+      { role: "system", content: SYSTEM_PROMPT },
+      ...chatHistory,
+      { role: "user", content: message },
+    ];
+
+    let finalContent = "";
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const resp = await openai.chat.completions.create({
+        model: "gpt-5.2",
+        max_completion_tokens: 2048,
+        messages: messages as never,
+        tools: CHAT_TOOL_DEFS,
+        tool_choice: "auto",
+      });
+      const choice = resp.choices[0]?.message;
+      if (!choice) break;
+
+      const toolCalls: ToolCall[] = (choice.tool_calls ?? []) as ToolCall[];
+      if (toolCalls.length === 0) {
+        finalContent = choice.content ?? "";
+        break;
+      }
+
+      messages.push({
+        role: "assistant",
+        content: choice.content ?? "",
+        tool_calls: toolCalls,
+      });
+      for (const tc of toolCalls) {
+        if (tc.type !== "function") continue;
+        let args: unknown = {};
+        try {
+          args = JSON.parse(tc.function.arguments || "{}");
+        } catch {
+          args = {};
+        }
+        const result = runChatTool(tc.function.name, args, snap, publicOrigin);
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: JSON.stringify(result),
+        });
       }
     }
 
+    if (!finalContent) {
+      finalContent = "Sorry, I'm having trouble pulling up the menu right now. Please try again in a moment.";
+    }
+
+    res.write(`data: ${JSON.stringify({ content: finalContent })}\n\n`);
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   } catch (err) {
@@ -82,12 +141,7 @@ router.post("/chat/suggest-items", async (req, res): Promise<void> => {
       return;
     }
 
-    // Get all available menu items
-    const items = await db
-      .select()
-      .from(menuItemsTable)
-      .where(menuItemsTable.available ? undefined : undefined); // get all available
-
+    const items = await db.select().from(menuItemsTable);
     const availableItems = items.filter((i) => i.available);
 
     if (availableItems.length === 0) {
@@ -95,7 +149,6 @@ router.post("/chat/suggest-items", async (req, res): Promise<void> => {
       return;
     }
 
-    // Use AI to suggest items and quantities
     const menuSummary = availableItems
       .map((i) => `ID:${i.id} | ${i.name} (${i.category}) - $${i.price}/unit, serves ${i.servingSize} people per ${i.unit}`)
       .join("\n");
@@ -130,7 +183,6 @@ Respond with ONLY valid JSON, no markdown:
       parsed = { suggestions: [] };
     }
 
-    // Enrich with full menu item data
     const enriched = parsed.suggestions
       .map((s) => {
         const item = availableItems.find((i) => i.id === s.menuItemId);

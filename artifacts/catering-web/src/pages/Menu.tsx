@@ -24,7 +24,15 @@ import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/servic
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function Menu() {
-  const [category, setCategory] = useState<string>("");
+  // Seed the category filter from a `?category=` query param so the chat
+  // bot (and any other deep link) can drop a guest into a specific
+  // section of the menu.
+  const initialCategory = (() => {
+    if (typeof window === "undefined") return "";
+    const c = new URLSearchParams(window.location.search).get("category");
+    return c ?? "";
+  })();
+  const [category, setCategory] = useState<string>(initialCategory);
   const [pickerItem, setPickerItem] = useState<PanSizeMenuItem | null>(null);
   const [pickerLoading, setPickerLoading] = useState(false);
   const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());

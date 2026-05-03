@@ -1,8 +1,36 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, X, Send, Sparkles, ChefHat } from "lucide-react";
 import { useChatStream } from "@/hooks/use-chat";
 import { cn } from "@/lib/utils";
+
+// Render `[label](url)` markdown links as real <a> tags. We only allow
+// same-origin links (must start with `/`) so the model can't slip an
+// arbitrary external URL into chat. Non-matching text is rendered
+// verbatim. We deliberately don't try to support full markdown — that
+// would invite far more sanitization work than we need here.
+function renderMessageContent(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const re = /\[([^\]]+)\]\((\/[^)\s]*)\)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    parts.push(
+      <a
+        key={`l${key++}`}
+        href={match[2]}
+        className="underline font-semibold text-primary hover:text-primary/80"
+      >
+        {match[1]}
+      </a>,
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -96,7 +124,7 @@ export function ChatWidget() {
                         : "bg-white border border-border shadow-sm rounded-tl-sm text-foreground"
                     )}
                   >
-                    {msg.content}
+                    {msg.role === "assistant" ? renderMessageContent(msg.content) : msg.content}
                     {msg.isStreaming && (
                       <span className="inline-block w-1.5 h-4 ml-1 align-middle bg-primary/50 animate-pulse" />
                     )}
