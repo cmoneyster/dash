@@ -1094,6 +1094,16 @@ export default function EventTakerOrder() {
                 </button>
               </div>
             )}
+            <a
+              href="/admin/printers"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
+              title="Open printer settings (opens admin in a new tab)"
+              data-testid="link-printer-settings"
+            >
+              <Printer className="w-5 h-5" />
+            </a>
             <button
               onClick={handleLogout}
               className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
