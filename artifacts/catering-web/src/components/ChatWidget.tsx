@@ -4,23 +4,40 @@ import { MessageSquare, X, Send, Sparkles, ChefHat } from "lucide-react";
 import { useChatStream } from "@/hooks/use-chat";
 import { cn } from "@/lib/utils";
 
-// Render `[label](url)` markdown links as real <a> tags. We only allow
-// same-origin links (must start with `/`) so the model can't slip an
-// arbitrary external URL into chat. Non-matching text is rendered
-// verbatim. We deliberately don't try to support full markdown — that
-// would invite far more sanitization work than we need here.
+// Render `[label](url)` markdown links as real <a> tags. The model is
+// untrusted, so we resolve every candidate URL against the current
+// origin and only accept links that resolve to that same origin —
+// rejecting protocol-relative (`//evil`), absolute external, and any
+// non-`http(s)` schemes. Non-matching text is rendered verbatim, and
+// we deliberately don't try to support broader markdown.
+function isSafeSameOriginPath(raw: string): string | null {
+  if (typeof window === "undefined") return null;
+  // Must start with a single `/` and not be protocol-relative.
+  if (!raw.startsWith("/") || raw.startsWith("//")) return null;
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return null;
+  }
+}
+
 function renderMessageContent(text: string): ReactNode[] {
   const parts: ReactNode[] = [];
-  const re = /\[([^\]]+)\]\((\/[^)\s]*)\)/g;
+  const re = /\[([^\]]+)\]\(([^)\s]+)\)/g;
   let last = 0;
   let match: RegExpExecArray | null;
   let key = 0;
   while ((match = re.exec(text)) !== null) {
+    const safeHref = isSafeSameOriginPath(match[2]);
+    if (safeHref === null) continue; // leave unsafe links as plain text
     if (match.index > last) parts.push(text.slice(last, match.index));
     parts.push(
       <a
         key={`l${key++}`}
-        href={match[2]}
+        href={safeHref}
         className="underline font-semibold text-primary hover:text-primary/80"
       >
         {match[1]}
