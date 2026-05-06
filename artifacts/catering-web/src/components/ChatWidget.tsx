@@ -171,7 +171,7 @@ export function ChatWidget() {
                       "p-3 rounded-2xl text-sm leading-relaxed",
                       msg.role === "user" 
                         ? "bg-primary text-primary-foreground rounded-tr-sm" 
-                        : "bg-white border border-border shadow-sm rounded-tl-sm text-foreground"
+                        : "bg-card border border-border shadow-sm rounded-tl-sm text-foreground"
                     )}
                   >
                     {msg.role === "assistant" ? renderMessageContent(msg.content) : msg.content}
@@ -186,7 +186,7 @@ export function ChatWidget() {
                   <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
                     <Sparkles className="w-4 h-4 text-primary" />
                   </div>
-                  <div className="p-4 bg-white border border-border shadow-sm rounded-2xl rounded-tl-sm flex gap-1">
+                  <div className="p-4 bg-card border border-border shadow-sm rounded-2xl rounded-tl-sm flex gap-1">
                     <span className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce" />
                     <span className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce delay-75" />
                     <span className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce delay-150" />
