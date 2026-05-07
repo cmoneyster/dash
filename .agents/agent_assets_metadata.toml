@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "ZSD6Dvr1HOmVL1sDFKZ29"
+uri = "file://attached_assets/generated_images/hero_chinese_food.png"
+type = "image"
+title = "Chinese catering hero spread"
