@@ -2,8 +2,8 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import sharp from "sharp";
 import { db } from "@workspace/db";
-import { eventSettingsTable, eventOrdersTable } from "@workspace/db/schema";
-import { eq, and, gte, lt, inArray } from "drizzle-orm";
+import { eventSettingsTable, eventOrdersTable, cateringInquiriesTable } from "@workspace/db/schema";
+import { eq, and, gte, lt, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { isEjoinConfigured } from "../lib/sms-ejoin";
 
@@ -499,6 +499,80 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+// ── Catering totals ─────────────────────────────────────────────────────────
+// Aggregates paid catering inquiries (squareAmountPaid > 0) for the unified
+// sales report. Revenue = squareAmountPaid; items come from lineItems JSONB.
+
+type CateringReportItem = { name: string; quantity: number; revenue: number };
+type CateringReportOrder = {
+  id: number;
+  type: "catering";
+  clientName: string;
+  eventDate: string | null;
+  createdAt: string;
+  status: string;
+  squareInvoiceStatus: string | null;
+  squareAmountPaid: number;
+  items: CateringReportItem[];
+};
+type CateringTotals = {
+  orderCount: number;
+  itemCount: number;
+  revenue: number;
+  avgOrderValue: number;
+  orders: CateringReportOrder[];
+  items: CateringReportItem[];
+};
+
+function buildCateringTotals(rows: typeof cateringInquiriesTable.$inferSelect[]): CateringTotals {
+  let revenue = 0;
+  let itemCount = 0;
+  const itemAgg: Record<string, CateringReportItem> = {};
+  const orderRows: CateringReportOrder[] = [];
+
+  for (const c of rows) {
+    const amountPaid = c.squareAmountPaid != null ? parseFloat(c.squareAmountPaid) : 0;
+    revenue += amountPaid;
+    const lineItems = c.lineItems ?? [];
+    let orderItemCount = 0;
+    const itemsForRow: CateringReportItem[] = [];
+    for (const li of lineItems) {
+      const qty = li.quantity ?? 0;
+      const unit = li.unitPrice ?? 0;
+      const lineRev = round2(qty * unit);
+      orderItemCount += qty;
+      itemsForRow.push({ name: li.name, quantity: qty, revenue: lineRev });
+      if (!itemAgg[li.name]) itemAgg[li.name] = { name: li.name, quantity: 0, revenue: 0 };
+      itemAgg[li.name].quantity += qty;
+      itemAgg[li.name].revenue += lineRev;
+    }
+    itemCount += orderItemCount;
+    orderRows.push({
+      id: c.id,
+      type: "catering",
+      clientName: c.clientName,
+      eventDate: c.eventDate ?? null,
+      createdAt: c.createdAt.toISOString(),
+      status: c.status,
+      squareInvoiceStatus: c.squareInvoiceStatus ?? null,
+      squareAmountPaid: amountPaid,
+      items: itemsForRow,
+    });
+  }
+
+  const orderCount = orderRows.length;
+  return {
+    orderCount,
+    itemCount,
+    revenue: round2(revenue),
+    avgOrderValue: orderCount > 0 ? round2(revenue / orderCount) : 0,
+    orders: orderRows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    items: Object.values(itemAgg)
+      .map(i => ({ ...i, revenue: round2(i.revenue) }))
+      .sort((a, b) => b.revenue - a.revenue),
+  };
+}
+
 router.get("/admin/sales-reports", async (req, res) => {
   try {
     const today = new Date();
@@ -508,39 +582,59 @@ router.get("/admin/sales-reports", async (req, res) => {
 
     const from = parseDate(req.query.from, monthAgo);
     const to = parseDate(req.query.to, new Date());
-    const source = typeof req.query.source === "string" ? req.query.source : "all"; // 'guest' | 'staff' | 'all'
+    const source = typeof req.query.source === "string" ? req.query.source : "all";
     const rawStatus = typeof req.query.status === "string" ? req.query.status : "all";
-    const statusFilter = rawStatus === "completed" ? "completed" : "all"; // whitelist
+    const statusFilter = rawStatus === "completed" ? "completed" : "all";
+    const rawScope = typeof req.query.scope === "string" ? req.query.scope : "events";
+    const scope = (["events", "catering", "all"] as const).includes(rawScope as "events" | "catering" | "all")
+      ? rawScope as "events" | "catering" | "all"
+      : "events";
 
-    // Inclusive date range — bump `to` to next-day midnight
     const fromStart = new Date(from); fromStart.setHours(0, 0, 0, 0);
     const toEnd = new Date(to); toEnd.setHours(0, 0, 0, 0); toEnd.setDate(toEnd.getDate() + 1);
 
-    const conditions = [
-      gte(eventOrdersTable.createdAt, fromStart),
-      lt(eventOrdersTable.createdAt, toEnd),
-    ];
-    if (source === "guest" || source === "staff") {
-      conditions.push(eq(eventOrdersTable.orderSource, source));
+    let eventOrders: typeof eventOrdersTable.$inferSelect[] = [];
+    if (scope !== "catering") {
+      const conditions = [
+        gte(eventOrdersTable.createdAt, fromStart),
+        lt(eventOrdersTable.createdAt, toEnd),
+      ];
+      if (source === "guest" || source === "staff") {
+        conditions.push(eq(eventOrdersTable.orderSource, source));
+      }
+      if (statusFilter === "completed") {
+        conditions.push(inArray(eventOrdersTable.status, ["done", "picked_up"]));
+      }
+      eventOrders = await db.select().from(eventOrdersTable).where(and(...conditions));
     }
-    if (statusFilter === "completed") {
-      conditions.push(inArray(eventOrdersTable.status, ["done", "picked_up"]));
-    }
-    const orders = await db.select().from(eventOrdersTable).where(and(...conditions));
 
-    const guestOrders = orders.filter(o => o.orderSource === "guest");
-    const staffOrders = orders.filter(o => o.orderSource === "staff");
+    let cateringTotals: CateringTotals | null = null;
+    if (scope === "catering" || scope === "all") {
+      const cateringRows = await db.select().from(cateringInquiriesTable).where(
+        and(
+          gte(cateringInquiriesTable.createdAt, fromStart),
+          lt(cateringInquiriesTable.createdAt, toEnd),
+          sql`${cateringInquiriesTable.squareAmountPaid} > 0`,
+        )
+      );
+      cateringTotals = buildCateringTotals(cateringRows);
+    }
+
+    const guestOrders = eventOrders.filter(o => o.orderSource === "guest");
+    const staffOrders = eventOrders.filter(o => o.orderSource === "staff");
 
     res.json({
       from: fromStart.toISOString(),
       to: toEnd.toISOString(),
       source,
+      scope,
       status: statusFilter,
-      totals: buildReport(orders),
+      totals: buildReport(eventOrders),
       bySource: {
         guest: buildReport(guestOrders),
         staff: buildReport(staffOrders),
       },
+      catering: cateringTotals,
     });
   } catch (err) {
     req.log.error({ err }, "Error generating sales report");
@@ -560,21 +654,39 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
     const rawStatus = typeof req.query.status === "string" ? req.query.status : "all";
     const statusFilter = rawStatus === "completed" ? "completed" : "all";
     const type = (typeof req.query.type === "string" ? req.query.type : "orders") as "orders" | "items" | "voids";
+    const rawScope = typeof req.query.scope === "string" ? req.query.scope : "events";
+    const scope = (["events", "catering", "all"] as const).includes(rawScope as "events" | "catering" | "all")
+      ? rawScope as "events" | "catering" | "all"
+      : "events";
 
     const fromStart = new Date(from); fromStart.setHours(0, 0, 0, 0);
     const toEnd = new Date(to); toEnd.setHours(0, 0, 0, 0); toEnd.setDate(toEnd.getDate() + 1);
 
-    const conditions = [
-      gte(eventOrdersTable.createdAt, fromStart),
-      lt(eventOrdersTable.createdAt, toEnd),
-    ];
-    if (source === "guest" || source === "staff") {
-      conditions.push(eq(eventOrdersTable.orderSource, source));
+    let orders: typeof eventOrdersTable.$inferSelect[] = [];
+    if (scope !== "catering") {
+      const conditions = [
+        gte(eventOrdersTable.createdAt, fromStart),
+        lt(eventOrdersTable.createdAt, toEnd),
+      ];
+      if (source === "guest" || source === "staff") {
+        conditions.push(eq(eventOrdersTable.orderSource, source));
+      }
+      if (statusFilter === "completed") {
+        conditions.push(inArray(eventOrdersTable.status, ["done", "picked_up"]));
+      }
+      orders = await db.select().from(eventOrdersTable).where(and(...conditions));
     }
-    if (statusFilter === "completed") {
-      conditions.push(inArray(eventOrdersTable.status, ["done", "picked_up"]));
+
+    let cateringRows: typeof cateringInquiriesTable.$inferSelect[] = [];
+    if ((scope === "catering" || scope === "all") && type !== "voids") {
+      cateringRows = await db.select().from(cateringInquiriesTable).where(
+        and(
+          gte(cateringInquiriesTable.createdAt, fromStart),
+          lt(cateringInquiriesTable.createdAt, toEnd),
+          sql`${cateringInquiriesTable.squareAmountPaid} > 0`,
+        )
+      );
     }
-    const orders = await db.select().from(eventOrdersTable).where(and(...conditions));
 
     const escape = (v: unknown) => {
       const s = v == null ? "" : String(v);
@@ -586,8 +698,7 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
 
     if (type === "items") {
       // Aggregated per-item CSV — one row per item across all orders in range.
-      // Existing CSV behavior preserved (per Task #122 out-of-scope rule);
-      // void-aware reporting lives in the dedicated `type=voids` CSV below.
+      // Catering line items are merged by name when scope includes catering.
       const agg = new Map<string, { quantity: number; revenue: number }>();
       for (const o of orders) {
         const items = (o.items ?? []) as SnapshotItem[];
@@ -598,6 +709,18 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
           cur.quantity += i.quantity;
           cur.revenue += line;
           agg.set(i.name, cur);
+        }
+      }
+      // Merge catering line items
+      for (const c of cateringRows) {
+        for (const li of (c.lineItems ?? [])) {
+          const qty = li.quantity ?? 0;
+          const unit = li.unitPrice ?? 0;
+          const line = round2(qty * unit);
+          const cur = agg.get(li.name) ?? { quantity: 0, revenue: 0 };
+          cur.quantity += qty;
+          cur.revenue += line;
+          agg.set(li.name, cur);
         }
       }
       rows.push(["Item", "Quantity Sold", "Revenue"].join(","));
@@ -638,9 +761,8 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
         ].map(escape).join(","));
       }
     } else {
-      // Order-level CSV — one row per order. Existing column shape preserved
-      // (per Task #122 out-of-scope rule); use the dedicated `type=voids`
-      // CSV for void-specific attribution columns.
+      // Order-level CSV — one row per order. Catering rows appended after
+      // event orders when scope includes catering (ID prefix "C-" to distinguish).
       rows.push([
         "Order ID", "Created", "Source", "Guest Name", "Phone", "Status",
         "payment_method", "Items", "Subtotal", "Tax Rate (%)", "Tax", "Total",
@@ -681,6 +803,31 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
           prepMin,
           readyToPickupMin,
           pickupMin,
+        ].map(escape).join(","));
+      }
+      // Append catering inquiry rows when scope includes catering
+      for (const c of cateringRows) {
+        const lineItems = c.lineItems ?? [];
+        const itemsStr = lineItems.map(li => `${li.quantity}× ${li.name}`).join("; ");
+        const amountPaid = c.squareAmountPaid != null ? parseFloat(c.squareAmountPaid) : 0;
+        rows.push([
+          `C-${c.id}`,
+          c.createdAt.toISOString(),
+          "catering",
+          c.clientName,
+          c.clientPhone ?? "",
+          c.status,
+          c.squareInvoiceStatus ?? "",
+          itemsStr,
+          amountPaid.toFixed(2),
+          "",
+          "",
+          amountPaid.toFixed(2),
+          "",
+          "",
+          "",
+          "",
+          "",
         ].map(escape).join(","));
       }
     }

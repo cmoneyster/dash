@@ -119,13 +119,16 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
       <AdminNavLink href="/admin/calendar" icon={CalendarDays} onClick={onNavigate}>Availability</AdminNavLink>
       <AdminNavLink href="/admin/images" icon={Images} onClick={onNavigate}>Image Library</AdminNavLink>
       <div className="pt-2 pb-1">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Reports</p>
+      </div>
+      <AdminNavLink href="/admin/sales-reports" icon={BarChart3} onClick={onNavigate}>Sales Reports</AdminNavLink>
+      <div className="pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">On-Site Events</p>
       </div>
       <AdminNavLink href="/admin/event-settings" icon={Zap} onClick={onNavigate}>Event Settings</AdminNavLink>
       <AdminNavLink href="/admin/printers" icon={PrinterIcon} onClick={onNavigate}>Printers</AdminNavLink>
       <AdminNavLink href="/admin/demo-menu" icon={Sparkles} onClick={onNavigate}>Demo Menu</AdminNavLink>
       <AdminNavLink href="/admin/event-history" icon={History} onClick={onNavigate}>Event Log</AdminNavLink>
-      <AdminNavLink href="/admin/sales-reports" icon={BarChart3} onClick={onNavigate}>Sales Reports</AdminNavLink>
       <a
         href="/event-taker"
         target="_blank"

@@ -10,6 +10,7 @@ import {
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 type SourceFilter = "all" | "guest" | "staff";
+type ScopeFilter = "all" | "events" | "catering";
 type StatusFilter = "all" | "completed";
 type Preset = "today" | "yesterday" | "week" | "month" | "quarter" | "year" | "custom";
 
@@ -22,13 +23,31 @@ interface ReportOrder {
   items: ReportOrderLine[]; subtotal: number; taxRate: number | null; tax: number; total: number;
   readyAt: string | null; pickedUpAt: string | null;
   timeToReadySec: number | null; timeReadyToPickupSec: number | null; timeToPickupSec: number | null;
-  // Voided rows are kept in the orders array for chronological context but
-  // are excluded from every aggregate. Rendered dimmed with a "Voided" badge.
   voided: boolean;
   voidedAt: string | null;
   voidedBy: string | null;
   voidReason: string | null;
   refundRequired: boolean;
+}
+interface CateringItem { name: string; quantity: number; revenue: number }
+interface CateringOrder {
+  id: number;
+  type: "catering";
+  clientName: string;
+  eventDate: string | null;
+  createdAt: string;
+  status: string;
+  squareInvoiceStatus: string | null;
+  squareAmountPaid: number;
+  items: CateringItem[];
+}
+type AnyOrder = ReportOrder | CateringOrder;
+function isCateringOrder(o: AnyOrder): o is CateringOrder {
+  return (o as CateringOrder).type === "catering";
+}
+interface CateringTotals {
+  orderCount: number; itemCount: number; revenue: number; avgOrderValue: number;
+  orders: CateringOrder[]; items: CateringItem[];
 }
 interface PaymentMethodTotal { method: PaymentMethod; orderCount: number; revenue: number }
 interface PickupStats {
@@ -51,9 +70,10 @@ interface ReportTotals {
   voids: ReportVoids;
 }
 interface Report {
-  from: string; to: string; source: SourceFilter;
+  from: string; to: string; source: SourceFilter; scope: ScopeFilter;
   totals: ReportTotals;
   bySource: { guest: ReportTotals; staff: ReportTotals };
+  catering: CateringTotals | null;
 }
 
 function todayISO(d: Date = new Date()) {
@@ -108,10 +128,12 @@ export default function SalesReports() {
   // Default to staff source per spec — most relevant for the new POS reporting workflow.
   const [source, setSource] = useState<SourceFilter>("staff");
   const [status, setStatus] = useState<StatusFilter>("all");
+  // Scope: "events" (default) = event orders only; "catering" = paid catering only; "all" = unified.
+  const [scope, setScope] = useState<ScopeFilter>("events");
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const token = getAdminToken();
 
@@ -125,7 +147,7 @@ export default function SalesReports() {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({ from, to, source, status });
+      const params = new URLSearchParams({ from, to, source, status, scope });
       const res = await fetch(`${BASE}/api/admin/sales-reports?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -138,10 +160,10 @@ export default function SalesReports() {
     }
   }
 
-  useEffect(() => { loadReport(); /* eslint-disable-next-line */ }, [from, to, source, status]);
+  useEffect(() => { loadReport(); /* eslint-disable-next-line */ }, [from, to, source, status, scope]);
 
   async function downloadCsv(type: "orders" | "items" | "voids") {
-    const params = new URLSearchParams({ from, to, source, status, type });
+    const params = new URLSearchParams({ from, to, source, status, type, scope });
     const res = await fetch(`${BASE}/api/admin/sales-reports.csv?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -157,18 +179,44 @@ export default function SalesReports() {
     URL.revokeObjectURL(url);
   }
 
-  function toggleExpanded(id: number) {
+  function toggleExpanded(key: string) {
     setExpanded(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   }
 
-  const orders = useMemo(() => report?.totals.orders ?? [], [report]);
+  // Unified order list — event orders + catering orders sorted by createdAt desc.
+  const allOrders = useMemo((): AnyOrder[] => {
+    const evtOrders: AnyOrder[] = scope !== "catering" ? (report?.totals.orders ?? []) : [];
+    const catOrders: AnyOrder[] = scope !== "events" ? (report?.catering?.orders ?? []) : [];
+    return [...evtOrders, ...catOrders].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [report, scope]);
+
+  // Unified KPI totals.
+  const unifiedRevenue = (report?.totals.revenue ?? 0) + (scope !== "events" ? (report?.catering?.revenue ?? 0) : 0);
+  const unifiedOrderCount = (report?.totals.orderCount ?? 0) + (scope !== "events" ? (report?.catering?.orderCount ?? 0) : 0);
+  const unifiedItemCount = (report?.totals.itemCount ?? 0) + (scope !== "events" ? (report?.catering?.itemCount ?? 0) : 0);
+  const unifiedAvg = unifiedOrderCount > 0 ? unifiedRevenue / unifiedOrderCount : 0;
+
   const [itemSort, setItemSort] = useState<{ col: "name" | "quantity" | "revenue"; dir: "asc" | "desc" }>({ col: "revenue", dir: "desc" });
   const sortedItems = useMemo(() => {
-    const items = [...(report?.totals.items ?? [])];
+    // Merge event + catering items by name when scope includes catering.
+    const eventItems = scope !== "catering" ? (report?.totals.items ?? []) : [];
+    const catItems = scope !== "events" ? (report?.catering?.items ?? []) : [];
+    const merged: Record<string, ReportItem> = {};
+    for (const i of eventItems) {
+      merged[i.name] = { ...i };
+    }
+    for (const i of catItems) {
+      if (merged[i.name]) {
+        merged[i.name] = { name: i.name, quantity: merged[i.name].quantity + i.quantity, revenue: merged[i.name].revenue + i.revenue };
+      } else {
+        merged[i.name] = { ...i };
+      }
+    }
+    const items = Object.values(merged);
     items.sort((a, b) => {
       const av = a[itemSort.col];
       const bv = b[itemSort.col];
@@ -176,7 +224,7 @@ export default function SalesReports() {
       return itemSort.dir === "asc" ? cmp : -cmp;
     });
     return items;
-  }, [report, itemSort]);
+  }, [report, scope, itemSort]);
 
   return (
     <AdminLayout>
@@ -186,7 +234,7 @@ export default function SalesReports() {
             <BarChart3 className="w-8 h-8 text-indigo-600" />
             Sales Reports
           </h1>
-          <p className="text-muted-foreground">Revenue, orders, and item breakdown across event orders.</p>
+          <p className="text-muted-foreground">Revenue, orders, and item breakdown across on-site event orders and paid catering inquiries.</p>
         </div>
       </div>
 
@@ -236,6 +284,14 @@ export default function SalesReports() {
             </select>
           </div>
           <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Scope</label>
+            <select value={scope} onChange={e => setScope(e.target.value as ScopeFilter)} className="px-3 py-2 border border-border rounded-lg bg-background">
+              <option value="events">On-Site Events</option>
+              <option value="catering">Catering</option>
+              <option value="all">All (Events + Catering)</option>
+            </select>
+          </div>
+          <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Status</label>
             <select value={status} onChange={e => setStatus(e.target.value as StatusFilter)} className="px-3 py-2 border border-border rounded-lg bg-background">
               <option value="all">All statuses</option>
@@ -267,7 +323,7 @@ export default function SalesReports() {
             </button>
             <button
               onClick={() => downloadCsv("voids")}
-              disabled={loading || !report || (report?.totals.voids.count ?? 0) === 0}
+              disabled={loading || !report || scope === "catering" || (report?.totals.voids.count ?? 0) === 0}
               className="px-4 py-2 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 disabled:opacity-50 flex items-center gap-2 text-sm"
               data-testid="button-download-voids-csv"
             >
@@ -284,26 +340,58 @@ export default function SalesReports() {
       {report && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
-            <Kpi label="Revenue" value={fmt(report.totals.revenue)} icon={<DollarSign className="w-5 h-5" />} accent="text-emerald-600 bg-emerald-50" />
-            <Kpi label="Orders" value={String(report.totals.orderCount)} icon={<ShoppingBag className="w-5 h-5" />} accent="text-indigo-600 bg-indigo-50" />
-            <Kpi label="Items Sold" value={String(report.totals.itemCount)} icon={<Package className="w-5 h-5" />} accent="text-amber-600 bg-amber-50" />
-            <Kpi label="Avg Order" value={fmt(report.totals.avgOrderValue)} icon={<Users className="w-5 h-5" />} accent="text-sky-600 bg-sky-50" />
-            <Kpi label="Tax Collected" value={fmt(report.totals.tax)} icon={<Receipt className="w-5 h-5" />} accent="text-rose-600 bg-rose-50" />
-            <VoidsKpi voids={report.totals.voids} />
+            <Kpi label="Revenue" value={fmt(unifiedRevenue)} icon={<DollarSign className="w-5 h-5" />} accent="text-emerald-600 bg-emerald-50" />
+            <Kpi label="Orders" value={String(unifiedOrderCount)} icon={<ShoppingBag className="w-5 h-5" />} accent="text-indigo-600 bg-indigo-50" />
+            <Kpi label="Items Sold" value={String(unifiedItemCount)} icon={<Package className="w-5 h-5" />} accent="text-amber-600 bg-amber-50" />
+            <Kpi label="Avg Order" value={fmt(unifiedAvg)} icon={<Users className="w-5 h-5" />} accent="text-sky-600 bg-sky-50" />
+            <Kpi label="Tax Collected" value={scope === "catering" ? "—" : fmt(report.totals.tax)} icon={<Receipt className="w-5 h-5" />} accent="text-rose-600 bg-rose-50" />
+            {scope !== "catering" && <VoidsKpi voids={report.totals.voids} />}
           </div>
 
-          <PickupTimeCard stats={report.totals.pickupStats} totalOrders={report.totals.orderCount} />
+          {scope !== "catering" && (
+            <PickupTimeCard stats={report.totals.pickupStats} totalOrders={report.totals.orderCount} />
+          )}
 
-          {source === "all" && (
+          {scope === "all" && report.catering && (
+            <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden mb-6">
+              <div className="px-5 py-4 border-b border-border bg-secondary/30 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-indigo-600" />
+                <div>
+                  <h2 className="font-display font-bold text-lg">By Type</h2>
+                  <p className="text-xs text-muted-foreground">Revenue split between on-site events and paid catering inquiries.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-border">
+                <div className="bg-card p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">On-Site Events</p>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div><p className="text-xs text-muted-foreground">Orders</p><p className="text-lg font-bold">{report.totals.orderCount}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Items</p><p className="text-lg font-bold">{report.totals.itemCount}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Revenue</p><p className="text-lg font-bold">{fmt(report.totals.revenue)}</p></div>
+                  </div>
+                </div>
+                <div className="bg-indigo-50/50 dark:bg-indigo-950/20 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Catering</p>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div><p className="text-xs text-muted-foreground">Orders</p><p className="text-lg font-bold">{report.catering.orderCount}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Items</p><p className="text-lg font-bold">{report.catering.itemCount}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Revenue</p><p className="text-lg font-bold">{fmt(report.catering.revenue)}</p></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {scope !== "all" && source === "all" && scope !== "catering" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
               <SourceCard title="Guest Event Ordering" totals={report.bySource.guest} />
               <SourceCard title="Staff Order Taker" totals={report.bySource.staff} accent />
             </div>
           )}
 
-          <PaymentMethodBreakdown totals={report.totals} />
+          {scope !== "catering" && <PaymentMethodBreakdown totals={report.totals} />}
 
-          <VoidsSection voids={report.totals.voids} />
+          {scope !== "catering" && <VoidsSection voids={report.totals.voids} />}
 
           {/* Order-level table with expandable line details */}
           <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden mb-6">
@@ -312,9 +400,9 @@ export default function SalesReports() {
                 <h2 className="font-display font-bold text-lg">Orders</h2>
                 <p className="text-xs text-muted-foreground">Click a row to expand line items.</p>
               </div>
-              <span className="text-xs text-muted-foreground">{orders.length} orders</span>
+              <span className="text-xs text-muted-foreground">{allOrders.length} orders</span>
             </div>
-            {orders.length === 0 ? (
+            {allOrders.length === 0 ? (
               <div className="px-5 py-12 text-center text-muted-foreground text-sm">No orders in this range.</div>
             ) : (
               <div className="overflow-x-auto">
@@ -334,28 +422,27 @@ export default function SalesReports() {
                     </tr>
                   </thead>
                   <tbody>
-                    {orders.map(o => {
-                      const isOpen = expanded.has(o.id);
-                      // Voided rows render dimmed with a strike-through total
-                      // and a "Voided" badge so they're easy to spot in the
-                      // chronological list, but they're already excluded from
-                      // every aggregate above.
-                      const rowClass = o.voided
+                    {allOrders.map(o => {
+                      const isCatering = isCateringOrder(o);
+                      const rowKey = isCatering ? `c-${o.id}` : `e-${o.id}`;
+                      const isOpen = expanded.has(rowKey);
+                      const isVoided = !isCatering && (o as ReportOrder).voided;
+                      const rowClass = isVoided
                         ? "border-b border-border/50 cursor-pointer bg-rose-50/40 hover:bg-rose-50/60 text-muted-foreground"
                         : "border-b border-border/50 hover:bg-secondary/30 cursor-pointer";
                       return (
-                        <Fragment key={o.id}>
+                        <Fragment key={rowKey}>
                           <tr
                             className={rowClass}
-                            onClick={() => toggleExpanded(o.id)}
-                            data-testid={o.voided ? `voided-row-${o.id}` : undefined}
+                            onClick={() => toggleExpanded(rowKey)}
+                            data-testid={isVoided ? `voided-row-${o.id}` : undefined}
                           >
                             <td className="px-3 py-2.5 text-muted-foreground">
                               {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                             </td>
                             <td className="px-3 py-2.5 font-mono text-xs">
-                              #{o.id}
-                              {o.voided && (
+                              {isCatering ? `C-${o.id}` : `#${o.id}`}
+                              {isVoided && (
                                 <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
                                   <Ban className="w-3 h-3" /> Voided
                                 </span>
@@ -365,46 +452,72 @@ export default function SalesReports() {
                               {new Date(o.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                             </td>
                             <td className="px-3 py-2.5">
-                              <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                                o.source === "staff" ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100 text-emerald-700"
-                              }`}>{o.source}</span>
+                              {isCatering ? (
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-teal-100 text-teal-700">catering</span>
+                              ) : (
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                  (o as ReportOrder).source === "staff" ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100 text-emerald-700"
+                                }`}>{(o as ReportOrder).source}</span>
+                              )}
                             </td>
-                            <td className="px-3 py-2.5">{o.guestName}</td>
-                            <td className="px-3 py-2.5"><PaymentBadge method={o.paymentMethod} /></td>
-                            <td className="px-3 py-2.5 text-right">{fmt(o.subtotal)}</td>
-                            <td className="px-3 py-2.5 text-right text-muted-foreground">{fmt(o.tax)}</td>
-                            <td className={`px-3 py-2.5 text-right font-semibold ${o.voided ? "line-through" : ""}`}>{fmt(o.total)}</td>
+                            <td className="px-3 py-2.5">
+                              {isCatering ? (o as CateringOrder).clientName : (o as ReportOrder).guestName}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {isCatering ? (
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-teal-100 text-teal-700">
+                                  {(o as CateringOrder).squareInvoiceStatus ?? "Invoice"}
+                                </span>
+                              ) : (
+                                <PaymentBadge method={(o as ReportOrder).paymentMethod} />
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              {isCatering ? "—" : fmt((o as ReportOrder).subtotal)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-muted-foreground">
+                              {isCatering ? "—" : fmt((o as ReportOrder).tax)}
+                            </td>
+                            <td className={`px-3 py-2.5 text-right font-semibold ${isVoided ? "line-through" : ""}`}>
+                              {isCatering ? fmt((o as CateringOrder).squareAmountPaid) : fmt((o as ReportOrder).total)}
+                            </td>
                             <td className="px-3 py-2.5 text-right text-xs">
-                              {o.timeToPickupSec != null ? (
-                                <span className="font-medium">{fmtDuration(o.timeToPickupSec)}</span>
+                              {!isCatering && (o as ReportOrder).timeToPickupSec != null ? (
+                                <span className="font-medium">{fmtDuration((o as ReportOrder).timeToPickupSec)}</span>
                               ) : (
                                 <span className="text-muted-foreground">—</span>
                               )}
                             </td>
                           </tr>
                           {isOpen && (
-                            <tr key={`${o.id}-d`} className="border-b border-border/50 bg-secondary/20">
+                            <tr key={`${rowKey}-d`} className="border-b border-border/50 bg-secondary/20">
                               <td colSpan={10} className="px-12 py-3">
-                                {(o.readyAt || o.pickedUpAt) && (
+                                {!isCatering && ((o as ReportOrder).readyAt || (o as ReportOrder).pickedUpAt) && (
                                   <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-                                    {o.readyAt && (
+                                    {(o as ReportOrder).readyAt && (
                                       <span>
                                         <span className="font-semibold text-foreground">Ready:</span>{" "}
-                                        {new Date(o.readyAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                                        {new Date((o as ReportOrder).readyAt!).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                                       </span>
                                     )}
-                                    {o.pickedUpAt && (
+                                    {(o as ReportOrder).pickedUpAt && (
                                       <span>
                                         <span className="font-semibold text-foreground">Picked up:</span>{" "}
-                                        {new Date(o.pickedUpAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                                        {new Date((o as ReportOrder).pickedUpAt!).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                                       </span>
                                     )}
-                                    {o.timeToPickupSec != null && (
+                                    {(o as ReportOrder).timeToPickupSec != null && (
                                       <span>
                                         <span className="font-semibold text-foreground">Total wait:</span>{" "}
-                                        {fmtDuration(o.timeToPickupSec)}
+                                        {fmtDuration((o as ReportOrder).timeToPickupSec)}
                                       </span>
                                     )}
+                                  </div>
+                                )}
+                                {isCatering && (o as CateringOrder).eventDate && (
+                                  <div className="mb-3 text-xs text-muted-foreground">
+                                    <span className="font-semibold text-foreground">Event date:</span>{" "}
+                                    {(o as CateringOrder).eventDate}
                                   </div>
                                 )}
                                 <table className="w-full text-xs">
@@ -417,14 +530,24 @@ export default function SalesReports() {
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {o.items.map((li, idx) => (
-                                      <tr key={`${o.id}-${idx}`}>
-                                        <td className="py-1">{li.name}</td>
-                                        <td className="py-1 text-center">{li.quantity}</td>
-                                        <td className="py-1 text-right">{fmt(li.unitPrice)}</td>
-                                        <td className="py-1 text-right font-medium">{fmt(li.lineTotal)}</td>
-                                      </tr>
-                                    ))}
+                                    {isCatering
+                                      ? (o as CateringOrder).items.map((li, idx) => (
+                                          <tr key={`${rowKey}-${idx}`}>
+                                            <td className="py-1">{li.name}</td>
+                                            <td className="py-1 text-center">{li.quantity}</td>
+                                            <td className="py-1 text-right text-muted-foreground">—</td>
+                                            <td className="py-1 text-right font-medium">{fmt(li.revenue)}</td>
+                                          </tr>
+                                        ))
+                                      : (o as ReportOrder).items.map((li, idx) => (
+                                          <tr key={`${rowKey}-${idx}`}>
+                                            <td className="py-1">{li.name}</td>
+                                            <td className="py-1 text-center">{li.quantity}</td>
+                                            <td className="py-1 text-right">{fmt(li.unitPrice)}</td>
+                                            <td className="py-1 text-right font-medium">{fmt(li.lineTotal)}</td>
+                                          </tr>
+                                        ))
+                                    }
                                   </tbody>
                                 </table>
                               </td>
