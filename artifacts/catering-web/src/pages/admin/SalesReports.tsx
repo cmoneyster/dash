@@ -318,9 +318,9 @@ export default function SalesReports() {
                 <div className="bg-card p-4">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">On-Site Events</p>
                   <div className="grid grid-cols-3 gap-3 text-center">
-                    <div><p className="text-xs text-muted-foreground">Orders</p><p className="text-lg font-bold">{report.totals.orderCount}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Items</p><p className="text-lg font-bold">{report.totals.itemCount}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Revenue</p><p className="text-lg font-bold">{fmt(report.totals.revenue)}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Orders</p><p className="text-lg font-bold">{report.byType.events.orderCount}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Items</p><p className="text-lg font-bold">{report.byType.events.itemCount}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Revenue</p><p className="text-lg font-bold">{fmt(report.byType.events.revenue)}</p></div>
                   </div>
                 </div>
                 <div className="bg-indigo-50/50 dark:bg-indigo-950/20 p-4">
