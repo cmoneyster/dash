@@ -677,7 +677,7 @@ router.post("/admin/catering/:id/quote/email", async (req, res): Promise<void> =
       : inquiry.squareDepositPaidAt
         ? "Pay your remaining balance"
         : "Pay your invoice";
-    const subject = `Your catering quote ${inquiry.quoteNumber ?? ""} from Hollywood East Cafe`.trim();
+    const subject = `Your catering quote ${inquiry.quoteNumber ?? ""} from dash by Hollywood East Cafe`.trim();
     // Event-detail line for the email body (the recipient already knows their
     // own email/phone, but they need the event date and venue to confirm).
     const eventDetailParts: string[] = [];
@@ -699,7 +699,7 @@ router.post("/admin/catering/:id/quote/email", async (req, res): Promise<void> =
       ``,
       `Reply to this email with any questions or to confirm.`,
       ``,
-      `— Hollywood East Cafe`,
+      `— dash by Hollywood East Cafe`,
     ].join("\n");
     const escapeHtml = (s: string) =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -723,7 +723,7 @@ router.post("/admin/catering/:id/quote/email", async (req, res): Promise<void> =
         ${PAYMENT_TERMS_BULLETS.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}
       </ul>
       <p style="margin-top:18px">Reply to this email with any questions or to confirm.</p>
-      <p>— Hollywood East Cafe</p>
+      <p>— dash by Hollywood East Cafe</p>
     `;
 
     const result = await sendMail({
@@ -782,7 +782,7 @@ router.post("/admin/catering/:id/quote/sms", async (req, res): Promise<void> => 
     const payUrl = inquiry.squareHostedUrl ?? null;
     const smsBody =
       `Hi ${inquiry.clientName.split(" ")[0]}! Your catering quote ${inquiry.quoteNumber ?? ""} ` +
-      `(${fmtUSD(totals.total)}) from Hollywood East Cafe is ready: ${link}` +
+      `(${fmtUSD(totals.total)}) from dash by Hollywood East Cafe is ready: ${link}` +
       (payUrl && !inquiry.squarePaidInFullAt ? `\nPay: ${payUrl}` : "");
 
     if (!isEjoinConfigured()) {
@@ -871,7 +871,7 @@ router.post("/admin/catering/:id/change-request/reply", async (req, res): Promis
         message,
         ...(link ? [``, `View your quote: ${link}`] : []),
         ``,
-        `— Hollywood East Cafe`,
+        `— dash by Hollywood East Cafe`,
       ].join("\n");
       const escapedMessage = message
         .replace(/&/g, "&amp;")
@@ -882,7 +882,7 @@ router.post("/admin/catering/:id/change-request/reply", async (req, res): Promis
         <p>Hi ${inquiry.clientName},</p>
         <p>${escapedMessage}</p>
         ${link ? `<p><a href="${link}">View your quote</a></p>` : ""}
-        <p>— Hollywood East Cafe</p>
+        <p>— dash by Hollywood East Cafe</p>
       `;
       const result = await sendMail({ to, subject, text, html });
       if (!result.ok) {

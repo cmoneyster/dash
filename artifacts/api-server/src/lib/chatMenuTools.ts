@@ -564,7 +564,7 @@ async function requestHumanContact(
         logger.warn("[chat] SMS handoff requested but no chat port configured");
       } else {
         const firstName = guestName.split(/\s+/)[0] || "there";
-        const welcome = `Hi ${firstName}, this is Hollywood East Cafe. Thanks for reaching out via our website. Reply here and a team member will help plan your event. Reply STOP to opt out.`;
+        const welcome = `Hi ${firstName}, this is dash by Hollywood East Cafe. Thanks for reaching out via our website. Reply here and a team member will help plan your event. Reply STOP to opt out.`;
         const result = await sendToCustomerGuarded({
           to: normalizedContact,
           body: welcome,
