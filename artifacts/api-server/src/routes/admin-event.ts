@@ -283,6 +283,7 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
     other: { orderCount: 0, revenue: 0 },
   };
   const orderRows: Array<{
+    type: "event";
     id: number;
     createdAt: string;
     source: string;
@@ -358,6 +359,7 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
       if (timeReadyToPickupSec != null) readyToPickupDurations.push(timeReadyToPickupSec);
       if (timeToPickupSec != null) pickupDurations.push(timeToPickupSec);
       orderRows.push({
+        type: "event" as const,
         id: o.id,
         createdAt: o.createdAt.toISOString(),
         source: o.orderSource ?? "guest",
@@ -385,6 +387,7 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
       // Voided: include in the orders array so the UI can render it dimmed
       // in chronological context, but skip every aggregate above.
       orderRows.push({
+        type: "event" as const,
         id: o.id,
         createdAt: o.createdAt.toISOString(),
         source: o.orderSource ?? "guest",
@@ -643,7 +646,7 @@ router.get("/admin/sales-reports", async (req, res) => {
 
     const from = parseDate(req.query.from, monthAgo);
     const to = parseDate(req.query.to, new Date());
-    const source = typeof req.query.source === "string" ? req.query.source : "all";
+    const source = typeof req.query.source === "string" ? req.query.source : "staff";
     const rawStatus = typeof req.query.status === "string" ? req.query.status : "all";
     const statusFilter = rawStatus === "completed" ? "completed" : "all";
     const rawScope = typeof req.query.scope === "string" ? req.query.scope : "events";
@@ -727,7 +730,7 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
 
     const from = parseDate(req.query.from, monthAgo);
     const to = parseDate(req.query.to, new Date());
-    const source = typeof req.query.source === "string" ? req.query.source : "all";
+    const source = typeof req.query.source === "string" ? req.query.source : "staff";
     const rawStatus = typeof req.query.status === "string" ? req.query.status : "all";
     const statusFilter = rawStatus === "completed" ? "completed" : "all";
     const type = (typeof req.query.type === "string" ? req.query.type : "orders") as "orders" | "items" | "voids";
