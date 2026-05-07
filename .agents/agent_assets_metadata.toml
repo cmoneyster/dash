@@ -6,3 +6,9 @@ id = "ZSD6Dvr1HOmVL1sDFKZ29"
 uri = "file://attached_assets/generated_images/hero_chinese_food.png"
 type = "image"
 title = "Chinese catering hero spread"
+
+[[generated]]
+id = "9w8_TL774aP0Zb5cnRG6_"
+uri = "file://artifacts/catering-web/public/images/hero.png"
+type = "image"
+title = "chinese catering spread no sesame"
