@@ -1818,3 +1818,495 @@ export const RetryPrintJobResponse = zod.object({
   deliveredAt: zod.coerce.date().nullish(),
   printedAt: zod.coerce.date().nullish(),
 });
+
+/**
+ * @summary Generate a unified sales report covering event orders and/or paid catering inquiries
+ */
+export const getSalesReportQuerySourceDefault = `staff`;
+export const getSalesReportQueryStatusDefault = `all`;
+
+export const GetSalesReportQueryParams = zod.object({
+  from: zod.coerce.date().optional(),
+  to: zod.coerce.date().optional(),
+  source: zod
+    .enum(["all", "guest", "staff"])
+    .default(getSalesReportQuerySourceDefault),
+  status: zod
+    .enum(["all", "completed"])
+    .default(getSalesReportQueryStatusDefault),
+  scope: zod.enum(["events", "catering", "all"]).optional(),
+});
+
+export const GetSalesReportResponse = zod.object({
+  from: zod.coerce.date(),
+  to: zod.coerce.date(),
+  source: zod.enum(["all", "guest", "staff"]),
+  scope: zod
+    .enum(["events", "catering", "all"])
+    .describe(
+      'Which order types to include. \"events\" = on-site event orders only; \"catering\" = paid catering inquiries only; \"all\" = both combined.\n',
+    ),
+  status: zod.enum(["all", "completed"]).optional(),
+  totals: zod.object({
+    orderCount: zod.number(),
+    itemCount: zod.number(),
+    subtotal: zod.number(),
+    tax: zod.number(),
+    revenue: zod.number(),
+    avgOrderValue: zod.number(),
+    items: zod.array(
+      zod.object({
+        name: zod.string(),
+        quantity: zod.number(),
+        revenue: zod.number(),
+      }),
+    ),
+    orders: zod.array(
+      zod.object({
+        id: zod.number(),
+        createdAt: zod.coerce.date(),
+        source: zod.string(),
+        guestName: zod.string(),
+        phoneNumber: zod.string().nullish(),
+        status: zod.string(),
+        paymentMethod: zod.enum(["cash", "card", "venmo", "override", "other"]),
+        items: zod.array(
+          zod.object({
+            itemId: zod.number(),
+            name: zod.string(),
+            quantity: zod.number(),
+            unitPrice: zod.number(),
+            lineTotal: zod.number(),
+          }),
+        ),
+        subtotal: zod.number(),
+        taxRate: zod.number().nullish(),
+        tax: zod.number(),
+        total: zod.number(),
+        readyAt: zod.coerce.date().nullish(),
+        pickedUpAt: zod.coerce.date().nullish(),
+        timeToReadySec: zod.number().nullish(),
+        timeReadyToPickupSec: zod.number().nullish(),
+        timeToPickupSec: zod.number().nullish(),
+        voided: zod.boolean(),
+        voidedAt: zod.coerce.date().nullish(),
+        voidedBy: zod.string().nullish(),
+        voidReason: zod.string().nullish(),
+        refundRequired: zod.boolean(),
+      }),
+    ),
+    byPaymentMethod: zod.array(
+      zod.object({
+        method: zod.enum(["cash", "card", "venmo", "override", "other"]),
+        orderCount: zod.number(),
+        revenue: zod.number(),
+      }),
+    ),
+    pickupStats: zod.object({
+      pickedUpCount: zod.number(),
+      avgPickupSec: zod.number().nullish(),
+      medianPickupSec: zod.number().nullish(),
+      prepCount: zod.number(),
+      avgPrepSec: zod.number().nullish(),
+      medianPrepSec: zod.number().nullish(),
+      readyToPickupCount: zod.number(),
+      avgReadyToPickupSec: zod.number().nullish(),
+      medianReadyToPickupSec: zod.number().nullish(),
+    }),
+    voids: zod.object({
+      count: zod.number(),
+      totalAmount: zod.number(),
+      refundOwedAmount: zod.number(),
+      list: zod.array(
+        zod.object({
+          id: zod.number(),
+          createdAt: zod.coerce.date(),
+          voidedAt: zod.coerce.date(),
+          voidedBy: zod.string().nullish(),
+          voidReason: zod.string().nullish(),
+          guestName: zod.string(),
+          source: zod.string(),
+          paymentMethod: zod.enum([
+            "cash",
+            "card",
+            "venmo",
+            "override",
+            "other",
+          ]),
+          total: zod.number(),
+          refundRequired: zod.boolean(),
+        }),
+      ),
+    }),
+  }),
+  bySource: zod.object({
+    guest: zod.object({
+      orderCount: zod.number(),
+      itemCount: zod.number(),
+      subtotal: zod.number(),
+      tax: zod.number(),
+      revenue: zod.number(),
+      avgOrderValue: zod.number(),
+      items: zod.array(
+        zod.object({
+          name: zod.string(),
+          quantity: zod.number(),
+          revenue: zod.number(),
+        }),
+      ),
+      orders: zod.array(
+        zod.object({
+          id: zod.number(),
+          createdAt: zod.coerce.date(),
+          source: zod.string(),
+          guestName: zod.string(),
+          phoneNumber: zod.string().nullish(),
+          status: zod.string(),
+          paymentMethod: zod.enum([
+            "cash",
+            "card",
+            "venmo",
+            "override",
+            "other",
+          ]),
+          items: zod.array(
+            zod.object({
+              itemId: zod.number(),
+              name: zod.string(),
+              quantity: zod.number(),
+              unitPrice: zod.number(),
+              lineTotal: zod.number(),
+            }),
+          ),
+          subtotal: zod.number(),
+          taxRate: zod.number().nullish(),
+          tax: zod.number(),
+          total: zod.number(),
+          readyAt: zod.coerce.date().nullish(),
+          pickedUpAt: zod.coerce.date().nullish(),
+          timeToReadySec: zod.number().nullish(),
+          timeReadyToPickupSec: zod.number().nullish(),
+          timeToPickupSec: zod.number().nullish(),
+          voided: zod.boolean(),
+          voidedAt: zod.coerce.date().nullish(),
+          voidedBy: zod.string().nullish(),
+          voidReason: zod.string().nullish(),
+          refundRequired: zod.boolean(),
+        }),
+      ),
+      byPaymentMethod: zod.array(
+        zod.object({
+          method: zod.enum(["cash", "card", "venmo", "override", "other"]),
+          orderCount: zod.number(),
+          revenue: zod.number(),
+        }),
+      ),
+      pickupStats: zod.object({
+        pickedUpCount: zod.number(),
+        avgPickupSec: zod.number().nullish(),
+        medianPickupSec: zod.number().nullish(),
+        prepCount: zod.number(),
+        avgPrepSec: zod.number().nullish(),
+        medianPrepSec: zod.number().nullish(),
+        readyToPickupCount: zod.number(),
+        avgReadyToPickupSec: zod.number().nullish(),
+        medianReadyToPickupSec: zod.number().nullish(),
+      }),
+      voids: zod.object({
+        count: zod.number(),
+        totalAmount: zod.number(),
+        refundOwedAmount: zod.number(),
+        list: zod.array(
+          zod.object({
+            id: zod.number(),
+            createdAt: zod.coerce.date(),
+            voidedAt: zod.coerce.date(),
+            voidedBy: zod.string().nullish(),
+            voidReason: zod.string().nullish(),
+            guestName: zod.string(),
+            source: zod.string(),
+            paymentMethod: zod.enum([
+              "cash",
+              "card",
+              "venmo",
+              "override",
+              "other",
+            ]),
+            total: zod.number(),
+            refundRequired: zod.boolean(),
+          }),
+        ),
+      }),
+    }),
+    staff: zod.object({
+      orderCount: zod.number(),
+      itemCount: zod.number(),
+      subtotal: zod.number(),
+      tax: zod.number(),
+      revenue: zod.number(),
+      avgOrderValue: zod.number(),
+      items: zod.array(
+        zod.object({
+          name: zod.string(),
+          quantity: zod.number(),
+          revenue: zod.number(),
+        }),
+      ),
+      orders: zod.array(
+        zod.object({
+          id: zod.number(),
+          createdAt: zod.coerce.date(),
+          source: zod.string(),
+          guestName: zod.string(),
+          phoneNumber: zod.string().nullish(),
+          status: zod.string(),
+          paymentMethod: zod.enum([
+            "cash",
+            "card",
+            "venmo",
+            "override",
+            "other",
+          ]),
+          items: zod.array(
+            zod.object({
+              itemId: zod.number(),
+              name: zod.string(),
+              quantity: zod.number(),
+              unitPrice: zod.number(),
+              lineTotal: zod.number(),
+            }),
+          ),
+          subtotal: zod.number(),
+          taxRate: zod.number().nullish(),
+          tax: zod.number(),
+          total: zod.number(),
+          readyAt: zod.coerce.date().nullish(),
+          pickedUpAt: zod.coerce.date().nullish(),
+          timeToReadySec: zod.number().nullish(),
+          timeReadyToPickupSec: zod.number().nullish(),
+          timeToPickupSec: zod.number().nullish(),
+          voided: zod.boolean(),
+          voidedAt: zod.coerce.date().nullish(),
+          voidedBy: zod.string().nullish(),
+          voidReason: zod.string().nullish(),
+          refundRequired: zod.boolean(),
+        }),
+      ),
+      byPaymentMethod: zod.array(
+        zod.object({
+          method: zod.enum(["cash", "card", "venmo", "override", "other"]),
+          orderCount: zod.number(),
+          revenue: zod.number(),
+        }),
+      ),
+      pickupStats: zod.object({
+        pickedUpCount: zod.number(),
+        avgPickupSec: zod.number().nullish(),
+        medianPickupSec: zod.number().nullish(),
+        prepCount: zod.number(),
+        avgPrepSec: zod.number().nullish(),
+        medianPrepSec: zod.number().nullish(),
+        readyToPickupCount: zod.number(),
+        avgReadyToPickupSec: zod.number().nullish(),
+        medianReadyToPickupSec: zod.number().nullish(),
+      }),
+      voids: zod.object({
+        count: zod.number(),
+        totalAmount: zod.number(),
+        refundOwedAmount: zod.number(),
+        list: zod.array(
+          zod.object({
+            id: zod.number(),
+            createdAt: zod.coerce.date(),
+            voidedAt: zod.coerce.date(),
+            voidedBy: zod.string().nullish(),
+            voidReason: zod.string().nullish(),
+            guestName: zod.string(),
+            source: zod.string(),
+            paymentMethod: zod.enum([
+              "cash",
+              "card",
+              "venmo",
+              "override",
+              "other",
+            ]),
+            total: zod.number(),
+            refundRequired: zod.boolean(),
+          }),
+        ),
+      }),
+    }),
+  }),
+  catering: zod
+    .union([
+      zod.object({
+        orderCount: zod.number(),
+        itemCount: zod.number(),
+        revenue: zod.number(),
+        avgOrderValue: zod.number(),
+        orders: zod.array(
+          zod.object({
+            id: zod.number(),
+            type: zod.enum(["catering"]),
+            clientName: zod.string(),
+            eventDate: zod.string().nullish(),
+            createdAt: zod.coerce.date(),
+            status: zod.string(),
+            squareInvoiceStatus: zod.string().nullish(),
+            squareAmountPaid: zod.number(),
+            items: zod.array(
+              zod.object({
+                name: zod.string(),
+                quantity: zod.number(),
+                revenue: zod.number(),
+              }),
+            ),
+          }),
+        ),
+        items: zod.array(
+          zod.object({
+            name: zod.string(),
+            quantity: zod.number(),
+            revenue: zod.number(),
+          }),
+        ),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  byType: zod.object({
+    events: zod.object({
+      orderCount: zod.number(),
+      itemCount: zod.number(),
+      subtotal: zod.number(),
+      tax: zod.number(),
+      revenue: zod.number(),
+      avgOrderValue: zod.number(),
+      items: zod.array(
+        zod.object({
+          name: zod.string(),
+          quantity: zod.number(),
+          revenue: zod.number(),
+        }),
+      ),
+      orders: zod.array(
+        zod.object({
+          id: zod.number(),
+          createdAt: zod.coerce.date(),
+          source: zod.string(),
+          guestName: zod.string(),
+          phoneNumber: zod.string().nullish(),
+          status: zod.string(),
+          paymentMethod: zod.enum([
+            "cash",
+            "card",
+            "venmo",
+            "override",
+            "other",
+          ]),
+          items: zod.array(
+            zod.object({
+              itemId: zod.number(),
+              name: zod.string(),
+              quantity: zod.number(),
+              unitPrice: zod.number(),
+              lineTotal: zod.number(),
+            }),
+          ),
+          subtotal: zod.number(),
+          taxRate: zod.number().nullish(),
+          tax: zod.number(),
+          total: zod.number(),
+          readyAt: zod.coerce.date().nullish(),
+          pickedUpAt: zod.coerce.date().nullish(),
+          timeToReadySec: zod.number().nullish(),
+          timeReadyToPickupSec: zod.number().nullish(),
+          timeToPickupSec: zod.number().nullish(),
+          voided: zod.boolean(),
+          voidedAt: zod.coerce.date().nullish(),
+          voidedBy: zod.string().nullish(),
+          voidReason: zod.string().nullish(),
+          refundRequired: zod.boolean(),
+        }),
+      ),
+      byPaymentMethod: zod.array(
+        zod.object({
+          method: zod.enum(["cash", "card", "venmo", "override", "other"]),
+          orderCount: zod.number(),
+          revenue: zod.number(),
+        }),
+      ),
+      pickupStats: zod.object({
+        pickedUpCount: zod.number(),
+        avgPickupSec: zod.number().nullish(),
+        medianPickupSec: zod.number().nullish(),
+        prepCount: zod.number(),
+        avgPrepSec: zod.number().nullish(),
+        medianPrepSec: zod.number().nullish(),
+        readyToPickupCount: zod.number(),
+        avgReadyToPickupSec: zod.number().nullish(),
+        medianReadyToPickupSec: zod.number().nullish(),
+      }),
+      voids: zod.object({
+        count: zod.number(),
+        totalAmount: zod.number(),
+        refundOwedAmount: zod.number(),
+        list: zod.array(
+          zod.object({
+            id: zod.number(),
+            createdAt: zod.coerce.date(),
+            voidedAt: zod.coerce.date(),
+            voidedBy: zod.string().nullish(),
+            voidReason: zod.string().nullish(),
+            guestName: zod.string(),
+            source: zod.string(),
+            paymentMethod: zod.enum([
+              "cash",
+              "card",
+              "venmo",
+              "override",
+              "other",
+            ]),
+            total: zod.number(),
+            refundRequired: zod.boolean(),
+          }),
+        ),
+      }),
+    }),
+    catering: zod.union([
+      zod.object({
+        orderCount: zod.number(),
+        itemCount: zod.number(),
+        revenue: zod.number(),
+        avgOrderValue: zod.number(),
+        orders: zod.array(
+          zod.object({
+            id: zod.number(),
+            type: zod.enum(["catering"]),
+            clientName: zod.string(),
+            eventDate: zod.string().nullish(),
+            createdAt: zod.coerce.date(),
+            status: zod.string(),
+            squareInvoiceStatus: zod.string().nullish(),
+            squareAmountPaid: zod.number(),
+            items: zod.array(
+              zod.object({
+                name: zod.string(),
+                quantity: zod.number(),
+                revenue: zod.number(),
+              }),
+            ),
+          }),
+        ),
+        items: zod.array(
+          zod.object({
+            name: zod.string(),
+            quantity: zod.number(),
+            revenue: zod.number(),
+          }),
+        ),
+      }),
+      zod.null(),
+    ]),
+  }),
+});

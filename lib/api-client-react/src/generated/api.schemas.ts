@@ -9,6 +9,216 @@ export interface HealthStatus {
   status: string;
 }
 
+/**
+ * Which order types to include. "events" = on-site event orders only; "catering" = paid catering inquiries only; "all" = both combined.
+
+ */
+export type SalesReportScope =
+  (typeof SalesReportScope)[keyof typeof SalesReportScope];
+
+export const SalesReportScope = {
+  events: "events",
+  catering: "catering",
+  all: "all",
+} as const;
+
+export interface SalesReportItem {
+  name: string;
+  quantity: number;
+  revenue: number;
+}
+
+export interface SalesReportOrderLine {
+  itemId: number;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export type SalesReportOrderPaymentMethod =
+  (typeof SalesReportOrderPaymentMethod)[keyof typeof SalesReportOrderPaymentMethod];
+
+export const SalesReportOrderPaymentMethod = {
+  cash: "cash",
+  card: "card",
+  venmo: "venmo",
+  override: "override",
+  other: "other",
+} as const;
+
+export interface SalesReportOrder {
+  id: number;
+  createdAt: string;
+  source: string;
+  guestName: string;
+  phoneNumber?: string | null;
+  status: string;
+  paymentMethod: SalesReportOrderPaymentMethod;
+  items: SalesReportOrderLine[];
+  subtotal: number;
+  taxRate?: number | null;
+  tax: number;
+  total: number;
+  readyAt?: string | null;
+  pickedUpAt?: string | null;
+  timeToReadySec?: number | null;
+  timeReadyToPickupSec?: number | null;
+  timeToPickupSec?: number | null;
+  voided: boolean;
+  voidedAt?: string | null;
+  voidedBy?: string | null;
+  voidReason?: string | null;
+  refundRequired: boolean;
+}
+
+export type SalesReportVoidRowPaymentMethod =
+  (typeof SalesReportVoidRowPaymentMethod)[keyof typeof SalesReportVoidRowPaymentMethod];
+
+export const SalesReportVoidRowPaymentMethod = {
+  cash: "cash",
+  card: "card",
+  venmo: "venmo",
+  override: "override",
+  other: "other",
+} as const;
+
+export interface SalesReportVoidRow {
+  id: number;
+  createdAt: string;
+  voidedAt: string;
+  voidedBy?: string | null;
+  voidReason?: string | null;
+  guestName: string;
+  source: string;
+  paymentMethod: SalesReportVoidRowPaymentMethod;
+  total: number;
+  refundRequired: boolean;
+}
+
+export interface SalesReportVoids {
+  count: number;
+  totalAmount: number;
+  refundOwedAmount: number;
+  list: SalesReportVoidRow[];
+}
+
+export type SalesReportPaymentMethodTotalMethod =
+  (typeof SalesReportPaymentMethodTotalMethod)[keyof typeof SalesReportPaymentMethodTotalMethod];
+
+export const SalesReportPaymentMethodTotalMethod = {
+  cash: "cash",
+  card: "card",
+  venmo: "venmo",
+  override: "override",
+  other: "other",
+} as const;
+
+export interface SalesReportPaymentMethodTotal {
+  method: SalesReportPaymentMethodTotalMethod;
+  orderCount: number;
+  revenue: number;
+}
+
+export interface SalesReportPickupStats {
+  pickedUpCount: number;
+  avgPickupSec?: number | null;
+  medianPickupSec?: number | null;
+  prepCount: number;
+  avgPrepSec?: number | null;
+  medianPrepSec?: number | null;
+  readyToPickupCount: number;
+  avgReadyToPickupSec?: number | null;
+  medianReadyToPickupSec?: number | null;
+}
+
+export interface SalesReportTotals {
+  orderCount: number;
+  itemCount: number;
+  subtotal: number;
+  tax: number;
+  revenue: number;
+  avgOrderValue: number;
+  items: SalesReportItem[];
+  orders: SalesReportOrder[];
+  byPaymentMethod: SalesReportPaymentMethodTotal[];
+  pickupStats: SalesReportPickupStats;
+  voids: SalesReportVoids;
+}
+
+export interface CateringReportItem {
+  name: string;
+  quantity: number;
+  revenue: number;
+}
+
+export type CateringReportOrderType =
+  (typeof CateringReportOrderType)[keyof typeof CateringReportOrderType];
+
+export const CateringReportOrderType = {
+  catering: "catering",
+} as const;
+
+export interface CateringReportOrder {
+  id: number;
+  type: CateringReportOrderType;
+  clientName: string;
+  eventDate?: string | null;
+  createdAt: string;
+  status: string;
+  squareInvoiceStatus?: string | null;
+  squareAmountPaid: number;
+  items: CateringReportItem[];
+}
+
+export interface CateringReportTotals {
+  orderCount: number;
+  itemCount: number;
+  revenue: number;
+  avgOrderValue: number;
+  orders: CateringReportOrder[];
+  items: CateringReportItem[];
+}
+
+export type SalesReportSource =
+  (typeof SalesReportSource)[keyof typeof SalesReportSource];
+
+export const SalesReportSource = {
+  all: "all",
+  guest: "guest",
+  staff: "staff",
+} as const;
+
+export type SalesReportStatus =
+  (typeof SalesReportStatus)[keyof typeof SalesReportStatus];
+
+export const SalesReportStatus = {
+  all: "all",
+  completed: "completed",
+} as const;
+
+export type SalesReportBySource = {
+  guest: SalesReportTotals;
+  staff: SalesReportTotals;
+};
+
+export type SalesReportByType = {
+  events: SalesReportTotals;
+  catering: CateringReportTotals | null;
+};
+
+export interface SalesReport {
+  from: string;
+  to: string;
+  source: SalesReportSource;
+  scope: SalesReportScope;
+  status?: SalesReportStatus;
+  totals: SalesReportTotals;
+  bySource: SalesReportBySource;
+  catering?: CateringReportTotals | null;
+  byType: SalesReportByType;
+}
+
 export interface ErrorResponse {
   error: string;
 }
@@ -746,3 +956,34 @@ export type ListPrintJobsParams = {
   printerId?: number;
   limit?: number;
 };
+
+export type GetSalesReportParams = {
+  /**
+   * Start date (inclusive, local date string YYYY-MM-DD)
+   */
+  from?: string;
+  /**
+   * End date (inclusive, local date string YYYY-MM-DD)
+   */
+  to?: string;
+  source?: GetSalesReportSource;
+  status?: GetSalesReportStatus;
+  scope?: SalesReportScope;
+};
+
+export type GetSalesReportSource =
+  (typeof GetSalesReportSource)[keyof typeof GetSalesReportSource];
+
+export const GetSalesReportSource = {
+  all: "all",
+  guest: "guest",
+  staff: "staff",
+} as const;
+
+export type GetSalesReportStatus =
+  (typeof GetSalesReportStatus)[keyof typeof GetSalesReportStatus];
+
+export const GetSalesReportStatus = {
+  all: "all",
+  completed: "completed",
+} as const;

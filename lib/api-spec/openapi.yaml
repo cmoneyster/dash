@@ -903,6 +903,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/PrintJob"
 
+  /admin/sales-reports:
+    get:
+      operationId: getSalesReport
+      tags: [admin]
+      summary: Generate a unified sales report covering event orders and/or paid catering inquiries
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+            description: Start date (inclusive, local date string YYYY-MM-DD)
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+            description: End date (inclusive, local date string YYYY-MM-DD)
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [all, guest, staff]
+            default: staff
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [all, completed]
+            default: all
+        - name: scope
+          in: query
+          schema:
+            $ref: "#/components/schemas/SalesReportScope"
+      responses:
+        "200":
+          description: Sales report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesReport"
+        "401":
+          description: Unauthorized
+
 components:
   schemas:
     HealthStatus:
@@ -912,6 +956,384 @@ components:
           type: string
       required:
         - status
+
+    SalesReportScope:
+      type: string
+      enum: [events, catering, all]
+      description: >
+        Which order types to include.
+        "events" = on-site event orders only;
+        "catering" = paid catering inquiries only;
+        "all" = both combined.
+
+    SalesReportItem:
+      type: object
+      properties:
+        name:
+          type: string
+        quantity:
+          type: integer
+        revenue:
+          type: number
+      required: [name, quantity, revenue]
+
+    SalesReportOrderLine:
+      type: object
+      properties:
+        itemId:
+          type: integer
+        name:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+        lineTotal:
+          type: number
+      required: [itemId, name, quantity, unitPrice, lineTotal]
+
+    SalesReportOrder:
+      type: object
+      properties:
+        id:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+        guestName:
+          type: string
+        phoneNumber:
+          type: string
+          nullable: true
+        status:
+          type: string
+        paymentMethod:
+          type: string
+          enum: [cash, card, venmo, override, other]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesReportOrderLine"
+        subtotal:
+          type: number
+        taxRate:
+          type: number
+          nullable: true
+        tax:
+          type: number
+        total:
+          type: number
+        readyAt:
+          type: string
+          format: date-time
+          nullable: true
+        pickedUpAt:
+          type: string
+          format: date-time
+          nullable: true
+        timeToReadySec:
+          type: integer
+          nullable: true
+        timeReadyToPickupSec:
+          type: integer
+          nullable: true
+        timeToPickupSec:
+          type: integer
+          nullable: true
+        voided:
+          type: boolean
+        voidedAt:
+          type: string
+          format: date-time
+          nullable: true
+        voidedBy:
+          type: string
+          nullable: true
+        voidReason:
+          type: string
+          nullable: true
+        refundRequired:
+          type: boolean
+      required:
+        - id
+        - createdAt
+        - source
+        - guestName
+        - status
+        - paymentMethod
+        - items
+        - subtotal
+        - tax
+        - total
+        - voided
+        - refundRequired
+
+    SalesReportVoidRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        voidedAt:
+          type: string
+          format: date-time
+        voidedBy:
+          type: string
+          nullable: true
+        voidReason:
+          type: string
+          nullable: true
+        guestName:
+          type: string
+        source:
+          type: string
+        paymentMethod:
+          type: string
+          enum: [cash, card, venmo, override, other]
+        total:
+          type: number
+        refundRequired:
+          type: boolean
+      required:
+        - id
+        - createdAt
+        - voidedAt
+        - guestName
+        - source
+        - paymentMethod
+        - total
+        - refundRequired
+
+    SalesReportVoids:
+      type: object
+      properties:
+        count:
+          type: integer
+        totalAmount:
+          type: number
+        refundOwedAmount:
+          type: number
+        list:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesReportVoidRow"
+      required: [count, totalAmount, refundOwedAmount, list]
+
+    SalesReportPaymentMethodTotal:
+      type: object
+      properties:
+        method:
+          type: string
+          enum: [cash, card, venmo, override, other]
+        orderCount:
+          type: integer
+        revenue:
+          type: number
+      required: [method, orderCount, revenue]
+
+    SalesReportPickupStats:
+      type: object
+      properties:
+        pickedUpCount:
+          type: integer
+        avgPickupSec:
+          type: number
+          nullable: true
+        medianPickupSec:
+          type: number
+          nullable: true
+        prepCount:
+          type: integer
+        avgPrepSec:
+          type: number
+          nullable: true
+        medianPrepSec:
+          type: number
+          nullable: true
+        readyToPickupCount:
+          type: integer
+        avgReadyToPickupSec:
+          type: number
+          nullable: true
+        medianReadyToPickupSec:
+          type: number
+          nullable: true
+      required:
+        - pickedUpCount
+        - prepCount
+        - readyToPickupCount
+
+    SalesReportTotals:
+      type: object
+      properties:
+        orderCount:
+          type: integer
+        itemCount:
+          type: integer
+        subtotal:
+          type: number
+        tax:
+          type: number
+        revenue:
+          type: number
+        avgOrderValue:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesReportItem"
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesReportOrder"
+        byPaymentMethod:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesReportPaymentMethodTotal"
+        pickupStats:
+          $ref: "#/components/schemas/SalesReportPickupStats"
+        voids:
+          $ref: "#/components/schemas/SalesReportVoids"
+      required:
+        - orderCount
+        - itemCount
+        - subtotal
+        - tax
+        - revenue
+        - avgOrderValue
+        - items
+        - orders
+        - byPaymentMethod
+        - pickupStats
+        - voids
+
+    CateringReportItem:
+      type: object
+      properties:
+        name:
+          type: string
+        quantity:
+          type: integer
+        revenue:
+          type: number
+      required: [name, quantity, revenue]
+
+    CateringReportOrder:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [catering]
+        clientName:
+          type: string
+        eventDate:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+        squareInvoiceStatus:
+          type: string
+          nullable: true
+        squareAmountPaid:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CateringReportItem"
+      required:
+        - id
+        - type
+        - clientName
+        - createdAt
+        - status
+        - squareAmountPaid
+        - items
+
+    CateringReportTotals:
+      type: object
+      properties:
+        orderCount:
+          type: integer
+        itemCount:
+          type: integer
+        revenue:
+          type: number
+        avgOrderValue:
+          type: number
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/CateringReportOrder"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CateringReportItem"
+      required:
+        - orderCount
+        - itemCount
+        - revenue
+        - avgOrderValue
+        - orders
+        - items
+
+    SalesReport:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        source:
+          type: string
+          enum: [all, guest, staff]
+        scope:
+          $ref: "#/components/schemas/SalesReportScope"
+        status:
+          type: string
+          enum: [all, completed]
+        totals:
+          $ref: "#/components/schemas/SalesReportTotals"
+        bySource:
+          type: object
+          properties:
+            guest:
+              $ref: "#/components/schemas/SalesReportTotals"
+            staff:
+              $ref: "#/components/schemas/SalesReportTotals"
+          required: [guest, staff]
+        catering:
+          oneOf:
+            - $ref: "#/components/schemas/CateringReportTotals"
+            - type: "null"
+        byType:
+          type: object
+          properties:
+            events:
+              $ref: "#/components/schemas/SalesReportTotals"
+            catering:
+              oneOf:
+                - $ref: "#/components/schemas/CateringReportTotals"
+                - type: "null"
+          required: [events, catering]
+      required:
+        - from
+        - to
+        - source
+        - scope
+        - totals
+        - bySource
+        - byType
 
     ErrorResponse:
       type: object

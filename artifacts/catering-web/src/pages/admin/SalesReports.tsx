@@ -6,75 +6,47 @@ import {
   Receipt, Package, ChevronDown, ChevronRight, Wallet, Timer,
   Ban, AlertCircle,
 } from "lucide-react";
+import type {
+  SalesReport,
+  SalesReportTotals,
+  SalesReportOrder,
+  SalesReportOrderLine,
+  SalesReportItem,
+  SalesReportVoids,
+  SalesReportVoidRow,
+  SalesReportPickupStats,
+  SalesReportPaymentMethodTotal,
+  SalesReportScope,
+  CateringReportTotals,
+  CateringReportOrder,
+  CateringReportItem,
+} from "@workspace/api-client-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 type SourceFilter = "all" | "guest" | "staff";
-type ScopeFilter = "all" | "events" | "catering";
+type ScopeFilter = SalesReportScope;
 type StatusFilter = "all" | "completed";
 type Preset = "today" | "yesterday" | "week" | "month" | "quarter" | "year" | "custom";
 
-interface ReportItem { name: string; quantity: number; revenue: number }
-interface ReportOrderLine { itemId: number; name: string; quantity: number; unitPrice: number; lineTotal: number }
-type PaymentMethod = "cash" | "card" | "venmo" | "override" | "other";
-interface ReportOrder {
-  id: number; createdAt: string; source: string; guestName: string;
-  phoneNumber: string | null; status: string; paymentMethod: PaymentMethod;
-  items: ReportOrderLine[]; subtotal: number; taxRate: number | null; tax: number; total: number;
-  readyAt: string | null; pickedUpAt: string | null;
-  timeToReadySec: number | null; timeReadyToPickupSec: number | null; timeToPickupSec: number | null;
-  voided: boolean;
-  voidedAt: string | null;
-  voidedBy: string | null;
-  voidReason: string | null;
-  refundRequired: boolean;
-}
-interface CateringItem { name: string; quantity: number; revenue: number }
-interface CateringOrder {
-  id: number;
-  type: "catering";
-  clientName: string;
-  eventDate: string | null;
-  createdAt: string;
-  status: string;
-  squareInvoiceStatus: string | null;
-  squareAmountPaid: number;
-  items: CateringItem[];
-}
+// Re-export generated contract types under the names used throughout this component.
+type ReportItem = SalesReportItem;
+type ReportOrderLine = SalesReportOrderLine;
+type PaymentMethod = SalesReportOrder["paymentMethod"];
+type ReportOrder = SalesReportOrder;
+type CateringItem = CateringReportItem;
+type CateringOrder = CateringReportOrder;
 type AnyOrder = ReportOrder | CateringOrder;
 function isCateringOrder(o: AnyOrder): o is CateringOrder {
   return (o as CateringOrder).type === "catering";
 }
-interface CateringTotals {
-  orderCount: number; itemCount: number; revenue: number; avgOrderValue: number;
-  orders: CateringOrder[]; items: CateringItem[];
-}
-interface PaymentMethodTotal { method: PaymentMethod; orderCount: number; revenue: number }
-interface PickupStats {
-  pickedUpCount: number; avgPickupSec: number | null; medianPickupSec: number | null;
-  prepCount: number; avgPrepSec: number | null; medianPrepSec: number | null;
-  readyToPickupCount: number; avgReadyToPickupSec: number | null; medianReadyToPickupSec: number | null;
-}
-interface ReportVoidRow {
-  id: number; createdAt: string; voidedAt: string; voidedBy: string | null; voidReason: string | null;
-  guestName: string; source: string; paymentMethod: PaymentMethod; total: number; refundRequired: boolean;
-}
-interface ReportVoids {
-  count: number; totalAmount: number; refundOwedAmount: number; list: ReportVoidRow[];
-}
-interface ReportTotals {
-  orderCount: number; itemCount: number; subtotal: number; tax: number;
-  revenue: number; avgOrderValue: number; items: ReportItem[]; orders: ReportOrder[];
-  byPaymentMethod: PaymentMethodTotal[];
-  pickupStats: PickupStats;
-  voids: ReportVoids;
-}
-interface Report {
-  from: string; to: string; source: SourceFilter; scope: ScopeFilter;
-  totals: ReportTotals;
-  bySource: { guest: ReportTotals; staff: ReportTotals };
-  catering: CateringTotals | null;
-}
+type CateringTotals = CateringReportTotals;
+type PaymentMethodTotal = SalesReportPaymentMethodTotal;
+type PickupStats = SalesReportPickupStats;
+type ReportVoidRow = SalesReportVoidRow;
+type ReportVoids = SalesReportVoids;
+type ReportTotals = SalesReportTotals;
+type Report = SalesReport;
 
 function todayISO(d: Date = new Date()) {
   const x = new Date(d);
@@ -483,7 +455,7 @@ export default function SalesReports() {
                             </td>
                             <td className="px-3 py-2.5 text-right text-xs">
                               {!isCatering && (o as ReportOrder).timeToPickupSec != null ? (
-                                <span className="font-medium">{fmtDuration((o as ReportOrder).timeToPickupSec)}</span>
+                                <span className="font-medium">{fmtDuration((o as ReportOrder).timeToPickupSec ?? null)}</span>
                               ) : (
                                 <span className="text-muted-foreground">—</span>
                               )}
@@ -509,7 +481,7 @@ export default function SalesReports() {
                                     {(o as ReportOrder).timeToPickupSec != null && (
                                       <span>
                                         <span className="font-semibold text-foreground">Total wait:</span>{" "}
-                                        {fmtDuration((o as ReportOrder).timeToPickupSec)}
+                                        {fmtDuration((o as ReportOrder).timeToPickupSec ?? null)}
                                       </span>
                                     )}
                                   </div>
@@ -649,7 +621,7 @@ function ServicePhaseCard({
   title, subtitle, count, avgSec, medianSec, totalOrders, accent,
 }: {
   title: string; subtitle: string; count: number;
-  avgSec: number | null; medianSec: number | null;
+  avgSec: number | null | undefined; medianSec: number | null | undefined;
   totalOrders: number; accent: string;
 }) {
   return (
@@ -666,11 +638,11 @@ function ServicePhaseCard({
         <div className="grid grid-cols-3 gap-px bg-border">
           <div className="bg-card p-3">
             <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Avg</p>
-            <p className="text-lg font-bold mt-0.5">{fmtDuration(avgSec)}</p>
+            <p className="text-lg font-bold mt-0.5">{fmtDuration(avgSec ?? null)}</p>
           </div>
           <div className="bg-card p-3">
             <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Median</p>
-            <p className="text-lg font-bold mt-0.5">{fmtDuration(medianSec)}</p>
+            <p className="text-lg font-bold mt-0.5">{fmtDuration(medianSec ?? null)}</p>
           </div>
           <div className="bg-card p-3">
             <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Orders</p>

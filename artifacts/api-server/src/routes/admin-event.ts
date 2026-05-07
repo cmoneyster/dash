@@ -635,6 +635,10 @@ router.get("/admin/sales-reports", async (req, res) => {
         staff: buildReport(staffOrders),
       },
       catering: cateringTotals,
+      byType: {
+        events: buildReport(eventOrders),
+        catering: cateringTotals,
+      },
     });
   } catch (err) {
     req.log.error({ err }, "Error generating sales report");
@@ -823,7 +827,7 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
           "",
           "",
           amountPaid.toFixed(2),
-          "",
+          c.eventDate ?? "",
           "",
           "",
           "",
