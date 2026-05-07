@@ -775,7 +775,7 @@ export default function Cart() {
                         </div>
                         <ul className="space-y-1.5">
                           {ineligibleItems.map(it => (
-                            <li key={it.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-white rounded-lg border border-destructive/20">
+                            <li key={it.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-white dark:bg-destructive/10 rounded-lg border border-destructive/20">
                               <span className="text-sm font-medium text-destructive/90 truncate">{it.name}</span>
                               <button
                                 type="button"

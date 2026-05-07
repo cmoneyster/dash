@@ -839,9 +839,9 @@ export default function Plan() {
               {ineligiblePlanItems.map(it => (
                 <li
                   key={it.id}
-                  className="flex items-center justify-between gap-3 px-3 py-2 bg-white rounded-lg border border-amber-200"
+                  className="flex items-center justify-between gap-3 px-3 py-2 bg-white dark:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-900/40"
                 >
-                  <span className="text-sm font-medium text-amber-900 truncate">{it.name}</span>
+                  <span className="text-sm font-medium text-amber-900 dark:text-amber-100 truncate">{it.name}</span>
                   <button
                     type="button"
                     onClick={() => removePlanItem(it.id)}

@@ -358,7 +358,7 @@ export function MenuCsvDialog({
                 </div>
                 <button
                   onClick={() => { setDiffResp(null); setFiles([]); }}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-border hover:bg-secondary"
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white dark:bg-card text-foreground border border-border hover:bg-secondary"
                 >
                   Re-upload
                 </button>
@@ -505,8 +505,8 @@ function SectionView({
           {counts.error > 0 && <span className="text-red-700"> · {counts.error} errors</span>}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={selectAll} disabled={allSelected} className="text-xs px-2 py-1 rounded-md border border-border bg-white hover:bg-secondary disabled:opacity-50">Select all</button>
-          <button onClick={selectNone} className="text-xs px-2 py-1 rounded-md border border-border bg-white hover:bg-secondary">Select none</button>
+          <button onClick={selectAll} disabled={allSelected} className="text-xs px-2 py-1 rounded-md border border-border bg-white dark:bg-card text-foreground hover:bg-secondary disabled:opacity-50">Select all</button>
+          <button onClick={selectNone} className="text-xs px-2 py-1 rounded-md border border-border bg-white dark:bg-card text-foreground hover:bg-secondary">Select none</button>
         </div>
       </div>
 

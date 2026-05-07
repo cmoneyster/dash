@@ -86,11 +86,11 @@ export default function OrderManager() {
                 value={order.status}
                 onChange={(e) => handleStatusChange(order.id, e.target.value)}
                 className={`w-full p-2.5 rounded-lg border font-semibold text-sm outline-none cursor-pointer
-                  ${order.status === 'pending' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                    order.status === 'confirmed' ? 'bg-blue-50 border-blue-200 text-blue-700' :
-                    order.status === 'preparing' ? 'bg-purple-50 border-purple-200 text-purple-700' :
-                    order.status === 'delivered' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                    'bg-slate-50 border-slate-200 text-slate-700'
+                  ${order.status === 'pending' ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/60 text-amber-700 dark:text-amber-200' :
+                    order.status === 'confirmed' ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/60 text-blue-700 dark:text-blue-200' :
+                    order.status === 'preparing' ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800/60 text-purple-700 dark:text-purple-200' :
+                    order.status === 'delivered' ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-200' :
+                    'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
                   }
                 `}
               >

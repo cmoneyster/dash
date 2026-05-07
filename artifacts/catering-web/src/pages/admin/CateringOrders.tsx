@@ -879,13 +879,13 @@ function QuoteEditor({
             the inquiry are used so historical quotes stay stable even if
             event settings change later. */}
         {isOtd && otdRate != null && otdRate > 0 && otdMax != null && otdMax > 0 && (
-          <div className="border border-orange-200 bg-orange-50/40 rounded-xl p-3 space-y-2">
+          <div className="border border-orange-200 dark:border-orange-800/60 bg-orange-50/40 dark:bg-orange-950/30 rounded-xl p-3 space-y-2">
             <div className="flex items-center gap-2">
-              <Flame className="w-3.5 h-3.5 text-orange-700" />
-              <span className="text-xs font-bold uppercase tracking-wider text-orange-900">
+              <Flame className="w-3.5 h-3.5 text-orange-700 dark:text-orange-300" />
+              <span className="text-xs font-bold uppercase tracking-wider text-orange-900 dark:text-orange-200">
                 Billed Extra Hours
               </span>
-              <span className="text-[11px] text-orange-900/70">
+              <span className="text-[11px] text-orange-900/70 dark:text-orange-300/80">
                 {formatCurrency(otdRate)}/hr · max {otdMax}
               </span>
             </div>
@@ -894,7 +894,7 @@ function QuoteEditor({
                 type="button"
                 onClick={() => setOtdExtraHours(otdExtraHours - 1)}
                 disabled={otdExtraHours <= 0}
-                className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-orange-300 bg-white text-orange-900 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-orange-100"
+                className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-orange-300 dark:border-orange-700 bg-white dark:bg-orange-950/60 text-orange-900 dark:text-orange-100 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-orange-100 dark:hover:bg-orange-900/60"
                 aria-label="Decrease billed extra hours"
               >
                 −
@@ -906,22 +906,22 @@ function QuoteEditor({
                 step={1}
                 value={otdExtraHours}
                 onChange={e => setOtdExtraHours(e.target.value === "" ? 0 : Number(e.target.value))}
-                className="w-16 px-2 py-1 text-center text-sm font-semibold border border-orange-300 rounded-lg bg-white text-orange-900 outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-16 px-2 py-1 text-center text-sm font-semibold border border-orange-300 dark:border-orange-700 rounded-lg bg-white dark:bg-orange-950/60 text-orange-900 dark:text-orange-100 outline-none focus:ring-2 focus:ring-orange-200 dark:focus:ring-orange-700"
               />
-              <span className="text-xs text-orange-900/80">
+              <span className="text-xs text-orange-900/80 dark:text-orange-200/90">
                 hr × {formatCurrency(otdRate)} = <strong>{formatCurrency(round2(otdExtraHours * otdRate))}</strong>
               </span>
               <button
                 type="button"
                 onClick={() => setOtdExtraHours(otdExtraHours + 1)}
                 disabled={otdExtraHours >= otdMax}
-                className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-orange-300 bg-white text-orange-900 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-orange-100"
+                className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-orange-300 dark:border-orange-700 bg-white dark:bg-orange-950/60 text-orange-900 dark:text-orange-100 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-orange-100 dark:hover:bg-orange-900/60"
                 aria-label="Increase billed extra hours"
               >
                 +
               </button>
             </div>
-            <p className="text-[11px] text-orange-900/70 italic">
+            <p className="text-[11px] text-orange-900/70 dark:text-orange-300/80 italic">
               Adds a fee line to the quote. Set to 0 to remove.
             </p>
           </div>
@@ -1346,28 +1346,28 @@ function QuoteActions({
             </div>
 
             {inquiry.quoteReplies && inquiry.quoteReplies.length > 0 && (
-              <div className="border-t border-amber-200 bg-amber-50/60 px-3 py-2 space-y-1.5">
-                <p className="text-[10px] uppercase tracking-wider font-bold text-amber-800">Reply history</p>
+              <div className="border-t border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2 space-y-1.5">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300">Reply history</p>
                 {inquiry.quoteReplies.map(reply => (
-                  <div key={reply.id} className="text-xs bg-white/70 rounded-md p-2 border border-amber-200">
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-amber-800 mb-0.5">
+                  <div key={reply.id} className="text-xs bg-white/70 dark:bg-amber-950/40 rounded-md p-2 border border-amber-200 dark:border-amber-900/40">
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-amber-800 dark:text-amber-300 mb-0.5">
                       <span className="inline-flex items-center gap-1 font-semibold">
                         {reply.channel === "email"
                           ? <><Mail className="w-3 h-3" /> Email</>
                           : <><MessageSquare className="w-3 h-3" /> Text</>}
-                        <span className="font-normal text-amber-700">→ {reply.sentTo}</span>
+                        <span className="font-normal text-amber-700 dark:text-amber-400">→ {reply.sentTo}</span>
                       </span>
                       <span>{formatDateTime(reply.sentAt)}</span>
                     </div>
-                    <p className="whitespace-pre-wrap break-words text-amber-950">{reply.message}</p>
+                    <p className="whitespace-pre-wrap break-words text-amber-950 dark:text-amber-100">{reply.message}</p>
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="border-t border-amber-200 p-3 bg-white/40 space-y-2">
+            <div className="border-t border-amber-200 dark:border-amber-900/40 p-3 bg-white/40 dark:bg-amber-950/20 space-y-2">
               <label className="block">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-amber-800">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300">
                   Reply to client
                 </span>
                 <textarea
@@ -1376,7 +1376,7 @@ function QuoteActions({
                   rows={3}
                   maxLength={2000}
                   placeholder="Type your reply — sent to the client by email or text…"
-                  className="mt-1 w-full px-3 py-2 border border-amber-300 rounded-lg bg-white text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="mt-1 w-full px-3 py-2 border border-amber-300 dark:border-amber-800 rounded-lg bg-white dark:bg-amber-950/50 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
               </label>
               <div className="flex flex-wrap items-center gap-2">

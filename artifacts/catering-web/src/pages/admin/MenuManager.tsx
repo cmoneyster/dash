@@ -909,19 +909,19 @@ export default function MenuManager() {
                   <div className="grid grid-cols-2 gap-3 p-4 bg-secondary/50 rounded-xl">
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-1">Tier 2 — Min. Qty</label>
-                      <input {...register("tier2Qty")} type="number" min="1" placeholder="e.g. 5" className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                      <input {...register("tier2Qty")} type="number" min="1" placeholder="e.g. 5" className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-input text-foreground" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-1">Tier 2 — Price / ea</label>
-                      <input {...register("tier2Price")} type="number" step="0.01" min="0" placeholder="e.g. 9.50" className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                      <input {...register("tier2Price")} type="number" step="0.01" min="0" placeholder="e.g. 9.50" className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-input text-foreground" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-1">Tier 3 — Min. Qty</label>
-                      <input {...register("tier3Qty")} type="number" min="1" placeholder="e.g. 10" className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                      <input {...register("tier3Qty")} type="number" min="1" placeholder="e.g. 10" className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-input text-foreground" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-1">Tier 3 — Price / ea</label>
-                      <input {...register("tier3Price")} type="number" step="0.01" min="0" placeholder="e.g. 8.50" className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                      <input {...register("tier3Price")} type="number" step="0.01" min="0" placeholder="e.g. 8.50" className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-input text-foreground" />
                     </div>
                   </div>
                 </div>
@@ -966,9 +966,9 @@ export default function MenuManager() {
                   </div>
                 </div>
 
-                <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                  <label className="block text-sm font-semibold text-slate-900">Item Label Printing</label>
-                  <p className="text-xs text-slate-700/80 -mt-2">
+                <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-700/60">
+                  <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">Item Label Printing</label>
+                  <p className="text-xs text-slate-700/80 dark:text-slate-300/80 -mt-2">
                     Controls how many physical labels print per quantity ordered. Plates from the staff order-taker always
                     get one plate-label regardless of this setting.
                   </p>
@@ -977,7 +977,7 @@ export default function MenuManager() {
                       <label className="block text-xs font-medium mb-1">Label policy</label>
                       <select
                         {...register("labelPolicy")}
-                        className="w-full px-3 py-2 border rounded-xl text-sm bg-white"
+                        className="w-full px-3 py-2 border rounded-xl text-sm bg-white dark:bg-slate-800 text-foreground"
                       >
                         <option value="per_unit">Per unit (1 label per qty)</option>
                         <option value="combined">Combined (1 label total)</option>

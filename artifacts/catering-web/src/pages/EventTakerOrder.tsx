@@ -1660,8 +1660,8 @@ function PaymentModal({
                   Override — send to kitchen unpaid
                 </button>
               ) : (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
-                  <div className="flex items-start gap-2 text-amber-800">
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-xl p-3 space-y-2">
+                  <div className="flex items-start gap-2 text-amber-800 dark:text-amber-300">
                     <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                     <p className="text-xs">This will send the order to the kitchen <strong>without</strong> recording payment. Use only when you've verified payment by other means.</p>
                   </div>
@@ -1669,12 +1669,12 @@ function PaymentModal({
                     value={overrideReason}
                     onChange={e => setOverrideReason(e.target.value)}
                     placeholder="Reason (optional)"
-                    className="w-full px-3 py-2 text-sm border border-amber-300 rounded-lg bg-white"
+                    className="w-full px-3 py-2 text-sm border border-amber-300 dark:border-amber-800 rounded-lg bg-white dark:bg-amber-950/50 text-foreground placeholder:text-muted-foreground"
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setOverrideOpen(false); setOverrideReason(""); }}
-                      className="flex-1 px-3 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-white"
+                      className="flex-1 px-3 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-white dark:hover:bg-white/10"
                     >
                       Cancel
                     </button>
@@ -2285,8 +2285,8 @@ function PendingPanel({
                   )}
                 </div>
                 {overrideForId === o.id && !isOverride && (
-                  <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5 space-y-2">
-                    <div className="flex items-start gap-1.5 text-amber-800 text-xs">
+                  <div className="mt-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-lg p-2.5 space-y-2">
+                    <div className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300 text-xs">
                       <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                       <p>Send to kitchen <strong>without</strong> recording payment.</p>
                     </div>
@@ -2294,12 +2294,12 @@ function PendingPanel({
                       value={overrideReason}
                       onChange={e => setOverrideReason(e.target.value)}
                       placeholder="Reason (optional)"
-                      className="w-full px-2.5 py-1.5 text-xs border border-amber-300 rounded bg-white"
+                      className="w-full px-2.5 py-1.5 text-xs border border-amber-300 dark:border-amber-800 rounded bg-white dark:bg-amber-950/50 text-foreground placeholder:text-muted-foreground"
                     />
                     <div className="flex gap-2">
                       <button
                         onClick={() => { setOverrideForId(null); setOverrideReason(""); }}
-                        className="flex-1 px-2.5 py-1.5 text-xs font-semibold border border-border rounded hover:bg-white"
+                        className="flex-1 px-2.5 py-1.5 text-xs font-semibold border border-border rounded hover:bg-white dark:hover:bg-white/10"
                       >
                         Back
                       </button>

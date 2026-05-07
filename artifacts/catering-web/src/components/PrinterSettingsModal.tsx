@@ -121,54 +121,54 @@ export function PrinterSettingsModal({ open, onClose, surface, authToken }: Prop
       onClick={onClose}
     >
       <div
-        className="bg-white text-black rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col"
+        className="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col border border-border"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <Printer className="w-5 h-5 text-gray-700" />
+            <Printer className="w-5 h-5 text-muted-foreground" />
             <h2 className="text-lg font-semibold">Printer Settings</h2>
-            <span className="text-xs text-gray-500 ml-1">({cfg.label} scope)</span>
+            <span className="text-xs text-muted-foreground ml-1">({cfg.label} scope)</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
+            className="p-1.5 rounded hover:bg-secondary text-muted-foreground"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="px-5 py-3 text-xs text-gray-600 border-b border-gray-100 bg-gray-50">
+        <div className="px-5 py-3 text-xs text-muted-foreground border-b border-border bg-muted/40">
           Changes save instantly to the admin printer config. The admin portal at
-          {" "}<code className="bg-white px-1 rounded border">/admin/printers</code> is the source of truth — what you see here mirrors it.
+          {" "}<code className="bg-background px-1 rounded border border-border">/admin/printers</code> is the source of truth — what you see here mirrors it.
         </div>
 
         <div className="flex-1 overflow-auto p-5 space-y-4">
           {loading && (
-            <div className="flex items-center gap-2 text-gray-500">
+            <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin" /> Loading printers…
             </div>
           )}
           {error && (
-            <div className="rounded bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2">
+            <div className="rounded bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-sm px-3 py-2">
               {error}
             </div>
           )}
           {!loading && rows.length === 0 && !error && (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-muted-foreground">
               No printers configured yet. Add one in the admin portal.
             </div>
           )}
           {rows.map(p => (
-            <div key={p.id} className="rounded-lg border border-gray-200 p-4">
+            <div key={p.id} className="rounded-lg border border-border p-4">
               <div className="flex items-baseline justify-between mb-3">
                 <div>
                   <div className="font-semibold">{p.name}</div>
-                  {p.location && <div className="text-xs text-gray-500">{p.location}</div>}
+                  {p.location && <div className="text-xs text-muted-foreground">{p.location}</div>}
                 </div>
-                <div className="text-[11px] text-gray-400">id #{p.id}</div>
+                <div className="text-[11px] text-muted-foreground/70">id #{p.id}</div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {toggles.map(({ key, label }) => {
@@ -177,11 +177,11 @@ export function PrinterSettingsModal({ open, onClose, surface, authToken }: Prop
                   return (
                     <label
                       key={String(key)}
-                      className="flex items-center justify-between gap-3 px-3 py-2 rounded border border-gray-200 hover:bg-gray-50 cursor-pointer text-sm"
+                      className="flex items-center justify-between gap-3 px-3 py-2 rounded border border-border hover:bg-secondary cursor-pointer text-sm"
                     >
                       <span className="flex items-center gap-2">
                         {label}
-                        {saving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+                        {saving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                       </span>
                       <input
                         type="checkbox"
