@@ -499,6 +499,67 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+// ── Unified / scope-aware totals ─────────────────────────────────────────────
+// Builds the `totals` field for the JSON response. For scope=events (default)
+// returns the event report unchanged. For scope=catering returns a ReportTotals-
+// shaped object populated from cateringTotals (event-specific fields zeroed).
+// For scope=all merges revenue/order/item counts and the items breakdown.
+
+function buildScopedTotals(
+  eventTotals: ReturnType<typeof buildReport>,
+  cateringTotals: CateringTotals | null,
+  scope: string,
+): ReturnType<typeof buildReport> {
+  if (scope === "events" || !cateringTotals) return eventTotals;
+
+  if (scope === "catering") {
+    return {
+      ...eventTotals,
+      orderCount: cateringTotals.orderCount,
+      itemCount: cateringTotals.itemCount,
+      subtotal: 0,
+      tax: 0,
+      revenue: cateringTotals.revenue,
+      avgOrderValue: cateringTotals.avgOrderValue,
+      items: cateringTotals.items.map(i => ({ ...i })),
+      orders: [],
+      byPaymentMethod: [],
+      pickupStats: {
+        pickedUpCount: 0, avgPickupSec: null, medianPickupSec: null,
+        prepCount: 0, avgPrepSec: null, medianPrepSec: null,
+        readyToPickupCount: 0, avgReadyToPickupSec: null, medianReadyToPickupSec: null,
+      },
+      voids: { count: 0, totalAmount: 0, refundOwedAmount: 0, list: [] },
+    };
+  }
+
+  // scope=all: merge event + catering into a unified summary.
+  // Event-only metrics (tax, voids, pickup stats, byPaymentMethod) are preserved
+  // from the event side; catering revenue/counts are added on top.
+  const mergedRevenue = round2(eventTotals.revenue + cateringTotals.revenue);
+  const mergedOrderCount = eventTotals.orderCount + cateringTotals.orderCount;
+  const mergedItemCount = eventTotals.itemCount + cateringTotals.itemCount;
+  const itemMerge = new Map<string, { name: string; quantity: number; revenue: number }>();
+  for (const i of eventTotals.items) itemMerge.set(i.name, { ...i });
+  for (const i of cateringTotals.items) {
+    const cur = itemMerge.get(i.name);
+    if (cur) {
+      cur.quantity += i.quantity;
+      cur.revenue = round2(cur.revenue + i.revenue);
+    } else {
+      itemMerge.set(i.name, { ...i });
+    }
+  }
+  return {
+    ...eventTotals,
+    orderCount: mergedOrderCount,
+    itemCount: mergedItemCount,
+    revenue: mergedRevenue,
+    avgOrderValue: mergedOrderCount > 0 ? round2(mergedRevenue / mergedOrderCount) : 0,
+    items: [...itemMerge.values()].sort((a, b) => b.revenue - a.revenue),
+  };
+}
+
 // ── Catering totals ─────────────────────────────────────────────────────────
 // Aggregates paid catering inquiries (squareAmountPaid > 0) for the unified
 // sales report. Revenue = squareAmountPaid; items come from lineItems JSONB.
@@ -620,8 +681,19 @@ router.get("/admin/sales-reports", async (req, res) => {
       cateringTotals = buildCateringTotals(cateringRows);
     }
 
-    const guestOrders = eventOrders.filter(o => o.orderSource === "guest");
-    const staffOrders = eventOrders.filter(o => o.orderSource === "staff");
+    // Build event totals once; derive bySource and unified totals from it.
+    const eventTotals = buildReport(scope !== "catering" ? eventOrders : []);
+    const guestOrders = scope !== "catering" ? eventOrders.filter(o => o.orderSource === "guest") : [];
+    const staffOrders = scope !== "catering" ? eventOrders.filter(o => o.orderSource === "staff") : [];
+    const unifiedTotals = buildScopedTotals(eventTotals, cateringTotals, scope);
+
+    // Combined order list — event orders tagged with type="event", catering orders
+    // already have type="catering". Sorted by createdAt desc. Exposed via
+    // byType.allOrders so clients can render a single chronological table.
+    const allOrders: Array<(typeof eventTotals.orders)[number] & { type: "event" } | CateringReportOrder> = [
+      ...eventTotals.orders.map(o => ({ ...o, type: "event" as const })),
+      ...(scope !== "events" && cateringTotals ? cateringTotals.orders : []),
+    ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
     res.json({
       from: fromStart.toISOString(),
@@ -629,15 +701,16 @@ router.get("/admin/sales-reports", async (req, res) => {
       source,
       scope,
       status: statusFilter,
-      totals: buildReport(eventOrders),
+      totals: unifiedTotals,
       bySource: {
         guest: buildReport(guestOrders),
         staff: buildReport(staffOrders),
       },
       catering: cateringTotals,
       byType: {
-        events: buildReport(eventOrders),
+        events: eventTotals,
         catering: cateringTotals,
+        allOrders,
       },
     });
   } catch (err) {

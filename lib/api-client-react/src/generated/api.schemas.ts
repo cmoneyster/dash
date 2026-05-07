@@ -36,6 +36,16 @@ export interface SalesReportOrderLine {
   lineTotal: number;
 }
 
+/**
+ * Discriminant tag identifying this as an on-site event order.
+ */
+export type SalesReportOrderType =
+  (typeof SalesReportOrderType)[keyof typeof SalesReportOrderType];
+
+export const SalesReportOrderType = {
+  event: "event",
+} as const;
+
 export type SalesReportOrderPaymentMethod =
   (typeof SalesReportOrderPaymentMethod)[keyof typeof SalesReportOrderPaymentMethod];
 
@@ -49,6 +59,8 @@ export const SalesReportOrderPaymentMethod = {
 
 export interface SalesReportOrder {
   id: number;
+  /** Discriminant tag identifying this as an on-site event order. */
+  type: SalesReportOrderType;
   createdAt: string;
   source: string;
   guestName: string;
@@ -202,9 +214,16 @@ export type SalesReportBySource = {
   staff: SalesReportTotals;
 };
 
+/**
+ * Explicit per-type breakdowns plus a combined order list. Use allOrders to render a unified chronological table — items are tagged with type="event" or type="catering" for row-level branching.
+
+ */
 export type SalesReportByType = {
   events: SalesReportTotals;
   catering: CateringReportTotals | null;
+  /** Combined and chronologically-sorted list of event orders (type="event") and catering orders (type="catering"). Discriminate on the type field.
+   */
+  allOrders: (SalesReportOrder | CateringReportOrder)[];
 };
 
 export interface SalesReport {
@@ -216,6 +235,8 @@ export interface SalesReport {
   totals: SalesReportTotals;
   bySource: SalesReportBySource;
   catering?: CateringReportTotals | null;
+  /** Explicit per-type breakdowns plus a combined order list. Use allOrders to render a unified chronological table — items are tagged with type="event" or type="catering" for row-level branching.
+   */
   byType: SalesReportByType;
 }
 

@@ -22,5 +22,7 @@ export interface SalesReport {
   totals: SalesReportTotals;
   bySource: SalesReportBySource;
   catering?: CateringReportTotals | null;
+  /** Explicit per-type breakdowns plus a combined order list. Use allOrders to render a unified chronological table — items are tagged with type="event" or type="catering" for row-level branching.
+   */
   byType: SalesReportByType;
 }

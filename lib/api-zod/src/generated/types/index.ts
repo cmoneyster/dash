@@ -90,6 +90,7 @@ export * from "./salesReportItem";
 export * from "./salesReportOrder";
 export * from "./salesReportOrderLine";
 export * from "./salesReportOrderPaymentMethod";
+export * from "./salesReportOrderType";
 export * from "./salesReportPaymentMethodTotal";
 export * from "./salesReportPaymentMethodTotalMethod";
 export * from "./salesReportPickupStats";

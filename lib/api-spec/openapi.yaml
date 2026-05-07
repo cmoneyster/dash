@@ -997,6 +997,10 @@ components:
       properties:
         id:
           type: integer
+        type:
+          type: string
+          enum: [event]
+          description: Discriminant tag identifying this as an on-site event order.
         createdAt:
           type: string
           format: date-time
@@ -1058,6 +1062,7 @@ components:
           type: boolean
       required:
         - id
+        - type
         - createdAt
         - source
         - guestName
@@ -1318,6 +1323,10 @@ components:
             - type: "null"
         byType:
           type: object
+          description: >
+            Explicit per-type breakdowns plus a combined order list.
+            Use allOrders to render a unified chronological table — items are
+            tagged with type="event" or type="catering" for row-level branching.
           properties:
             events:
               $ref: "#/components/schemas/SalesReportTotals"
@@ -1325,7 +1334,21 @@ components:
               oneOf:
                 - $ref: "#/components/schemas/CateringReportTotals"
                 - type: "null"
-          required: [events, catering]
+            allOrders:
+              type: array
+              description: >
+                Combined and chronologically-sorted list of event orders (type="event")
+                and catering orders (type="catering"). Discriminate on the type field.
+              items:
+                oneOf:
+                  - $ref: "#/components/schemas/SalesReportOrder"
+                  - $ref: "#/components/schemas/CateringReportOrder"
+                discriminator:
+                  propertyName: type
+                  mapping:
+                    event: "#/components/schemas/SalesReportOrder"
+                    catering: "#/components/schemas/CateringReportOrder"
+          required: [events, catering, allOrders]
       required:
         - from
         - to

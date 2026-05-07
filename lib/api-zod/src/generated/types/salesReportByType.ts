@@ -5,10 +5,19 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { CateringReportOrder } from "./cateringReportOrder";
 import type { CateringReportTotals } from "./cateringReportTotals";
+import type { SalesReportOrder } from "./salesReportOrder";
 import type { SalesReportTotals } from "./salesReportTotals";
 
+/**
+ * Explicit per-type breakdowns plus a combined order list. Use allOrders to render a unified chronological table — items are tagged with type="event" or type="catering" for row-level branching.
+
+ */
 export type SalesReportByType = {
   events: SalesReportTotals;
   catering: CateringReportTotals | null;
+  /** Combined and chronologically-sorted list of event orders (type="event") and catering orders (type="catering"). Discriminate on the type field.
+   */
+  allOrders: (SalesReportOrder | CateringReportOrder)[];
 };

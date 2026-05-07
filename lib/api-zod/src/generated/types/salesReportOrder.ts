@@ -7,9 +7,12 @@
  */
 import type { SalesReportOrderLine } from "./salesReportOrderLine";
 import type { SalesReportOrderPaymentMethod } from "./salesReportOrderPaymentMethod";
+import type { SalesReportOrderType } from "./salesReportOrderType";
 
 export interface SalesReportOrder {
   id: number;
+  /** Discriminant tag identifying this as an on-site event order. */
+  type: SalesReportOrderType;
   createdAt: Date;
   source: string;
   guestName: string;

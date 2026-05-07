@@ -159,36 +159,17 @@ export default function SalesReports() {
     });
   }
 
-  // Unified order list — event orders + catering orders sorted by createdAt desc.
-  const allOrders = useMemo((): AnyOrder[] => {
-    const evtOrders: AnyOrder[] = scope !== "catering" ? (report?.totals.orders ?? []) : [];
-    const catOrders: AnyOrder[] = scope !== "events" ? (report?.catering?.orders ?? []) : [];
-    return [...evtOrders, ...catOrders].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [report, scope]);
-
-  // Unified KPI totals.
-  const unifiedRevenue = (report?.totals.revenue ?? 0) + (scope !== "events" ? (report?.catering?.revenue ?? 0) : 0);
-  const unifiedOrderCount = (report?.totals.orderCount ?? 0) + (scope !== "events" ? (report?.catering?.orderCount ?? 0) : 0);
-  const unifiedItemCount = (report?.totals.itemCount ?? 0) + (scope !== "events" ? (report?.catering?.itemCount ?? 0) : 0);
-  const unifiedAvg = unifiedOrderCount > 0 ? unifiedRevenue / unifiedOrderCount : 0;
+  // Combined order list comes from the backend byType.allOrders (sorted by createdAt desc).
+  // Backend tags event orders with type="event" and catering orders with type="catering".
+  const allOrders = useMemo(
+    (): AnyOrder[] => (report?.byType?.allOrders ?? []) as AnyOrder[],
+    [report],
+  );
 
   const [itemSort, setItemSort] = useState<{ col: "name" | "quantity" | "revenue"; dir: "asc" | "desc" }>({ col: "revenue", dir: "desc" });
+  // Backend merges items across event+catering in totals.items based on scope.
   const sortedItems = useMemo(() => {
-    // Merge event + catering items by name when scope includes catering.
-    const eventItems = scope !== "catering" ? (report?.totals.items ?? []) : [];
-    const catItems = scope !== "events" ? (report?.catering?.items ?? []) : [];
-    const merged: Record<string, ReportItem> = {};
-    for (const i of eventItems) {
-      merged[i.name] = { ...i };
-    }
-    for (const i of catItems) {
-      if (merged[i.name]) {
-        merged[i.name] = { name: i.name, quantity: merged[i.name].quantity + i.quantity, revenue: merged[i.name].revenue + i.revenue };
-      } else {
-        merged[i.name] = { ...i };
-      }
-    }
-    const items = Object.values(merged);
+    const items = [...(report?.totals.items ?? [])];
     items.sort((a, b) => {
       const av = a[itemSort.col];
       const bv = b[itemSort.col];
@@ -196,7 +177,7 @@ export default function SalesReports() {
       return itemSort.dir === "asc" ? cmp : -cmp;
     });
     return items;
-  }, [report, scope, itemSort]);
+  }, [report, itemSort]);
 
   return (
     <AdminLayout>
@@ -312,10 +293,10 @@ export default function SalesReports() {
       {report && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
-            <Kpi label="Revenue" value={fmt(unifiedRevenue)} icon={<DollarSign className="w-5 h-5" />} accent="text-emerald-600 bg-emerald-50" />
-            <Kpi label="Orders" value={String(unifiedOrderCount)} icon={<ShoppingBag className="w-5 h-5" />} accent="text-indigo-600 bg-indigo-50" />
-            <Kpi label="Items Sold" value={String(unifiedItemCount)} icon={<Package className="w-5 h-5" />} accent="text-amber-600 bg-amber-50" />
-            <Kpi label="Avg Order" value={fmt(unifiedAvg)} icon={<Users className="w-5 h-5" />} accent="text-sky-600 bg-sky-50" />
+            <Kpi label="Revenue" value={fmt(report.totals.revenue)} icon={<DollarSign className="w-5 h-5" />} accent="text-emerald-600 bg-emerald-50" />
+            <Kpi label="Orders" value={String(report.totals.orderCount)} icon={<ShoppingBag className="w-5 h-5" />} accent="text-indigo-600 bg-indigo-50" />
+            <Kpi label="Items Sold" value={String(report.totals.itemCount)} icon={<Package className="w-5 h-5" />} accent="text-amber-600 bg-amber-50" />
+            <Kpi label="Avg Order" value={fmt(report.totals.avgOrderValue)} icon={<Users className="w-5 h-5" />} accent="text-sky-600 bg-sky-50" />
             <Kpi label="Tax Collected" value={scope === "catering" ? "—" : fmt(report.totals.tax)} icon={<Receipt className="w-5 h-5" />} accent="text-rose-600 bg-rose-50" />
             {scope !== "catering" && <VoidsKpi voids={report.totals.voids} />}
           </div>
@@ -433,7 +414,16 @@ export default function SalesReports() {
                               )}
                             </td>
                             <td className="px-3 py-2.5">
-                              {isCatering ? (o as CateringOrder).clientName : (o as ReportOrder).guestName}
+                              {isCatering ? (
+                                <div>
+                                  <span>{(o as CateringOrder).clientName}</span>
+                                  {(o as CateringOrder).eventDate && (
+                                    <span className="block text-[10px] text-muted-foreground">
+                                      Event: {(o as CateringOrder).eventDate}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (o as ReportOrder).guestName}
                             </td>
                             <td className="px-3 py-2.5">
                               {isCatering ? (
