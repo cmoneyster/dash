@@ -5,6 +5,7 @@ import {
   useCreateMenuItem,
   useUpdateMenuItem,
   useDeleteMenuItem,
+  useGenerateMenuItemDescription,
   getAdminListMenuItemsQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -205,6 +206,7 @@ export default function MenuManager() {
   const [searchQuery, setSearchQuery] = useState("");
   const [generatingDialogDesc, setGeneratingDialogDesc] = useState(false);
   const [generatingInlineFor, setGeneratingInlineFor] = useState<number | null>(null);
+  const { mutateAsync: generateDescMutation } = useGenerateMenuItemDescription();
 
   const dirtyIds = Object.keys(localEdits).map(Number);
   const hasDirty = dirtyIds.length > 0;
@@ -369,22 +371,17 @@ export default function MenuManager() {
     if (target === "dialog") setGeneratingDialogDesc(true);
     else setGeneratingInlineFor(target);
     try {
-      const token = getAdminToken();
-      const res = await fetch(`${import.meta.env.BASE_URL}api/admin/menu/generate-description`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ name: name.trim() }),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (typeof data.description === "string") {
+      const result = await generateDescMutation({ data: { name: name.trim() } });
+      if (typeof result.description === "string") {
         if (target === "dialog") {
-          setValue("description", data.description);
+          setValue("description", result.description);
         } else {
           const item = items?.find((it: any) => it.id === target);
-          if (item) patchEdit(target, item, { description: data.description });
+          if (item) patchEdit(target, item, { description: result.description });
         }
       }
+    } catch {
+      // silently ignore — the field stays as-is if generation fails
     } finally {
       if (target === "dialog") setGeneratingDialogDesc(false);
       else setGeneratingInlineFor(null);

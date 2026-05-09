@@ -168,7 +168,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /admin/menu/generate-description:
+  /admin/menu-items/generate-description:
     post:
       operationId: generateMenuItemDescription
       tags: [admin]
@@ -1389,6 +1389,11 @@ components:
         name:
           type: string
           description: The menu item name to generate a description for
+        existingSamples:
+          type: array
+          items:
+            type: string
+          description: Optional style-example strings. If omitted the server fetches samples from the database.
       required:
         - name
 

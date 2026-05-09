@@ -394,6 +394,12 @@ export const GenerateMenuItemDescriptionBody = zod.object({
   name: zod
     .string()
     .describe("The menu item name to generate a description for"),
+  existingSamples: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      "Optional style-example strings. If omitted the server fetches samples from the database.",
+    ),
 });
 
 export const GenerateMenuItemDescriptionResponse = zod.object({

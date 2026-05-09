@@ -670,7 +670,7 @@ export const useDeleteMenuItem = <
  * @summary Generate an AI-written menu item description
  */
 export const getGenerateMenuItemDescriptionUrl = () => {
-  return `/api/admin/menu/generate-description`;
+  return `/api/admin/menu-items/generate-description`;
 };
 
 export const generateMenuItemDescription = async (

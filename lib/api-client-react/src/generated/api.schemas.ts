@@ -243,6 +243,8 @@ export interface SalesReport {
 export interface GenerateDescriptionBody {
   /** The menu item name to generate a description for */
   name: string;
+  /** Optional style-example strings. If omitted the server fetches samples from the database. */
+  existingSamples?: string[];
 }
 
 export interface GenerateDescriptionResponse {

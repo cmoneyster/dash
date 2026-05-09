@@ -67,6 +67,7 @@ router.use(cloudprntRouter);
 router.use(adminAuthRouter);
 
 router.use("/admin/menu", requireAdminAuth);
+router.use("/admin/menu-items", requireAdminAuth);
 router.use("/admin/stats", requireAdminAuth);
 router.use("/admin/idle-activity", requireAdminAuth);
 router.use("/admin/orders", requireAdminAuth);
