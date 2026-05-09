@@ -301,11 +301,10 @@ router.post("/admin/menu-items/generate-description", async (req, res): Promise<
         : '"Orange Chicken": Crispy chicken tossed in a tangy, sweet orange glaze. A beloved classic — bold, bright, and satisfying.';
     }
 
-    const response = await openai.chat.completions.create({
+    const response = await openai.responses.create({
       model: "gpt-4o",
-      max_completion_tokens: 150,
-      web_search_options: { search_context_size: "low" },
-      messages: [
+      tools: [{ type: "web_search_preview" }],
+      input: [
         {
           role: "system",
           content: `You write short, appetizing menu item descriptions for a Chinese-American catering business called "dash by Hollywood East Cafe". Use web search to look up the dish if needed so the description is accurate. Match the tone, length, and style of these real examples from our menu:\n\n${sampleText}\n\nRules: 1-3 sentences max. Warm, sensory, and inviting. No prices. No first-person "we". No markdown or bullet points. Focus on flavor, texture, and what makes the dish special.`,
@@ -317,7 +316,7 @@ router.post("/admin/menu-items/generate-description", async (req, res): Promise<
       ],
     });
 
-    const description = response.choices[0]?.message?.content?.trim() ?? "";
+    const description = response.output_text.trim();
     res.json({ description });
   } catch (err) {
     req.log.error({ err }, "Error generating menu item description");
