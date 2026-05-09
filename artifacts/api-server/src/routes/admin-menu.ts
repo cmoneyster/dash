@@ -304,9 +304,7 @@ router.post("/admin/menu-items/generate-description", async (req, res): Promise<
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       max_completion_tokens: 150,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools: [{ type: "web_search_preview" } as any],
-      tool_choice: "auto",
+      web_search_options: { search_context_size: "low" },
       messages: [
         {
           role: "system",
