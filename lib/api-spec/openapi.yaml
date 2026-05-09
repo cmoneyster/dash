@@ -168,6 +168,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/menu/generate-description:
+    post:
+      operationId: generateMenuItemDescription
+      tags: [admin]
+      summary: Generate an AI-written menu item description
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateDescriptionBody"
+      responses:
+        "200":
+          description: Generated description
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateDescriptionResponse"
+        "400":
+          description: Missing or invalid name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # Event / Calendar endpoints
   /events/day-load:
     get:
@@ -1357,6 +1382,23 @@ components:
         - totals
         - bySource
         - byType
+
+    GenerateDescriptionBody:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The menu item name to generate a description for
+      required:
+        - name
+
+    GenerateDescriptionResponse:
+      type: object
+      properties:
+        description:
+          type: string
+      required:
+        - description
 
     ErrorResponse:
       type: object

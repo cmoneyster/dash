@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
+import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
 import { menuItemsTable, menuCategoriesTable } from "@workspace/db/schema";
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, ne, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -273,6 +274,49 @@ router.post("/admin/menu/reorder", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "Error reordering menu items");
     res.status(500).json({ error: "Failed to reorder menu items" });
+  }
+});
+
+router.post("/admin/menu/generate-description", async (req, res): Promise<void> => {
+  try {
+    const { name } = req.body;
+    if (!name || typeof name !== "string" || !name.trim()) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
+
+    // Pull a handful of existing descriptions to use as style examples
+    const samples = await db
+      .select({ name: menuItemsTable.name, description: menuItemsTable.description })
+      .from(menuItemsTable)
+      .where(ne(menuItemsTable.description, ""))
+      .orderBy(asc(menuItemsTable.id))
+      .limit(5);
+
+    const sampleText = samples.length > 0
+      ? samples.map(s => `"${s.name}": ${s.description}`).join("\n")
+      : '"Orange Chicken": Crispy chicken tossed in a tangy, sweet orange glaze. A beloved classic — bold, bright, and satisfying.';
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_completion_tokens: 150,
+      messages: [
+        {
+          role: "system",
+          content: `You write short, appetizing menu item descriptions for a Chinese-American catering business called "dash by Hollywood East Cafe". Match the tone, length, and style of these real examples from our menu:\n\n${sampleText}\n\nRules: 1-3 sentences max. Warm, sensory, and inviting. No prices. No first-person "we". No markdown or bullet points. Focus on flavor, texture, and what makes the dish special.`,
+        },
+        {
+          role: "user",
+          content: `Write a menu description for: ${name.trim()}`,
+        },
+      ],
+    });
+
+    const description = response.choices[0]?.message?.content?.trim() ?? "";
+    res.json({ description });
+  } catch (err) {
+    req.log.error({ err }, "Error generating menu item description");
+    res.status(500).json({ error: "Failed to generate description" });
   }
 });
 

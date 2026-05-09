@@ -388,6 +388,19 @@ export const DeleteMenuItemParams = zod.object({
 });
 
 /**
+ * @summary Generate an AI-written menu item description
+ */
+export const GenerateMenuItemDescriptionBody = zod.object({
+  name: zod
+    .string()
+    .describe("The menu item name to generate a description for"),
+});
+
+export const GenerateMenuItemDescriptionResponse = zod.object({
+  description: zod.string(),
+});
+
+/**
  * @summary Combined blackout + per-service-style + global guest-cap view for a single date
  */
 export const GetDayLoadQueryParams = zod.object({

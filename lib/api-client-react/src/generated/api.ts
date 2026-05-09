@@ -34,6 +34,8 @@ import type {
   CreatePrinterBody,
   DayLoadResponse,
   ErrorResponse,
+  GenerateDescriptionBody,
+  GenerateDescriptionResponse,
   GetCartParams,
   GetDayLoadParams,
   GetPlanParams,
@@ -662,6 +664,96 @@ export const useDeleteMenuItem = <
   TContext
 > => {
   return useMutation(getDeleteMenuItemMutationOptions(options));
+};
+
+/**
+ * @summary Generate an AI-written menu item description
+ */
+export const getGenerateMenuItemDescriptionUrl = () => {
+  return `/api/admin/menu/generate-description`;
+};
+
+export const generateMenuItemDescription = async (
+  generateDescriptionBody: GenerateDescriptionBody,
+  options?: RequestInit,
+): Promise<GenerateDescriptionResponse> => {
+  return customFetch<GenerateDescriptionResponse>(
+    getGenerateMenuItemDescriptionUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(generateDescriptionBody),
+    },
+  );
+};
+
+export const getGenerateMenuItemDescriptionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateMenuItemDescription>>,
+    TError,
+    { data: BodyType<GenerateDescriptionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateMenuItemDescription>>,
+  TError,
+  { data: BodyType<GenerateDescriptionBody> },
+  TContext
+> => {
+  const mutationKey = ["generateMenuItemDescription"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateMenuItemDescription>>,
+    { data: BodyType<GenerateDescriptionBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateMenuItemDescription(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateMenuItemDescriptionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateMenuItemDescription>>
+>;
+export type GenerateMenuItemDescriptionMutationBody =
+  BodyType<GenerateDescriptionBody>;
+export type GenerateMenuItemDescriptionMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Generate an AI-written menu item description
+ */
+export const useGenerateMenuItemDescription = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateMenuItemDescription>>,
+    TError,
+    { data: BodyType<GenerateDescriptionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateMenuItemDescription>>,
+  TError,
+  { data: BodyType<GenerateDescriptionBody> },
+  TContext
+> => {
+  return useMutation(getGenerateMenuItemDescriptionMutationOptions(options));
 };
 
 /**

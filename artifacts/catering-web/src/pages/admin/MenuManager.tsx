@@ -9,7 +9,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon, Upload, GripVertical, Search } from "lucide-react";
+import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon, Upload, GripVertical, Search, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { getAdminToken } from "@/components/AdminGuard";
 import { useAdminCategories, ADMIN_CATEGORIES_QUERY_KEY } from "@/lib/categories";
@@ -203,6 +203,8 @@ export default function MenuManager() {
   const [localEdits, setLocalEdits] = useState<Record<number, InlineEdit>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [generatingDialogDesc, setGeneratingDialogDesc] = useState(false);
+  const [generatingInlineFor, setGeneratingInlineFor] = useState<number | null>(null);
 
   const dirtyIds = Object.keys(localEdits).map(Number);
   const hasDirty = dirtyIds.length > 0;
@@ -348,6 +350,7 @@ export default function MenuManager() {
   const imageUrlValue   = watch("imageUrl", "");
   const pricingTemplate = watch("pricingTemplate", "per_unit");
   const watchedCategory = watch("category", "");
+  const watchedName     = watch("name", "");
 
   // Auto-set pricing template when category changes. Drive the default from
   // the picked category's structured plannerGroup ("entree" → pan sizes,
@@ -360,6 +363,33 @@ export default function MenuManager() {
     const isEntreeCat = picked?.plannerGroup === "entree";
     setValue("pricingTemplate", isEntreeCat ? "pan_sizes" : "per_unit");
   }, [watchedCategory, adminCategories, setValue]);
+
+  const generateDescription = async (name: string, target: "dialog" | number) => {
+    if (!name.trim()) return;
+    if (target === "dialog") setGeneratingDialogDesc(true);
+    else setGeneratingInlineFor(target);
+    try {
+      const token = getAdminToken();
+      const res = await fetch(`${import.meta.env.BASE_URL}api/admin/menu/generate-description`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (typeof data.description === "string") {
+        if (target === "dialog") {
+          setValue("description", data.description);
+        } else {
+          const item = items?.find((it: any) => it.id === target);
+          if (item) patchEdit(target, item, { description: data.description });
+        }
+      }
+    } finally {
+      if (target === "dialog") setGeneratingDialogDesc(false);
+      else setGeneratingInlineFor(null);
+    }
+  };
 
   const openNew = () => {
     setEditingItem(null);
@@ -576,13 +606,25 @@ export default function MenuManager() {
                               disabled={isSaving}
                               className="w-full font-bold text-sm px-2 py-0.5 rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all mb-1"
                             />
-                            <textarea
-                              value={cur.description}
-                              onChange={e => patchEdit(item.id, item, { description: e.target.value })}
-                              disabled={isSaving}
-                              rows={2}
-                              className="w-full text-xs text-muted-foreground px-2 py-0.5 rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all resize-none leading-snug"
-                            />
+                            <div className="relative">
+                              <textarea
+                                value={cur.description}
+                                onChange={e => patchEdit(item.id, item, { description: e.target.value })}
+                                disabled={isSaving}
+                                rows={2}
+                                className="w-full text-xs text-muted-foreground px-2 py-0.5 rounded-md border border-transparent hover:border-border focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none bg-transparent transition-all resize-none leading-snug"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => generateDescription(cur.name, item.id)}
+                                disabled={generatingInlineFor === item.id || isSaving || !cur.name.trim()}
+                                title="Generate description with AI"
+                                className="absolute top-0 right-0 flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded text-primary/70 hover:text-primary hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {generatingInlineFor === item.id ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+                                {generatingInlineFor === item.id ? "…" : "AI"}
+                              </button>
+                            </div>
                           </td>
                           <td className="px-2 py-2">
                             {(item as any).pricingTemplate === "pan_sizes" ? (
@@ -790,7 +832,18 @@ export default function MenuManager() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold mb-1">Description</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-semibold">Description</label>
+                    <button
+                      type="button"
+                      onClick={() => generateDescription(watchedName, "dialog")}
+                      disabled={generatingDialogDesc || !watchedName.trim()}
+                      className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-primary/30 text-primary hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {generatingDialogDesc ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                      {generatingDialogDesc ? "Generating…" : "Generate with AI"}
+                    </button>
+                  </div>
                   <textarea {...register("description")} required rows={2} className="w-full px-4 py-2 border rounded-xl resize-none" />
                 </div>
 

@@ -240,6 +240,15 @@ export interface SalesReport {
   byType: SalesReportByType;
 }
 
+export interface GenerateDescriptionBody {
+  /** The menu item name to generate a description for */
+  name: string;
+}
+
+export interface GenerateDescriptionResponse {
+  description: string;
+}
+
 export interface ErrorResponse {
   error: string;
 }

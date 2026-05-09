@@ -40,6 +40,8 @@ export * from "./dayLoadResponseTotals";
 export * from "./dayLoadResponseTotalsByServiceStyle";
 export * from "./dayLoadStyleTotals";
 export * from "./errorResponse";
+export * from "./generateDescriptionBody";
+export * from "./generateDescriptionResponse";
 export * from "./getCartParams";
 export * from "./getDayLoadParams";
 export * from "./getPlanParams";
