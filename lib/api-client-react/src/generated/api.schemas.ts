@@ -5,6 +5,31 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+export type ClientPollsByFamilyItemEndpointsItem = {
+  path: string;
+  count: number;
+};
+
+export type ClientPollsByFamilyItem = {
+  family: string;
+  count: number;
+  /** Per-endpoint breakdown sorted by count descending. Hits to
+e.g. `/orders/47` and `/orders/48` aggregate into a single
+`/orders/:id` row. Capped per family; overflow rolls into a
+synthetic `(other)` entry.
+ */
+  endpoints: ClientPollsByFamilyItemEndpointsItem[];
+};
+
+/**
+ * Per-family HTTP request breakdown for one time window. Every known
+route family is always present (count may be zero). Families are
+sorted highest-count first. Endpoint keys are `:id`-normalized
+templates with the `/api` prefix stripped.
+
+ */
+export type ClientPollsByFamily = ClientPollsByFamilyItem[];
+
 export interface HealthStatus {
   status: string;
 }
@@ -735,28 +760,18 @@ export type IdleActivitySnapshotInstagramPolls = {
   lastRunAt: string | null;
 };
 
-export type IdleActivitySnapshotClientPollsByFamilyItemEndpointsItem = {
-  path: string;
-  count: number;
-};
+/**
+ * Three parallel time-window breakdowns of inbound HTTP requests
+grouped by route family. All three windows are computed in a
+single snapshot so the UI can switch between them without an
+extra round-trip. Each window is an array of per-family objects
+with the same shape.
 
-export type IdleActivitySnapshotClientPollsByFamilyItem = {
-  family: string;
-  count: number;
-  /** Per-endpoint breakdown of the requests counted toward
-this family in the snapshot window. Sorted by count
-descending, with `:id`-style segments normalized so
-hits to e.g. `/orders/47` and `/orders/48` aggregate
-into a single `/orders/:id` row. Capped per family;
-anything beyond the cap rolls into a synthetic
-`(other)` entry.
  */
-  endpoints: IdleActivitySnapshotClientPollsByFamilyItemEndpointsItem[];
-};
-
 export type IdleActivitySnapshotClientPolls = {
-  windowMinutes: number;
-  byFamily: IdleActivitySnapshotClientPollsByFamilyItem[];
+  last5min: ClientPollsByFamily;
+  lastHour: ClientPollsByFamily;
+  last24h: ClientPollsByFamily;
 };
 
 export type IdleActivitySnapshotSmsPollerInboundMode =
@@ -784,6 +799,12 @@ export interface IdleActivitySnapshot {
   ejoinPolls: IdleActivitySnapshotEjoinPolls;
   outboundSms: IdleActivitySnapshotOutboundSms;
   instagramPolls: IdleActivitySnapshotInstagramPolls;
+  /** Three parallel time-window breakdowns of inbound HTTP requests
+grouped by route family. All three windows are computed in a
+single snapshot so the UI can switch between them without an
+extra round-trip. Each window is an array of per-family objects
+with the same shape.
+ */
   clientPolls: IdleActivitySnapshotClientPolls;
   smsPoller: IdleActivitySnapshotSmsPoller;
   instagramPoller: IdleActivitySnapshotInstagramPoller;

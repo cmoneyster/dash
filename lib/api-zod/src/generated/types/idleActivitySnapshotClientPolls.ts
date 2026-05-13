@@ -5,9 +5,18 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
-import type { IdleActivitySnapshotClientPollsByFamilyItem } from "./idleActivitySnapshotClientPollsByFamilyItem";
+import type { ClientPollsByFamily } from "./clientPollsByFamily";
 
+/**
+ * Three parallel time-window breakdowns of inbound HTTP requests
+grouped by route family. All three windows are computed in a
+single snapshot so the UI can switch between them without an
+extra round-trip. Each window is an array of per-family objects
+with the same shape.
+
+ */
 export type IdleActivitySnapshotClientPolls = {
-  windowMinutes: number;
-  byFamily: IdleActivitySnapshotClientPollsByFamilyItem[];
+  last5min: ClientPollsByFamily;
+  lastHour: ClientPollsByFamily;
+  last24h: ClientPollsByFamily;
 };

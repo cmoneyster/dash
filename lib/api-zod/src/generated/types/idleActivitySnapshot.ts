@@ -18,6 +18,12 @@ export interface IdleActivitySnapshot {
   ejoinPolls: IdleActivitySnapshotEjoinPolls;
   outboundSms: IdleActivitySnapshotOutboundSms;
   instagramPolls: IdleActivitySnapshotInstagramPolls;
+  /** Three parallel time-window breakdowns of inbound HTTP requests
+grouped by route family. All three windows are computed in a
+single snapshot so the UI can switch between them without an
+extra round-trip. Each window is an array of per-family objects
+with the same shape.
+ */
   clientPolls: IdleActivitySnapshotClientPolls;
   smsPoller: IdleActivitySnapshotSmsPoller;
   instagramPoller: IdleActivitySnapshotInstagramPoller;

@@ -223,9 +223,8 @@ describe("idle-metrics recorders increment the right fields", () => {
 
     const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
     const byFamily = new Map(
-      snap.clientPolls.byFamily.map((f) => [f.family, f.count]),
+      snap.clientPolls.last5min.map((f) => [f.family, f.count]),
     );
-    expect(snap.clientPolls.windowMinutes).toBe(5);
     expect(byFamily.get("kitchen-display")).toBe(2);
     expect(byFamily.get("catering-admin")).toBe(1);
     // Families with zero hits still appear (UI consistency).
@@ -253,7 +252,7 @@ describe("idle-metrics recorders increment the right fields", () => {
     recordHttpRequest("kitchen-display", "/event-ordering/items");
 
     const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
-    const kd = snap.clientPolls.byFamily.find(
+    const kd = snap.clientPolls.last5min.find(
       (f) => f.family === "kitchen-display",
     );
     expect(kd?.count).toBe(2);
@@ -269,7 +268,7 @@ describe("idle-metrics recorders increment the right fields", () => {
     recordHttpRequest("staff-order-taker", "/event-taker/settings");
 
     const snap = snapshot({ smsPoller: { enabled: true, intervalSeconds: 3, inboundMode: "poll" }, instagramPoller: { enabled: true, intervalMinutes: 30 } });
-    const taker = snap.clientPolls.byFamily.find((f) => f.family === "staff-order-taker");
+    const taker = snap.clientPolls.last5min.find((f) => f.family === "staff-order-taker");
     expect(taker?.count).toBe(3);
     expect(taker?.endpoints).toEqual([
       { path: "/event-taker/orders/:id/payment", count: 2 },
@@ -278,7 +277,7 @@ describe("idle-metrics recorders increment the right fields", () => {
 
     // Zero-count families surface an empty endpoints array so the UI
     // can still render a stable row without conditional logic.
-    const publicFam = snap.clientPolls.byFamily.find((f) => f.family === "public");
+    const publicFam = snap.clientPolls.last5min.find((f) => f.family === "public");
     expect(publicFam?.count).toBe(0);
     expect(publicFam?.endpoints).toEqual([]);
   });

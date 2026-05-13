@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import {
   useGetAdminIdleActivity,
@@ -54,14 +55,14 @@ function Card({
   icon: Icon,
   children,
 }: {
-  title: string;
+  title: React.ReactNode;
   icon: any;
   children: React.ReactNode;
 }) {
   return (
     <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
           <Icon className="w-5 h-5" />
         </div>
         <h3 className="font-bold text-base">{title}</h3>
@@ -80,6 +81,14 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+type WindowKey = "last5min" | "lastHour" | "last24h";
+
+const WINDOW_OPTIONS: { key: WindowKey; label: string; title: string }[] = [
+  { key: "last5min", label: "5 min",    title: "last 5 min" },
+  { key: "lastHour", label: "1 hour",   title: "last hour" },
+  { key: "last24h",  label: "24 hours", title: "last 24 hours" },
+];
+
 export default function IdleActivity() {
   // Auto-refresh once a minute so the operator sees fresh numbers
   // without leaning on the button. Manual refresh stays available
@@ -95,6 +104,11 @@ export default function IdleActivity() {
       refetchOnWindowFocus: false,
     },
   });
+
+  // Which time window to show in the Client HTTP Polls card.
+  // All three datasets arrive in every poll response so switching is
+  // instant — no extra network request needed.
+  const [pollWindow, setPollWindow] = useState<WindowKey>("last5min");
 
   return (
     <AdminLayout>
@@ -220,8 +234,33 @@ export default function IdleActivity() {
               />
             </Card>
 
-            <Card title={`Client HTTP Polls (last ${data.clientPolls.windowMinutes} min)`} icon={Globe}>
-              {data.clientPolls.byFamily.map((f) => (
+            {/* Client HTTP Polls card — title row embeds the window toggle */}
+            <Card
+              icon={Globe}
+              title={
+                <span className="flex items-center gap-3 flex-wrap">
+                  <span>Client HTTP Polls</span>
+                  {/* Segmented toggle: switching is instant because all three
+                      window datasets arrive in every single poll response. */}
+                  <span className="flex rounded-lg border border-border overflow-hidden text-xs font-normal">
+                    {WINDOW_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.key}
+                        onClick={(e) => { e.stopPropagation(); setPollWindow(opt.key); }}
+                        className={`px-2.5 py-1 transition-colors ${
+                          pollWindow === opt.key
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-background text-muted-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </span>
+                </span>
+              }
+            >
+              {data.clientPolls[pollWindow].map((f) => (
                 <div
                   key={f.family}
                   className="border-b border-border/50 pb-2 last:border-0 last:pb-0"
@@ -272,10 +311,15 @@ export default function IdleActivity() {
               <p className="text-xs text-muted-foreground pt-2">
                 Counts every request that reached the API, grouped by the page
                 family that probably issued it and broken down by route. Numeric
-                IDs are folded together (e.g. <span className="font-mono">/orders/:id</span>{" "}
-                covers every order). This page's own polling for these counters
-                is excluded; the sidebar's badge polling on every admin page is
-                not.
+                IDs are folded together (e.g.{" "}
+                <span className="font-mono">/orders/:id</span> covers every
+                order). Showing the{" "}
+                <span className="font-medium">
+                  {WINDOW_OPTIONS.find((o) => o.key === pollWindow)?.title}
+                </span>{" "}
+                window — use the toggle above to switch. This page's own
+                polling for these counters is excluded; the sidebar's badge
+                polling on every admin page is not.
               </p>
             </Card>
           </div>

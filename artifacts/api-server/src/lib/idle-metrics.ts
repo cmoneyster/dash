@@ -27,7 +27,6 @@ const SERVER_STARTED_AT = new Date();
 const MS_PER_MINUTE = 60_000;
 const HOUR_MIN = 60;
 const DAY_MIN = 24 * 60;
-const HTTP_WINDOW_MIN = 5;
 // Keep slightly more than 24h of buckets so a snapshot taken right at
 // the boundary still has the full window available.
 const RETAIN_BUCKETS = DAY_MIN + 10;
@@ -183,6 +182,19 @@ export function recordHttpRequest(family: RouteFamily, normalizedPath: string): 
 
 // ── Snapshot ──────────────────────────────────────────────────────────────────
 
+// Per-family breakdown for one time window. Families with zero hits are
+// still present so the UI always has a complete list to render.
+export type ByFamilyWindow = Array<{
+  family: RouteFamily;
+  count: number;
+  // Per-endpoint breakdown sorted by count (desc, ties broken
+  // alphabetically). Endpoint keys are :id-normalized templates with
+  // the "/api" prefix stripped. Empty for families with zero hits.
+  // Truncated past ENDPOINTS_PER_FAMILY_IN_SNAPSHOT into a synthetic
+  // "(other)" row so the card stays readable.
+  endpoints: Array<{ path: string; count: number }>;
+}>;
+
 export type IdleActivitySnapshot = {
   serverStartedAt: string;
   asOf: string;
@@ -206,17 +218,12 @@ export type IdleActivitySnapshot = {
     lastRunAt: string | null;
   };
   clientPolls: {
-    windowMinutes: number;
-    byFamily: Array<{
-      family: RouteFamily;
-      count: number;
-      // Per-endpoint breakdown sorted by count (desc, ties broken
-      // alphabetically). Endpoint keys are :id-normalized templates with
-      // the "/api" prefix stripped. Empty for families with zero hits.
-      // Truncated past ENDPOINTS_PER_FAMILY_IN_SNAPSHOT into a synthetic
-      // "(other)" row so the card stays readable.
-      endpoints: Array<{ path: string; count: number }>;
-    }>;
+    // Three parallel windows so the UI can switch between them without
+    // an extra network round-trip. All three are computed on every
+    // snapshot call — the cost is negligible (in-memory bucket sums).
+    last5min: ByFamilyWindow;
+    lastHour: ByFamilyWindow;
+    last24h: ByFamilyWindow;
   };
   // Operator-tunable poller status. Fed by the route handler from the
   // scheduler modules so the admin can confirm what's currently in
@@ -244,50 +251,22 @@ function bucketsInWindow(windowMinutes: number): Bucket[] {
   return out;
 }
 
-// Caller passes in the live poller status because that data lives in
-// the scheduler modules — keeping idle-metrics free of those imports
-// avoids a circular-dep risk and keeps this file purely about the
-// in-memory counters.
-export type PollerStatusInput = {
-  smsPoller: { enabled: boolean; intervalSeconds: number; inboundMode: "push" | "poll" };
-  instagramPoller: { enabled: boolean; intervalMinutes: number };
-};
+const FAMILIES: RouteFamily[] = [
+  "kitchen-display",
+  "staff-order-taker",
+  "catering-admin",
+  "unmatched-messages",
+  "other-admin",
+  "public",
+];
 
-export function snapshot(pollers: PollerStatusInput): IdleActivitySnapshot {
-  const hourBuckets = bucketsInWindow(HOUR_MIN);
-  const dayBuckets = bucketsInWindow(DAY_MIN);
-  const httpBuckets = bucketsInWindow(HTTP_WINDOW_MIN);
-
-  let ejoinPollsHour = 0, ejoinBytesHour = 0;
-  for (const b of hourBuckets) {
-    ejoinPollsHour += b.ejoinPolls;
-    ejoinBytesHour += b.ejoinBytes;
-  }
-  let ejoinPollsDay = 0, ejoinBytesDay = 0, smsDay = 0, igDay = 0;
-  for (const b of dayBuckets) {
-    ejoinPollsDay += b.ejoinPolls;
-    ejoinBytesDay += b.ejoinBytes;
-    smsDay += b.smsOutbound;
-    igDay += b.instagramPolls;
-  }
-  let smsHour = 0;
-  for (const b of hourBuckets) smsHour += b.smsOutbound;
-
-  // Roll up the HTTP map across the 5-minute window into per-family
-  // totals AND a per-family per-endpoint breakdown. Families with zero
-  // hits are still surfaced so the UI can render a consistent table;
-  // their endpoints array is left empty.
-  const FAMILIES: RouteFamily[] = [
-    "kitchen-display",
-    "staff-order-taker",
-    "catering-admin",
-    "unmatched-messages",
-    "other-admin",
-    "public",
-  ];
+// Roll up the HTTP map for a given set of buckets into the per-family
+// breakdown the UI needs. Families with zero hits are still present so
+// the card renders a consistent list. Called once per window per snapshot.
+function buildByFamily(windowBuckets: Bucket[]): ByFamilyWindow {
   const perFamilyEndpoints = new Map<RouteFamily, Map<string, number>>();
   for (const fam of FAMILIES) perFamilyEndpoints.set(fam, new Map());
-  for (const b of httpBuckets) {
+  for (const b of windowBuckets) {
     for (const [fam, endpoints] of b.http) {
       const target = perFamilyEndpoints.get(fam);
       if (!target) continue;
@@ -296,11 +275,7 @@ export function snapshot(pollers: PollerStatusInput): IdleActivitySnapshot {
       }
     }
   }
-  const byFamily: Array<{
-    family: RouteFamily;
-    count: number;
-    endpoints: Array<{ path: string; count: number }>;
-  }> = [];
+  const result: ByFamilyWindow = [];
   for (const [family, endpoints] of perFamilyEndpoints) {
     let total = 0;
     for (const n of endpoints.values()) total += n;
@@ -321,11 +296,42 @@ export function snapshot(pollers: PollerStatusInput): IdleActivitySnapshot {
       }
       if (otherCount > 0) trimmed.push({ path: OVERFLOW_ENDPOINT_KEY, count: otherCount });
     }
-    byFamily.push({ family, count: total, endpoints: trimmed });
+    result.push({ family, count: total, endpoints: trimmed });
   }
   // Stable family ordering: highest first, then alphabetical so equal-
   // count families don't visually swap between renders.
-  byFamily.sort((a, b) => b.count - a.count || a.family.localeCompare(b.family));
+  result.sort((a, b) => b.count - a.count || a.family.localeCompare(b.family));
+  return result;
+}
+
+// Caller passes in the live poller status because that data lives in
+// the scheduler modules — keeping idle-metrics free of those imports
+// avoids a circular-dep risk and keeps this file purely about the
+// in-memory counters.
+export type PollerStatusInput = {
+  smsPoller: { enabled: boolean; intervalSeconds: number; inboundMode: "push" | "poll" };
+  instagramPoller: { enabled: boolean; intervalMinutes: number };
+};
+
+export function snapshot(pollers: PollerStatusInput): IdleActivitySnapshot {
+  const hourBuckets = bucketsInWindow(HOUR_MIN);
+  const dayBuckets = bucketsInWindow(DAY_MIN);
+  const fiveMinBuckets = bucketsInWindow(5);
+
+  let ejoinPollsHour = 0, ejoinBytesHour = 0;
+  for (const b of hourBuckets) {
+    ejoinPollsHour += b.ejoinPolls;
+    ejoinBytesHour += b.ejoinBytes;
+  }
+  let ejoinPollsDay = 0, ejoinBytesDay = 0, smsDay = 0, igDay = 0;
+  for (const b of dayBuckets) {
+    ejoinPollsDay += b.ejoinPolls;
+    ejoinBytesDay += b.ejoinBytes;
+    smsDay += b.smsOutbound;
+    igDay += b.instagramPolls;
+  }
+  let smsHour = 0;
+  for (const b of hourBuckets) smsHour += b.smsOutbound;
 
   // Round to whole bytes for stable display; we only ever surface this
   // as KB-precision in the UI so sub-byte fractions are noise.
@@ -348,8 +354,9 @@ export function snapshot(pollers: PollerStatusInput): IdleActivitySnapshot {
       lastRunAt: lastInstagramPollAt ? lastInstagramPollAt.toISOString() : null,
     },
     clientPolls: {
-      windowMinutes: HTTP_WINDOW_MIN,
-      byFamily,
+      last5min: buildByFamily(fiveMinBuckets),
+      lastHour: buildByFamily(hourBuckets),
+      last24h: buildByFamily(dayBuckets),
     },
     smsPoller: pollers.smsPoller,
     instagramPoller: pollers.instagramPoller,

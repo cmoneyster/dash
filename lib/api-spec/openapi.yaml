@@ -974,6 +974,37 @@ paths:
 
 components:
   schemas:
+    ClientPollsByFamily:
+      type: array
+      description: |
+        Per-family HTTP request breakdown for one time window. Every known
+        route family is always present (count may be zero). Families are
+        sorted highest-count first. Endpoint keys are `:id`-normalized
+        templates with the `/api` prefix stripped.
+      items:
+        type: object
+        properties:
+          family:
+            type: string
+          count:
+            type: integer
+          endpoints:
+            type: array
+            description: |
+              Per-endpoint breakdown sorted by count descending. Hits to
+              e.g. `/orders/47` and `/orders/48` aggregate into a single
+              `/orders/:id` row. Capped per family; overflow rolls into a
+              synthetic `(other)` entry.
+            items:
+              type: object
+              properties:
+                path:
+                  type: string
+                count:
+                  type: integer
+              required: [path, count]
+        required: [family, count, endpoints]
+
     HealthStatus:
       type: object
       properties:
@@ -2253,38 +2284,20 @@ components:
           required: [last24h, lastRunAt]
         clientPolls:
           type: object
+          description: |
+            Three parallel time-window breakdowns of inbound HTTP requests
+            grouped by route family. All three windows are computed in a
+            single snapshot so the UI can switch between them without an
+            extra round-trip. Each window is an array of per-family objects
+            with the same shape.
           properties:
-            windowMinutes:
-              type: integer
-            byFamily:
-              type: array
-              items:
-                type: object
-                properties:
-                  family:
-                    type: string
-                  count:
-                    type: integer
-                  endpoints:
-                    type: array
-                    description: |
-                      Per-endpoint breakdown of the requests counted toward
-                      this family in the snapshot window. Sorted by count
-                      descending, with `:id`-style segments normalized so
-                      hits to e.g. `/orders/47` and `/orders/48` aggregate
-                      into a single `/orders/:id` row. Capped per family;
-                      anything beyond the cap rolls into a synthetic
-                      `(other)` entry.
-                    items:
-                      type: object
-                      properties:
-                        path:
-                          type: string
-                        count:
-                          type: integer
-                      required: [path, count]
-                required: [family, count, endpoints]
-          required: [windowMinutes, byFamily]
+            last5min:
+              $ref: '#/components/schemas/ClientPollsByFamily'
+            lastHour:
+              $ref: '#/components/schemas/ClientPollsByFamily'
+            last24h:
+              $ref: '#/components/schemas/ClientPollsByFamily'
+          required: [last5min, lastHour, last24h]
         smsPoller:
           type: object
           properties:

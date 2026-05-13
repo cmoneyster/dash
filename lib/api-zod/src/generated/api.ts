@@ -1522,25 +1522,72 @@ export const GetAdminIdleActivityResponse = zod.object({
     last24h: zod.number(),
     lastRunAt: zod.coerce.date().nullable(),
   }),
-  clientPolls: zod.object({
-    windowMinutes: zod.number(),
-    byFamily: zod.array(
-      zod.object({
-        family: zod.string(),
-        count: zod.number(),
-        endpoints: zod
-          .array(
-            zod.object({
-              path: zod.string(),
-              count: zod.number(),
-            }),
-          )
-          .describe(
-            "Per-endpoint breakdown of the requests counted toward\nthis family in the snapshot window. Sorted by count\ndescending, with `:id`-style segments normalized so\nhits to e.g. `\/orders\/47` and `\/orders\/48` aggregate\ninto a single `\/orders\/:id` row. Capped per family;\nanything beyond the cap rolls into a synthetic\n`(other)` entry.\n",
-          ),
-      }),
+  clientPolls: zod
+    .object({
+      last5min: zod
+        .array(
+          zod.object({
+            family: zod.string(),
+            count: zod.number(),
+            endpoints: zod
+              .array(
+                zod.object({
+                  path: zod.string(),
+                  count: zod.number(),
+                }),
+              )
+              .describe(
+                "Per-endpoint breakdown sorted by count descending. Hits to\ne.g. `\/orders\/47` and `\/orders\/48` aggregate into a single\n`\/orders\/:id` row. Capped per family; overflow rolls into a\nsynthetic `(other)` entry.\n",
+              ),
+          }),
+        )
+        .describe(
+          "Per-family HTTP request breakdown for one time window. Every known\nroute family is always present (count may be zero). Families are\nsorted highest-count first. Endpoint keys are `:id`-normalized\ntemplates with the `\/api` prefix stripped.\n",
+        ),
+      lastHour: zod
+        .array(
+          zod.object({
+            family: zod.string(),
+            count: zod.number(),
+            endpoints: zod
+              .array(
+                zod.object({
+                  path: zod.string(),
+                  count: zod.number(),
+                }),
+              )
+              .describe(
+                "Per-endpoint breakdown sorted by count descending. Hits to\ne.g. `\/orders\/47` and `\/orders\/48` aggregate into a single\n`\/orders\/:id` row. Capped per family; overflow rolls into a\nsynthetic `(other)` entry.\n",
+              ),
+          }),
+        )
+        .describe(
+          "Per-family HTTP request breakdown for one time window. Every known\nroute family is always present (count may be zero). Families are\nsorted highest-count first. Endpoint keys are `:id`-normalized\ntemplates with the `\/api` prefix stripped.\n",
+        ),
+      last24h: zod
+        .array(
+          zod.object({
+            family: zod.string(),
+            count: zod.number(),
+            endpoints: zod
+              .array(
+                zod.object({
+                  path: zod.string(),
+                  count: zod.number(),
+                }),
+              )
+              .describe(
+                "Per-endpoint breakdown sorted by count descending. Hits to\ne.g. `\/orders\/47` and `\/orders\/48` aggregate into a single\n`\/orders\/:id` row. Capped per family; overflow rolls into a\nsynthetic `(other)` entry.\n",
+              ),
+          }),
+        )
+        .describe(
+          "Per-family HTTP request breakdown for one time window. Every known\nroute family is always present (count may be zero). Families are\nsorted highest-count first. Endpoint keys are `:id`-normalized\ntemplates with the `\/api` prefix stripped.\n",
+        ),
+    })
+    .describe(
+      "Three parallel time-window breakdowns of inbound HTTP requests\ngrouped by route family. All three windows are computed in a\nsingle snapshot so the UI can switch between them without an\nextra round-trip. Each window is an array of per-family objects\nwith the same shape.\n",
     ),
-  }),
   smsPoller: zod.object({
     enabled: zod.boolean(),
     intervalSeconds: zod.number(),
