@@ -38,12 +38,9 @@ function useInstagramBadge(): number {
   const [count, setCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
+    let int: ReturnType<typeof setInterval> | null = null;
+
     async function load() {
-      // Skip fetch when the tab is backgrounded — no point updating a
-      // badge the user can't see. The interval keeps running so the
-      // closure stays alive; we just bail out early and let the next
-      // visible tick pick up fresh data.
-      if (document.visibilityState === "hidden") return;
       const token = getAdminToken();
       if (!token) return;
       try {
@@ -57,16 +54,44 @@ function useInstagramBadge(): number {
         // silent — sidebar shouldn't break if poller endpoint hiccups
       }
     }
-    load();
-    const int = setInterval(load, 60_000);
-    // Also fetch immediately when the tab becomes visible again so the
-    // badge is up-to-date the moment the user switches back.
-    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
-    document.addEventListener("visibilitychange", onVisible);
+
+    function startInterval() {
+      if (int !== null) return;
+      int = setInterval(load, 60_000);
+    }
+    function stopInterval() {
+      if (int === null) return;
+      clearInterval(int);
+      int = null;
+    }
+
+    // Start polling and fetch immediately — but only if the tab is
+    // already visible. If we're mounted while hidden (e.g. the admin
+    // pre-loads several tabs) don't make any requests until the user
+    // actually looks at this tab.
+    if (document.visibilityState !== "hidden") {
+      void load();
+      startInterval();
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        // Tab went to background — stop the interval entirely so no
+        // further network requests are made while the tab is hidden.
+        stopInterval();
+      } else {
+        // Tab came to foreground — fetch immediately for a fresh badge
+        // count, then restart the regular 60 s cadence.
+        void load();
+        startInterval();
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       cancelled = true;
-      clearInterval(int);
-      document.removeEventListener("visibilitychange", onVisible);
+      stopInterval();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
   return count;
