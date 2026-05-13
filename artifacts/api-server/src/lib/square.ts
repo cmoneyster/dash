@@ -348,8 +348,8 @@ export async function createAndPublishInvoiceForInquiry(opts: {
 
     let depositDueIsoDate = smartDepositDue;
     let balanceDueAdjusted = smartBalanceDue;
-    if (depositDueIsoDate >= balanceDueAdjusted) {
-      // Bump the balance out by one day to keep due_dates unique.
+    while (depositDueIsoDate >= balanceDueAdjusted) {
+      // Keep bumping the balance forward until it is strictly after the deposit.
       const next = new Date(`${balanceDueAdjusted}T00:00:00Z`);
       next.setUTCDate(next.getUTCDate() + 1);
       balanceDueAdjusted = next.toISOString().slice(0, 10);
