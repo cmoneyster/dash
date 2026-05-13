@@ -1455,7 +1455,16 @@ function SquarePanel({
     d.setDate(d.getDate() - 3);
     return d.toISOString().slice(0, 10);
   })();
+  const defaultDepositDueDate = (() => {
+    const today = new Date().toISOString().slice(0, 10);
+    if (!inquiry.eventDate) return today;
+    const d = new Date(`${inquiry.eventDate}T00:00:00`);
+    d.setDate(d.getDate() - 14);
+    const candidate = d.toISOString().slice(0, 10);
+    return candidate < today ? today : candidate;
+  })();
   const [dueDate, setDueDate] = useState<string>(defaultDueDate);
+  const [depositDueDate, setDepositDueDate] = useState<string>(defaultDepositDueDate);
 
   const hasInvoice = !!inquiry.squareInvoiceId;
   const status = inquiry.squareInvoiceStatus ?? null;
@@ -1513,6 +1522,7 @@ function SquarePanel({
           ? { kind: "none" }
           : { kind: depositKind, value: Number(depositValue) || 0 },
         dueDate: dueDate || null,
+        depositDueDate: depositKind !== "none" ? (depositDueDate || null) : null,
       };
       const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/square/invoice`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify(body),
@@ -1596,7 +1606,18 @@ function SquarePanel({
                   />
                 </label>
               )}
-              <label className="block col-span-2">
+              {depositKind !== "none" && (
+                <label className="block">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Deposit due</span>
+                  <input
+                    type="date"
+                    value={depositDueDate}
+                    onChange={e => setDepositDueDate(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 border border-border rounded-xl bg-background text-sm"
+                  />
+                </label>
+              )}
+              <label className={depositKind !== "none" ? "block" : "block col-span-2"}>
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Final payment due (balance)</span>
                 <input
                   type="date"

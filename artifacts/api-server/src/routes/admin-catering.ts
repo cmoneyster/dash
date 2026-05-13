@@ -1027,6 +1027,7 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
     const body = (req.body ?? {}) as Body;
     const deposit = parseDepositSpec(body.deposit);
     const dueDate = asString(body.dueDate)?.trim() || null;
+    const depositDueDate = asString(body.depositDueDate)?.trim() || null;
 
     // Read catering tax config from event settings so the Square order
     // includes the correct tax rate without the caller having to supply it.
@@ -1039,6 +1040,7 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
       inquiry,
       deposit,
       dueDate,
+      depositDueDate,
       salesTaxPercent,
     });
 

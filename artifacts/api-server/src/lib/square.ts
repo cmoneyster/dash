@@ -272,6 +272,7 @@ export async function createAndPublishInvoiceForInquiry(opts: {
   inquiry: CateringInquiry;
   deposit: DepositSpec;
   dueDate: string | null;        // ISO date, YYYY-MM-DD — balance-due override
+  depositDueDate?: string | null; // ISO date, YYYY-MM-DD — deposit-due override
   // Catering sales tax rate (percentage, e.g. 8.875). When provided and > 0,
   // a tax line is added to the Square order. Callers should read this from
   // event settings rather than computing it themselves.
@@ -280,7 +281,7 @@ export async function createAndPublishInvoiceForInquiry(opts: {
   const cfg = getSquareConfig();
   if (!cfg) throw new Error("Square is not configured");
 
-  const { inquiry, deposit, dueDate, salesTaxPercent } = opts;
+  const { inquiry, deposit, dueDate, depositDueDate, salesTaxPercent } = opts;
 
   if (!inquiry.clientEmail?.trim()) {
     throw new Error("Square invoices require the client to have an email on file");
@@ -324,10 +325,11 @@ export async function createAndPublishInvoiceForInquiry(opts: {
   let smartBalanceDue: string;
   if (inquiry.eventDate) {
     const depositTarget = subtractDays(inquiry.eventDate, 14);
-    smartDepositDue = depositTarget <= todayIsoDate ? todayIsoDate : depositTarget;
+    const computedDepositDue = depositTarget <= todayIsoDate ? todayIsoDate : depositTarget;
+    smartDepositDue = depositDueDate?.trim() || computedDepositDue;
     smartBalanceDue = dueDate ?? subtractDays(inquiry.eventDate, 3);
   } else {
-    smartDepositDue = todayIsoDate;
+    smartDepositDue = depositDueDate?.trim() || todayIsoDate;
     smartBalanceDue = dueDate ?? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   }
 
