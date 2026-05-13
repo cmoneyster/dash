@@ -11,6 +11,12 @@ export const eventSettingsTable = pgTable("event_settings", {
   eventTakerPassword: text("event_taker_password"),
   eventTakerTaxEnabled: boolean("event_taker_tax_enabled").notNull().default(false),
   eventTakerTaxRate: numeric("event_taker_tax_rate", { precision: 6, scale: 3 }),
+  // Catering invoice sales tax — applied to Square Orders API calls when enabled.
+  // Unlike the POS tax (which is computed client-side on the receipt), this is
+  // passed explicitly in the Square order body so the Square invoice shows a
+  // separate tax line. Rate is a percentage (e.g. "8.875" for 8.875%).
+  cateringTaxEnabled: boolean("catering_tax_enabled").notNull().default(false),
+  cateringTaxRate: numeric("catering_tax_rate", { precision: 6, scale: 3 }),
   // Venmo display info shown on the POS payment screen
   venmoHandle: text("venmo_handle"),
   venmoQrImageUrl: text("venmo_qr_image_url"),

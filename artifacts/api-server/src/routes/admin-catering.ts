@@ -1028,10 +1028,18 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
     const deposit = parseDepositSpec(body.deposit);
     const dueDate = asString(body.dueDate)?.trim() || null;
 
+    // Read catering tax config from event settings so the Square order
+    // includes the correct tax rate without the caller having to supply it.
+    const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    const salesTaxPercent = settings?.cateringTaxEnabled && settings?.cateringTaxRate
+      ? parseFloat(settings.cateringTaxRate)
+      : null;
+
     const created = await createAndPublishInvoiceForInquiry({
       inquiry,
       deposit,
       dueDate,
+      salesTaxPercent,
     });
 
     // Deep-copy the live quote arrays into the primary snapshot columns so
@@ -1056,7 +1064,7 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
       squareBalanceDue: (created.balanceDueCents / 100).toFixed(2),
       squareDepositKind: deposit.kind === "none" ? null : deposit.kind,
       squareDepositValue: deposit.kind === "none" ? null : String(deposit.value),
-      squareDueAt: dueDate ? new Date(`${dueDate}T00:00:00`) : null,
+      squareDueAt: created.balanceDueDate ? new Date(`${created.balanceDueDate}T00:00:00`) : null,
       primarySnapshotLineItems: snapshotLineItems,
       primarySnapshotFees: snapshotFees,
       primarySnapshotDiscounts: snapshotDiscounts,
@@ -1355,6 +1363,12 @@ router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<v
     return;
   }
 
+  // Read catering tax settings for the supplemental order (same as primary).
+  const [suppSettings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+  const suppSalesTaxPercent = suppSettings?.cateringTaxEnabled && suppSettings?.cateringTaxRate
+    ? parseFloat(suppSettings.cateringTaxRate)
+    : null;
+
   // ── Phase 2a: publish to Square (no DB lock held). If this throws,
   // nothing was sent to the customer — mark the reservation row FAILED
   // and bail. The seq stays claimed; the next issuance picks seq+1.
@@ -1376,6 +1390,9 @@ router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<v
       // Reference the primary invoice in the supplemental description
       // so the customer can correlate the two emails Square sends.
       primaryInvoiceNumber: reservation.primaryInvoiceNumber,
+      // Forward the catering tax rate so supplemental orders carry
+      // the same tax line as the primary invoice.
+      salesTaxPercent: suppSalesTaxPercent,
     });
   } catch (err) {
     try {

@@ -1449,7 +1449,13 @@ function SquarePanel({
   const [msg, setMsg] = useState<string | null>(null);
   const [depositKind, setDepositKind] = useState<"none" | "percent" | "fixed">("percent");
   const [depositValue, setDepositValue] = useState<string>("25");
-  const [dueDate, setDueDate] = useState<string>("");
+  const defaultDueDate = (() => {
+    if (!inquiry.eventDate) return "";
+    const d = new Date(`${inquiry.eventDate}T00:00:00`);
+    d.setDate(d.getDate() - 3);
+    return d.toISOString().slice(0, 10);
+  })();
+  const [dueDate, setDueDate] = useState<string>(defaultDueDate);
 
   const hasInvoice = !!inquiry.squareInvoiceId;
   const status = inquiry.squareInvoiceStatus ?? null;
@@ -1591,7 +1597,7 @@ function SquarePanel({
                 </label>
               )}
               <label className="block col-span-2">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Due date (optional)</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Final payment due (balance)</span>
                 <input
                   type="date"
                   value={dueDate}

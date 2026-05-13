@@ -103,6 +103,8 @@ export default function EventSettings() {
   const [clearEventTakerPassword, setClearEventTakerPassword] = useState(false);
   const [eventTakerTaxEnabled, setEventTakerTaxEnabled] = useState(false);
   const [eventTakerTaxRate, setEventTakerTaxRate] = useState<string>("");
+  const [cateringTaxEnabled, setCateringTaxEnabled] = useState(false);
+  const [cateringTaxRate, setCateringTaxRate] = useState<string>("");
   const [venmoHandle, setVenmoHandle] = useState("");
   const [venmoQrImageUrl, setVenmoQrImageUrl] = useState<string | null>(null);
   const [venmoUploading, setVenmoUploading] = useState(false);
@@ -150,6 +152,8 @@ export default function EventSettings() {
         setHasEventTakerPassword(data.hasEventTakerPassword ?? false);
         setEventTakerTaxEnabled(data.eventTakerTaxEnabled ?? false);
         setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
+        setCateringTaxEnabled(data.cateringTaxEnabled ?? false);
+        setCateringTaxRate(data.cateringTaxRate != null ? String(data.cateringTaxRate) : "");
         setVenmoHandle(data.venmoHandle ?? "");
         setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
         if (data.otdSetupFee != null) setOtdSetupFee(String(data.otdSetupFee));
@@ -198,6 +202,8 @@ export default function EventSettings() {
         eventName,
         eventTakerTaxEnabled,
         eventTakerTaxRate: eventTakerTaxRate.trim() === "" ? null : Number(eventTakerTaxRate),
+        cateringTaxEnabled,
+        cateringTaxRate: cateringTaxRate.trim() === "" ? null : Number(cateringTaxRate),
         venmoHandle: venmoHandle.trim() === "" ? null : venmoHandle.trim(),
         venmoQrImageUrl: venmoQrImageUrl ?? null,
         otdSetupFee: otdSetupFee.trim() === "" ? 0 : Number(otdSetupFee),
@@ -243,6 +249,8 @@ export default function EventSettings() {
       setHasEventTakerPassword(data.hasEventTakerPassword ?? false);
       setEventTakerTaxEnabled(data.eventTakerTaxEnabled ?? false);
       setEventTakerTaxRate(data.eventTakerTaxRate != null ? String(data.eventTakerTaxRate) : "");
+      setCateringTaxEnabled(data.cateringTaxEnabled ?? false);
+      setCateringTaxRate(data.cateringTaxRate != null ? String(data.cateringTaxRate) : "");
       setVenmoHandle(data.venmoHandle ?? "");
       setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
       setOrderPassword("");
@@ -354,6 +362,42 @@ export default function EventSettings() {
                   </div>
                 )}
               </div>
+            </div>
+
+            <div className="border-t border-border pt-5 space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Receipt className="w-4 h-4" />
+                <span className="font-semibold text-foreground">Sales Tax (Catering Invoices)</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When enabled, tax is added to the Square order at the specified rate and appears
+                as a separate line on the customer's invoice.
+              </p>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={cateringTaxEnabled}
+                  onChange={e => setCateringTaxEnabled(e.target.checked)}
+                  className="w-4 h-4 accent-primary"
+                />
+                <span className="text-sm font-medium">Apply sales tax to catering invoices</span>
+              </label>
+              {cateringTaxEnabled && (
+                <div className="max-w-xs">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Tax Rate (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={cateringTaxRate}
+                    onChange={e => setCateringTaxRate(e.target.value)}
+                    placeholder="e.g. 8.875"
+                    className="w-full px-4 py-2 border border-border rounded-xl bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Applied as a percentage of subtotal on every catering Square order.</p>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-border pt-5 space-y-3">

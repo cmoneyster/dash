@@ -19,6 +19,8 @@ router.get("/admin/event-settings", async (req, res) => {
       hasEventTakerPassword: !!(settings?.eventTakerPassword),
       eventTakerTaxEnabled: settings?.eventTakerTaxEnabled ?? false,
       eventTakerTaxRate: settings?.eventTakerTaxRate != null ? parseFloat(settings.eventTakerTaxRate) : null,
+      cateringTaxEnabled: settings?.cateringTaxEnabled ?? false,
+      cateringTaxRate: settings?.cateringTaxRate != null ? parseFloat(settings.cateringTaxRate) : null,
       venmoHandle: settings?.venmoHandle ?? "",
       venmoQrImageUrl: settings?.venmoQrImageUrl ?? null,
       // Replaces the legacy `twilioConfigured` flag — used by the admin
@@ -54,6 +56,7 @@ router.put("/admin/event-settings", async (req, res) => {
     const {
       eventName, orderPassword, kitchenPassword,
       eventTakerPassword, eventTakerTaxEnabled, eventTakerTaxRate,
+      cateringTaxEnabled, cateringTaxRate,
       venmoHandle, venmoQrImageUrl,
       otdSetupFee, otdFeeWaiverThreshold, otdIncludedHours,
       otdAdditionalHourRate, otdMaxAdditionalHours,
@@ -66,6 +69,8 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerPassword?: string;
       eventTakerTaxEnabled?: boolean;
       eventTakerTaxRate?: number | string | null;
+      cateringTaxEnabled?: boolean;
+      cateringTaxRate?: number | string | null;
       venmoHandle?: string | null;
       venmoQrImageUrl?: string | null;
       otdSetupFee?: number | string | null;
@@ -89,6 +94,8 @@ router.put("/admin/event-settings", async (req, res) => {
       hasEventTakerPassword: !!s.eventTakerPassword,
       eventTakerTaxEnabled: s.eventTakerTaxEnabled,
       eventTakerTaxRate: s.eventTakerTaxRate != null ? parseFloat(s.eventTakerTaxRate) : null,
+      cateringTaxEnabled: s.cateringTaxEnabled,
+      cateringTaxRate: s.cateringTaxRate != null ? parseFloat(s.cateringTaxRate) : null,
       venmoHandle: s.venmoHandle ?? "",
       venmoQrImageUrl: s.venmoQrImageUrl ?? null,
       ejoinConfigured: isEjoinConfigured(),
@@ -174,6 +181,12 @@ router.put("/admin/event-settings", async (req, res) => {
           ? null
           : String(Number(eventTakerTaxRate));
       }
+      if (cateringTaxEnabled !== undefined) updates.cateringTaxEnabled = !!cateringTaxEnabled;
+      if (cateringTaxRate !== undefined) {
+        updates.cateringTaxRate = (cateringTaxRate === null || cateringTaxRate === "" || Number.isNaN(Number(cateringTaxRate)))
+          ? null
+          : String(Number(cateringTaxRate));
+      }
       if (venmoHandle !== undefined) {
         updates.venmoHandle = venmoHandle == null
           ? null
@@ -218,6 +231,8 @@ router.put("/admin/event-settings", async (req, res) => {
         eventTakerPassword: eventTakerPassword?.trim() || null,
         eventTakerTaxEnabled: !!eventTakerTaxEnabled,
         eventTakerTaxRate: (eventTakerTaxRate === undefined || eventTakerTaxRate === null || eventTakerTaxRate === "") ? null : String(Number(eventTakerTaxRate)),
+        cateringTaxEnabled: !!cateringTaxEnabled,
+        cateringTaxRate: (cateringTaxRate === undefined || cateringTaxRate === null || cateringTaxRate === "") ? null : String(Number(cateringTaxRate)),
         venmoHandle: venmoHandle == null ? null : (venmoHandle.trim().replace(/^@/, "") || null),
         venmoQrImageUrl: venmoQrImageUrl == null || venmoQrImageUrl === "" ? null : venmoQrImageUrl,
         otdSetupFee: otdSetupFee !== undefined ? normalizeOtdMoney(otdSetupFee, "otdSetupFee", 100000) : "500.00",

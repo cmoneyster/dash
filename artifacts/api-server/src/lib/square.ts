@@ -105,6 +105,16 @@ function moneyUSD(amountDollars: number) {
   return { amount: dollarsToCents(amountDollars), currency: "USD" };
 }
 
+// ── Date helpers ──────────────────────────────────────────────────────────────
+
+// Subtract N calendar days from an ISO date string (YYYY-MM-DD) and return
+// the result as YYYY-MM-DD. Uses UTC arithmetic to avoid DST surprises.
+function subtractDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
 // ── Order creation ────────────────────────────────────────────────────────────
 //
 // Square Invoices are billed against a Square Order. We build an Order with
@@ -144,6 +154,10 @@ async function createOrderFromRows(
     discounts: QuoteAdjustment[] | null;
     fallbackName: string;
     idempotencyKey: string;
+    // When set, an additive ORDER-scope tax line is added to the Square order
+    // so the invoice shows a separate tax line and a tax-inclusive total.
+    // Expressed as a percentage, e.g. 8.875 for 8.875%.
+    salesTaxPercent?: number | null;
   },
 ): Promise<string> {
   const totals = computeQuoteTotals(opts.lineItems, opts.fees, opts.discounts);
@@ -172,6 +186,20 @@ async function createOrderFromRows(
     });
   }
 
+  // Sales tax: Square's Orders API does not auto-apply location taxes from the
+  // dashboard — we must pass the tax explicitly. scope=ORDER applies it to all
+  // line items automatically without per-item applied_taxes references.
+  const taxes: Array<Record<string, unknown>> = [];
+  if (opts.salesTaxPercent && opts.salesTaxPercent > 0) {
+    taxes.push({
+      uid: "catering-sales-tax",
+      name: "Sales Tax",
+      percentage: String(opts.salesTaxPercent),
+      scope: "ORDER",
+      type: "ADDITIVE",
+    });
+  }
+
   const body: Record<string, unknown> = {
     idempotency_key: opts.idempotencyKey,
     order: {
@@ -184,6 +212,7 @@ async function createOrderFromRows(
       ...(adjustments.length > 0 && netAdjustmentDollars < 0
         ? { discounts: adjustments.map(a => ({ ...a, scope: "ORDER" })) }
         : {}),
+      ...(taxes.length > 0 ? { taxes } : {}),
     },
   };
 
@@ -191,7 +220,11 @@ async function createOrderFromRows(
   return resp.order.id;
 }
 
-async function createOrderForInquiry(cfg: SquareConfig, inquiry: CateringInquiry): Promise<string> {
+async function createOrderForInquiry(
+  cfg: SquareConfig,
+  inquiry: CateringInquiry,
+  salesTaxPercent?: number | null,
+): Promise<string> {
   return createOrderFromRows(cfg, {
     referenceId: `inquiry-${inquiry.id}`,
     lineItems: inquiry.lineItems as QuoteLineItem[] | null,
@@ -199,6 +232,7 @@ async function createOrderForInquiry(cfg: SquareConfig, inquiry: CateringInquiry
     discounts: inquiry.discounts as QuoteAdjustment[] | null,
     fallbackName: `Catering — Quote ${inquiry.quoteNumber ?? `#${inquiry.id}`}`,
     idempotencyKey: `order-inq-${inquiry.id}-${Date.now()}-${randomUUID()}`,
+    salesTaxPercent,
   });
 }
 
@@ -229,17 +263,24 @@ export type CreatedInvoice = {
   hostedUrl: string | null;
   balanceDueCents: number;
   customerId: string;
+  // Computed balance due date (YYYY-MM-DD) so callers can persist it without
+  // re-deriving the smart default logic.
+  balanceDueDate: string;
 };
 
 export async function createAndPublishInvoiceForInquiry(opts: {
   inquiry: CateringInquiry;
   deposit: DepositSpec;
-  dueDate: string | null;        // ISO date, YYYY-MM-DD
+  dueDate: string | null;        // ISO date, YYYY-MM-DD — balance-due override
+  // Catering sales tax rate (percentage, e.g. 8.875). When provided and > 0,
+  // a tax line is added to the Square order. Callers should read this from
+  // event settings rather than computing it themselves.
+  salesTaxPercent?: number | null;
 }): Promise<CreatedInvoice> {
   const cfg = getSquareConfig();
   if (!cfg) throw new Error("Square is not configured");
 
-  const { inquiry, deposit, dueDate } = opts;
+  const { inquiry, deposit, dueDate, salesTaxPercent } = opts;
 
   if (!inquiry.clientEmail?.trim()) {
     throw new Error("Square invoices require the client to have an email on file");
@@ -263,24 +304,39 @@ export async function createAndPublishInvoiceForInquiry(opts: {
   });
 
   // 2) Order
-  const orderId = await createOrderForInquiry(cfg, inquiry);
+  const orderId = await createOrderForInquiry(cfg, inquiry, salesTaxPercent);
 
   // 3) Build payment_requests array.
   //
+  // Business rules for due dates:
+  //   Deposit  — due 14 days before the event date, or today if the event is
+  //              within 14 days (i.e. max(today, eventDate − 14 days)).
+  //   Balance  — due 3 days before the event date (overrideable via `dueDate`).
+  //
+  // When no event date is set we fall back to: deposit = today,
+  // balance = +14 days from today (prior behaviour).
+  //
   // Square requires every payment_request on an invoice to have a *different*
-  // due_date. The operator-supplied `dueDate` (or +14d default) is applied to
-  // the BALANCE request; the DEPOSIT is always due today since "pay your
-  // deposit immediately to confirm the booking" matches the catering UX. If
-  // the balance date happens to equal today, we push it out by one day so the
-  // two due dates remain distinct.
+  // due_date. If the computed deposit and balance dates collide the balance is
+  // bumped out by one day.
   const todayIsoDate = new Date().toISOString().slice(0, 10);
-  const balanceDueIsoDate = dueDate ?? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  let smartDepositDue: string;
+  let smartBalanceDue: string;
+  if (inquiry.eventDate) {
+    const depositTarget = subtractDays(inquiry.eventDate, 14);
+    smartDepositDue = depositTarget <= todayIsoDate ? todayIsoDate : depositTarget;
+    smartBalanceDue = dueDate ?? subtractDays(inquiry.eventDate, 3);
+  } else {
+    smartDepositDue = todayIsoDate;
+    smartBalanceDue = dueDate ?? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+
   const paymentRequests: Array<Record<string, unknown>> = [];
 
   if (deposit.kind === "none") {
     paymentRequests.push({
       request_type: "BALANCE",
-      due_date: balanceDueIsoDate,
+      due_date: smartBalanceDue,
       automatic_payment_source: "NONE",
     });
   } else {
@@ -288,9 +344,9 @@ export async function createAndPublishInvoiceForInquiry(opts: {
       ? Math.round(totals.total * (deposit.value / 100) * 100) / 100
       : Math.min(deposit.value, totals.total);
 
-    let depositDueIsoDate = todayIsoDate;
-    let balanceDueAdjusted = balanceDueIsoDate;
-    if (depositDueIsoDate === balanceDueAdjusted) {
+    let depositDueIsoDate = smartDepositDue;
+    let balanceDueAdjusted = smartBalanceDue;
+    if (depositDueIsoDate >= balanceDueAdjusted) {
       // Bump the balance out by one day to keep due_dates unique.
       const next = new Date(`${balanceDueAdjusted}T00:00:00Z`);
       next.setUTCDate(next.getUTCDate() + 1);
@@ -308,6 +364,8 @@ export async function createAndPublishInvoiceForInquiry(opts: {
       due_date: balanceDueAdjusted,
       automatic_payment_source: "NONE",
     });
+    // Capture the final adjusted balance date for the return value.
+    smartBalanceDue = balanceDueAdjusted;
   }
 
   // 4) Create invoice (draft)
@@ -351,6 +409,7 @@ export async function createAndPublishInvoiceForInquiry(opts: {
     hostedUrl: published.invoice.public_url ?? null,
     balanceDueCents: published.invoice.next_payment_amount_money?.amount ?? dollarsToCents(totals.total),
     customerId,
+    balanceDueDate: smartBalanceDue,
   };
 }
 
@@ -386,6 +445,9 @@ export async function createAndPublishSupplementalInvoice(opts: {
   // supplemental description, so the customer can match it to the
   // primary invoice they already received.
   primaryInvoiceNumber?: string | null;
+  // Catering sales tax rate — same value used by the primary invoice so
+  // the tax presentation is consistent across both invoices.
+  salesTaxPercent?: number | null;
 }): Promise<CreatedInvoice> {
   const cfg = getSquareConfig();
   if (!cfg) throw new Error("Square is not configured");
@@ -415,6 +477,7 @@ export async function createAndPublishSupplementalInvoice(opts: {
     discounts,
     fallbackName: `Supplemental #${supplementSeq} — Quote ${inquiry.quoteNumber ?? `#${inquiry.id}`}`,
     idempotencyKey: `order-inq-${inquiry.id}-supp-${supplementSeq}-${Date.now()}-${randomUUID()}`,
+    salesTaxPercent: opts.salesTaxPercent,
   });
 
   // 3) Single BALANCE payment_request due today.
@@ -478,6 +541,7 @@ export async function createAndPublishSupplementalInvoice(opts: {
     hostedUrl: published.invoice.public_url ?? null,
     balanceDueCents: published.invoice.next_payment_amount_money?.amount ?? dollarsToCents(totals.total),
     customerId,
+    balanceDueDate: todayIsoDate,
   };
 }
 
