@@ -1451,15 +1451,15 @@ function SquarePanel({
   const [depositValue, setDepositValue] = useState<string>("25");
   const defaultDueDate = (() => {
     if (!inquiry.eventDate) return "";
-    const d = new Date(`${inquiry.eventDate}T00:00:00`);
-    d.setDate(d.getDate() - 3);
+    const d = new Date(`${inquiry.eventDate}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 3);
     return d.toISOString().slice(0, 10);
   })();
   const defaultDepositDueDate = (() => {
     const today = new Date().toISOString().slice(0, 10);
     if (!inquiry.eventDate) return today;
-    const d = new Date(`${inquiry.eventDate}T00:00:00`);
-    d.setDate(d.getDate() - 14);
+    const d = new Date(`${inquiry.eventDate}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 14);
     const candidate = d.toISOString().slice(0, 10);
     return candidate < today ? today : candidate;
   })();
