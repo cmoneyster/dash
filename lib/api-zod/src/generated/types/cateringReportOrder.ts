@@ -13,6 +13,8 @@ export interface CateringReportOrder {
   type: CateringReportOrderType;
   clientName: string;
   eventDate?: string | null;
+  /** Delivery time in HH:MM 24-hour format. */
+  eventTime?: string | null;
   createdAt: Date;
   status: string;
   squareInvoiceStatus?: string | null;

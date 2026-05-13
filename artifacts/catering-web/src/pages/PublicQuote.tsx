@@ -126,10 +126,12 @@ export default function PublicQuote() {
   const [changeMessage, setChangeMessage] = useState("");
   const [submitting, setSubmitting] = useState<null | "accept" | "changes">(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [missingAcceptDate, setMissingAcceptDate] = useState(false);
-  const [missingAcceptTime, setMissingAcceptTime] = useState(false);
+  // Editable delivery date/time — pre-populated from quote when it loads.
   const [acceptDate, setAcceptDate] = useState("");
   const [acceptTime, setAcceptTime] = useState("");
+  // Whether the user has opened the "change delivery details" panel when
+  // both values are already set (allows corrections without a 422 round-trip).
+  const [showDateTimeEdit, setShowDateTimeEdit] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -140,7 +142,14 @@ export default function PublicQuote() {
         const data = await r.json().catch(() => ({}));
         throw new Error(data.error || "Quote not found");
       })
-      .then((q) => { setQuote(q); setLoading(false); })
+      .then((q: Quote) => {
+        setQuote(q);
+        // Pre-populate date/time inputs from whatever the inquiry already has
+        // so the confirm/change flow works without the user having to retype.
+        setAcceptDate(q.client.eventDate ?? "");
+        setAcceptTime(q.client.eventTime ?? "");
+        setLoading(false);
+      })
       .catch((err) => { setError(err.message); setLoading(false); });
   }, [token]);
 
@@ -148,26 +157,24 @@ export default function PublicQuote() {
     if (!token || submitting) return;
     setSubmitting("accept"); setActionError(null);
     try {
-      const body: Record<string, string> = {};
-      if (acceptDate) body.eventDate = acceptDate;
-      if (acceptTime) body.eventTime = acceptTime;
+      // Always send current acceptDate/acceptTime so the server can store or
+      // correct them. Body values take precedence over whatever is on the inquiry.
       const r = await fetch(`${BASE}/api/quote/${token}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ eventDate: acceptDate || undefined, eventTime: acceptTime || undefined }),
       });
       const data = await r.json();
       if (r.status === 422) {
-        setMissingAcceptDate(!!data.missingEventDate);
-        setMissingAcceptTime(!!data.missingEventTime);
-        setActionError(data.error || "Please provide the missing delivery details.");
+        // Shouldn't normally reach here (inputs are required before enabling Accept),
+        // but handle gracefully as a safety net.
+        setActionError(data.error || "Delivery date and time are required.");
         return;
       }
       if (!r.ok) { setActionError(data.error || "Could not accept quote."); return; }
       setQuote(data);
       setShowChangeForm(false);
-      setMissingAcceptDate(false);
-      setMissingAcceptTime(false);
+      setShowDateTimeEdit(false);
     } catch {
       setActionError("Could not accept quote. Please try again.");
     } finally {
@@ -459,37 +466,69 @@ export default function PublicQuote() {
         {/* Actions */}
         {!quote.acceptedAt && (
           <div className="px-8 py-5 border-t border-border space-y-3">
-            {(missingAcceptDate || missingAcceptTime) && (
-              <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-4 space-y-3">
-                <p className="text-sm font-semibold text-amber-800">
-                  A delivery date and time are required to confirm your order. Please fill in the missing details below.
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  {missingAcceptDate && (
-                    <div>
-                      <label className="block text-xs font-semibold text-amber-800 mb-1">Event Date</label>
-                      <input
-                        type="date"
-                        value={acceptDate}
-                        onChange={e => setAcceptDate(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                      />
-                    </div>
+            {(() => {
+              const missingDate = !quote.client.eventDate;
+              const missingTime = !quote.client.eventTime;
+              const needsInput = missingDate || missingTime || showDateTimeEdit;
+              return needsInput ? (
+                <div className={`rounded-xl border p-4 space-y-3 ${missingDate || missingTime ? "border-amber-300 bg-amber-50/60" : "border-border bg-secondary/30"}`}>
+                  {(missingDate || missingTime) && (
+                    <p className="text-sm font-semibold text-amber-800">
+                      {missingDate && missingTime
+                        ? "A delivery date and time are required to confirm your order."
+                        : missingDate
+                          ? "A delivery date is required to confirm your order."
+                          : "A delivery time is required to confirm your order."}
+                    </p>
                   )}
-                  {missingAcceptTime && (
-                    <div>
-                      <label className="block text-xs font-semibold text-amber-800 mb-1">Delivery Time</label>
-                      <input
-                        type="time"
-                        value={acceptTime}
-                        onChange={e => setAcceptTime(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                      />
-                    </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(missingDate || showDateTimeEdit) && (
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Event Date</label>
+                        <input
+                          type="date"
+                          value={acceptDate}
+                          onChange={e => setAcceptDate(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                        />
+                      </div>
+                    )}
+                    {(missingTime || showDateTimeEdit) && (
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Delivery Time</label>
+                        <input
+                          type="time"
+                          value={acceptTime}
+                          onChange={e => setAcceptTime(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {showDateTimeEdit && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowDateTimeEdit(false); setAcceptDate(quote.client.eventDate ?? ""); setAcceptTime(quote.client.eventTime ?? ""); }}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Cancel
+                    </button>
                   )}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Clock className="w-4 h-4 flex-shrink-0" />
+                  <span>Delivery {fmtDeliveryWindow(quote.client.eventTime)}</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowDateTimeEdit(true)}
+                    className="ml-1 text-xs text-primary hover:underline"
+                  >
+                    Change
+                  </button>
+                </div>
+              );
+            })()}
             {!showChangeForm ? (
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <p className="text-xs text-muted-foreground">
@@ -507,7 +546,7 @@ export default function PublicQuote() {
                   <button
                     type="button"
                     onClick={acceptQuote}
-                    disabled={submitting !== null || (missingAcceptDate && !acceptDate) || (missingAcceptTime && !acceptTime)}
+                    disabled={submitting !== null || (!quote.client.eventDate && !acceptDate) || (!quote.client.eventTime && !acceptTime)}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors text-sm disabled:opacity-50"
                   >
                     {submitting === "accept" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}

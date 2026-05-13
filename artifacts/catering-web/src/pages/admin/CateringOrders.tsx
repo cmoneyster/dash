@@ -3043,7 +3043,7 @@ export default function CateringOrders() {
                         </div>
                         {inquiry.organization && <p className="text-xs text-muted-foreground truncate">{inquiry.organization}</p>}
                         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                          {inquiry.eventDate && <span>{formatDate(inquiry.eventDate)}</span>}
+                          {inquiry.eventDate && <span>{formatDate(inquiry.eventDate)}{inquiry.eventTime ? ` · ${inquiry.eventTime}` : ""}</span>}
                           {inquiry.guestCount && <span>{inquiry.guestCount} guests</span>}
                           {(inquiry.total ?? inquiry.orderTotal) && (
                             <span className="font-semibold text-foreground/70">

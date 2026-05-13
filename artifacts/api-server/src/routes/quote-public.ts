@@ -102,8 +102,10 @@ router.post("/quote/:token/accept", async (req, res): Promise<void> => {
     const bodyEventDate = typeof body.eventDate === "string" ? body.eventDate.trim() || null : null;
     const bodyEventTime = typeof body.eventTime === "string" ? body.eventTime.trim() || null : null;
 
-    const resolvedEventDate = inquiry.eventDate?.trim() || bodyEventDate;
-    const resolvedEventTime = inquiry.eventTime?.trim() || bodyEventTime;
+    // Body values take precedence so clients can correct a previously-stored
+    // date/time (e.g. "change delivery details" flow on the public quote page).
+    const resolvedEventDate = bodyEventDate || inquiry.eventDate?.trim() || null;
+    const resolvedEventTime = bodyEventTime || inquiry.eventTime?.trim() || null;
 
     if (!resolvedEventDate || !resolvedEventTime) {
       res.status(422).json({

@@ -1296,6 +1296,10 @@ components:
         eventDate:
           type: string
           nullable: true
+        eventTime:
+          type: string
+          nullable: true
+          description: Delivery time in HH:MM 24-hour format.
         createdAt:
           type: string
           format: date-time

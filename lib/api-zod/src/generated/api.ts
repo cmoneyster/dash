@@ -2249,6 +2249,10 @@ export const GetSalesReportResponse = zod.object({
             type: zod.enum(["catering"]),
             clientName: zod.string(),
             eventDate: zod.string().nullish(),
+            eventTime: zod
+              .string()
+              .nullish()
+              .describe("Delivery time in HH:MM 24-hour format."),
             createdAt: zod.coerce.date(),
             status: zod.string(),
             squareInvoiceStatus: zod.string().nullish(),
@@ -2390,6 +2394,10 @@ export const GetSalesReportResponse = zod.object({
               type: zod.enum(["catering"]),
               clientName: zod.string(),
               eventDate: zod.string().nullish(),
+              eventTime: zod
+                .string()
+                .nullish()
+                .describe("Delivery time in HH:MM 24-hour format."),
               createdAt: zod.coerce.date(),
               status: zod.string(),
               squareInvoiceStatus: zod.string().nullish(),
@@ -2464,6 +2472,10 @@ export const GetSalesReportResponse = zod.object({
               type: zod.enum(["catering"]),
               clientName: zod.string(),
               eventDate: zod.string().nullish(),
+              eventTime: zod
+                .string()
+                .nullish()
+                .describe("Delivery time in HH:MM 24-hour format."),
               createdAt: zod.coerce.date(),
               status: zod.string(),
               squareInvoiceStatus: zod.string().nullish(),
