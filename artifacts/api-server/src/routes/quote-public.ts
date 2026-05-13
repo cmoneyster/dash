@@ -100,7 +100,14 @@ router.post("/quote/:token/accept", async (req, res): Promise<void> => {
     // them when accepting if the inquiry was created without them.
     const body = (req.body ?? {}) as Record<string, unknown>;
     const bodyEventDate = typeof body.eventDate === "string" ? body.eventDate.trim() || null : null;
-    const bodyEventTime = typeof body.eventTime === "string" ? body.eventTime.trim() || null : null;
+    const rawBodyTime = typeof body.eventTime === "string" ? body.eventTime.trim() : null;
+    // Validate HH:MM 24-hour format to avoid storing malformed values.
+    const HH_MM = /^([01]?\d|2[0-3]):[0-5]\d$/;
+    if (rawBodyTime && !HH_MM.test(rawBodyTime)) {
+      res.status(400).json({ error: "eventTime must be in HH:MM 24-hour format (e.g. 14:30)." });
+      return;
+    }
+    const bodyEventTime = rawBodyTime || null;
 
     // Body values take precedence so clients can correct a previously-stored
     // date/time (e.g. "change delivery details" flow on the public quote page).

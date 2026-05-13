@@ -542,7 +542,13 @@ export default function PublicQuote() {
                   <button
                     type="button"
                     onClick={acceptQuote}
-                    disabled={submitting !== null || (!quote.client.eventDate && !acceptDate) || (!quote.client.eventTime && !acceptTime)}
+                    disabled={
+                      submitting !== null ||
+                      // If either stored field is missing, OR the edit panel is open,
+                      // require the user to provide non-empty values for both fields.
+                      ((!quote.client.eventDate || !quote.client.eventTime || showDateTimeEdit) &&
+                        (!acceptDate || !acceptTime))
+                    }
                     className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors text-sm disabled:opacity-50"
                   >
                     {submitting === "accept" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
