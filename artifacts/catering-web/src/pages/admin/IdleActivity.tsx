@@ -239,7 +239,12 @@ export default function IdleActivity() {
               icon={Globe}
               title={
                 <span className="flex items-center gap-3 flex-wrap">
-                  <span>Client HTTP Polls</span>
+                  <span>
+                    Client HTTP Polls{" "}
+                    <span className="font-normal text-muted-foreground">
+                      — {WINDOW_OPTIONS.find((o) => o.key === pollWindow)?.title}
+                    </span>
+                  </span>
                   {/* Segmented toggle: switching is instant because all three
                       window datasets arrive in every single poll response. */}
                   <span className="flex rounded-lg border border-border overflow-hidden text-xs font-normal">
