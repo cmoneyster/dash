@@ -293,7 +293,11 @@ function PrintJobsPanel() {
   const { data: jobs = [], refetch } = useListPrintJobs({ limit: 50 }, {
     query: {
       queryKey: getListPrintJobsQueryKey({ limit: 50 }),
-      refetchInterval: 5000,
+      // 30 s when the tab is visible; pause entirely when hidden.
+      // The previous 5 s cadence was the most aggressive poll in the
+      // app — 12 req/min per open tab — unnecessary for a log panel.
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
     },
   });
   const qc = useQueryClient();
@@ -355,7 +359,8 @@ export default function Printers() {
   const { data: printers = [], isLoading } = useListPrinters({
     query: {
       queryKey: getListPrintersQueryKey(),
-      refetchInterval: 5000,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
     },
   });
   const [adding, setAdding] = useState(false);

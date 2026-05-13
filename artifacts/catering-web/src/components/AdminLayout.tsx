@@ -39,6 +39,11 @@ function useInstagramBadge(): number {
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      // Skip fetch when the tab is backgrounded — no point updating a
+      // badge the user can't see. The interval keeps running so the
+      // closure stays alive; we just bail out early and let the next
+      // visible tick pick up fresh data.
+      if (document.visibilityState === "hidden") return;
       const token = getAdminToken();
       if (!token) return;
       try {
@@ -54,7 +59,15 @@ function useInstagramBadge(): number {
     }
     load();
     const int = setInterval(load, 60_000);
-    return () => { cancelled = true; clearInterval(int); };
+    // Also fetch immediately when the tab becomes visible again so the
+    // badge is up-to-date the moment the user switches back.
+    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(int);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
   return count;
 }

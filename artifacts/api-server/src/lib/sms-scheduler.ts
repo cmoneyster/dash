@@ -225,9 +225,11 @@ export async function runSmsPollOnce(): Promise<SmsPollResult> {
 }
 
 // Read the operator-tunable interval/enabled with safe fallbacks so
-// a transient DB hiccup never kills the loop. We default to "enabled
-// at 3s" because that matches historical behavior and is what an
-// admin would expect on a fresh deploy.
+// a transient DB hiccup never kills the loop. On a fresh deploy with
+// no settings row we default to enabled so the gateway is polled
+// out of the box. On a subsequent read failure we preserve whatever
+// the operator last explicitly set — specifically, if the admin has
+// paused polling a DB hiccup must not silently re-enable it.
 async function readPollerSettings(): Promise<{ enabled: boolean; intervalSeconds: number }> {
   try {
     const [row] = await db
@@ -242,8 +244,10 @@ async function readPollerSettings(): Promise<{ enabled: boolean; intervalSeconds
     const clamped = Math.max(MIN_POLL_INTERVAL_SECONDS, Math.min(MAX_POLL_INTERVAL_SECONDS, raw));
     return { enabled, intervalSeconds: clamped };
   } catch (err) {
-    logger.warn({ err }, "[sms-scheduler] settings read failed; using defaults");
-    return { enabled: true, intervalSeconds: DEFAULT_POLL_INTERVAL_SECONDS };
+    logger.warn({ err }, "[sms-scheduler] settings read failed; retaining last known state");
+    // Preserve the last known enabled flag so a transient DB hiccup
+    // can't silently resume polling when the operator has paused it.
+    return { enabled: lastEffectiveEnabled, intervalSeconds: DEFAULT_POLL_INTERVAL_SECONDS };
   }
 }
 
@@ -265,13 +269,19 @@ async function tick(): Promise<void> {
       const { enabled, intervalSeconds } = await readPollerSettings();
       lastEffectiveEnabled = enabled;
       lastEffectiveIntervalSeconds = intervalSeconds;
-      nextDelayMs = intervalSeconds * 1000;
       if (enabled) {
+        nextDelayMs = intervalSeconds * 1000;
         await pollOnce();
+      } else {
+        // Paused: keep the loop alive at a much longer cadence so that
+        // toggling back ON is picked up within 60 s rather than burning
+        // a tight 3 s loop doing nothing but DB reads. 60 s matches
+        // what a patient human would consider "responsive" re-enable.
+        nextDelayMs = 60_000;
       }
       // Disabled: keep the loop alive (so toggling back ON resumes
-      // immediately) but skip the actual gateway fetch — that's the
-      // whole point of the operator-disable knob.
+      // within the next idle check) but skip the gateway fetch — that's
+      // the whole point of the operator-disable knob.
     }
   } catch (err) {
     logger.warn({ err }, "[sms-scheduler] tick failed");
