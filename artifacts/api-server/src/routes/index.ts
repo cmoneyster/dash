@@ -72,6 +72,7 @@ router.use("/admin/stats", requireAdminAuth);
 router.use("/admin/idle-activity", requireAdminAuth);
 router.use("/admin/orders", requireAdminAuth);
 router.use("/admin/blackout-dates", requireAdminAuth);
+router.use("/admin/blackout-time-windows", requireAdminAuth);
 router.use("/admin/event-settings", requireAdminAuth);
 router.use("/admin/sms-settings", requireAdminAuth);
 router.use("/admin/sales-reports", requireAdminAuth);

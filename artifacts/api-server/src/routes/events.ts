@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { blackoutDatesTable, eventSettingsTable } from "@workspace/db/schema";
+import { blackoutDatesTable, blackoutTimeWindowsTable, eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { computeDayLoad, findOpenAlternates, isRealCalendarDate } from "../lib/dayLoad";
+import { requireAdminAuth } from "../lib/adminAuth";
 
 const router: IRouter = Router();
 
@@ -112,6 +113,26 @@ router.get("/blackout-dates", async (req, res) => {
   }
 });
 
+// Public blackout time windows — no auth required
+router.get("/blackout-time-windows", async (req, res): Promise<void> => {
+  const { date } = req.query as { date?: string };
+  if (!date || !isRealCalendarDate(date)) {
+    res.status(400).json({ error: "date must be a real calendar date in YYYY-MM-DD format" });
+    return;
+  }
+  try {
+    const windows = await db
+      .select()
+      .from(blackoutTimeWindowsTable)
+      .where(eq(blackoutTimeWindowsTable.date, date))
+      .orderBy(blackoutTimeWindowsTable.startTime);
+    res.json(windows);
+  } catch (err) {
+    req.log.error({ err }, "Error listing blackout time windows (public)");
+    res.status(500).json({ error: "Failed to list blackout time windows" });
+  }
+});
+
 // Admin blackout date routes
 router.get("/admin/blackout-dates", async (req, res) => {
   try {
@@ -146,6 +167,101 @@ router.delete("/admin/blackout-dates/:id", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Error deleting blackout date");
     res.status(500).json({ error: "Failed to delete blackout date" });
+  }
+});
+
+// Admin blackout time window routes
+router.get("/admin/blackout-time-windows/dates-with-windows", requireAdminAuth, async (req, res) => {
+  try {
+    const rows = await db
+      .selectDistinct({ date: blackoutTimeWindowsTable.date })
+      .from(blackoutTimeWindowsTable)
+      .orderBy(blackoutTimeWindowsTable.date);
+    res.json(rows.map(r => r.date));
+  } catch (err) {
+    req.log.error({ err }, "Error listing dates with time windows");
+    res.status(500).json({ error: "Failed to list dates with time windows" });
+  }
+});
+
+router.get("/admin/blackout-time-windows", requireAdminAuth, async (req, res): Promise<void> => {
+  const { date } = req.query as { date?: string };
+  if (!date || !isRealCalendarDate(date)) {
+    res.status(400).json({ error: "date must be a real calendar date in YYYY-MM-DD format" });
+    return;
+  }
+  try {
+    const windows = await db
+      .select()
+      .from(blackoutTimeWindowsTable)
+      .where(eq(blackoutTimeWindowsTable.date, date))
+      .orderBy(blackoutTimeWindowsTable.startTime);
+    res.json(windows);
+  } catch (err) {
+    req.log.error({ err }, "Error listing blackout time windows");
+    res.status(500).json({ error: "Failed to list blackout time windows" });
+  }
+});
+
+router.post("/admin/blackout-time-windows", requireAdminAuth, async (req, res): Promise<void> => {
+  const { date, startTime, endTime, reason } = req.body as {
+    date?: string;
+    startTime?: string;
+    endTime?: string;
+    reason?: string;
+  };
+  if (!date || !isRealCalendarDate(date)) {
+    res.status(400).json({ error: "date must be a real calendar date in YYYY-MM-DD format" });
+    return;
+  }
+  function isValidTime(t: string): boolean {
+    if (!/^\d{2}:\d{2}$/.test(t)) return false;
+    const [h, m] = t.split(":").map(Number);
+    return h >= 0 && h <= 23 && m >= 0 && m <= 59;
+  }
+  if (!startTime || !isValidTime(startTime)) {
+    res.status(400).json({ error: "startTime must be a valid time in HH:MM format (00:00–23:59)" });
+    return;
+  }
+  if (!endTime || !isValidTime(endTime)) {
+    res.status(400).json({ error: "endTime must be a valid time in HH:MM format (00:00–23:59)" });
+    return;
+  }
+  if (endTime <= startTime) {
+    res.status(400).json({ error: "endTime must be after startTime" });
+    return;
+  }
+  try {
+    const [created] = await db
+      .insert(blackoutTimeWindowsTable)
+      .values({ date, startTime, endTime, reason: reason ?? null })
+      .returning();
+    res.status(201).json(created);
+  } catch (err) {
+    req.log.error({ err }, "Error creating blackout time window");
+    res.status(500).json({ error: "Failed to create blackout time window" });
+  }
+});
+
+router.delete("/admin/blackout-time-windows/:id", requireAdminAuth, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id));
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "id must be a positive integer" });
+    return;
+  }
+  try {
+    const deleted = await db
+      .delete(blackoutTimeWindowsTable)
+      .where(eq(blackoutTimeWindowsTable.id, id))
+      .returning({ id: blackoutTimeWindowsTable.id });
+    if (deleted.length === 0) {
+      res.status(404).json({ error: "Time window not found" });
+      return;
+    }
+    res.status(204).send();
+  } catch (err) {
+    req.log.error({ err }, "Error deleting blackout time window");
+    res.status(500).json({ error: "Failed to delete blackout time window" });
   }
 });
 

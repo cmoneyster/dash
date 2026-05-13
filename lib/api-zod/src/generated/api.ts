@@ -598,6 +598,69 @@ export const DeleteBlackoutDateParams = zod.object({
 });
 
 /**
+ * @summary List blackout time windows for a specific date
+ */
+export const AdminListBlackoutTimeWindowsQueryParams = zod.object({
+  date: zod.coerce.date(),
+});
+
+export const AdminListBlackoutTimeWindowsResponseItem = zod.object({
+  id: zod.number(),
+  date: zod.coerce.date(),
+  startTime: zod.string().describe("Start time in HH:MM format"),
+  endTime: zod.string().describe("End time in HH:MM format"),
+  reason: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const AdminListBlackoutTimeWindowsResponse = zod.array(
+  AdminListBlackoutTimeWindowsResponseItem,
+);
+
+/**
+ * @summary Add a blackout time window
+ */
+export const AdminCreateBlackoutTimeWindowBody = zod.object({
+  date: zod.coerce.date(),
+  startTime: zod.string().describe("Start time in HH:MM format"),
+  endTime: zod.string().describe("End time in HH:MM format"),
+  reason: zod.string().nullish(),
+});
+
+/**
+ * @summary Remove a blackout time window
+ */
+export const AdminDeleteBlackoutTimeWindowParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List blackout time windows for a specific date (public)
+ */
+export const ListBlackoutTimeWindowsQueryParams = zod.object({
+  date: zod.coerce.date(),
+});
+
+export const ListBlackoutTimeWindowsResponseItem = zod.object({
+  id: zod.number(),
+  date: zod.coerce.date(),
+  startTime: zod.string().describe("Start time in HH:MM format"),
+  endTime: zod.string().describe("End time in HH:MM format"),
+  reason: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const ListBlackoutTimeWindowsResponse = zod.array(
+  ListBlackoutTimeWindowsResponseItem,
+);
+
+/**
+ * @summary List all dates that have at least one time window block
+ */
+export const AdminListDatesWithTimeWindowsResponseItem = zod.coerce.date();
+export const AdminListDatesWithTimeWindowsResponse = zod.array(
+  AdminListDatesWithTimeWindowsResponseItem,
+);
+
+/**
  * @summary Get current cart (by session)
  */
 export const GetCartQueryParams = zod.object({

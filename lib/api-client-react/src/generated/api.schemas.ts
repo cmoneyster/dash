@@ -482,6 +482,26 @@ export interface CreateBlackoutDateBody {
   reason?: string | null;
 }
 
+export interface BlackoutTimeWindow {
+  id: number;
+  date: string;
+  /** Start time in HH:MM format */
+  startTime: string;
+  /** End time in HH:MM format */
+  endTime: string;
+  reason?: string | null;
+  createdAt: string;
+}
+
+export interface CreateBlackoutTimeWindowBody {
+  date: string;
+  /** Start time in HH:MM format */
+  startTime: string;
+  /** End time in HH:MM format */
+  endTime: string;
+  reason?: string | null;
+}
+
 export type ServiceStyleKey =
   (typeof ServiceStyleKey)[keyof typeof ServiceStyleKey];
 
@@ -1001,6 +1021,14 @@ export type AdminListTopSellersParams = {
    * @maximum 50
    */
   limit?: number;
+};
+
+export type AdminListBlackoutTimeWindowsParams = {
+  date: string;
+};
+
+export type ListBlackoutTimeWindowsParams = {
+  date: string;
 };
 
 export type GetCartParams = {

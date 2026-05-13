@@ -20,14 +20,17 @@ import type {
   AddRecommendationBody,
   AddToCartBody,
   AddToPlanBody,
+  AdminListBlackoutTimeWindowsParams,
   AdminListTopSellersParams,
   AdminStats,
   AvailabilityResponse,
   BlackoutDate,
+  BlackoutTimeWindow,
   Cart,
   ChatMessageBody,
   CheckAvailabilityParams,
   CreateBlackoutDateBody,
+  CreateBlackoutTimeWindowBody,
   CreateMenuItemBody,
   CreateOpenaiConversationBody,
   CreateOrderBody,
@@ -42,6 +45,7 @@ import type {
   GetSalesReportParams,
   HealthStatus,
   IdleActivitySnapshot,
+  ListBlackoutTimeWindowsParams,
   ListMenuItemsParams,
   ListPrintJobsParams,
   MenuItem,
@@ -1718,6 +1722,470 @@ export const useDeleteBlackoutDate = <
 > => {
   return useMutation(getDeleteBlackoutDateMutationOptions(options));
 };
+
+/**
+ * @summary List blackout time windows for a specific date
+ */
+export const getAdminListBlackoutTimeWindowsUrl = (
+  params: AdminListBlackoutTimeWindowsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/blackout-time-windows?${stringifiedParams}`
+    : `/api/admin/blackout-time-windows`;
+};
+
+export const adminListBlackoutTimeWindows = async (
+  params: AdminListBlackoutTimeWindowsParams,
+  options?: RequestInit,
+): Promise<BlackoutTimeWindow[]> => {
+  return customFetch<BlackoutTimeWindow[]>(
+    getAdminListBlackoutTimeWindowsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getAdminListBlackoutTimeWindowsQueryKey = (
+  params?: AdminListBlackoutTimeWindowsParams,
+) => {
+  return [
+    `/api/admin/blackout-time-windows`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getAdminListBlackoutTimeWindowsQueryOptions = <
+  TData = Awaited<ReturnType<typeof adminListBlackoutTimeWindows>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: AdminListBlackoutTimeWindowsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof adminListBlackoutTimeWindows>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getAdminListBlackoutTimeWindowsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof adminListBlackoutTimeWindows>>
+  > = ({ signal }) =>
+    adminListBlackoutTimeWindows(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof adminListBlackoutTimeWindows>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type AdminListBlackoutTimeWindowsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof adminListBlackoutTimeWindows>>
+>;
+export type AdminListBlackoutTimeWindowsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List blackout time windows for a specific date
+ */
+
+export function useAdminListBlackoutTimeWindows<
+  TData = Awaited<ReturnType<typeof adminListBlackoutTimeWindows>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: AdminListBlackoutTimeWindowsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof adminListBlackoutTimeWindows>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getAdminListBlackoutTimeWindowsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a blackout time window
+ */
+export const getAdminCreateBlackoutTimeWindowUrl = () => {
+  return `/api/admin/blackout-time-windows`;
+};
+
+export const adminCreateBlackoutTimeWindow = async (
+  createBlackoutTimeWindowBody: CreateBlackoutTimeWindowBody,
+  options?: RequestInit,
+): Promise<BlackoutTimeWindow> => {
+  return customFetch<BlackoutTimeWindow>(
+    getAdminCreateBlackoutTimeWindowUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createBlackoutTimeWindowBody),
+    },
+  );
+};
+
+export const getAdminCreateBlackoutTimeWindowMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminCreateBlackoutTimeWindow>>,
+    TError,
+    { data: BodyType<CreateBlackoutTimeWindowBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminCreateBlackoutTimeWindow>>,
+  TError,
+  { data: BodyType<CreateBlackoutTimeWindowBody> },
+  TContext
+> => {
+  const mutationKey = ["adminCreateBlackoutTimeWindow"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminCreateBlackoutTimeWindow>>,
+    { data: BodyType<CreateBlackoutTimeWindowBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return adminCreateBlackoutTimeWindow(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminCreateBlackoutTimeWindowMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminCreateBlackoutTimeWindow>>
+>;
+export type AdminCreateBlackoutTimeWindowMutationBody =
+  BodyType<CreateBlackoutTimeWindowBody>;
+export type AdminCreateBlackoutTimeWindowMutationError =
+  ErrorType<ErrorResponse>;
+
+/**
+ * @summary Add a blackout time window
+ */
+export const useAdminCreateBlackoutTimeWindow = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminCreateBlackoutTimeWindow>>,
+    TError,
+    { data: BodyType<CreateBlackoutTimeWindowBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminCreateBlackoutTimeWindow>>,
+  TError,
+  { data: BodyType<CreateBlackoutTimeWindowBody> },
+  TContext
+> => {
+  return useMutation(getAdminCreateBlackoutTimeWindowMutationOptions(options));
+};
+
+/**
+ * @summary Remove a blackout time window
+ */
+export const getAdminDeleteBlackoutTimeWindowUrl = (id: number) => {
+  return `/api/admin/blackout-time-windows/${id}`;
+};
+
+export const adminDeleteBlackoutTimeWindow = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getAdminDeleteBlackoutTimeWindowUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getAdminDeleteBlackoutTimeWindowMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminDeleteBlackoutTimeWindow>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminDeleteBlackoutTimeWindow>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["adminDeleteBlackoutTimeWindow"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminDeleteBlackoutTimeWindow>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return adminDeleteBlackoutTimeWindow(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminDeleteBlackoutTimeWindowMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminDeleteBlackoutTimeWindow>>
+>;
+
+export type AdminDeleteBlackoutTimeWindowMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Remove a blackout time window
+ */
+export const useAdminDeleteBlackoutTimeWindow = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminDeleteBlackoutTimeWindow>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminDeleteBlackoutTimeWindow>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getAdminDeleteBlackoutTimeWindowMutationOptions(options));
+};
+
+/**
+ * @summary List blackout time windows for a specific date (public)
+ */
+export const getListBlackoutTimeWindowsUrl = (
+  params: ListBlackoutTimeWindowsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/blackout-time-windows?${stringifiedParams}`
+    : `/api/blackout-time-windows`;
+};
+
+export const listBlackoutTimeWindows = async (
+  params: ListBlackoutTimeWindowsParams,
+  options?: RequestInit,
+): Promise<BlackoutTimeWindow[]> => {
+  return customFetch<BlackoutTimeWindow[]>(
+    getListBlackoutTimeWindowsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListBlackoutTimeWindowsQueryKey = (
+  params?: ListBlackoutTimeWindowsParams,
+) => {
+  return [`/api/blackout-time-windows`, ...(params ? [params] : [])] as const;
+};
+
+export const getListBlackoutTimeWindowsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listBlackoutTimeWindows>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: ListBlackoutTimeWindowsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listBlackoutTimeWindows>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListBlackoutTimeWindowsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listBlackoutTimeWindows>>
+  > = ({ signal }) =>
+    listBlackoutTimeWindows(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listBlackoutTimeWindows>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListBlackoutTimeWindowsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listBlackoutTimeWindows>>
+>;
+export type ListBlackoutTimeWindowsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List blackout time windows for a specific date (public)
+ */
+
+export function useListBlackoutTimeWindows<
+  TData = Awaited<ReturnType<typeof listBlackoutTimeWindows>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: ListBlackoutTimeWindowsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listBlackoutTimeWindows>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListBlackoutTimeWindowsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List all dates that have at least one time window block
+ */
+export const getAdminListDatesWithTimeWindowsUrl = () => {
+  return `/api/admin/blackout-time-windows/dates-with-windows`;
+};
+
+export const adminListDatesWithTimeWindows = async (
+  options?: RequestInit,
+): Promise<string[]> => {
+  return customFetch<string[]>(getAdminListDatesWithTimeWindowsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAdminListDatesWithTimeWindowsQueryKey = () => {
+  return [`/api/admin/blackout-time-windows/dates-with-windows`] as const;
+};
+
+export const getAdminListDatesWithTimeWindowsQueryOptions = <
+  TData = Awaited<ReturnType<typeof adminListDatesWithTimeWindows>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof adminListDatesWithTimeWindows>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getAdminListDatesWithTimeWindowsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof adminListDatesWithTimeWindows>>
+  > = ({ signal }) =>
+    adminListDatesWithTimeWindows({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof adminListDatesWithTimeWindows>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type AdminListDatesWithTimeWindowsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof adminListDatesWithTimeWindows>>
+>;
+export type AdminListDatesWithTimeWindowsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all dates that have at least one time window block
+ */
+
+export function useAdminListDatesWithTimeWindows<
+  TData = Awaited<ReturnType<typeof adminListDatesWithTimeWindows>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof adminListDatesWithTimeWindows>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getAdminListDatesWithTimeWindowsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get current cart (by session)

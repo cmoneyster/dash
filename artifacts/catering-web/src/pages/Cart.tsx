@@ -161,6 +161,13 @@ export default function Cart() {
       .then(setBlackoutDates)
       .catch(() => {});
   }, []);
+  // TODO(delivery-time): Once the delivery-time picker task is merged, fetch
+  // blocked time windows for the selected event date via
+  //   GET /api/blackout-time-windows?date=<eventDate>
+  // and pass the resulting windows to the delivery-time picker component so it
+  // can grey out or skip those slots. Full-day blackout dates (above) already
+  // prevent the entire day from being selected, so time windows only need to be
+  // applied when a date is selected but not fully blocked.
 
   // Phone verification
   const [verifyState, setVerifyState]   = useState<VerifyState>("idle");
