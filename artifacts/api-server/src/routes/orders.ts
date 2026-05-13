@@ -41,7 +41,7 @@ router.post("/orders", async (req, res): Promise<void> => {
   try {
     const {
       sessionId, customerName, customerEmail, customerPhone,
-      eventDate, eventType, guestCount, serviceStyle, deliveryNotes,
+      eventDate, eventTime, eventType, guestCount, serviceStyle, deliveryNotes,
       venueAddress: rawVenueAddress,
       serviceMode: rawServiceMode,
     } = req.body;
@@ -151,6 +151,7 @@ router.post("/orders", async (req, res): Promise<void> => {
       customerEmail,
       customerPhone: customerPhone ?? null,
       eventDate: eventDate ?? null,
+      eventTime: eventTime ?? null,
       eventType: eventType ?? null,
       guestCount: guestCount ?? null,
       serviceStyle: serviceStyle ?? null,
@@ -272,6 +273,7 @@ router.post("/orders", async (req, res): Promise<void> => {
         clientEmail: customerEmail ?? null,
         clientPhone: customerPhone ?? null,
         eventDate: eventDate ?? null,
+        eventTime: eventTime ?? null,
         guestCount: guestCount ?? null,
         venueAddress,
         source: "cart",

@@ -2055,6 +2055,10 @@ components:
           type: string
           format: date
           nullable: true
+        eventTime:
+          type: string
+          nullable: true
+          description: Delivery time in HH:MM 24-hour format (e.g. "14:00" for 2:00 PM).
         eventType:
           type: string
           nullable: true
@@ -2105,6 +2109,10 @@ components:
           type: string
           format: date
           nullable: true
+        eventTime:
+          type: string
+          nullable: true
+          description: Delivery time in HH:MM 24-hour format (e.g. "14:00" for 2:00 PM).
         eventType:
           type: string
           nullable: true

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
-import { Loader2, Download, AlertCircle, CalendarDays, MapPin, Users, CreditCard, CheckCircle2, MessageSquare, Check, X, Mail, Phone } from "lucide-react";
+import { Loader2, Download, AlertCircle, CalendarDays, Clock, MapPin, Users, CreditCard, CheckCircle2, MessageSquare, Check, X, Mail, Phone } from "lucide-react";
 import { computeOtdSetupFeeWaivedDisplay } from "@workspace/pricing";
 import { formatCurrency } from "@/lib/utils";
 import { TAX_DISCLOSURE, TAX_DISCLOSURE_SHORT } from "@/lib/tax";
@@ -62,6 +62,7 @@ type Quote = {
     email: string | null;
     phone: string | null;
     eventDate: string | null;
+    eventTime: string | null;
     guestCount: number | null;
     venueAddress: string | null;
   };
@@ -95,6 +96,26 @@ function fmtDate(d: string | null) {
   } catch { return d; }
 }
 
+function fmtDeliveryWindow(time: string | null | undefined): string {
+  if (!time) return "";
+  const match = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
+  if (!match) return time;
+  const startH = parseInt(match[1], 10);
+  const startM = parseInt(match[2], 10);
+  if (startH > 23 || startM > 59) return time;
+  const endTotalMin = startH * 60 + startM + 30;
+  const endH = Math.floor(endTotalMin / 60) % 24;
+  const endM = endTotalMin % 60;
+  const fmt12 = (h: number, m: number) => {
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:${String(m).padStart(2, "0")}`;
+  };
+  const startPeriod = startH < 12 ? "AM" : "PM";
+  const endPeriod = endH < 12 ? "AM" : "PM";
+  if (startPeriod === endPeriod) return `${fmt12(startH, startM)}–${fmt12(endH, endM)} ${startPeriod}`;
+  return `${fmt12(startH, startM)} ${startPeriod}–${fmt12(endH, endM)} ${endPeriod}`;
+}
+
 export default function PublicQuote() {
   const [, params] = useRoute("/quote/:token");
   const token = params?.token;
@@ -105,6 +126,10 @@ export default function PublicQuote() {
   const [changeMessage, setChangeMessage] = useState("");
   const [submitting, setSubmitting] = useState<null | "accept" | "changes">(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [missingAcceptDate, setMissingAcceptDate] = useState(false);
+  const [missingAcceptTime, setMissingAcceptTime] = useState(false);
+  const [acceptDate, setAcceptDate] = useState("");
+  const [acceptTime, setAcceptTime] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -123,11 +148,26 @@ export default function PublicQuote() {
     if (!token || submitting) return;
     setSubmitting("accept"); setActionError(null);
     try {
-      const r = await fetch(`${BASE}/api/quote/${token}/accept`, { method: "POST" });
+      const body: Record<string, string> = {};
+      if (acceptDate) body.eventDate = acceptDate;
+      if (acceptTime) body.eventTime = acceptTime;
+      const r = await fetch(`${BASE}/api/quote/${token}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const data = await r.json();
+      if (r.status === 422) {
+        setMissingAcceptDate(!!data.missingEventDate);
+        setMissingAcceptTime(!!data.missingEventTime);
+        setActionError(data.error || "Please provide the missing delivery details.");
+        return;
+      }
       if (!r.ok) { setActionError(data.error || "Could not accept quote."); return; }
       setQuote(data);
       setShowChangeForm(false);
+      setMissingAcceptDate(false);
+      setMissingAcceptTime(false);
     } catch {
       setActionError("Could not accept quote. Please try again.");
     } finally {
@@ -223,6 +263,12 @@ export default function PublicQuote() {
                 <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" />
                 <span>{quote.client.eventDate?.trim() || NOT_PROVIDED}</span>
               </p>
+              {quote.client.eventTime && (
+                <p className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Delivery {fmtDeliveryWindow(quote.client.eventTime)}</span>
+                </p>
+              )}
               <p className="flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 flex-shrink-0" />
                 <span>{quote.client.guestCount ? `${quote.client.guestCount} guests` : NOT_PROVIDED}</span>
@@ -413,6 +459,37 @@ export default function PublicQuote() {
         {/* Actions */}
         {!quote.acceptedAt && (
           <div className="px-8 py-5 border-t border-border space-y-3">
+            {(missingAcceptDate || missingAcceptTime) && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-4 space-y-3">
+                <p className="text-sm font-semibold text-amber-800">
+                  A delivery date and time are required to confirm your order. Please fill in the missing details below.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {missingAcceptDate && (
+                    <div>
+                      <label className="block text-xs font-semibold text-amber-800 mb-1">Event Date</label>
+                      <input
+                        type="date"
+                        value={acceptDate}
+                        onChange={e => setAcceptDate(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      />
+                    </div>
+                  )}
+                  {missingAcceptTime && (
+                    <div>
+                      <label className="block text-xs font-semibold text-amber-800 mb-1">Delivery Time</label>
+                      <input
+                        type="time"
+                        value={acceptTime}
+                        onChange={e => setAcceptTime(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             {!showChangeForm ? (
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <p className="text-xs text-muted-foreground">
@@ -430,7 +507,7 @@ export default function PublicQuote() {
                   <button
                     type="button"
                     onClick={acceptQuote}
-                    disabled={submitting !== null}
+                    disabled={submitting !== null || (missingAcceptDate && !acceptDate) || (missingAcceptTime && !acceptTime)}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors text-sm disabled:opacity-50"
                   >
                     {submitting === "accept" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}

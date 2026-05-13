@@ -1266,6 +1266,12 @@ export const CreateOrderBody = zod.object({
   customerEmail: zod.string(),
   customerPhone: zod.string().nullish(),
   eventDate: zod.coerce.date().nullish(),
+  eventTime: zod
+    .string()
+    .nullish()
+    .describe(
+      'Delivery time in HH:MM 24-hour format (e.g. \"14:00\" for 2:00 PM).',
+    ),
   eventType: zod.string().nullish(),
   guestCount: zod.number().nullish(),
   serviceStyle: zod.string().nullish(),
@@ -1294,6 +1300,12 @@ export const AdminListOrdersResponseItem = zod.object({
   customerEmail: zod.string(),
   customerPhone: zod.string().nullish(),
   eventDate: zod.coerce.date().nullish(),
+  eventTime: zod
+    .string()
+    .nullish()
+    .describe(
+      'Delivery time in HH:MM 24-hour format (e.g. \"14:00\" for 2:00 PM).',
+    ),
   eventType: zod.string().nullish(),
   guestCount: zod.number().nullish(),
   serviceStyle: zod.string().nullish(),
@@ -1343,6 +1355,12 @@ export const UpdateOrderStatusResponse = zod.object({
   customerEmail: zod.string(),
   customerPhone: zod.string().nullish(),
   eventDate: zod.coerce.date().nullish(),
+  eventTime: zod
+    .string()
+    .nullish()
+    .describe(
+      'Delivery time in HH:MM 24-hour format (e.g. \"14:00\" for 2:00 PM).',
+    ),
   eventType: zod.string().nullish(),
   guestCount: zod.number().nullish(),
   serviceStyle: zod.string().nullish(),

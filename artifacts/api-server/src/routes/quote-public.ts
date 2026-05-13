@@ -96,11 +96,31 @@ router.post("/quote/:token/accept", async (req, res): Promise<void> => {
       return;
     }
 
+    // Collect eventDate / eventTime from the body — the client may supply
+    // them when accepting if the inquiry was created without them.
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const bodyEventDate = typeof body.eventDate === "string" ? body.eventDate.trim() || null : null;
+    const bodyEventTime = typeof body.eventTime === "string" ? body.eventTime.trim() || null : null;
+
+    const resolvedEventDate = inquiry.eventDate?.trim() || bodyEventDate;
+    const resolvedEventTime = inquiry.eventTime?.trim() || bodyEventTime;
+
+    if (!resolvedEventDate || !resolvedEventTime) {
+      res.status(422).json({
+        error: "Delivery date and time are required to accept this quote.",
+        missingEventDate: !resolvedEventDate,
+        missingEventTime: !resolvedEventTime,
+      });
+      return;
+    }
+
     const now = new Date();
     const [updated] = await db
       .update(cateringInquiriesTable)
       .set({
         quoteAcceptedAt: now,
+        eventDate: resolvedEventDate,
+        eventTime: resolvedEventTime,
         // Confirming clears any prior change-request state.
         quoteChangeRequestAt: null,
         quoteChangeRequestMessage: null,

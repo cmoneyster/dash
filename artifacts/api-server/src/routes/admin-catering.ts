@@ -382,6 +382,7 @@ router.put("/admin/catering/:id", async (req, res): Promise<void> => {
     if (body.clientPhone !== undefined) updates.clientPhone = String(body.clientPhone ?? "").trim() || null;
     if (body.organization !== undefined) updates.organization = String(body.organization ?? "").trim() || null;
     if (body.eventDate !== undefined) updates.eventDate = String(body.eventDate ?? "").trim() || null;
+    if (body.eventTime !== undefined) updates.eventTime = String(body.eventTime ?? "").trim() || null;
     if (body.guestCount !== undefined)
       updates.guestCount = body.guestCount === "" || body.guestCount === null ? null : parseInt(String(body.guestCount));
     if (body.venueAddress !== undefined) updates.venueAddress = String(body.venueAddress ?? "").trim() || null;

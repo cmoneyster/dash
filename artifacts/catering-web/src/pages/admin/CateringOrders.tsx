@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
-  Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays,
+  Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays, Clock,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
   GripVertical, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck,
@@ -111,6 +111,7 @@ type Inquiry = {
   clientPhone: string | null;
   organization: string | null;
   eventDate: string | null;
+  eventTime: string | null;
   guestCount: number | null;
   venueAddress: string | null;
   menuNotes: string | null;
@@ -215,7 +216,7 @@ type AdminMenuItem = {
 function emptyForm(): Partial<Inquiry> {
   return {
     clientName: "", clientEmail: "", clientPhone: "", organization: "",
-    eventDate: "", guestCount: undefined, venueAddress: "", menuNotes: "", adminNotes: "", status: "inquiry",
+    eventDate: "", eventTime: "", guestCount: undefined, venueAddress: "", menuNotes: "", adminNotes: "", status: "inquiry",
     source: "form", orderItems: null, orderTotal: null,
     lineItems: [], fees: [], discounts: [],
     quoteNotes: "", quoteExpiresAt: null,
@@ -2598,6 +2599,12 @@ function DetailPanel({
               <Field icon={CalendarDays} label="Event Date">
                 <input type="date" value={form.eventDate ?? ""} onChange={e => set("eventDate", e.target.value)} className={inputCls} />
               </Field>
+              <Field icon={Clock} label="Delivery Time (optional)">
+                <input type="time" value={form.eventTime ?? ""} onChange={e => set("eventTime", e.target.value)} className={inputCls} />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <Field icon={Users} label="Guest Count">
                 <input
                   type="number"

@@ -19,7 +19,7 @@ import { formatCurrency } from "@/lib/utils";
 import { TAX_DISCLOSURE } from "@/lib/tax";
 import { parseDateLocal } from "@/lib/date";
 import { useCategories, splitCategoryName } from "@/lib/categories";
-import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw, CalendarDays, X as XIcon, Truck, Flame, AlertTriangle } from "lucide-react";
+import { Minus, Plus, Trash2, ArrowRight, CheckCircle2, Phone, ShieldCheck, Loader2, RefreshCw, CalendarDays, Clock, X as XIcon, Truck, Flame, AlertTriangle } from "lucide-react";
 import {
   SERVICE_MODE_KEY,
   type ServiceMode,
@@ -137,7 +137,8 @@ const checkoutSchema = z.object({
   // human label derived from the structured `serviceMode` toggle.
   serviceStyle: z.string().optional(),
   venueAddress: z.string().optional(),
-  deliveryNotes: z.string().optional()
+  deliveryNotes: z.string().optional(),
+  eventTime: z.string().optional(),
 });
 
 type CheckoutForm = z.infer<typeof checkoutSchema>;
@@ -676,6 +677,20 @@ export default function Cart() {
                       <label className="block text-sm font-semibold mb-1">Guests</label>
                       <input {...register("guestCount")} type="number" className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold mb-1 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      Delivery Time
+                      <span className="text-muted-foreground font-normal">(optional)</span>
+                    </label>
+                    <input
+                      type="time"
+                      {...register("eventTime")}
+                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">We'll arrive within a 30-minute window of this time.</p>
                   </div>
 
                   <div>

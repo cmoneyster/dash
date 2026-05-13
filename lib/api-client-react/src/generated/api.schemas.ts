@@ -628,6 +628,8 @@ export interface Order {
   customerEmail: string;
   customerPhone?: string | null;
   eventDate?: string | null;
+  /** Delivery time in HH:MM 24-hour format (e.g. "14:00" for 2:00 PM). */
+  eventTime?: string | null;
   eventType?: string | null;
   guestCount?: number | null;
   serviceStyle?: string | null;
@@ -656,6 +658,8 @@ export interface CreateOrderBody {
   customerEmail: string;
   customerPhone?: string | null;
   eventDate?: string | null;
+  /** Delivery time in HH:MM 24-hour format (e.g. "14:00" for 2:00 PM). */
+  eventTime?: string | null;
   eventType?: string | null;
   guestCount?: number | null;
   serviceStyle?: string | null;

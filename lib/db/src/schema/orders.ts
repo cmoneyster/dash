@@ -9,6 +9,7 @@ export const ordersTable = pgTable("orders", {
   customerEmail: text("customer_email").notNull(),
   customerPhone: text("customer_phone"),
   eventDate: date("event_date"),
+  eventTime: text("event_time"),
   eventType: text("event_type"),
   guestCount: integer("guest_count"),
   serviceStyle: text("service_style"),

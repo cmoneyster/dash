@@ -67,6 +67,7 @@ export const cateringInquiriesTable = pgTable("catering_inquiries", {
   clientPhone: text("client_phone"),
   organization: text("organization"),
   eventDate: text("event_date"),
+  eventTime: text("event_time"),
   guestCount: integer("guest_count"),
   venueAddress: text("venue_address"),
   menuNotes: text("menu_notes"),

@@ -19,7 +19,7 @@ import type {
   QuoteAdjustment,
   QuoteLineItem,
 } from "@workspace/db/schema";
-import { computeQuoteTotals } from "./quote";
+import { computeQuoteTotals, fmtDeliveryWindow } from "./quote";
 
 const SQUARE_VERSION = "2024-12-18";
 
@@ -321,7 +321,7 @@ export async function createAndPublishInvoiceForInquiry(opts: {
       delivery_method: "EMAIL",
       accepted_payment_methods: { card: true, square_gift_card: false, bank_account: false },
       title: `Catering ${inquiry.quoteNumber ?? `Quote #${inquiry.id}`}`,
-      description: inquiry.quoteNotes ?? `Catering order for ${inquiry.eventDate ?? "your event"}.`,
+      description: inquiry.quoteNotes ?? `Catering order for ${inquiry.eventDate ?? "your event"}${inquiry.eventTime ? ` · Delivery ${fmtDeliveryWindow(inquiry.eventTime)}` : ""}.`,
       scheduled_at: undefined,
     },
   };
@@ -447,7 +447,7 @@ export async function createAndPublishSupplementalInvoice(opts: {
       accepted_payment_methods: { card: true, square_gift_card: false, bank_account: false },
       title: `Catering ${quoteRef} — ${titleSuffix}`,
       description:
-        `Additional charges for your catering order${inquiry.eventDate ? ` on ${inquiry.eventDate}` : ""}. `
+        `Additional charges for your catering order${inquiry.eventDate ? ` on ${inquiry.eventDate}` : ""}${inquiry.eventTime ? ` · Delivery ${fmtDeliveryWindow(inquiry.eventTime)}` : ""}. `
         + `This is a separate invoice that supplements ${primaryRef}; the original invoice is unchanged.`,
       scheduled_at: undefined,
     },

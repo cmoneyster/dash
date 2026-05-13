@@ -198,6 +198,17 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     .font(pickFont(dateValue))
     .text(dateValue);
   rightY = doc.y;
+  if (inquiry.eventTime) {
+    const windowStr = fmtDeliveryWindow(inquiry.eventTime);
+    doc
+      .font(FONT_LATIN)
+      .fontSize(10)
+      .fillColor("#222")
+      .text("Delivery: ", 320, rightY, { width: 240, continued: true })
+      .font(FONT_LATIN)
+      .text(windowStr);
+    rightY = doc.y;
+  }
   doc
     .font(FONT_LATIN)
     .fontSize(10)
@@ -516,6 +527,33 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
 }
 
 /**
+ * Format a 24-hour "HH:MM" time as a 30-minute delivery window string,
+ * e.g. "14:00" → "2:00–2:30 PM", "11:45" → "11:45 AM–12:15 PM".
+ * Returns an empty string when `time` is null/undefined/blank.
+ */
+export function fmtDeliveryWindow(time: string | null | undefined): string {
+  if (!time) return "";
+  const match = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
+  if (!match) return time;
+  const startH = parseInt(match[1], 10);
+  const startM = parseInt(match[2], 10);
+  if (startH > 23 || startM > 59) return time;
+  const endTotalMin = startH * 60 + startM + 30;
+  const endH = Math.floor(endTotalMin / 60) % 24;
+  const endM = endTotalMin % 60;
+  const fmt12 = (h: number, m: number) => {
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:${String(m).padStart(2, "0")}`;
+  };
+  const startPeriod = startH < 12 ? "AM" : "PM";
+  const endPeriod = endH < 12 ? "AM" : "PM";
+  const startFmt = fmt12(startH, startM);
+  const endFmt = fmt12(endH, endM);
+  if (startPeriod === endPeriod) return `${startFmt}–${endFmt} ${startPeriod}`;
+  return `${startFmt} ${startPeriod}–${endFmt} ${endPeriod}`;
+}
+
+/**
  * Build a public-facing JSON payload that does not leak internal fields.
  */
 export function publicQuoteFromInquiry(inquiry: CateringInquiry) {
@@ -549,6 +587,7 @@ export function publicQuoteFromInquiry(inquiry: CateringInquiry) {
       email: inquiry.clientEmail,
       phone: inquiry.clientPhone,
       eventDate: inquiry.eventDate,
+      eventTime: inquiry.eventTime,
       guestCount: inquiry.guestCount,
       venueAddress: inquiry.venueAddress,
     },
