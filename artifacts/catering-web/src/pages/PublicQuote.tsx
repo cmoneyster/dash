@@ -482,28 +482,24 @@ export default function PublicQuote() {
                     </p>
                   )}
                   <div className="grid grid-cols-2 gap-3">
-                    {(missingDate || showDateTimeEdit) && (
-                      <div>
-                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Event Date</label>
-                        <input
-                          type="date"
-                          value={acceptDate}
-                          onChange={e => setAcceptDate(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                        />
-                      </div>
-                    )}
-                    {(missingTime || showDateTimeEdit) && (
-                      <div>
-                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Delivery Time</label>
-                        <input
-                          type="time"
-                          value={acceptTime}
-                          onChange={e => setAcceptTime(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                        />
-                      </div>
-                    )}
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Event Date</label>
+                      <input
+                        type="date"
+                        value={acceptDate}
+                        onChange={e => setAcceptDate(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Delivery Time</label>
+                      <input
+                        type="time"
+                        value={acceptTime}
+                        onChange={e => setAcceptTime(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      />
+                    </div>
                   </div>
                   {showDateTimeEdit && (
                     <button

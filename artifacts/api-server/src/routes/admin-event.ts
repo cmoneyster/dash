@@ -573,6 +573,7 @@ type CateringReportOrder = {
   type: "catering";
   clientName: string;
   eventDate: string | null;
+  eventTime: string | null;
   createdAt: string;
   status: string;
   squareInvoiceStatus: string | null;
@@ -616,6 +617,7 @@ function buildCateringTotals(rows: typeof cateringInquiriesTable.$inferSelect[])
       type: "catering",
       clientName: c.clientName,
       eventDate: c.eventDate ?? null,
+      eventTime: c.eventTime ?? null,
       createdAt: c.createdAt.toISOString(),
       status: c.status,
       squareInvoiceStatus: c.squareInvoiceStatus ?? null,

@@ -419,7 +419,7 @@ export default function SalesReports() {
                                   <span>{(o as CateringOrder).clientName}</span>
                                   {(o as CateringOrder).eventDate && (
                                     <span className="block text-[10px] text-muted-foreground">
-                                      Event: {(o as CateringOrder).eventDate}
+                                      Event: {(o as CateringOrder).eventDate}{(o as CateringOrder).eventTime ? ` · ${(o as CateringOrder).eventTime}` : ""}
                                     </span>
                                   )}
                                 </div>
@@ -479,7 +479,7 @@ export default function SalesReports() {
                                 {isCatering && (o as CateringOrder).eventDate && (
                                   <div className="mb-3 text-xs text-muted-foreground">
                                     <span className="font-semibold text-foreground">Event date:</span>{" "}
-                                    {(o as CateringOrder).eventDate}
+                                    {(o as CateringOrder).eventDate}{(o as CateringOrder).eventTime ? ` · ${(o as CateringOrder).eventTime}` : ""}
                                   </div>
                                 )}
                                 <table className="w-full text-xs">

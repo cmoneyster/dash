@@ -333,6 +333,7 @@ router.post("/admin/catering", async (req, res): Promise<void> => {
       clientPhone: asString(body.clientPhone)?.trim() || null,
       organization: asString(body.organization)?.trim() || null,
       eventDate: asString(body.eventDate)?.trim() || null,
+      eventTime: asString(body.eventTime)?.trim() || null,
       guestCount: body.guestCount ?? null,
       venueAddress: asString(body.venueAddress)?.trim() || null,
       menuNotes: asString(body.menuNotes)?.trim() || null,
