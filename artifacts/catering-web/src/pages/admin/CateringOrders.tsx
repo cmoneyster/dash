@@ -2761,6 +2761,7 @@ export default function CateringOrders() {
   const [isNew, setIsNew] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "event_asc" | "event_desc">("newest");
   const [menu, setMenu] = useState<AdminMenuItem[]>([]);
   // Per-inquiry unread inbound SMS counts. Updated over the same SSE
   // stream the chat panel uses, so the list badge moves the moment a
@@ -2928,7 +2929,25 @@ export default function CateringOrders() {
   const q = search.trim().toLowerCase();
   const filtered = inquiries
     .filter(i => statusFilter === "all" || i.status === statusFilter)
-    .filter(i => !q || i.clientName.toLowerCase().includes(q) || (i.clientEmail ?? "").toLowerCase().includes(q) || (i.clientPhone ?? "").toLowerCase().includes(q));
+    .filter(i => !q || i.clientName.toLowerCase().includes(q) || (i.clientEmail ?? "").toLowerCase().includes(q) || (i.clientPhone ?? "").toLowerCase().includes(q))
+    .slice()
+    .sort((a, b) => {
+      if (sortBy === "oldest") {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      if (sortBy === "event_asc" || sortBy === "event_desc") {
+        const aDate = a.eventDate ?? null;
+        const bDate = b.eventDate ?? null;
+        if (!aDate && !bDate) return 0;
+        if (!aDate) return 1;
+        if (!bDate) return -1;
+        const diff = aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
+        return sortBy === "event_asc" ? diff : -diff;
+      }
+      // newest (default) — server already returns desc but re-sort so
+      // newly created/updated rows land at the top after optimistic updates
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
   const counts: Record<string, number> = {};
   inquiries.forEach(i => { counts[i.status] = (counts[i.status] ?? 0) + 1; });
@@ -2967,6 +2986,20 @@ export default function CateringOrders() {
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
+            </div>
+
+            {/* Sort */}
+            <div className="flex items-center gap-2 mb-3">
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as typeof sortBy)}
+                className="flex-1 px-3 py-2 text-sm border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="event_asc">Event date — soonest first</option>
+                <option value="event_desc">Event date — latest first</option>
+              </select>
             </div>
 
             {/* Status filter */}
