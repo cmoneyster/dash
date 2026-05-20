@@ -136,7 +136,7 @@ export default function DemoMenu() {
         </div>
         <div className="flex items-center gap-3">
           {savedAt && !dirty && !saving && (
-            <span className="text-sm text-emerald-700 flex items-center gap-1.5">
+            <span className="text-sm text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4" /> Saved
             </span>
           )}
@@ -166,7 +166,7 @@ export default function DemoMenu() {
       </div>
 
       {err && (
-        <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 text-red-700 text-sm">{err}</div>
+        <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 text-sm">{err}</div>
       )}
 
       {!items && !err && (

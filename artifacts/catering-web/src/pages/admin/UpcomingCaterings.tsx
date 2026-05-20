@@ -51,11 +51,11 @@ function formatDate(d: string | null | undefined) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    inquiry: "bg-blue-100 text-blue-700",
-    quoted: "bg-violet-100 text-violet-700",
-    confirmed: "bg-emerald-100 text-emerald-700",
+    inquiry: "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400",
+    quoted: "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400",
+    confirmed: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400",
     completed: "bg-secondary text-muted-foreground",
-    cancelled: "bg-red-100 text-red-600",
+    cancelled: "bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400",
   };
   return (
     <span className={cn("text-xs px-2 py-0.5 rounded-full font-semibold capitalize", map[status] ?? "bg-secondary text-muted-foreground")}>
@@ -261,16 +261,16 @@ function CateringCard({ inquiry, focused, onClick }: { inquiry: Inquiry; focused
     >
       <div className="flex items-start gap-4">
         {/* Date block */}
-        <div className="shrink-0 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center min-w-[60px]">
+        <div className="shrink-0 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-3 text-center min-w-[60px]">
           {inquiry.eventDate ? (
             <>
-              <p className="text-emerald-700 font-bold text-lg leading-none">
+              <p className="text-emerald-700 dark:text-emerald-400 font-bold text-lg leading-none">
                 {parseDateLocal(inquiry.eventDate).getDate()}
               </p>
-              <p className="text-emerald-600 text-xs font-semibold uppercase mt-0.5">
+              <p className="text-emerald-600 dark:text-emerald-400 text-xs font-semibold uppercase mt-0.5">
                 {parseDateLocal(inquiry.eventDate).toLocaleDateString("en-US", { month: "short" })}
               </p>
-              <p className="text-emerald-500 text-xs">
+              <p className="text-emerald-500 dark:text-emerald-500 text-xs">
                 {parseDateLocal(inquiry.eventDate).getFullYear()}
               </p>
             </>

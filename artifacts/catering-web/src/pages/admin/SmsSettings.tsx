@@ -85,9 +85,9 @@ type Feedback = { kind: FeedbackKind; message: string } | null;
 
 function StatusPill({ ok, okLabel, badLabel }: { ok: boolean; okLabel: string; badLabel: string }) {
   return ok ? (
-    <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{okLabel}</span>
+    <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">{okLabel}</span>
   ) : (
-    <span className="text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{badLabel}</span>
+    <span className="text-xs font-normal text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">{badLabel}</span>
   );
 }
 
@@ -1043,7 +1043,7 @@ export default function SmsSettings() {
                     Phone number for customer chat
                   </label>
                   {server?.smsChatOwnerPhoneSource === "db-chat" && (
-                    <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
                       Active
                     </span>
                   )}
@@ -1053,7 +1053,7 @@ export default function SmsSettings() {
                     </span>
                   )}
                   {server?.smsChatOwnerPhoneSource === "env" && (
-                    <span className="text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-normal text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
                       Falling back to legacy OWNER_PHONE env var
                     </span>
                   )}
@@ -1146,7 +1146,7 @@ export default function SmsSettings() {
                     Email for customer chat
                   </label>
                   {server?.smsChatOwnerEmailSource === "db-chat" && (
-                    <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
                       Active
                     </span>
                   )}
@@ -1156,7 +1156,7 @@ export default function SmsSettings() {
                     </span>
                   )}
                   {server?.smsChatOwnerEmailSource === "hardcoded" && (
-                    <span className="text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-normal text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
                       Falling back to legacy hardcoded email
                     </span>
                   )}
@@ -1202,12 +1202,12 @@ export default function SmsSettings() {
                 <UserCog className="w-4 h-4 text-muted-foreground" />
                 <h2 className="font-display font-bold text-lg">Owner Notifications</h2>
                 {server?.ownerNotificationPhoneSource === "db" && (
-                  <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
                     Active
                   </span>
                 )}
                 {server?.ownerNotificationPhoneSource === "env" && (
-                  <span className="text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-normal text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
                     Using legacy OWNER_PHONE env var
                   </span>
                 )}
@@ -1231,7 +1231,7 @@ export default function SmsSettings() {
                   className="w-full px-4 py-2 border border-border rounded-xl bg-background"
                 />
                 {server?.ownerNotificationPhoneSource === "env" && (
-                  <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  <div className="mt-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 rounded-xl px-3 py-2">
                     Owner alerts are currently being sent to the legacy <code>OWNER_PHONE</code> environment value.
                     Save a number above to take control here, or unset the <code>OWNER_PHONE</code> environment value to disable owner alerts entirely.
                   </div>
@@ -1292,12 +1292,12 @@ export default function SmsSettings() {
                     Owner email
                   </label>
                   {server?.ownerNotificationEmailSource === "db" && (
-                    <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
                       Active
                     </span>
                   )}
                   {server?.ownerNotificationEmailSource === "hardcoded" && (
-                    <span className="text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-normal text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
                       Using legacy hardcoded email
                     </span>
                   )}
@@ -1381,7 +1381,7 @@ export default function SmsSettings() {
                       <span className="font-semibold tabular-nums">~{formatBandwidthPerHour(bytesPerHour)}</span>
                     </div>
                     {inPush && (
-                      <div className="text-amber-700">
+                      <div className="text-amber-700 dark:text-amber-400">
                         Push mode is active — the live cadence is the 10-minute safety-net (~{formatBandwidthPerHour(pushBytesPerHour)}),
                         and the interval above is ignored until you switch back to poll mode.
                       </div>

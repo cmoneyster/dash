@@ -11,7 +11,7 @@ function StatCard({ title, value, icon: Icon, trend }: any) {
         <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
           <Icon className="w-6 h-6" />
         </div>
-        {trend && <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">{trend}</span>}
+        {trend && <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 rounded-md">{trend}</span>}
       </div>
       <h3 className="text-muted-foreground font-medium text-sm mb-1">{title}</h3>
       <p className="font-display font-bold text-3xl text-foreground">{value}</p>
@@ -76,9 +76,9 @@ export default function AdminDashboard() {
                 <div className="text-right">
                   <p className="font-bold text-sm">{formatCurrency(order.total)}</p>
                   <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                    order.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                    order.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
-                    order.status === 'delivered' ? 'bg-emerald-100 text-emerald-700' :
+                    order.status === 'pending' ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400' :
+                    order.status === 'confirmed' ? 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400' :
+                    order.status === 'delivered' ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400' :
                     'bg-secondary text-secondary-foreground'
                   }`}>
                     {order.status}

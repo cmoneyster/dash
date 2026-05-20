@@ -580,7 +580,7 @@ export default function HashtagWallModeration() {
                 <div>Pending: <strong>{status?.pendingCount ?? 0}</strong></div>
               </div>
               {lastPoller && lastPoller.errors.length > 0 && (
-                <div className="text-xs text-amber-700 bg-amber-50 p-2 rounded-lg mt-2 space-y-1">
+                <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg mt-2 space-y-1">
                   <p className="font-semibold flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Last run errors</p>
                   {lastPoller.errors.slice(0, 3).map((e, i) => (
                     <p key={i}>#{e.hashtag}: {e.message}</p>
@@ -634,22 +634,22 @@ export default function HashtagWallModeration() {
 
 function NotConfiguredBanner() {
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+    <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/40 p-4">
       <div className="flex items-start gap-3">
         <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-        <div className="text-sm text-amber-900 space-y-2">
+        <div className="text-sm text-amber-900 dark:text-amber-200 space-y-2">
           <p className="font-semibold">Instagram credentials are not configured.</p>
           <p>
-            The poller is paused. Set <code className="px-1 py-0.5 rounded bg-amber-100">INSTAGRAM_ACCESS_TOKEN</code> and{" "}
-            <code className="px-1 py-0.5 rounded bg-amber-100">INSTAGRAM_USER_ID</code> in your environment secrets to start pulling posts.
+            The poller is paused. Set <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60">INSTAGRAM_ACCESS_TOKEN</code> and{" "}
+            <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60">INSTAGRAM_USER_ID</code> in your environment secrets to start pulling posts.
           </p>
-          <ol className="list-decimal list-inside space-y-1 text-amber-900/90">
+          <ol className="list-decimal list-inside space-y-1 text-amber-900/90 dark:text-amber-300">
             <li>Convert your Instagram account to a Business account.</li>
             <li>Create an app in the <a className="underline" href="https://developers.facebook.com/" target="_blank" rel="noopener noreferrer">Meta Developer console</a>.</li>
             <li>Enable Instagram Graph API + Hashtag Search permissions.</li>
             <li>Add your IG account as an Instagram Tester (development mode).</li>
-            <li>Generate a long-lived user access token; save it as <code className="px-1 py-0.5 rounded bg-amber-100">INSTAGRAM_ACCESS_TOKEN</code>.</li>
-            <li>Save the IG Business User id as <code className="px-1 py-0.5 rounded bg-amber-100">INSTAGRAM_USER_ID</code>.</li>
+            <li>Generate a long-lived user access token; save it as <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60">INSTAGRAM_ACCESS_TOKEN</code>.</li>
+            <li>Save the IG Business User id as <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60">INSTAGRAM_USER_ID</code>.</li>
           </ol>
         </div>
       </div>
@@ -688,10 +688,10 @@ function CandidateCard({
   const captionDisplay = showFullCaption || !longCaption ? c.caption : c.caption.slice(0, 220) + "…";
   const statusBadge = useMemo(() => {
     switch (c.status) {
-      case "pending": return { label: "Pending", className: "bg-amber-100 text-amber-800" };
-      case "approved": return { label: "Approved", className: "bg-emerald-100 text-emerald-800" };
-      case "denied": return { label: "Denied", className: "bg-red-100 text-red-700" };
-      case "blacklisted": return { label: "Hidden", className: "bg-zinc-200 text-zinc-700" };
+      case "pending": return { label: "Pending", className: "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300" };
+      case "approved": return { label: "Approved", className: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300" };
+      case "denied": return { label: "Denied", className: "bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400" };
+      case "blacklisted": return { label: "Hidden", className: "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300" };
       default: return { label: c.status, className: "bg-secondary text-foreground" };
     }
   }, [c.status]);
@@ -733,7 +733,7 @@ function CandidateCard({
           <span className="font-mono">#{c.hashtag}</span>
           <span>•</span>
           <span>{c.postedAt ? formatRelative(c.postedAt) : "no date"}</span>
-          {c.autoRule && <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{c.autoRule}</span>}
+          {c.autoRule && <span className="text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">{c.autoRule}</span>}
         </div>
         <p className="text-sm text-foreground/80 break-words whitespace-pre-wrap">
           {captionDisplay || <em className="text-muted-foreground">(no caption)</em>}

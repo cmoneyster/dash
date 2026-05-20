@@ -68,11 +68,11 @@ interface ApplyResult {
 }
 
 const STATUS_BADGE: Record<RowStatus, { label: string; className: string }> = {
-  new:       { label: "New",       className: "bg-emerald-100 text-emerald-800 border-emerald-200" },
-  updated:   { label: "Changed",   className: "bg-amber-100 text-amber-800 border-amber-200" },
+  new:       { label: "New",       className: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50" },
+  updated:   { label: "Changed",   className: "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/50" },
   unchanged: { label: "Unchanged", className: "bg-secondary text-muted-foreground border-border" },
-  missing:   { label: "Missing",   className: "bg-rose-100 text-rose-800 border-rose-200" },
-  error:     { label: "Error",     className: "bg-red-100 text-red-900 border-red-300" },
+  missing:   { label: "Missing",   className: "bg-rose-100 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800/50" },
+  error:     { label: "Error",     className: "bg-red-100 dark:bg-red-950/40 text-red-900 dark:text-red-300 border-red-300 dark:border-red-800/50" },
 };
 
 export function MenuCsvDialog({
@@ -324,7 +324,7 @@ export function MenuCsvDialog({
               )}
 
               {error && (
-                <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-900 text-sm flex items-start gap-2">
+                <div className="mt-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 text-red-900 dark:text-red-300 text-sm flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {error}
                 </div>
               )}
@@ -353,7 +353,7 @@ export function MenuCsvDialog({
                   {(deleteMissingItems ? selectedDeleteItems.size : 0) + (deleteMissingCategories ? selectedDeleteCats.size : 0)} deletions pending ·{" "}
                   {sum.itemsUnchanged + sum.categoriesUnchanged} unchanged
                   {(sum.itemsErrors + sum.categoriesErrors) > 0 && (
-                    <span className="ml-2 text-red-700">· {sum.itemsErrors + sum.categoriesErrors} errors</span>
+                    <span className="ml-2 text-red-700 dark:text-red-400">· {sum.itemsErrors + sum.categoriesErrors} errors</span>
                   )}
                 </div>
                 <button
@@ -365,7 +365,7 @@ export function MenuCsvDialog({
               </div>
 
               {diffResp.warnings.length > 0 && (
-                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm">
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-300 text-sm">
                   <div className="font-semibold flex items-center gap-1 mb-1"><AlertTriangle className="w-4 h-4" /> Notes</div>
                   <ul className="list-disc pl-5 space-y-0.5">
                     {diffResp.warnings.map((w, i) => <li key={i}>{w}</li>)}
@@ -416,7 +416,7 @@ export function MenuCsvDialog({
               )}
 
               {error && (
-                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-900 text-sm whitespace-pre-wrap">
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 text-red-900 dark:text-red-300 text-sm whitespace-pre-wrap">
                   {error}
                 </div>
               )}
@@ -502,7 +502,7 @@ function SectionView({
         <h3 className="font-bold">{label}</h3>
         <span className="text-xs text-muted-foreground">
           {counts.new} new · {counts.updated} changed · {counts.unchanged} unchanged · {missing.length} missing
-          {counts.error > 0 && <span className="text-red-700"> · {counts.error} errors</span>}
+          {counts.error > 0 && <span className="text-red-700 dark:text-red-400"> · {counts.error} errors</span>}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button onClick={selectAll} disabled={allSelected} className="text-xs px-2 py-1 rounded-md border border-border bg-white dark:bg-card text-foreground hover:bg-secondary disabled:opacity-50">Select all</button>
@@ -511,12 +511,12 @@ function SectionView({
       </div>
 
       {parseError && (
-        <div className="p-3 bg-red-50 border-t border-red-200 text-red-900 text-sm">
+        <div className="p-3 bg-red-50 dark:bg-red-950/40 border-t border-red-200 dark:border-red-800/50 text-red-900 dark:text-red-300 text-sm">
           <b>Could not parse:</b> {parseError}
         </div>
       )}
       {unknownColumns.length > 0 && (
-        <div className="p-3 bg-amber-50 border-t border-amber-200 text-amber-900 text-xs">
+        <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border-t border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-300 text-xs">
           Unrecognized columns will be ignored: <code>{unknownColumns.join(", ")}</code>
         </div>
       )}
@@ -548,7 +548,7 @@ function SectionView({
       )}
 
       {missing.length > 0 && (
-        <div className="p-4 border-t border-border bg-rose-50/30">
+        <div className="p-4 border-t border-border bg-rose-50/30 dark:bg-rose-950/20">
           <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
@@ -572,7 +572,7 @@ function SectionView({
                       onChange={() => toggleDelete(m.id)}
                       className="w-4 h-4 accent-rose-600"
                     />
-                    <span className="text-rose-900">#{m.id} — {m.displayName}</span>
+                    <span className="text-rose-900 dark:text-rose-300">#{m.id} — {m.displayName}</span>
                   </label>
                 </li>
               ))}
@@ -588,7 +588,7 @@ function RowItem({ row, checked, onToggle }: { row: DiffRow; checked: boolean; o
   const badge = STATUS_BADGE[row.status];
   const canApply = (row.status === "new" || row.status === "updated") && row.errors.length === 0;
   return (
-    <li className={`px-4 py-3 ${row.status === "error" ? "bg-red-50/30" : ""}`}>
+    <li className={`px-4 py-3 ${row.status === "error" ? "bg-red-50/30 dark:bg-red-950/20" : ""}`}>
       <div className="flex items-start gap-3">
         <input
           type="checkbox"
@@ -607,7 +607,7 @@ function RowItem({ row, checked, onToggle }: { row: DiffRow; checked: boolean; o
             <span className="font-semibold text-sm truncate">{row.displayName}</span>
           </div>
           {row.errors.length > 0 && (
-            <ul className="mt-1.5 text-xs text-red-800 space-y-0.5">
+            <ul className="mt-1.5 text-xs text-red-800 dark:text-red-400 space-y-0.5">
               {row.errors.map((e, i) => (
                 <li key={i} className="flex items-start gap-1">
                   <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" /> {e}
@@ -620,8 +620,8 @@ function RowItem({ row, checked, onToggle }: { row: DiffRow; checked: boolean; o
               {row.changes.map((c) => (
                 <li key={c.column} className="font-mono">
                   <span className="text-muted-foreground">{c.column}:</span>{" "}
-                  <span className="line-through text-red-700/80">{c.before || <i className="not-italic opacity-50">(blank)</i>}</span>{" "}
-                  <span className="text-emerald-700">→ {c.after || <i className="not-italic opacity-50">(blank)</i>}</span>
+                  <span className="line-through text-red-700/80 dark:text-red-400/80">{c.before || <i className="not-italic opacity-50">(blank)</i>}</span>{" "}
+                  <span className="text-emerald-700 dark:text-emerald-400">→ {c.after || <i className="not-italic opacity-50">(blank)</i>}</span>
                 </li>
               ))}
             </ul>

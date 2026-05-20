@@ -163,7 +163,7 @@ function SortableMenuRow({
     <tr
       ref={setNodeRef}
       style={style}
-      className={`border-b border-border/50 transition-colors ${isDirty ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}
+      className={`border-b border-border/50 transition-colors ${isDirty ? "bg-amber-50 dark:bg-amber-950/40 border-l-2 border-l-amber-400" : "hover:bg-secondary/20"}`}
       data-testid={`row-menu-item-${itemId}`}
     >
       <td className="px-2 py-2 w-8 align-middle">
@@ -1050,13 +1050,13 @@ export default function MenuManager() {
                   </div>
                 </div>
 
-                <div className="space-y-3 p-4 bg-orange-50 rounded-xl border border-orange-200">
-                  <label className="block text-sm font-semibold text-orange-900">On the Dash Experience</label>
+                <div className="space-y-3 p-4 bg-orange-50 dark:bg-orange-950/30 rounded-xl border border-orange-200 dark:border-orange-800/50">
+                  <label className="block text-sm font-semibold text-orange-900 dark:text-orange-200">On the Dash Experience</label>
                   <label className="flex items-start gap-2 cursor-pointer">
                     <input {...register("otdEligible")} type="checkbox" className="w-4 h-4 mt-0.5 accent-orange-600" />
                     <span className="text-sm">
-                      <span className="font-medium text-orange-900">Cookable on-site from the food trailer</span>
-                      <span className="text-orange-800/80 block text-xs mt-0.5">
+                      <span className="font-medium text-orange-900 dark:text-orange-200">Cookable on-site from the food trailer</span>
+                      <span className="text-orange-800/80 dark:text-orange-300/80 block text-xs mt-0.5">
                         When checked, this item shows the orange "On the Dash" badge on the menu and customers can order it as part of an On the Dash Experience.
                       </span>
                     </span>
@@ -1079,7 +1079,7 @@ export default function MenuManager() {
                     />
                   </div>
                   {watch("eventTakerVisible") && !String(watch("eventTakerPrice") ?? "").trim() && (
-                    <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                    <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 rounded-lg text-xs text-amber-800 dark:text-amber-300">
                       <span className="font-bold leading-none mt-0.5">⚠</span>
                       <span>
                         <strong>Staff Order Taker is enabled but no price is set.</strong> This item will not appear on the POS until you set an Event Order Taker Price above.

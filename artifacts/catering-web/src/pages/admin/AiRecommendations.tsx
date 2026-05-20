@@ -213,7 +213,7 @@ export default function AiRecommendations() {
         )}
         {success && (
           <div
-            className="mb-4 px-4 py-3 rounded-lg bg-green-50 text-green-700 text-sm"
+            className="mb-4 px-4 py-3 rounded-lg bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-400 text-sm"
             data-testid="rec-success"
           >
             {success}
@@ -331,13 +331,13 @@ export default function AiRecommendations() {
 function SourceBadge({ source }: { source: string }) {
   if (source === "sync") {
     return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400">
         Synced
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400">
       Manual
     </span>
   );

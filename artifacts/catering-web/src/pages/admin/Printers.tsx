@@ -19,12 +19,12 @@ import { Printer as PrinterIcon, Plus, Trash2, Pencil, Wifi, WifiOff, AlertTrian
 import { AdminLayout } from "@/components/AdminLayout";
 
 function StatusPill({ p }: { p: Printer }) {
-  if (!p.enabled) return <span className="px-2 py-0.5 rounded-full text-[11px] bg-slate-200 text-slate-700">disabled</span>;
+  if (!p.enabled) return <span className="px-2 py-0.5 rounded-full text-[11px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">disabled</span>;
   const map: Record<string, { cls: string; label: string; icon?: typeof Wifi }> = {
-    online:   { cls: "bg-green-100 text-green-800", label: "online", icon: Wifi },
-    offline:  { cls: "bg-slate-100 text-slate-700", label: "offline", icon: WifiOff },
-    error:    { cls: "bg-red-100 text-red-800", label: "error", icon: AlertTriangle },
-    disabled: { cls: "bg-slate-200 text-slate-700", label: "disabled" },
+    online:   { cls: "bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-300", label: "online", icon: Wifi },
+    offline:  { cls: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300", label: "offline", icon: WifiOff },
+    error:    { cls: "bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-300", label: "error", icon: AlertTriangle },
+    disabled: { cls: "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300", label: "disabled" },
   };
   const cfg = map[p.status] ?? map.offline;
   const Icon = cfg.icon;
@@ -46,7 +46,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
     >
       {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
       {copied ? "Copied" : "Copy"}
@@ -129,7 +129,7 @@ function PrinterDialog({
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="font-semibold text-lg">{initial ? "Edit printer" : "Add printer"}</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={onSubmit} className="p-4 space-y-4">
           <div>
@@ -158,7 +158,7 @@ function PrinterDialog({
             <input {...register("lanIp")} className="w-full px-3 py-2 border rounded-xl" placeholder="192.168.1.50" />
           </div>
 
-          <div className="space-y-2 p-3 bg-slate-50 rounded-xl border">
+          <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border">
             <p className="text-sm font-semibold">What does this printer print?</p>
             <label className="flex items-center gap-2 text-sm">
               <input {...register("printsKitchenTicket")} type="checkbox" className="w-4 h-4" /> Kitchen tickets
@@ -171,7 +171,7 @@ function PrinterDialog({
             </label>
           </div>
 
-          <div className="space-y-2 p-3 bg-slate-50 rounded-xl border">
+          <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border">
             <p className="text-sm font-semibold">Behavior</p>
             <label className="flex items-center gap-2 text-sm">
               <input {...register("autoPrintOnNewOrder")} type="checkbox" className="w-4 h-4" /> Auto-print when a new order arrives
@@ -188,7 +188,7 @@ function PrinterDialog({
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200">Cancel</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">Cancel</button>
             <button type="submit" disabled={create.isPending || update.isPending} className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-60">
               {initial ? "Save changes" : "Add printer"}
             </button>
@@ -219,25 +219,25 @@ function PrinterCard({ p }: { p: Printer }) {
     <div className="bg-white rounded-2xl border p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-slate-100 rounded-xl"><PrinterIcon className="w-5 h-5 text-slate-700" /></div>
+          <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-xl"><PrinterIcon className="w-5 h-5 text-slate-700 dark:text-slate-300" /></div>
           <div>
             <div className="font-semibold flex items-center gap-2">
               {p.name} <StatusPill p={p} />
             </div>
-            <div className="text-xs text-slate-600">
+            <div className="text-xs text-slate-600 dark:text-slate-400">
               {p.model}{p.location ? ` · ${p.location}` : ""}{p.lanIp ? ` · ${p.lanIp}` : ""}
             </div>
-            <div className="text-xs text-slate-500 mt-0.5">
+            <div className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">
               Last polled {relTime(p.lastPolledAt as unknown as string | null)}
               {p.lastError ? ` · ${p.lastError}` : ""}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setEditing(true)} className="p-2 rounded-lg hover:bg-slate-100" title="Edit"><Pencil className="w-4 h-4" /></button>
+          <button onClick={() => setEditing(true)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Edit"><Pencil className="w-4 h-4" /></button>
           <button
             onClick={() => { if (confirm(`Delete printer "${p.name}"?`)) del.mutate({ id: p.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) }); }}
-            className="p-2 rounded-lg hover:bg-red-50 text-red-700"
+            className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 text-red-700 dark:text-red-400"
             title="Delete"
           >
             <Trash2 className="w-4 h-4" />
@@ -247,14 +247,14 @@ function PrinterCard({ p }: { p: Printer }) {
 
       <div className="mt-3 flex flex-wrap gap-1">
         {outputs.length === 0
-          ? <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">No output toggles enabled</span>
-          : outputs.map((o) => <span key={o} className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">{o}</span>)}
-        {p.autoPrintOnNewOrder && <span className="text-xs bg-green-50 text-green-800 px-2 py-0.5 rounded-full">Auto-print</span>}
-        {p.allowLanFallback && <span className="text-xs bg-blue-50 text-blue-800 px-2 py-0.5 rounded-full">LAN fallback</span>}
+          ? <span className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">No output toggles enabled</span>
+          : outputs.map((o) => <span key={o} className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full">{o}</span>)}
+        {p.autoPrintOnNewOrder && <span className="text-xs bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-300 px-2 py-0.5 rounded-full">Auto-print</span>}
+        {p.allowLanFallback && <span className="text-xs bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded-full">LAN fallback</span>}
       </div>
 
-      <div className="mt-3 p-2 bg-slate-50 rounded-lg flex items-center justify-between gap-2">
-        <div className="text-[11px] text-slate-600 break-all">
+      <div className="mt-3 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg flex items-center justify-between gap-2">
+        <div className="text-[11px] text-slate-600 dark:text-slate-400 break-all">
           <span className="font-medium">CloudPRNT URL:</span>{" "}
           <span className="font-mono">{cloudprntUrl}</span>
         </div>
@@ -270,17 +270,17 @@ function PrinterCard({ p }: { p: Printer }) {
         <button
           onClick={() => test.mutate({ id: p.id, data: { jobType: "kitchen_ticket" } })}
           disabled={test.isPending}
-          className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200"
+          className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
         >Test kitchen ticket</button>
         <button
           onClick={() => test.mutate({ id: p.id, data: { jobType: "customer_receipt" } })}
           disabled={test.isPending}
-          className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200"
+          className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
         >Test receipt</button>
         <button
           onClick={() => test.mutate({ id: p.id, data: { jobType: "item_label" } })}
           disabled={test.isPending}
-          className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200"
+          className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
         >Test label</button>
       </div>
 
@@ -309,22 +309,22 @@ function PrintJobsPanel() {
     <div className="bg-white rounded-2xl border shadow-sm">
       <div className="flex items-center justify-between p-4 border-b">
         <h2 className="font-semibold">Recent print jobs</h2>
-        <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-slate-100" title="Refresh"><RefreshCw className="w-4 h-4" /></button>
+        <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Refresh"><RefreshCw className="w-4 h-4" /></button>
       </div>
       {jobs.length === 0 ? (
-        <div className="p-6 text-center text-sm text-slate-500">No jobs yet. Send a test print to see them here.</div>
+        <div className="p-6 text-center text-sm text-slate-500 dark:text-slate-400">No jobs yet. Send a test print to see them here.</div>
       ) : (
         <div className="divide-y">
           {(jobs as PrintJob[]).map((j) => (
             <div key={j.id} className="p-3 flex items-center justify-between gap-3 text-sm">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-slate-500">#{j.id}</span>
+                  <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">#{j.id}</span>
                   <span className="font-medium">{j.jobType}</span>
                   <StatusBadge status={j.status} />
-                  {j.deliveredVia && <span className="text-[11px] text-slate-500">via {j.deliveredVia}</span>}
+                  {j.deliveredVia && <span className="text-[11px] text-slate-500 dark:text-slate-400">via {j.deliveredVia}</span>}
                 </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   printer #{j.printerId} · {relTime(j.createdAt as unknown as string)}
                   {j.attempts > 1 ? ` · ${j.attempts} attempts` : ""}
                   {j.error ? ` · ${j.error}` : ""}
@@ -333,7 +333,7 @@ function PrintJobsPanel() {
               {(j.status === "failed" || j.status === "delivered") && (
                 <button
                   onClick={() => retry.mutate({ id: j.id })}
-                  className="text-xs px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200"
+                  className="text-xs px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
                 >Retry</button>
               )}
             </div>
@@ -346,13 +346,13 @@ function PrintJobsPanel() {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    queued: "bg-amber-100 text-amber-800",
-    delivered: "bg-blue-100 text-blue-800",
-    printed: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
-    canceled: "bg-slate-100 text-slate-700",
+    queued: "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300",
+    delivered: "bg-blue-100 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300",
+    printed: "bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-300",
+    failed: "bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-300",
+    canceled: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300",
   };
-  return <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${map[status] ?? "bg-slate-100"}`}>{status}</span>;
+  return <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${map[status] ?? "bg-slate-100 dark:bg-slate-800"}`}>{status}</span>;
 }
 
 export default function Printers() {
@@ -373,7 +373,7 @@ export default function Printers() {
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <PrinterIcon className="w-6 h-6" /> Printers
             </h1>
-            <p className="text-sm text-slate-600 mt-1">
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
               Star CloudPRNT receipt printers (TSP143IV and other TSP models). Configure each printer's
               CloudPRNT URL on the printer's web UI to start polling for jobs.
             </p>

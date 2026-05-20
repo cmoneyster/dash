@@ -99,7 +99,7 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
         dragging
           ? "border-primary bg-primary/5 scale-[1.01]"
           : pasted
-          ? "border-emerald-500 bg-emerald-50"
+          ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40"
           : "border-border hover:border-primary/50 hover:bg-secondary/50"
       }`}
     >
@@ -187,7 +187,7 @@ function ImageCard({ image, onDelete, onCopy, onPreview, copied }: {
           <button
             onClick={onCopy}
             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              copied ? "bg-emerald-100 text-emerald-700" : "bg-secondary hover:bg-secondary/70"
+              copied ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" : "bg-secondary hover:bg-secondary/70"
             }`}
           >
             {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -204,7 +204,7 @@ function ImageCard({ image, onDelete, onCopy, onPreview, copied }: {
             <button
               onClick={() => setConfirmDelete(true)}
               onBlur={() => setTimeout(() => setConfirmDelete(false), 200)}
-              className="p-1.5 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors"
+              className="p-1.5 rounded-lg text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>

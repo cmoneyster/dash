@@ -226,7 +226,7 @@ function SortableRow({
           <h3 className="font-bold text-lg truncate">{p.name}</h3>
           {p.hidden && <span className="text-xs font-bold px-2 py-0.5 bg-muted text-muted-foreground rounded-full">Hidden</span>}
           {p.partiallyAvailable && (
-            <span className="text-xs font-bold px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full inline-flex items-center gap-1">
+            <span className="text-xs font-bold px-2 py-0.5 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-full inline-flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" /> Some items unavailable
             </span>
           )}

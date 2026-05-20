@@ -133,7 +133,7 @@ export default function IdleActivity() {
       </div>
 
       {error && (
-        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-400 text-sm">
           Failed to load idle activity. Try refreshing.
         </div>
       )}

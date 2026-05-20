@@ -320,8 +320,8 @@ function DetailPanel({
               <p className="text-2xl font-bold">{plan.guestCount ?? "—"}</p>
               <p className="text-xs text-muted-foreground font-medium mt-0.5">Guests</p>
             </div>
-            <div className={cn("p-3 rounded-xl text-center", expired ? "bg-red-50" : days <= 7 ? "bg-amber-50" : "bg-secondary/40")}>
-              <p className={cn("text-2xl font-bold", expired ? "text-red-600" : days <= 7 ? "text-amber-600" : "")}>
+            <div className={cn("p-3 rounded-xl text-center", expired ? "bg-red-50 dark:bg-red-950/40" : days <= 7 ? "bg-amber-50 dark:bg-amber-950/40" : "bg-secondary/40")}>
+              <p className={cn("text-2xl font-bold", expired ? "text-red-600 dark:text-red-400" : days <= 7 ? "text-amber-600 dark:text-amber-400" : "")}>
                 {expired ? "Exp." : `${days}d`}
               </p>
               <p className="text-xs text-muted-foreground font-medium mt-0.5">Until expiry</p>
@@ -451,7 +451,7 @@ function DetailPanel({
                           onClick={() => removeItem(item)}
                           disabled={removingId === item.id}
                           title="Remove from plan"
-                          className="p-1 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-30 shrink-0 mt-0.5"
+                          className="p-1 rounded-lg text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-500 transition-colors disabled:opacity-30 shrink-0 mt-0.5"
                         >
                           {removingId === item.id
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -488,8 +488,8 @@ function DetailPanel({
           </a>
 
           {/* Convert to inquiry */}
-          <div className="border border-violet-200 rounded-xl p-4 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-violet-700">Quote &amp; Inquiry</p>
+          <div className="border border-violet-200 dark:border-violet-800/50 rounded-xl p-4 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-400">Quote &amp; Inquiry</p>
             <p className="text-sm text-muted-foreground">
               Turn this customer plan into an admin catering inquiry so you can build a quote, send a PDF, and track status.
             </p>
@@ -507,7 +507,7 @@ function DetailPanel({
           </div>
 
           {/* Danger zone */}
-          <div className="border border-red-200 rounded-xl p-4 space-y-2">
+          <div className="border border-red-200 dark:border-red-800/50 rounded-xl p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-red-500">Danger Zone</p>
             {confirmDelete ? (
               <div className="space-y-2">

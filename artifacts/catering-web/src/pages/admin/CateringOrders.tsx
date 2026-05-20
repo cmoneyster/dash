@@ -46,11 +46,11 @@ function authHeaders() {
 }
 
 const STATUSES = [
-  { key: "inquiry", label: "Inquiry", color: "bg-blue-100 text-blue-700" },
-  { key: "quoted", label: "Quoted", color: "bg-violet-100 text-violet-700" },
-  { key: "confirmed", label: "Confirmed", color: "bg-emerald-100 text-emerald-700" },
+  { key: "inquiry", label: "Inquiry", color: "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400" },
+  { key: "quoted", label: "Quoted", color: "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400" },
+  { key: "confirmed", label: "Confirmed", color: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" },
   { key: "completed", label: "Completed", color: "bg-secondary text-muted-foreground" },
-  { key: "cancelled", label: "Cancelled", color: "bg-red-100 text-red-600" },
+  { key: "cancelled", label: "Cancelled", color: "bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400" },
 ];
 
 function getStatusMeta(key: string) {
@@ -827,7 +827,7 @@ function QuoteEditor({
                       className={numCls}
                     />
                     <span className="text-right text-sm font-semibold tabular-nums">{formatCurrency(lineTotal)}</span>
-                    <button type="button" onClick={() => removeItem(li.id)} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-destructive" title="Remove">
+                    <button type="button" onClick={() => removeItem(li.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40 text-muted-foreground hover:text-destructive" title="Remove">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -853,13 +853,13 @@ function QuoteEditor({
                       ) : null}
                       {li.priceMode === "manual" ? (
                         <span
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-semibold uppercase tracking-wider"
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 text-[10px] font-semibold uppercase tracking-wider"
                           title="Manual price — quantity changes won't re-apply tier pricing. Re-pick the item or size to unlock."
                         >
                           <Lock className="w-2.5 h-2.5" /> Manual price
                         </span>
                       ) : li.tierApplied ? (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-semibold uppercase tracking-wider">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-semibold uppercase tracking-wider">
                           Tier price applied
                         </span>
                       ) : null}
@@ -983,14 +983,14 @@ function QuoteEditor({
                     {formatCurrency(waived.originalAmount)}
                   </span>
                 </div>
-                <div className="text-right text-emerald-700 text-[10px]">
+                <div className="text-right text-emerald-700 dark:text-emerald-400 text-[10px]">
                   Waived — order met {formatCurrency(waived.waiverThreshold)} minimum
                 </div>
               </div>
             );
           })()}
           {totals.discArr.map(d => (
-            <div key={d.id} className="flex justify-between text-xs text-emerald-700">
+            <div key={d.id} className="flex justify-between text-xs text-emerald-700 dark:text-emerald-400">
               <span className="truncate pr-2">{d.label}{d.kind === "percent" ? ` (${d.amount}%)` : ""}</span>
               <span className="tabular-nums">-{formatCurrency(d.computed)}</span>
             </div>
@@ -1071,7 +1071,7 @@ function AdjustmentList({
                 onChange={e => onUpdate(r.id, { amount: e.target.value === "" ? 0 : Number(e.target.value) })}
                 className={numCls}
               />
-              <button type="button" onClick={() => onRemove(r.id)} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-destructive">
+              <button type="button" onClick={() => onRemove(r.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40 text-muted-foreground hover:text-destructive">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -1215,12 +1215,12 @@ function QuoteActions({
 
   return (
     <div className="border border-border rounded-xl overflow-hidden">
-      <div className="bg-violet-50 px-4 py-2 border-b border-border flex items-center gap-2">
-        <Send className="w-3.5 h-3.5 text-violet-700" />
-        <span className="text-xs font-bold uppercase tracking-wider text-violet-700">Quote Actions</span>
+      <div className="bg-violet-50 dark:bg-violet-950/40 px-4 py-2 border-b border-border flex items-center gap-2">
+        <Send className="w-3.5 h-3.5 text-violet-700 dark:text-violet-400" />
+        <span className="text-xs font-bold uppercase tracking-wider text-violet-700 dark:text-violet-400">Quote Actions</span>
         {isDirty && (
           <span
-            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase tracking-wider"
+            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-[10px] font-semibold uppercase tracking-wider"
             title="Form has edits that haven't been saved yet — quote actions will save them automatically before running."
           >
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
@@ -1317,16 +1317,16 @@ function QuoteActions({
         </div>
 
         {inquiry.quoteAcceptedAt && (
-          <div className="flex items-start gap-2 p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800">
+          <div className="flex items-start gap-2 p-3 rounded-lg border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300">
             <Check className="w-4 h-4 mt-0.5 shrink-0" />
             <div className="text-xs">
               <p className="font-semibold">Client accepted this quote</p>
-              <p className="text-emerald-700">{formatDateTime(inquiry.quoteAcceptedAt)}</p>
+              <p className="text-emerald-700 dark:text-emerald-400">{formatDateTime(inquiry.quoteAcceptedAt)}</p>
             </div>
           </div>
         )}
         {inquiry.quoteChangeRequestAt && !inquiry.quoteAcceptedAt && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-900 overflow-hidden">
+          <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 overflow-hidden">
             <div className="flex items-start gap-2 p-3">
               <MessageSquare className="w-4 h-4 mt-0.5 shrink-0" />
               <div className="text-xs space-y-1 min-w-0 flex-1">
@@ -1335,7 +1335,7 @@ function QuoteActions({
                     Client requested changes — {formatDateTime(inquiry.quoteChangeRequestAt)}
                   </p>
                   {inquiry.quoteChangeRequestRespondedAt && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-semibold">
                       <Check className="w-3 h-3" /> Responded
                     </span>
                   )}
@@ -1406,7 +1406,7 @@ function QuoteActions({
                     type="button"
                     onClick={dismissChangeRequest}
                     disabled={busy !== null}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-transparent text-amber-800 text-xs font-semibold rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-40 ml-auto"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-transparent text-amber-800 dark:text-amber-300 text-xs font-semibold rounded-lg hover:bg-amber-100 dark:hover:bg-amber-950/40 transition-colors disabled:opacity-40 ml-auto"
                   >
                     {busy === "dismiss" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                     Mark responded
@@ -1414,7 +1414,7 @@ function QuoteActions({
                 )}
               </div>
               {replyText.length > 0 && (
-                <p className="text-[10px] text-amber-700">{replyText.length}/2000</p>
+                <p className="text-[10px] text-amber-700 dark:text-amber-400">{replyText.length}/2000</p>
               )}
             </div>
           </div>
@@ -1430,12 +1430,12 @@ function QuoteActions({
 
 const SQUARE_STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-secondary text-muted-foreground",
-  UNPAID: "bg-amber-100 text-amber-700",
-  SCHEDULED: "bg-amber-100 text-amber-700",
-  PARTIALLY_PAID: "bg-blue-100 text-blue-700",
-  PAID: "bg-emerald-100 text-emerald-700",
-  CANCELED: "bg-red-100 text-red-600",
-  FAILED: "bg-red-100 text-red-600",
+  UNPAID: "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400",
+  SCHEDULED: "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400",
+  PARTIALLY_PAID: "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400",
+  PAID: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400",
+  CANCELED: "bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400",
+  FAILED: "bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400",
   REFUNDED: "bg-secondary text-muted-foreground",
 };
 
@@ -1566,9 +1566,9 @@ function SquarePanel({
 
   return (
     <div className="border border-border rounded-xl overflow-hidden">
-      <div className="bg-emerald-50 px-4 py-2 border-b border-border flex items-center gap-2">
-        <CreditCard className="w-3.5 h-3.5 text-emerald-700" />
-        <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">Square Invoice</span>
+      <div className="bg-emerald-50 dark:bg-emerald-950/40 px-4 py-2 border-b border-border flex items-center gap-2">
+        <CreditCard className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+        <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Square Invoice</span>
       </div>
       <div className="p-4 space-y-3 text-sm">
         {!hasInvoice ? (
@@ -1682,7 +1682,7 @@ function SquarePanel({
                 <span className="text-muted-foreground">Uninvoiced:</span>{" "}
                 <span className={cn(
                   "font-semibold tabular-nums",
-                  uninvoicedDelta > 0 && "text-emerald-700",
+                  uninvoicedDelta > 0 && "text-emerald-700 dark:text-emerald-400",
                 )}>
                   {formatCurrency(uninvoicedDelta)}
                 </span>
@@ -1713,7 +1713,7 @@ function SquarePanel({
                   type="button"
                   onClick={cancelSquareInvoice}
                   disabled={busy !== null}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-50 text-destructive text-sm font-semibold rounded-xl hover:bg-red-100 transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-50 dark:bg-red-950/40 text-destructive text-sm font-semibold rounded-xl hover:bg-red-100 dark:hover:bg-red-950/60 transition-colors disabled:opacity-50"
                 >
                   {busy === "cancel" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
                   Cancel Invoice
@@ -1724,7 +1724,7 @@ function SquarePanel({
                   type="button"
                   disabled
                   title={`Cancel the ${openSupplementals.length} outstanding supplemental${openSupplementals.length === 1 ? "" : "s"} first`}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-50/40 text-destructive/50 text-sm font-semibold rounded-xl cursor-not-allowed"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-50/40 dark:bg-red-950/20 text-destructive/50 text-sm font-semibold rounded-xl cursor-not-allowed"
                 >
                   <Ban className="w-4 h-4" /> Cancel Invoice
                 </button>
@@ -1828,10 +1828,10 @@ function SupplementalSubPanel({
   }
 
   return (
-    <div className="border-t border-border bg-emerald-50/40">
+    <div className="border-t border-border bg-emerald-50/40 dark:bg-emerald-950/20">
       <div className="px-4 py-2 border-b border-border flex items-center gap-2">
-        <Plus className="w-3.5 h-3.5 text-emerald-700" />
-        <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+        <Plus className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+        <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
           Supplemental Invoices
         </span>
       </div>
@@ -1883,7 +1883,7 @@ function SupplementalSubPanel({
               {delta.deltaDiscounts.map(d => (
                 <div key={`d-${d.id}`} className="flex justify-between gap-2">
                   <span className="text-muted-foreground truncate">{d.label}</span>
-                  <span className="font-medium tabular-nums text-emerald-700">
+                  <span className="font-medium tabular-nums text-emerald-700 dark:text-emerald-400">
                     −{d.kind === "percent" ? `${d.amount}%` : formatCurrency(d.amount)}
                   </span>
                 </div>
@@ -1967,7 +1967,7 @@ function SupplementalSubPanel({
                         type="button"
                         onClick={() => cancelSupplement(s.id)}
                         disabled={busy !== null}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-destructive text-xs font-semibold rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-950/40 text-destructive text-xs font-semibold rounded-lg hover:bg-red-100 dark:hover:bg-red-950/60 transition-colors disabled:opacity-50"
                       >
                         {busy === `cancel-${s.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
                         Cancel
@@ -2143,12 +2143,12 @@ function MessagesPanel({ inquiryId, hasPhone }: { inquiryId: number; hasPhone: b
         <h3 className="font-semibold text-sm">Messages</h3>
         {customerPhone && <span className="text-xs font-mono text-muted-foreground">{customerPhone}</span>}
         {blocked === "customer-opt-out" && (
-          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
+          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 rounded-full">
             Opted out
           </span>
         )}
         {blocked === "admin-blocked" && (
-          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full">
+          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-rose-100 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 rounded-full">
             Blocked
           </span>
         )}
@@ -2455,23 +2455,23 @@ function DetailPanel({
             const canEvalWaiver = setupFee != null && waiver != null && subtotalNum != null;
             const waivedHere = canEvalWaiver && subtotalNum >= waiver;
             return (
-              <div className="border border-orange-200 bg-orange-50/60 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 border-b border-orange-200 bg-orange-100/60 flex items-center gap-2">
-                  <Flame className="w-3.5 h-3.5 text-orange-700" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-orange-900">
+              <div className="border border-orange-200 dark:border-orange-800/50 bg-orange-50/60 dark:bg-orange-950/30 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 border-b border-orange-200 dark:border-orange-800/50 bg-orange-100/60 dark:bg-orange-950/40 flex items-center gap-2">
+                  <Flame className="w-3.5 h-3.5 text-orange-700 dark:text-orange-300" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-orange-900 dark:text-orange-200">
                     On the Dash Experience
                   </span>
                   {canEvalWaiver && (
                     waivedHere ? (
                       <span
-                        className="ml-auto text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full"
+                        className="ml-auto text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 rounded-full"
                         title={`Subtotal ${formatCurrency(subtotalNum!)} ≥ waiver threshold ${formatCurrency(waiver!)}`}
                       >
                         Setup fee waived
                       </span>
                     ) : (
                       <span
-                        className="ml-auto text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full"
+                        className="ml-auto text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 rounded-full"
                         title={`Subtotal ${formatCurrency(subtotalNum!)} < waiver threshold ${formatCurrency(waiver!)} — fee will be billed`}
                       >
                         Setup fee applies
@@ -2481,39 +2481,39 @@ function DetailPanel({
                 </div>
                 <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Setup fee</div>
-                    <div className="font-bold text-orange-900">{setupFee != null ? formatCurrency(setupFee) : "—"}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 dark:text-orange-200/70 font-semibold mb-0.5">Setup fee</div>
+                    <div className="font-bold text-orange-900 dark:text-orange-200">{setupFee != null ? formatCurrency(setupFee) : "—"}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Waived at</div>
-                    <div className="font-bold text-orange-900">{waiver != null ? formatCurrency(waiver) : "—"}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 dark:text-orange-200/70 font-semibold mb-0.5">Waived at</div>
+                    <div className="font-bold text-orange-900 dark:text-orange-200">{waiver != null ? formatCurrency(waiver) : "—"}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Included hours</div>
-                    <div className="font-bold text-orange-900">{incHrs != null ? `${incHrs} hr` : "—"}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 dark:text-orange-200/70 font-semibold mb-0.5">Included hours</div>
+                    <div className="font-bold text-orange-900 dark:text-orange-200">{incHrs != null ? `${incHrs} hr` : "—"}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Extra hour rate</div>
-                    <div className="font-bold text-orange-900">{addRate != null ? `${formatCurrency(addRate)}/hr` : "—"}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 dark:text-orange-200/70 font-semibold mb-0.5">Extra hour rate</div>
+                    <div className="font-bold text-orange-900 dark:text-orange-200">{addRate != null ? `${formatCurrency(addRate)}/hr` : "—"}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Max extra hours</div>
-                    <div className="font-bold text-orange-900">{maxAdd != null ? `${maxAdd} hr` : "—"}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 dark:text-orange-200/70 font-semibold mb-0.5">Max extra hours</div>
+                    <div className="font-bold text-orange-900 dark:text-orange-200">{maxAdd != null ? `${maxAdd} hr` : "—"}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 font-semibold mb-0.5">Eligible items</div>
+                    <div className="text-[10px] uppercase tracking-wider text-orange-900/70 dark:text-orange-200/70 font-semibold mb-0.5">Eligible items</div>
                     {totalItems === 0 ? (
-                      <div className="font-bold text-orange-900/60">—</div>
+                      <div className="font-bold text-orange-900/60 dark:text-orange-200/60">—</div>
                     ) : resolved === 0 ? (
                       <div
-                        className="font-bold text-orange-900/60"
+                        className="font-bold text-orange-900/60 dark:text-orange-200/60"
                         title="None of these items match the current menu, so eligibility can't be confirmed."
                       >
                         Unknown
                       </div>
                     ) : allResolvedEligible ? (
                       <div
-                        className="font-bold text-emerald-700 inline-flex items-center gap-1"
+                        className="font-bold text-emerald-700 dark:text-emerald-400 inline-flex items-center gap-1"
                         title={`All ${eligible} of ${resolved} matched item(s) are flagged On the Dash–eligible.`}
                       >
                         <Check className="w-3.5 h-3.5" />
@@ -2521,7 +2521,7 @@ function DetailPanel({
                       </div>
                     ) : (
                       <div
-                        className="font-bold text-amber-700 inline-flex items-center gap-1"
+                        className="font-bold text-amber-700 dark:text-amber-400 inline-flex items-center gap-1"
                         title={`Only ${eligible} of ${resolved} matched item(s) are still flagged On the Dash–eligible — ${resolved - eligible} item(s) would now be blocked.`}
                       >
                         <Ban className="w-3.5 h-3.5" />
@@ -2530,7 +2530,7 @@ function DetailPanel({
                     )}
                   </div>
                 </div>
-                <p className="px-4 pb-3 text-[11px] text-orange-900/70 italic">
+                <p className="px-4 pb-3 text-[11px] text-orange-900/70 dark:text-orange-200/70 italic">
                   These terms were snapshotted when the customer submitted this inquiry, so they remain accurate even if event settings change later.
                   {totalItems > 0 && resolved < totalItems && (
                     <> {totalItems - resolved} item(s) couldn't be matched to the current menu.</>
@@ -2594,7 +2594,7 @@ function DetailPanel({
                   </button>
                 </div>
                 {form.serviceMode !== inquiry.serviceMode && (
-                  <p className="mt-1.5 text-[11px] text-amber-700 max-w-[16rem]">
+                  <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400 max-w-[16rem]">
                     {form.serviceMode === "on_the_dash"
                       ? "Save to snapshot OTD pricing from current event settings."
                       : "Save to clear the OTD pricing snapshot."}
@@ -2735,7 +2735,7 @@ function DetailPanel({
             type="button"
             onClick={handleDelete}
             disabled={deleting}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-red-50 rounded-xl transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors"
           >
             {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
             Delete
@@ -3072,7 +3072,7 @@ export default function CateringOrders() {
                           )}
                           {inquiry.serviceMode === "on_the_dash" ? (
                             <span
-                              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-full font-bold uppercase tracking-wider"
+                              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 rounded-full font-bold uppercase tracking-wider"
                               title="On the Dash Experience — food trailer cooking on-site"
                             >
                               <Flame className="w-2.5 h-2.5" /> On the Dash
@@ -3086,17 +3086,17 @@ export default function CateringOrders() {
                             </span>
                           ) : null}
                           {inquiry.quoteNumber && (
-                            <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded-full">
+                            <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 rounded-full">
                               {inquiry.quoteNumber}
                             </span>
                           )}
                           {inquiry.quoteAcceptedAt && (
-                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-semibold">
+                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 rounded-full font-semibold">
                               <Check className="w-2.5 h-2.5" /> Accepted
                             </span>
                           )}
                           {inquiry.quoteChangeRequestAt && !inquiry.quoteAcceptedAt && (
-                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold">
+                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-full font-semibold">
                               <MessageSquare className="w-2.5 h-2.5" /> Changes requested
                             </span>
                           )}

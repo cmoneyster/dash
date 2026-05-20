@@ -23,9 +23,9 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
-  preparing: "bg-blue-100 text-blue-700",
-  ready: "bg-emerald-100 text-emerald-700",
+  pending: "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400",
+  preparing: "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400",
+  ready: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400",
   done: "bg-secondary text-muted-foreground",
 };
 
@@ -288,8 +288,8 @@ function SessionOrders({ sessionId, onOrdersDeleted }: { sessionId: number; onCl
 
           {/* Staff totals (with persisted subtotal/tax/total from POS orders) */}
           {showStaffTotals && (
-            <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 mb-2">
+            <div className="bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50 rounded-xl p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 mb-2">
                 Staff Order Taker totals ({staffOrdersInView.length} orders)
               </p>
               <div className="grid grid-cols-3 gap-3 text-center">
@@ -314,7 +314,7 @@ function SessionOrders({ sessionId, onOrdersDeleted }: { sessionId: number; onCl
               <button
                 onClick={handleDeleteAllOrders}
                 disabled={deleting}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-red-50 rounded-xl border border-border hover:border-red-200 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl border border-border hover:border-red-200 dark:hover:border-red-800/50 transition-colors disabled:opacity-50"
               >
                 {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                 Delete all orders
@@ -389,12 +389,12 @@ function SessionOrders({ sessionId, onOrdersDeleted }: { sessionId: number; onCl
                                   <div className="mt-1">
                                     <span className={cn(
                                       "inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
-                                      isOverride ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700",
+                                      isOverride ? "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300" : "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400",
                                     )}>
                                       Paid: {pay.label}
                                     </span>
                                     {isOverride && pay.reason && (
-                                      <p className="text-[11px] italic text-amber-800 mt-0.5 max-w-[18rem]">
+                                      <p className="text-[11px] italic text-amber-800 dark:text-amber-300 mt-0.5 max-w-[18rem]">
                                         Reason: {pay.reason}
                                       </p>
                                     )}
@@ -404,9 +404,9 @@ function SessionOrders({ sessionId, onOrdersDeleted }: { sessionId: number; onCl
                             </td>
                             <td className="px-3 py-2">
                               {isStaff ? (
-                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">Staff</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400">Staff</span>
                               ) : (
-                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Guest</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400">Guest</span>
                               )}
                             </td>
                             <td className="px-3 py-2">
@@ -508,18 +508,18 @@ export default function EventHistory() {
 
       {/* Active session banner */}
       {activeSession && (
-        <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 flex items-center gap-4">
+        <div className="mb-6 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 rounded-2xl px-5 py-4 flex items-center gap-4">
           <Zap className="w-5 h-5 text-emerald-600 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-emerald-800">Active: {activeSession.name}</p>
-            <p className="text-sm text-emerald-600">
+            <p className="font-semibold text-emerald-800 dark:text-emerald-300">Active: {activeSession.name}</p>
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">
               New orders are being tagged to this session.
               {activeSession.date && ` · ${formatDate(activeSession.date)}`}
             </p>
           </div>
           <button
             onClick={deactivate}
-            className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:text-emerald-900 transition-colors shrink-0"
+            className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 transition-colors shrink-0"
           >
             <ZapOff className="w-4 h-4" /> Deactivate
           </button>
@@ -542,14 +542,14 @@ export default function EventHistory() {
             const isExpanded = expandedId === session.id;
             const busy = actionLoading[session.id];
             return (
-              <div key={session.id} className={cn("bg-card border rounded-2xl shadow-sm overflow-hidden transition-all", session.isActive ? "border-emerald-300" : "border-border")}>
+              <div key={session.id} className={cn("bg-card border rounded-2xl shadow-sm overflow-hidden transition-all", session.isActive ? "border-emerald-300 dark:border-emerald-700" : "border-border")}>
                 <div className="p-5">
                   <div className="flex items-start gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         <h3 className="font-display font-bold text-lg">{session.name}</h3>
                         {session.isActive && (
-                          <span className="text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full flex items-center gap-1">
                             <Zap className="w-3 h-3" /> Active
                           </span>
                         )}
@@ -573,7 +573,7 @@ export default function EventHistory() {
                         <button
                           onClick={() => activate(session.id)}
                           disabled={busy}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg transition-colors disabled:opacity-50"
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 rounded-lg transition-colors disabled:opacity-50"
                         >
                           <Zap className="w-3.5 h-3.5" /> Set Active
                         </button>
@@ -591,7 +591,7 @@ export default function EventHistory() {
                       <button
                         onClick={() => deleteSession(session.id, session.name)}
                         disabled={busy}
-                        className="p-2 text-muted-foreground hover:text-destructive hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                        className="p-2 text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors disabled:opacity-50"
                         title="Delete session"
                       >
                         <Trash2 className="w-4 h-4" />

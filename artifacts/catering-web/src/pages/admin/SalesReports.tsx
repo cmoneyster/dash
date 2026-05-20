@@ -293,11 +293,11 @@ export default function SalesReports() {
       {report && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
-            <Kpi label="Revenue" value={fmt(report.totals.revenue)} icon={<DollarSign className="w-5 h-5" />} accent="text-emerald-600 bg-emerald-50" />
-            <Kpi label="Orders" value={String(report.totals.orderCount)} icon={<ShoppingBag className="w-5 h-5" />} accent="text-indigo-600 bg-indigo-50" />
-            <Kpi label="Items Sold" value={String(report.totals.itemCount)} icon={<Package className="w-5 h-5" />} accent="text-amber-600 bg-amber-50" />
-            <Kpi label="Avg Order" value={fmt(report.totals.avgOrderValue)} icon={<Users className="w-5 h-5" />} accent="text-sky-600 bg-sky-50" />
-            <Kpi label="Tax Collected" value={scope === "catering" ? "—" : fmt(report.totals.tax)} icon={<Receipt className="w-5 h-5" />} accent="text-rose-600 bg-rose-50" />
+            <Kpi label="Revenue" value={fmt(report.totals.revenue)} icon={<DollarSign className="w-5 h-5" />} accent="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40" />
+            <Kpi label="Orders" value={String(report.totals.orderCount)} icon={<ShoppingBag className="w-5 h-5" />} accent="text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40" />
+            <Kpi label="Items Sold" value={String(report.totals.itemCount)} icon={<Package className="w-5 h-5" />} accent="text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40" />
+            <Kpi label="Avg Order" value={fmt(report.totals.avgOrderValue)} icon={<Users className="w-5 h-5" />} accent="text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40" />
+            <Kpi label="Tax Collected" value={scope === "catering" ? "—" : fmt(report.totals.tax)} icon={<Receipt className="w-5 h-5" />} accent="text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40" />
             {scope !== "catering" && <VoidsKpi voids={report.totals.voids} />}
           </div>
 
@@ -381,7 +381,7 @@ export default function SalesReports() {
                       const isOpen = expanded.has(rowKey);
                       const isVoided = !isCatering && (o as ReportOrder).voided;
                       const rowClass = isVoided
-                        ? "border-b border-border/50 cursor-pointer bg-rose-50/40 hover:bg-rose-50/60 text-muted-foreground"
+                        ? "border-b border-border/50 cursor-pointer bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-50/60 dark:hover:bg-rose-950/30 text-muted-foreground"
                         : "border-b border-border/50 hover:bg-secondary/30 cursor-pointer";
                       return (
                         <Fragment key={rowKey}>
@@ -396,7 +396,7 @@ export default function SalesReports() {
                             <td className="px-3 py-2.5 font-mono text-xs">
                               {isCatering ? `C-${o.id}` : `#${o.id}`}
                               {isVoided && (
-                                <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                                <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
                                   <Ban className="w-3 h-3" /> Voided
                                 </span>
                               )}
@@ -406,10 +406,10 @@ export default function SalesReports() {
                             </td>
                             <td className="px-3 py-2.5">
                               {isCatering ? (
-                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-teal-100 text-teal-700">catering</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-teal-100 dark:bg-teal-950/40 text-teal-700 dark:text-teal-400">catering</span>
                               ) : (
                                 <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                                  (o as ReportOrder).source === "staff" ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100 text-emerald-700"
+                                  (o as ReportOrder).source === "staff" ? "bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400" : "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"
                                 }`}>{(o as ReportOrder).source}</span>
                               )}
                             </td>
@@ -427,7 +427,7 @@ export default function SalesReports() {
                             </td>
                             <td className="px-3 py-2.5">
                               {isCatering ? (
-                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-teal-100 text-teal-700">
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-teal-100 dark:bg-teal-950/40 text-teal-700 dark:text-teal-400">
                                   {(o as CateringOrder).squareInvoiceStatus ?? "Invoice"}
                                 </span>
                               ) : (
@@ -592,10 +592,10 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   other: "Other",
 };
 const PAYMENT_STYLES: Record<PaymentMethod, string> = {
-  cash: "bg-emerald-100 text-emerald-700",
-  card: "bg-sky-100 text-sky-700",
-  venmo: "bg-violet-100 text-violet-700",
-  override: "bg-amber-100 text-amber-800",
+  cash: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400",
+  card: "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400",
+  venmo: "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400",
+  override: "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300",
   other: "bg-secondary text-muted-foreground",
 };
 
@@ -667,7 +667,7 @@ function PickupTimeCard({ stats, totalOrders }: { stats: PickupStats; totalOrder
           avgSec={stats.avgPrepSec}
           medianSec={stats.medianPrepSec}
           totalOrders={totalOrders}
-          accent="bg-amber-50"
+          accent="bg-amber-50 dark:bg-amber-950/40"
         />
         <ServicePhaseCard
           title="Counter Wait"
@@ -676,7 +676,7 @@ function PickupTimeCard({ stats, totalOrders }: { stats: PickupStats; totalOrder
           avgSec={stats.avgReadyToPickupSec}
           medianSec={stats.medianReadyToPickupSec}
           totalOrders={totalOrders}
-          accent="bg-blue-50"
+          accent="bg-blue-50 dark:bg-blue-950/40"
         />
         <ServicePhaseCard
           title="Total Wait"
@@ -685,7 +685,7 @@ function PickupTimeCard({ stats, totalOrders }: { stats: PickupStats; totalOrder
           avgSec={stats.avgPickupSec}
           medianSec={stats.medianPickupSec}
           totalOrders={totalOrders}
-          accent="bg-emerald-50"
+          accent="bg-emerald-50 dark:bg-emerald-950/40"
         />
       </div>
     </div>
@@ -733,7 +733,7 @@ function PaymentMethodBreakdown({ totals }: { totals: ReportTotals }) {
 // voids, and surfaces "refund owed" as a sub-line for the cashier.
 function VoidsKpi({ voids }: { voids: ReportVoids }) {
   const hasVoids = voids.count > 0;
-  const accent = hasVoids ? "text-rose-700 bg-rose-100" : "text-muted-foreground bg-secondary";
+  const accent = hasVoids ? "text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/40" : "text-muted-foreground bg-secondary";
   return (
     <div className="bg-card border border-border rounded-2xl p-4 shadow-sm" data-testid="kpi-voids">
       <div className={`inline-flex items-center justify-center w-9 h-9 rounded-xl mb-2 ${accent}`}>
@@ -745,7 +745,7 @@ function VoidsKpi({ voids }: { voids: ReportVoids }) {
         <span className="text-base font-medium text-muted-foreground"> · {fmt(voids.totalAmount)}</span>
       </p>
       {voids.refundOwedAmount > 0 && (
-        <p className="text-[11px] text-rose-700 font-semibold mt-1 flex items-center gap-1">
+        <p className="text-[11px] text-rose-700 dark:text-rose-400 font-semibold mt-1 flex items-center gap-1">
           <AlertCircle className="w-3 h-3" />
           {fmt(voids.refundOwedAmount)} refund owed
         </p>
@@ -762,10 +762,10 @@ function VoidsKpi({ voids }: { voids: ReportVoids }) {
 function VoidsSection({ voids }: { voids: ReportVoids }) {
   if (voids.count === 0) return null;
   return (
-    <div className="bg-card border border-rose-200 rounded-2xl shadow-sm overflow-hidden mb-6" data-testid="voids-section">
-      <div className="px-5 py-4 border-b border-rose-200 bg-rose-50 flex items-center justify-between">
+    <div className="bg-card border border-rose-200 dark:border-rose-800/50 rounded-2xl shadow-sm overflow-hidden mb-6" data-testid="voids-section">
+      <div className="px-5 py-4 border-b border-rose-200 dark:border-rose-800/50 bg-rose-50 dark:bg-rose-950/40 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Ban className="w-5 h-5 text-rose-700" />
+          <Ban className="w-5 h-5 text-rose-700 dark:text-rose-400" />
           <div>
             <h2 className="font-display font-bold text-lg">Voids</h2>
             <p className="text-xs text-muted-foreground">
@@ -776,7 +776,7 @@ function VoidsSection({ voids }: { voids: ReportVoids }) {
         <div className="text-right text-xs">
           <p className="text-muted-foreground">{voids.count} void{voids.count === 1 ? "" : "s"} · {fmt(voids.totalAmount)}</p>
           {voids.refundOwedAmount > 0 && (
-            <p className="text-rose-700 font-semibold mt-0.5">{fmt(voids.refundOwedAmount)} refund owed</p>
+            <p className="text-rose-700 dark:text-rose-400 font-semibold mt-0.5">{fmt(voids.refundOwedAmount)} refund owed</p>
           )}
         </div>
       </div>
@@ -814,7 +814,7 @@ function VoidsSection({ voids }: { voids: ReportVoids }) {
                 <td className="px-3 py-2.5 text-xs max-w-[280px] break-words">{v.voidReason ?? ""}</td>
                 <td className="px-3 py-2.5">
                   {v.refundRequired ? (
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
                       Refund owed
                     </span>
                   ) : (
@@ -832,7 +832,7 @@ function VoidsSection({ voids }: { voids: ReportVoids }) {
 
 function SourceCard({ title, totals, accent = false }: { title: string; totals: ReportTotals; accent?: boolean }) {
   return (
-    <div className={`border rounded-2xl p-4 ${accent ? "border-indigo-200 bg-indigo-50/50" : "border-border bg-card"}`}>
+    <div className={`border rounded-2xl p-4 ${accent ? "border-indigo-200 dark:border-indigo-800/50 bg-indigo-50/50 dark:bg-indigo-950/40" : "border-border bg-card"}`}>
       <p className="font-semibold text-sm mb-2">{title}</p>
       <div className="grid grid-cols-3 gap-3 text-center">
         <div>

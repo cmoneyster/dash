@@ -50,12 +50,12 @@ function PasswordField({
       <label className="block text-sm font-semibold mb-1.5">
         {label}
         {hasExisting && !cleared && (
-          <span className="ml-2 text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+          <span className="ml-2 text-xs font-normal text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
             {existingLabel}
           </span>
         )}
         {cleared && (
-          <span className="ml-2 text-xs font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+          <span className="ml-2 text-xs font-normal text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
             Will be removed on save
           </span>
         )}
