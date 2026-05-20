@@ -157,9 +157,9 @@ type PrintJob = { order: EventOrder; mode: "receipt" | "kitchen" };
 const COMPLETED_STATUSES = new Set(["done", "picked_up"]);
 
 const STATUS_CONFIG = {
-  pending:   { label: "New",       color: "bg-red-100 text-red-700 border-red-200",     ring: "ring-2 ring-red-300"  },
-  preparing: { label: "Preparing", color: "bg-amber-100 text-amber-700 border-amber-200", ring: "ring-2 ring-amber-300" },
-  ready:     { label: "Ready",     color: "bg-emerald-100 text-emerald-700 border-emerald-200", ring: "ring-2 ring-emerald-300" },
+  pending:   { label: "New",       color: "bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/50",     ring: "ring-2 ring-red-300 dark:ring-red-800/50"  },
+  preparing: { label: "Preparing", color: "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/50", ring: "ring-2 ring-amber-300 dark:ring-amber-800/50" },
+  ready:     { label: "Ready",     color: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50", ring: "ring-2 ring-emerald-300 dark:ring-emerald-800/50" },
   done:      { label: "Done",      color: "bg-secondary text-muted-foreground border-border", ring: "" },
   picked_up: { label: "Picked Up", color: "bg-secondary text-muted-foreground border-border", ring: "" },
 };

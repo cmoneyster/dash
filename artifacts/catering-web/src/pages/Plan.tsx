@@ -823,14 +823,14 @@ export default function Plan() {
 
         {/* ── On the Dash ineligibility warning ── */}
         {serviceMode === "on_the_dash" && planHasIneligible && (
-          <div className="mb-6 p-5 rounded-2xl border border-amber-300 bg-amber-50 space-y-3">
+          <div className="mb-6 p-5 rounded-2xl border border-amber-300 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/40 space-y-3">
             <div className="flex items-start gap-2.5">
-              <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0 text-amber-700" />
+              <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0 text-amber-700 dark:text-amber-400" />
               <div className="flex-1">
-                <p className="text-sm font-bold text-amber-900">
+                <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
                   Some saved items can't be cooked on-site
                 </p>
-                <p className="text-xs text-amber-800/90 mt-0.5">
+                <p className="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
                   You're set to <strong>On the Dash Experience</strong>, but our food trailer can't prepare these items live. Switch to Standard Drop-Off Catering to keep them, or remove them from your plan.
                 </p>
               </div>

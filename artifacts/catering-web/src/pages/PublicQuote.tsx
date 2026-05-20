@@ -400,9 +400,9 @@ export default function PublicQuote() {
 
         {/* Square payment status */}
         {quote.square && (
-          <div className="px-8 py-5 border-t border-border bg-violet-50/40">
+          <div className="px-8 py-5 border-t border-border bg-violet-50/40 dark:bg-violet-950/40">
             {quote.square.paidInFullAt ? (
-              <div className="flex items-center gap-2 text-emerald-700">
+              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
                 <CheckCircle2 className="w-5 h-5" />
                 <p className="font-semibold">Paid in full — thank you!</p>
               </div>
@@ -411,7 +411,7 @@ export default function PublicQuote() {
                 <div className="text-sm">
                   {quote.square.depositPaidAt ? (
                     <>
-                      <p className="font-semibold text-emerald-700">Deposit received: {formatCurrency(quote.square.amountPaid)}</p>
+                      <p className="font-semibold text-emerald-700 dark:text-emerald-400">Deposit received: {formatCurrency(quote.square.amountPaid)}</p>
                       <p className="text-muted-foreground">Remaining balance: <strong>{formatCurrency(quote.square.balanceDue)}</strong></p>
                     </>
                   ) : (
@@ -439,25 +439,25 @@ export default function PublicQuote() {
 
         {/* Client response state */}
         {quote.acceptedAt ? (
-          <div className="px-8 py-5 border-t border-border bg-emerald-50/60">
-            <div className="flex items-center gap-2 text-emerald-800">
+          <div className="px-8 py-5 border-t border-border bg-emerald-50/60 dark:bg-emerald-950/40">
+            <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-400">
               <CheckCircle2 className="w-5 h-5" />
               <p className="font-semibold">Quote accepted on {fmtDate(quote.acceptedAt)} — thank you!</p>
             </div>
-            <p className="text-xs text-emerald-700/80 mt-1 ml-7">
+            <p className="text-xs text-emerald-700/80 dark:text-emerald-500/80 mt-1 ml-7">
               We'll be in touch with next steps. Reach out anytime if anything changes.
             </p>
           </div>
         ) : quote.changeRequestAt ? (
-          <div className="px-8 py-5 border-t border-border bg-amber-50/60">
-            <div className="flex items-center gap-2 text-amber-800">
+          <div className="px-8 py-5 border-t border-border bg-amber-50/60 dark:bg-amber-950/40">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-400">
               <MessageSquare className="w-5 h-5" />
               <p className="font-semibold">Changes requested on {fmtDate(quote.changeRequestAt)}</p>
             </div>
             {quote.changeRequestMessage && (
-              <p className="text-sm text-amber-900 mt-2 ml-7 whitespace-pre-wrap italic">"{quote.changeRequestMessage}"</p>
+              <p className="text-sm text-amber-900 dark:text-amber-300 mt-2 ml-7 whitespace-pre-wrap italic">"{quote.changeRequestMessage}"</p>
             )}
-            <p className="text-xs text-amber-700/80 mt-2 ml-7">
+            <p className="text-xs text-amber-700/80 dark:text-amber-500/80 mt-2 ml-7">
               We'll review and follow up shortly. You can still accept this quote below if you change your mind.
             </p>
           </div>
@@ -471,9 +471,9 @@ export default function PublicQuote() {
               const missingTime = !quote.client.eventTime;
               const needsInput = missingDate || missingTime || showDateTimeEdit;
               return needsInput ? (
-                <div className={`rounded-xl border p-4 space-y-3 ${missingDate || missingTime ? "border-amber-300 bg-amber-50/60" : "border-border bg-secondary/30"}`}>
+                <div className={`rounded-xl border p-4 space-y-3 ${missingDate || missingTime ? "border-amber-300 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/40" : "border-border bg-secondary/30"}`}>
                   {(missingDate || missingTime) && (
-                    <p className="text-sm font-semibold text-amber-800">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-400">
                       {missingDate && missingTime
                         ? "A delivery date and time are required to confirm your order."
                         : missingDate

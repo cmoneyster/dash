@@ -358,7 +358,7 @@ export default function UnmatchedMessages() {
                         type="button"
                         onClick={() => handleBlock(m)}
                         disabled={busy === `block:${m.id}`}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 border border-amber-300 rounded-lg px-2 py-1 hover:bg-amber-50 transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800/50 rounded-lg px-2 py-1 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors disabled:opacity-50"
                         title="Block sender and remove all their messages"
                       >
                         {busy === `block:${m.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldAlert className="w-3 h-3" />}

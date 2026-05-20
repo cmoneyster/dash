@@ -539,25 +539,25 @@ export default function SharedPlan() {
           const ineligible = plan.items.filter(it => !it.menuItem.otdEligible);
           if (ineligible.length === 0) return null;
           return (
-            <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-5">
+            <div className="mb-6 rounded-2xl border border-amber-300 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/40 p-5">
               <div className="flex items-start gap-3 mb-3">
-                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold text-amber-900">
+                  <p className="font-semibold text-amber-900 dark:text-amber-200">
                     Some items aren't available with the On the Dash Experience
                   </p>
-                  <p className="text-sm text-amber-800 mt-1">
+                  <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
                     Our mobile trailer can't prepare these on-site. Remove them or switch to Standard Drop-Off.
                   </p>
                 </div>
               </div>
               <ul className="space-y-2 mb-4">
                 {ineligible.map(it => (
-                  <li key={it.id} className="flex items-center justify-between gap-3 bg-white/60 rounded-lg px-3 py-2">
-                    <span className="text-sm text-amber-900 truncate">{it.menuItem.name}</span>
+                  <li key={it.id} className="flex items-center justify-between gap-3 bg-white/60 dark:bg-amber-950/30 rounded-lg px-3 py-2">
+                    <span className="text-sm text-amber-900 dark:text-amber-200 truncate">{it.menuItem.name}</span>
                     <button
                       onClick={() => handleRemove(it.id)}
-                      className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 transition-colors"
+                      className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/50 dark:hover:bg-amber-900/70 text-amber-900 dark:text-amber-200 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> Remove
                     </button>
