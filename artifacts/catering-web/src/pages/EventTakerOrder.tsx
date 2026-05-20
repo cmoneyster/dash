@@ -806,10 +806,10 @@ export default function EventTakerOrder() {
   // ── Confirmation / printable receipt screen ─────────────────────
   if (confirmation && lastReceipt) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-background to-emerald-100 flex items-center justify-center p-4 print:bg-white print:p-0">
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-background to-emerald-100 dark:from-emerald-950/20 dark:to-emerald-900/10 flex items-center justify-center p-4 print:bg-white print:p-0">
         <div className="bg-card border border-border rounded-3xl shadow-xl p-6 max-w-md w-full print:shadow-none print:border-0 print:rounded-none">
           <div className="text-center mb-4 print:hidden">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 mb-2">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 mb-2">
               <Check className="w-7 h-7" />
             </div>
             <h2 className="font-display font-bold text-2xl">Order placed!</h2>
@@ -829,7 +829,7 @@ export default function EventTakerOrder() {
           {/* Customer receipt — visible on screen as preview, printed only in receipt mode */}
           <div
             id="receipt"
-            className={`font-mono text-sm bg-white border border-dashed border-border rounded-xl p-4 print:border-0 print:p-0 ${printMode === "kitchen" ? "print:hidden" : ""}`}
+            className={`font-mono text-sm bg-white dark:bg-card border border-dashed border-border rounded-xl p-4 print:border-0 print:p-0 ${printMode === "kitchen" ? "print:hidden" : ""}`}
           >
             <div className="text-center mb-3">
               <p className="font-bold text-base">{settings?.eventName || "dash by Hollywood East Cafe"}</p>
@@ -992,7 +992,7 @@ export default function EventTakerOrder() {
               onClick={() => setShowPendingPanel(true)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
                 pendingOrders.length > 0
-                  ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                  ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 dark:hover:bg-amber-900/40"
                   : "bg-secondary text-muted-foreground border-transparent hover:text-foreground"
               }`}
               title="Orders awaiting payment"
@@ -1009,7 +1009,7 @@ export default function EventTakerOrder() {
               onClick={() => setShowSentPanel(true)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
                 sentOrders.length > 0
-                  ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                  ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800/50 hover:bg-rose-100 dark:hover:bg-rose-900/40"
                   : "bg-secondary text-muted-foreground border-transparent hover:text-foreground"
               }`}
               title="Orders already sent to the kitchen — void if needed"
@@ -1126,7 +1126,7 @@ export default function EventTakerOrder() {
                               </span>
                             ) : lowStock ? (
                               <span
-                                className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full uppercase tracking-wider"
+                                className="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full uppercase tracking-wider"
                                 data-testid={`stock-badge-${item.id}`}
                               >
                                 {stock} left
@@ -1204,7 +1204,7 @@ export default function EventTakerOrder() {
 
           {stockWarning && (
             <div
-              className="mx-5 mt-3 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs flex items-start gap-1.5"
+              className="mx-5 mt-3 px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-1.5"
               data-testid="taker-stock-warning"
               role="status"
             >
@@ -1226,7 +1226,7 @@ export default function EventTakerOrder() {
                     <p className="text-sm font-semibold truncate">{line.name}</p>
                     <p className="text-xs text-muted-foreground">${line.unitPrice.toFixed(2)} × {line.quantity} = ${(line.unitPrice * line.quantity).toFixed(2)}</p>
                     {atMax && (
-                      <p className="text-[11px] text-amber-700 font-semibold mt-0.5">All {stock} remaining in cart</p>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold mt-0.5">All {stock} remaining in cart</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -1272,7 +1272,7 @@ export default function EventTakerOrder() {
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm"
               />
               {settings?.orderingState && settings.orderingState !== "accepting" && (
-                <div className={`rounded-xl border p-3 text-sm ${settings.orderingState === "paused" ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-rose-50 border-rose-200 text-rose-900"}`}>
+                <div className={`rounded-xl border p-3 text-sm ${settings.orderingState === "paused" ? "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-200" : "bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/50 text-rose-900 dark:text-rose-200"}`}>
                   <p className="font-bold">
                     {settings.orderingState === "paused"
                       ? `Kitchen paused order taking — back in ${formatTakerBannerTime(settings.orderingPausedUntil ?? null, tickNow)}`
@@ -1388,9 +1388,9 @@ function PrintStatusRow({
 }) {
   const failed = status === "canceled" || status === "blocked";
   const tone =
-    status === "printed" ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-    : status === "printing" ? "bg-sky-50 text-sky-700 border-sky-200"
-    : "bg-rose-50 text-rose-700 border-rose-200"; // canceled / blocked
+    status === "printed" ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50"
+    : status === "printing" ? "bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/50"
+    : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800/50"; // canceled / blocked
   const message =
     status === "printed" ? "Sent to printer"
     : status === "printing" ? "Sending to printer…"
@@ -1599,7 +1599,7 @@ function PaymentModal({
             <div className="grid gap-2.5 mt-4">
               <button
                 onClick={() => { setStep("cash"); setCashStr(total.toFixed(2)); setError(""); }}
-                className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
+                className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors"
               >
                 <DollarSign className="w-6 h-6 text-emerald-600" />
                 <span className="font-bold text-lg">Cash</span>
@@ -1607,7 +1607,7 @@ function PaymentModal({
               </button>
               <button
                 onClick={() => { setStep("card"); setError(""); }}
-                className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-indigo-400 hover:bg-indigo-50 transition-colors"
+                className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-colors"
               >
                 <CreditCard className="w-6 h-6 text-indigo-600" />
                 <span className="font-bold text-lg">Credit Card</span>
@@ -1622,7 +1622,7 @@ function PaymentModal({
                     title={venmoConfigured ? undefined : "Set the Venmo handle / QR in Admin → Event Settings"}
                     className={`flex items-center gap-3 px-4 py-4 border border-border rounded-2xl transition-colors ${
                       venmoConfigured
-                        ? "hover:border-sky-400 hover:bg-sky-50"
+                        ? "hover:border-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/20"
                         : "opacity-50 cursor-not-allowed"
                     }`}
                   >
@@ -1646,7 +1646,7 @@ function PaymentModal({
               {isOverride ? (
                 // Already overridden — fold into a status note instead of
                 // re-offering the override action.
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
+                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                   <p>
                     Already sent to kitchen unpaid. Recording payment will close the tab without re-firing the order or re-texting the customer.
@@ -1713,7 +1713,7 @@ function PaymentModal({
             </button>
             <div className="text-center">
               <p className="text-xs uppercase tracking-wider text-muted-foreground">Total Due</p>
-              <p className="text-3xl font-display font-bold text-emerald-600">${total.toFixed(2)}</p>
+              <p className="text-3xl font-display font-bold text-emerald-600 dark:text-emerald-400">${total.toFixed(2)}</p>
               <p className="text-xs text-muted-foreground mt-1">{(order.taxRate ?? 0) > 0 ? TAX_INCLUDED_NOTE : TAX_DISCLOSURE}</p>
             </div>
             <div>
@@ -1746,12 +1746,12 @@ function PaymentModal({
             </div>
             <div className="bg-secondary/40 rounded-xl p-3 text-sm">
               <div className="flex justify-between"><span>Change due</span>
-                <span className={`font-bold text-lg ${cashOk ? "text-emerald-600" : "text-muted-foreground"}`}>
+                <span className={`font-bold text-lg ${cashOk ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
                   ${cashOk ? change.toFixed(2) : "—"}
                 </span>
               </div>
               {!cashOk && cashStr !== "" && (
-                <p className="text-xs text-amber-700 mt-1">Need at least ${total.toFixed(2)}</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">Need at least ${total.toFixed(2)}</p>
               )}
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
@@ -1780,7 +1780,7 @@ function PaymentModal({
               <p className="text-xs uppercase tracking-wider text-muted-foreground">Charge on terminal</p>
               <p className="text-3xl font-display font-bold text-indigo-600">${total.toFixed(2)}</p>
             </div>
-            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm text-indigo-900 space-y-1">
+            <div className="bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50 rounded-xl p-4 text-sm text-indigo-900 dark:text-indigo-200 space-y-1">
               <p className="font-semibold">Process this amount on your card terminal.</p>
               <p>When the terminal confirms approval, tap <strong>Approved</strong> below to send the order to the kitchen. If the card is declined, tap <strong>Declined</strong> to return.</p>
             </div>
@@ -2014,8 +2014,8 @@ function PlatingModal({
               const assigned = assignedFor(ln.itemId);
               const remaining = ln.quantity - assigned;
               const tone =
-                remaining === 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                : "bg-amber-50 text-amber-800 border-amber-200";
+                remaining === 0 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50"
+                : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/50";
               return (
                 <span
                   key={ln.itemId}
@@ -2070,7 +2070,7 @@ function PlatingModal({
                       <span className="flex-1 truncate">{ln.name}</span>
                       <span
                         className={`text-[11px] tabular-nums whitespace-nowrap font-medium ${
-                          remaining > 0 ? "text-amber-700" : "text-muted-foreground"
+                          remaining > 0 ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"
                         }`}
                         data-testid={`text-plate-${plateIdx}-item-${ln.itemId}-remaining`}
                       >
@@ -2193,7 +2193,7 @@ function PendingPanel({
                 key={o.id}
                 className={`border rounded-2xl p-3 ${
                   isOverride
-                    ? "border-amber-300 bg-amber-50/60"
+                    ? "border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-amber-950/30"
                     : "border-border bg-secondary/20"
                 }`}
                 data-testid={`pending-row-${o.id}`}
@@ -2204,7 +2204,7 @@ function PendingPanel({
                       <p className="font-bold text-sm truncate">{o.guestName}</p>
                       {isOverride && (
                         <span
-                          className="text-[10px] font-bold uppercase tracking-wider bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full whitespace-nowrap inline-flex items-center gap-0.5"
+                          className="text-[10px] font-bold uppercase tracking-wider bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 px-1.5 py-0.5 rounded-full whitespace-nowrap inline-flex items-center gap-0.5"
                           data-testid={`badge-override-${o.id}`}
                           title="Order has been fired to the kitchen but is still awaiting payment"
                         >
@@ -2217,12 +2217,12 @@ function PendingPanel({
                       #{o.id} · {ageMin}m ago{o.phoneNumber ? ` · ${o.phoneNumber}` : ""}
                     </p>
                     {isOverride && o.paymentOverrideReason && (
-                      <p className="text-[11px] italic text-amber-800 mt-0.5 truncate" title={o.paymentOverrideReason}>
+                      <p className="text-[11px] italic text-amber-800 dark:text-amber-300 mt-0.5 truncate" title={o.paymentOverrideReason}>
                         Reason: {o.paymentOverrideReason}
                       </p>
                     )}
                   </div>
-                  <p className="font-bold text-base text-amber-700 shrink-0">${total.toFixed(2)}</p>
+                  <p className="font-bold text-base text-amber-700 dark:text-amber-400 shrink-0">${total.toFixed(2)}</p>
                 </div>
                 <ul className="text-xs text-muted-foreground space-y-0.5 mb-3">
                   {o.items.slice(0, 4).map(i => (
@@ -2254,8 +2254,8 @@ function PendingPanel({
                         }}
                         className={`px-3 py-2 text-sm font-semibold rounded-lg border ${
                           overrideForId === o.id
-                            ? "bg-amber-100 border-amber-300 text-amber-800"
-                            : "border-amber-300 text-amber-700 hover:bg-amber-50"
+                            ? "bg-amber-100 dark:bg-amber-900/40 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300"
+                            : "border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40"
                         }`}
                         title="Send to kitchen unpaid"
                       >
@@ -2276,7 +2276,7 @@ function PendingPanel({
                     // a clear path to back the order out without payment.
                     <button
                       onClick={() => onVoid(o)}
-                      className="px-3 py-2 text-sm font-semibold text-rose-700 border border-rose-300 rounded-lg hover:bg-rose-50"
+                      className="px-3 py-2 text-sm font-semibold text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-700 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40"
                       title="Void — pull this order back from the kitchen"
                       data-testid={`button-void-${o.id}`}
                     >
@@ -2348,8 +2348,8 @@ function SentOrdersPanel({
     return s ?? "—";
   }
   function statusTone(s?: string | null): string {
-    if (s === "preparing") return "bg-amber-100 text-amber-800 border-amber-200";
-    if (s === "ready") return "bg-emerald-100 text-emerald-800 border-emerald-200";
+    if (s === "preparing") return "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/50";
+    if (s === "ready") return "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50";
     return "bg-secondary text-muted-foreground border-border"; // queued / unknown
   }
   return (
@@ -2410,7 +2410,7 @@ function SentOrdersPanel({
                   return (
                     <div
                       key={v.id}
-                      className="border border-rose-200 bg-rose-50/40 rounded-xl p-2.5 text-xs"
+                      className="border border-rose-200 dark:border-rose-800/50 bg-rose-50/40 dark:bg-rose-950/20 rounded-xl p-2.5 text-xs"
                       data-testid={`recent-void-row-${v.id}`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -2419,7 +2419,7 @@ function SentOrdersPanel({
                             #{v.id} · {v.guestName}
                           </p>
                           <p className="text-muted-foreground mt-0.5">
-                            <span className="font-semibold text-rose-800" data-testid={`recent-void-by-${v.id}`}>
+                            <span className="font-semibold text-rose-800 dark:text-rose-300" data-testid={`recent-void-by-${v.id}`}>
                               {v.voidedBy ?? "Unknown"}
                             </span>
                             {ageMin != null ? <> · {ageMin}m ago</> : null}
@@ -2433,7 +2433,7 @@ function SentOrdersPanel({
                         <div className="text-right shrink-0">
                           <p className="font-bold text-foreground line-through">${total.toFixed(2)}</p>
                           {v.refundRequired && (
-                            <span className="inline-block mt-0.5 text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                            <span className="inline-block mt-0.5 text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
                               Refund owed
                             </span>
                           )}
@@ -2465,11 +2465,11 @@ function SentOrdersPanel({
                         {statusLabel(o.status)}
                       </span>
                       {isPaid ? (
-                        <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 px-1.5 py-0.5 rounded-full">
                           Paid · {o.paymentMethod ?? "?"}
                         </span>
                       ) : (
-                        <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 px-1.5 py-0.5 rounded-full">
                           Override · owed
                         </span>
                       )}
@@ -2479,7 +2479,7 @@ function SentOrdersPanel({
                     </p>
                     {!isPaid && o.paymentOverrideReason && (
                       <p
-                        className="text-[11px] italic text-amber-900 mt-0.5 break-words"
+                        className="text-[11px] italic text-amber-900 dark:text-amber-300 mt-0.5 break-words"
                         data-testid={`sent-override-reason-${o.id}`}
                       >
                         Override reason: {o.paymentOverrideReason}
@@ -2624,22 +2624,22 @@ function VoidModal({
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm print:hidden">
       <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden" data-testid="void-modal">
-        <div className="px-6 py-4 border-b border-border bg-rose-50 flex items-start justify-between gap-3">
+        <div className="px-6 py-4 border-b border-border bg-rose-50 dark:bg-rose-950/30 flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wider text-rose-700 font-semibold">Void order #{order.id}</p>
+            <p className="text-xs uppercase tracking-wider text-rose-700 dark:text-rose-400 font-semibold">Void order #{order.id}</p>
             <h2 className="font-display font-bold text-xl mt-0.5 text-foreground">{order.guestName}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
               {order.items.reduce((s, i) => s + i.quantity, 0)} item(s) · ${total.toFixed(2)}
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-rose-100 rounded-lg" disabled={submitting}>
+          <button onClick={onClose} className="p-1.5 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded-lg" disabled={submitting}>
             <XIcon className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-5 space-y-4">
           {cookingStarted && (
-            <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 rounded-xl text-sm text-amber-800 dark:text-amber-300">
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
               <p>
                 The kitchen is already <strong>{order.status === "ready" ? "plating this order" : "cooking this order"}</strong>.
@@ -2684,15 +2684,15 @@ function VoidModal({
           </label>
 
           {isPaid && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
-              <div className="flex items-start gap-2 text-sm text-rose-800">
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50 rounded-xl space-y-2">
+              <div className="flex items-start gap-2 text-sm text-rose-800 dark:text-rose-300">
                 <DollarSign className="w-4 h-4 mt-0.5 shrink-0" />
                 <p>
                   <strong>${total.toFixed(2)}</strong> was charged to {order.paymentMethod ?? "the customer"}.
                   Voiding does <strong>not</strong> automatically refund — you must process the refund out of band.
                 </p>
               </div>
-              <label className="flex items-start gap-2 text-sm text-rose-900 cursor-pointer select-none">
+              <label className="flex items-start gap-2 text-sm text-rose-900 dark:text-rose-300 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={ack}
