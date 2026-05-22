@@ -14,6 +14,7 @@ interface PersistedState {
   messages: Message[];
   savedAt: number;
   inquiryId: number | null;
+  inquiryToken?: string | null;
 }
 
 function storageKey(sid: string) {
@@ -39,7 +40,7 @@ function loadPersisted(sid: string): PersistedState | null {
   }
 }
 
-function savePersisted(sid: string, messages: Message[], inquiryId: number | null) {
+function savePersisted(sid: string, messages: Message[], inquiryId: number | null, inquiryToken: string | null) {
   if (typeof window === "undefined") return;
   try {
     const realMessages = messages.filter(m => !m.id.startsWith("_welcome"));
@@ -47,6 +48,7 @@ function savePersisted(sid: string, messages: Message[], inquiryId: number | nul
       messages: realMessages.slice(-CHAT_MAX_MESSAGES),
       savedAt: Date.now(),
       inquiryId,
+      inquiryToken,
     };
     localStorage.setItem(storageKey(sid), JSON.stringify(state));
   } catch {}
@@ -81,13 +83,18 @@ export function useChatStream() {
     return stored?.inquiryId ?? null;
   });
 
+  const [inquiryToken, setInquiryToken] = useState<string | null>(() => {
+    const stored = loadPersisted(getSessionId());
+    return stored?.inquiryToken ?? null;
+  });
+
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    savePersisted(sessionId, messages, inquiryId);
-  }, [messages, inquiryId, sessionId]);
+    savePersisted(sessionId, messages, inquiryId, inquiryToken);
+  }, [messages, inquiryId, inquiryToken, sessionId]);
 
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim()) return;
@@ -148,6 +155,7 @@ export function useChatStream() {
               const data = JSON.parse(dataStr);
               if (data.done) {
                 if (data.inquiryId) setInquiryId(data.inquiryId);
+                if (data.inquiryToken) setInquiryToken(data.inquiryToken);
                 break outer;
               }
               if (data.content) {
@@ -181,5 +189,5 @@ export function useChatStream() {
     }
   }, [messages, sessionId]);
 
-  return { messages, sendMessage, isTyping, error, inquiryId };
+  return { messages, sendMessage, isTyping, error, inquiryId, inquiryToken };
 }

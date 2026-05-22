@@ -130,11 +130,16 @@ function extractContext(messages: Message[], inquiryId: number | null): Conversa
   return { eventDate, guestCount, serviceStyle, inquiryId };
 }
 
-function buildCtaHref(ctx: ConversationContext): { label: string; href: string } {
-  if (ctx.inquiryId) {
+// inquiryToken is passed separately since it's not part of ConversationContext
+// (it comes from the hook, not from message text).
+function buildCtaHref(
+  ctx: ConversationContext,
+  inquiryToken: string | null,
+): { label: string; href: string } {
+  if (inquiryToken) {
     return {
       label: "View your inquiry",
-      href: `/inquiry/${ctx.inquiryId}`,
+      href: `/inquiry/${inquiryToken}`,
     };
   }
   if (ctx.guestCount && ctx.serviceStyle) {
@@ -145,9 +150,10 @@ function buildCtaHref(ctx: ConversationContext): { label: string; href: string }
     return { label: "Build your plan", href: `/plan?${params.toString()}` };
   }
   if (ctx.eventDate) {
+    // Date known but no count/style yet — invite them to check availability on the plan page.
     const params = new URLSearchParams();
     params.set("date", ctx.eventDate);
-    return { label: "Build your plan", href: `/plan?${params.toString()}` };
+    return { label: "Check availability", href: `/plan?${params.toString()}` };
   }
   return { label: "Browse the menu", href: "/menu" };
 }
@@ -155,7 +161,7 @@ function buildCtaHref(ctx: ConversationContext): { label: string; href: string }
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
-  const { messages, sendMessage, isTyping, inquiryId } = useChatStream();
+  const { messages, sendMessage, isTyping, inquiryId, inquiryToken } = useChatStream();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
 
@@ -177,7 +183,7 @@ export function ChatWidget() {
   };
 
   const ctx = extractContext(messages, inquiryId);
-  const cta = buildCtaHref(ctx);
+  const cta = buildCtaHref(ctx, inquiryToken);
 
   return (
     <>

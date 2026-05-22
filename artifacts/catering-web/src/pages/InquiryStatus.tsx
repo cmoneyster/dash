@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "wouter";
-import { CheckCircle, Calendar, Users, Truck, Clock, ChefHat } from "lucide-react";
+import { CheckCircle, Calendar, Users, Truck, Clock, ChefHat, Phone, Mail } from "lucide-react";
 
 interface InquiryData {
   id: number;
   clientName: string;
+  maskedPhone: string | null;
+  maskedEmail: string | null;
   eventDate: string | null;
   guestCount: number | null;
   serviceMode: string;
@@ -20,20 +22,20 @@ function formatDate(iso: string | null): string | null {
 }
 
 function serviceModeLabel(mode: string): string {
-  if (mode === "on_the_dash") return "On the Dash (food trailer)";
+  if (mode === "on_the_dash") return "On the Dash (food trailer on-site)";
   return "Standard Drop-Off";
 }
 
 export default function InquiryStatus() {
-  const { id } = useParams<{ id: string }>();
+  const { token } = useParams<{ token: string }>();
   const [inquiry, setInquiry] = useState<InquiryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
+    if (!token) return;
     setLoading(true);
-    fetch(`/api/chat/inquiry/${encodeURIComponent(id)}`)
+    fetch(`/api/chat/inquiry/${encodeURIComponent(token)}`)
       .then(async (res) => {
         if (res.status === 404) { setNotFound(true); return; }
         if (!res.ok) throw new Error("Failed to fetch");
@@ -41,7 +43,7 @@ export default function InquiryStatus() {
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [token]);
 
   if (loading) {
     return (
@@ -108,6 +110,30 @@ export default function InquiryStatus() {
                   <dd className="font-semibold text-foreground">Inquiry #{inquiry.id}</dd>
                 </div>
               </div>
+
+              {inquiry.maskedPhone && (
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 w-8 h-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
+                    <Phone className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Phone on file</dt>
+                    <dd className="font-semibold text-foreground">{inquiry.maskedPhone}</dd>
+                  </div>
+                </div>
+              )}
+
+              {inquiry.maskedEmail && (
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 w-8 h-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
+                    <Mail className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Email on file</dt>
+                    <dd className="font-semibold text-foreground">{inquiry.maskedEmail}</dd>
+                  </div>
+                </div>
+              )}
 
               {eventDate && (
                 <div className="flex items-start gap-3">

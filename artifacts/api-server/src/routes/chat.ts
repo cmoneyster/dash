@@ -114,6 +114,7 @@ router.post("/chat/message", async (req, res): Promise<void> => {
 
     let finalContent = "";
     let chatInquiryId: number | null = null;
+    let chatInquiryToken: string | null = null;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const resp = await openai.chat.completions.create({
@@ -153,6 +154,9 @@ router.post("/chat/message", async (req, res): Promise<void> => {
           if (r.ok === true && typeof r.inquiryId === "number") {
             chatInquiryId = r.inquiryId;
           }
+          if (r.ok === true && typeof r.inquiryToken === "string" && r.inquiryToken) {
+            chatInquiryToken = r.inquiryToken;
+          }
         }
 
         messages.push({
@@ -168,7 +172,7 @@ router.post("/chat/message", async (req, res): Promise<void> => {
     }
 
     res.write(`data: ${JSON.stringify({ content: finalContent })}\n\n`);
-    res.write(`data: ${JSON.stringify({ done: true, inquiryId: chatInquiryId })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, inquiryId: chatInquiryId, inquiryToken: chatInquiryToken })}\n\n`);
     res.end();
   } catch (err) {
     req.log.error({ err }, "Error in chat");
@@ -177,12 +181,13 @@ router.post("/chat/message", async (req, res): Promise<void> => {
   }
 });
 
-// Public inquiry status endpoint — lets the /inquiry/:id page show
-// guests what was submitted without exposing admin-only fields.
-router.get("/chat/inquiry/:id", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
-  if (!Number.isFinite(id) || id <= 0) {
-    res.status(400).json({ error: "Invalid inquiry ID" });
+// Public inquiry status endpoint — keyed by the auto-generated UUID
+// quoteToken so sequential-ID enumeration is not possible.
+// Returns curated fields only; raw contact values are masked.
+router.get("/chat/inquiry/:token", async (req, res): Promise<void> => {
+  const token = req.params.token ?? "";
+  if (!/^[0-9a-f-]{36}$/i.test(token)) {
+    res.status(400).json({ error: "Invalid token" });
     return;
   }
   try {
@@ -190,6 +195,8 @@ router.get("/chat/inquiry/:id", async (req, res): Promise<void> => {
       .select({
         id: cateringInquiriesTable.id,
         clientName: cateringInquiriesTable.clientName,
+        clientPhone: cateringInquiriesTable.clientPhone,
+        clientEmail: cateringInquiriesTable.clientEmail,
         eventDate: cateringInquiriesTable.eventDate,
         guestCount: cateringInquiriesTable.guestCount,
         serviceMode: cateringInquiriesTable.serviceMode,
@@ -197,14 +204,33 @@ router.get("/chat/inquiry/:id", async (req, res): Promise<void> => {
         createdAt: cateringInquiriesTable.createdAt,
       })
       .from(cateringInquiriesTable)
-      .where(eq(cateringInquiriesTable.id, id))
+      .where(eq(cateringInquiriesTable.quoteToken, token))
       .limit(1);
 
     if (!row) {
       res.status(404).json({ error: "Inquiry not found" });
       return;
     }
-    res.json(row);
+
+    // Mask contact details: show last 4 digits of phone, domain of email.
+    const maskedPhone = row.clientPhone
+      ? "••• ••• " + row.clientPhone.replace(/\D/g, "").slice(-4)
+      : null;
+    const maskedEmail = row.clientEmail
+      ? row.clientEmail.replace(/^[^@]+/, (u) => u.slice(0, 2) + "••••") 
+      : null;
+
+    res.json({
+      id: row.id,
+      clientName: row.clientName,
+      maskedPhone,
+      maskedEmail,
+      eventDate: row.eventDate,
+      guestCount: row.guestCount,
+      serviceMode: row.serviceMode,
+      status: row.status,
+      createdAt: row.createdAt,
+    });
   } catch (err) {
     req.log.error({ err }, "Error fetching inquiry status");
     res.status(500).json({ error: "Failed to fetch inquiry" });

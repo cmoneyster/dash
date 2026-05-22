@@ -70,6 +70,7 @@ function Router() {
       <Route path="/event/order/:id" component={OrderStatus} />
       <Route path="/kitchen" component={KitchenDisplay} />
       <Route path="/gallery" component={Gallery} />
+      <Route path="/inquiry/:token" component={InquiryStatus} />
 
       <Route path="/admin/login" component={AdminLogin} />
 

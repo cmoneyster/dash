@@ -13,7 +13,7 @@ import { formatCurrency } from "@/lib/utils";
 import { TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import {
   Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
-  Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck,
+  Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck, Calendar,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation, useSearch } from "wouter";
@@ -428,13 +428,15 @@ export default function Plan() {
   const [panQtys,     setPanQtys]     = useState<Record<number, Record<number, number>>>({}); // planItemId → slotIdx → qty
   const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());
 
-  // Pre-fill planner from Dashy chat query params (?count=N&style=drop_off|on_the_dash)
+  // Pre-fill planner from Dashy chat query params (?count=N&style=drop_off|on_the_dash&date=YYYY-MM-DD)
   const searchStr = useSearch();
+  const [chatEventDate, setChatEventDate] = useState<string | null>(null);
   useEffect(() => {
     if (!searchStr) return;
     const params = new URLSearchParams(searchStr);
     const count = params.get("count");
     const style = params.get("style");
+    const date = params.get("date");
     if (count) {
       const n = parseInt(count, 10);
       if (!isNaN(n) && n > 0 && n <= 999) {
@@ -444,6 +446,11 @@ export default function Plan() {
     }
     if (style === "drop_off" || style === "on_the_dash") {
       setServiceMode(style);
+    }
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      // Display the date as MM/DD/YYYY in the banner
+      const [y, mo, d] = date.split("-");
+      setChatEventDate(`${mo}/${d}/${y}`);
     }
   // Run once on mount — ignore searchStr changes after that
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -839,6 +846,13 @@ export default function Plan() {
       )}
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
+
+        {chatEventDate && (
+          <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 text-sm text-blue-900 dark:text-blue-200">
+            <Calendar className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
+            <span>Planning for <strong>{chatEventDate}</strong> — Dashy shared this date from your chat.</span>
+          </div>
+        )}
 
         <ServiceModeBanner mode={serviceMode} onChange={setServiceMode} />
 

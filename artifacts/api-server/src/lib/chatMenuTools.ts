@@ -367,6 +367,19 @@ export const CHAT_TOOL_DEFS = [
             type: "string",
             description: "The actual contact value: phone number for 'phone' or 'sms', email address for 'email'. Use what the guest typed verbatim.",
           },
+          eventDate: {
+            type: "string",
+            description: "Event date in YYYY-MM-DD format, if the guest has confirmed one in this conversation. Omit if not yet known.",
+          },
+          guestCount: {
+            type: "number",
+            description: "Number of guests, if the guest has confirmed a headcount in this conversation. Omit if not yet known.",
+          },
+          serviceMode: {
+            type: "string",
+            enum: ["drop_off", "on_the_dash"],
+            description: "Service style the guest chose, if confirmed in this conversation. Omit if not yet known.",
+          },
         },
         required: ["name", "summary", "channel", "contact"],
         additionalProperties: false,
@@ -421,6 +434,9 @@ type RequestHumanContactArgs = {
   contact?: unknown;
   name?: unknown;
   summary?: unknown;
+  eventDate?: unknown;
+  guestCount?: unknown;
+  serviceMode?: unknown;
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -506,7 +522,20 @@ async function requestHumanContact(
     channel === "phone" ? "phone call" : channel === "email" ? "email" : "text message";
   const guestName = name || "Guest";
 
+  // Parse optional structured context the AI gathered during the conversation.
+  const rawEventDate = typeof raw.eventDate === "string" ? raw.eventDate.trim() : null;
+  const eventDate = rawEventDate && /^\d{4}-\d{2}-\d{2}$/.test(rawEventDate) ? rawEventDate : null;
+  const guestCountRaw = typeof raw.guestCount === "number" ? raw.guestCount : null;
+  const guestCount = guestCountRaw != null && Number.isFinite(guestCountRaw) && guestCountRaw > 0
+    ? Math.round(guestCountRaw)
+    : null;
+  const serviceModeRaw = typeof raw.serviceMode === "string" ? raw.serviceMode.trim() : null;
+  const serviceMode = serviceModeRaw === "drop_off" || serviceModeRaw === "on_the_dash"
+    ? serviceModeRaw
+    : null;
+
   let inquiryId: number | null = null;
+  let inquiryToken: string | null = null;
 
   // Create an inquiry row for every channel so the guest always gets a
   // reference number and the admin sees a structured lead card regardless
@@ -527,9 +556,13 @@ async function requestHumanContact(
         adminNotes: adminNote || null,
         source: "chat",
         status: "inquiry",
+        ...(eventDate != null ? { eventDate } : {}),
+        ...(guestCount != null ? { guestCount } : {}),
+        ...(serviceMode != null ? { serviceMode } : {}),
       } as typeof cateringInquiriesTable.$inferInsert)
-      .returning({ id: cateringInquiriesTable.id });
+      .returning({ id: cateringInquiriesTable.id, quoteToken: cateringInquiriesTable.quoteToken });
     inquiryId = row?.id ?? null;
+    inquiryToken = row?.quoteToken ?? null;
   } catch (err) {
     logger.error({ err }, "[chat] failed to create inquiry for handoff");
   }
@@ -681,12 +714,15 @@ async function requestHumanContact(
       channel,
       smsBridge: smsBridgeStatus,
       inquiryId,
+      inquiryToken,
       message: successText,
     };
   }
   return {
     ok: true,
     channel,
+    inquiryId,
+    inquiryToken,
     message:
       channel === "phone"
         ? "We have your number and a team member will give you a call as soon as they can."
