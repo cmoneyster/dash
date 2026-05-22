@@ -18,6 +18,7 @@ import EventTakerOrder from "@/pages/EventTakerOrder";
 import KitchenDisplay from "@/pages/KitchenDisplay";
 import OrderStatus from "@/pages/OrderStatus";
 import Gallery from "@/pages/Gallery";
+import InquiryStatus from "@/pages/InquiryStatus";
 
 import SharedPlan from "@/pages/SharedPlan";
 import AdminLogin from "@/pages/admin/Login";

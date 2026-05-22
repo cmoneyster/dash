@@ -508,34 +508,36 @@ async function requestHumanContact(
 
   let inquiryId: number | null = null;
 
-  // For SMS handoffs we bridge into the existing customer-chat
-  // pipeline by creating a real inquiry row keyed to the guest's
-  // phone. Future inbound texts from that number will auto-match by
+  // Create an inquiry row for every channel so the guest always gets a
+  // reference number and the admin sees a structured lead card regardless
+  // of how the guest chose to be contacted.
+  try {
+    const adminNote = [
+      `Initiated via website AI chat (handoff to ${channelLabel}).`,
+      summary ? `Summary: ${summary}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const [row] = await db
+      .insert(cateringInquiriesTable)
+      .values({
+        clientName: guestName,
+        clientPhone: channel === "phone" || channel === "sms" ? normalizedContact : null,
+        clientEmail: channel === "email" ? normalizedContact : null,
+        adminNotes: adminNote || null,
+        source: "chat",
+        status: "inquiry",
+      } as typeof cateringInquiriesTable.$inferInsert)
+      .returning({ id: cateringInquiriesTable.id });
+    inquiryId = row?.id ?? null;
+  } catch (err) {
+    logger.error({ err }, "[chat] failed to create inquiry for handoff");
+  }
+
+  // For SMS handoffs additionally bridge into the existing customer-chat
+  // pipeline. Future inbound texts from that number will auto-match by
   // normalizePhoneDigits and forward to the owner with the
   // [Catering #N] tag the owner already knows how to reply to.
-  if (channel === "sms") {
-    try {
-      const adminNote = [
-        "Initiated via website AI chat (handoff to text).",
-        summary ? `Summary: ${summary}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n");
-      const [row] = await db
-        .insert(cateringInquiriesTable)
-        .values({
-          clientName: guestName,
-          clientPhone: normalizedContact,
-          adminNotes: adminNote || null,
-          source: "chat",
-          status: "inquiry",
-        } as typeof cateringInquiriesTable.$inferInsert)
-        .returning({ id: cateringInquiriesTable.id });
-      inquiryId = row?.id ?? null;
-    } catch (err) {
-      logger.error({ err }, "[chat] failed to create inquiry for SMS handoff");
-    }
-  }
 
   // Persist the handoff request itself. Best-effort — failing to log
   // shouldn't stop the alerts.

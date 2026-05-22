@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
-import { menuItemsTable } from "@workspace/db/schema";
+import { menuItemsTable, cateringInquiriesTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import type {
   ChatCompletionMessageParam,
   ChatCompletionMessageToolCall,
@@ -71,8 +72,7 @@ RULES — these are non-negotiable:
    h. Do not call request_human_contact more than once for the same contact value in a conversation, and don't call it speculatively before the guest has confirmed they want a human and you have all four pieces above.`;
 
 // Today's date varies per request, so we append it as a separate system
-// message at request time rather than baking it into SYSTEM_PROMPT (which
-// is a module-level const and would freeze to the server boot date).
+// message at request time rather than baking it into SYSTEM_PROMPT.
 function buildTodayNote(): string {
   const today = new Date().toISOString().slice(0, 10);
   return `Today's date is ${today} (YYYY-MM-DD). Use it as the reference point for the 2-week lead-time check in rule 9. An event date is "inside the 2-week window" if it is fewer than 14 days after today.`;
@@ -113,6 +113,8 @@ router.post("/chat/message", async (req, res): Promise<void> => {
     ];
 
     let finalContent = "";
+    let chatInquiryId: number | null = null;
+
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const resp = await openai.chat.completions.create({
         model: "gpt-5.2",
@@ -144,6 +146,15 @@ router.post("/chat/message", async (req, res): Promise<void> => {
           args = {};
         }
         const result = await runChatTool(tc.function.name, args, snap, { sessionId });
+
+        // Capture inquiry ID from a successful human-contact handoff.
+        if (tc.function.name === "request_human_contact") {
+          const r = result as Record<string, unknown>;
+          if (r.ok === true && typeof r.inquiryId === "number") {
+            chatInquiryId = r.inquiryId;
+          }
+        }
+
         messages.push({
           role: "tool",
           tool_call_id: tc.id,
@@ -157,12 +168,46 @@ router.post("/chat/message", async (req, res): Promise<void> => {
     }
 
     res.write(`data: ${JSON.stringify({ content: finalContent })}\n\n`);
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, inquiryId: chatInquiryId })}\n\n`);
     res.end();
   } catch (err) {
     req.log.error({ err }, "Error in chat");
     res.write(`data: ${JSON.stringify({ error: "Failed to get AI response" })}\n\n`);
     res.end();
+  }
+});
+
+// Public inquiry status endpoint — lets the /inquiry/:id page show
+// guests what was submitted without exposing admin-only fields.
+router.get("/chat/inquiry/:id", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid inquiry ID" });
+    return;
+  }
+  try {
+    const [row] = await db
+      .select({
+        id: cateringInquiriesTable.id,
+        clientName: cateringInquiriesTable.clientName,
+        eventDate: cateringInquiriesTable.eventDate,
+        guestCount: cateringInquiriesTable.guestCount,
+        serviceMode: cateringInquiriesTable.serviceMode,
+        status: cateringInquiriesTable.status,
+        createdAt: cateringInquiriesTable.createdAt,
+      })
+      .from(cateringInquiriesTable)
+      .where(eq(cateringInquiriesTable.id, id))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
+    res.json(row);
+  } catch (err) {
+    req.log.error({ err }, "Error fetching inquiry status");
+    res.status(500).json({ error: "Failed to fetch inquiry" });
   }
 });
 

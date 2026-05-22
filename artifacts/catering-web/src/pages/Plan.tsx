@@ -16,7 +16,7 @@ import {
   Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useCategories, splitCategoryName, type Category } from "@/lib/categories";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
@@ -427,6 +427,27 @@ export default function Plan() {
   const [servingsMap, setServingsMap] = useState<Record<number, number>>({});
   const [panQtys,     setPanQtys]     = useState<Record<number, Record<number, number>>>({}); // planItemId → slotIdx → qty
   const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());
+
+  // Pre-fill planner from Dashy chat query params (?count=N&style=drop_off|on_the_dash)
+  const searchStr = useSearch();
+  useEffect(() => {
+    if (!searchStr) return;
+    const params = new URLSearchParams(searchStr);
+    const count = params.get("count");
+    const style = params.get("style");
+    if (count) {
+      const n = parseInt(count, 10);
+      if (!isNaN(n) && n > 0 && n <= 999) {
+        setGuests(n);
+        setGuestRaw(String(n));
+      }
+    }
+    if (style === "drop_off" || style === "on_the_dash") {
+      setServiceMode(style);
+    }
+  // Run once on mount — ignore searchStr changes after that
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => { saveServiceMode(serviceMode); }, [serviceMode]);
 
   // ── Persist planner state to localStorage so it survives navigation ──

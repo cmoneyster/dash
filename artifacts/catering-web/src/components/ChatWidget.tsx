@@ -1,18 +1,17 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageSquare, X, Send, Sparkles, ChefHat } from "lucide-react";
-import { useChatStream } from "@/hooks/use-chat";
+import { MessageSquare, X, Send, Sparkles, ChefHat, ArrowRight } from "lucide-react";
+import { useChatStream, type Message } from "@/hooks/use-chat";
 import { cn } from "@/lib/utils";
+import { useLocation } from "wouter";
 
 // Render `[label](url)` markdown links as real <a> tags. The model is
 // untrusted, so we resolve every candidate URL against the current
 // origin and only accept links that resolve to that same origin —
 // rejecting protocol-relative (`//evil`), absolute external, and any
-// non-`http(s)` schemes. Non-matching text is rendered verbatim, and
-// we deliberately don't try to support broader markdown.
+// non-`http(s)` schemes. Non-matching text is rendered verbatim.
 function isSafeSameOriginPath(raw: string): string | null {
   if (typeof window === "undefined") return null;
-  // Must start with a single `/` and not be protocol-relative.
   if (!raw.startsWith("/") || raw.startsWith("//")) return null;
   try {
     const url = new URL(raw, window.location.origin);
@@ -25,8 +24,12 @@ function isSafeSameOriginPath(raw: string): string | null {
 }
 
 // Render plain text and `[label](url)` links inside a single non-bold
-// segment. Pulled out so the bold pass can call it for each chunk.
-function renderInline(text: string, keyPrefix: string): ReactNode[] {
+// segment. navigate is passed so clicks use client-side routing.
+function renderInline(
+  text: string,
+  keyPrefix: string,
+  navigate: (to: string) => void,
+): ReactNode[] {
   const parts: ReactNode[] = [];
   const re = /\[([^\]]+)\]\(([^)\s]+)\)/g;
   let last = 0;
@@ -40,6 +43,10 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       <a
         key={`${keyPrefix}l${key++}`}
         href={safeHref}
+        onClick={(e) => {
+          e.preventDefault();
+          navigate(safeHref);
+        }}
         className="underline font-semibold text-primary hover:text-primary/80"
       >
         {match[1]}
@@ -51,15 +58,11 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
   return parts;
 }
 
-function renderMessageContent(text: string): ReactNode[] {
-  // Strip markdown heading prefixes (`#`, `##`, `###`, ...) at the start
-  // of any line — the prompt tells the bot not to use them, but older
-  // model output can still leak them. We drop the marker and let the
-  // existing bold pass handle any emphasis on the rest of the line.
+function renderMessageContent(
+  text: string,
+  navigate: (to: string) => void,
+): ReactNode[] {
   text = text.replace(/^\s*#{1,6}\s+/gm, "");
-  // First split out **bold** spans, then render links inside each segment.
-  // Single `*` (italic) is intentionally not supported — the prompt tells
-  // the bot to use bold sparingly and avoid italics.
   const parts: ReactNode[] = [];
   const re = /\*\*([^*\n]+)\*\*/g;
   let last = 0;
@@ -67,26 +70,94 @@ function renderMessageContent(text: string): ReactNode[] {
   let key = 0;
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) {
-      parts.push(...renderInline(text.slice(last, match.index), `s${key}`));
+      parts.push(...renderInline(text.slice(last, match.index), `s${key}`, navigate));
     }
     parts.push(
       <strong key={`b${key++}`} className="font-semibold">
-        {renderInline(match[1], `b${key}`)}
+        {renderInline(match[1], `b${key}`, navigate)}
       </strong>,
     );
     last = match.index + match[0].length;
   }
   if (last < text.length) {
-    parts.push(...renderInline(text.slice(last), `s${key}`));
+    parts.push(...renderInline(text.slice(last), `s${key}`, navigate));
   }
   return parts;
+}
+
+// ── Conversation context extraction ─────────────────────────────────────────
+// Scans message history for key signals dashy collects during planning.
+// Results drive the evolving CTA button below the input.
+
+interface ConversationContext {
+  eventDate: string | null;    // YYYY-MM-DD
+  guestCount: number | null;
+  serviceStyle: "drop_off" | "on_the_dash" | null;
+  inquiryId: number | null;
+}
+
+function extractContext(messages: Message[], inquiryId: number | null): ConversationContext {
+  const allText = messages.map((m) => m.content).join("\n");
+  const assistantText = messages
+    .filter((m) => m.role === "assistant")
+    .map((m) => m.content)
+    .join("\n");
+
+  // Date: Dashy always echoes dates as MM/DD/YYYY per the system prompt.
+  const dateMatch = assistantText.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+  const eventDate = dateMatch
+    ? `${dateMatch[3]}-${dateMatch[1]}-${dateMatch[2]}`
+    : null;
+
+  // Guest count: user or assistant messages mentioning "N guests/people/attendees".
+  const countMatch = allText.match(/\b(\d+)\s*(?:guests?|people|attendees?|persons?)\b/i);
+  const guestCount = countMatch ? parseInt(countMatch[1], 10) : null;
+
+  // Service style: look for the canonical names in any message.
+  const hasOTD =
+    /on\s+the\s+dash/i.test(allText) ||
+    /food\s+trailer/i.test(allText) ||
+    /on[_\s]the[_\s]dash/i.test(allText);
+  const hasDropOff =
+    /standard\s+drop.?off/i.test(allText) ||
+    /drop.?off/i.test(allText);
+  const serviceStyle: ConversationContext["serviceStyle"] = hasOTD
+    ? "on_the_dash"
+    : hasDropOff
+      ? "drop_off"
+      : null;
+
+  return { eventDate, guestCount, serviceStyle, inquiryId };
+}
+
+function buildCtaHref(ctx: ConversationContext): { label: string; href: string } {
+  if (ctx.inquiryId) {
+    return {
+      label: "View your inquiry",
+      href: `/inquiry/${ctx.inquiryId}`,
+    };
+  }
+  if (ctx.guestCount && ctx.serviceStyle) {
+    const params = new URLSearchParams();
+    params.set("count", String(ctx.guestCount));
+    params.set("style", ctx.serviceStyle);
+    if (ctx.eventDate) params.set("date", ctx.eventDate);
+    return { label: "Build your plan", href: `/plan?${params.toString()}` };
+  }
+  if (ctx.eventDate) {
+    const params = new URLSearchParams();
+    params.set("date", ctx.eventDate);
+    return { label: "Build your plan", href: `/plan?${params.toString()}` };
+  }
+  return { label: "Browse the menu", href: "/menu" };
 }
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
-  const { messages, sendMessage, isTyping } = useChatStream();
+  const { messages, sendMessage, isTyping, inquiryId } = useChatStream();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [, navigate] = useLocation();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -104,6 +175,9 @@ export function ChatWidget() {
     sendMessage(input);
     setInput("");
   };
+
+  const ctx = extractContext(messages, inquiryId);
+  const cta = buildCtaHref(ctx);
 
   return (
     <>
@@ -141,7 +215,7 @@ export function ChatWidget() {
                   <p className="text-primary-foreground/80 text-xs">AI Assistant</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setIsOpen(false)}
                 className="p-2 rounded-full hover:bg-white/20 transition-colors"
               >
@@ -169,12 +243,14 @@ export function ChatWidget() {
                   <div
                     className={cn(
                       "p-3 rounded-2xl text-sm leading-relaxed",
-                      msg.role === "user" 
-                        ? "bg-primary text-primary-foreground rounded-tr-sm" 
+                      msg.role === "user"
+                        ? "bg-primary text-primary-foreground rounded-tr-sm"
                         : "bg-card border border-border shadow-sm rounded-tl-sm text-foreground"
                     )}
                   >
-                    {msg.role === "assistant" ? renderMessageContent(msg.content) : msg.content}
+                    {msg.role === "assistant"
+                      ? renderMessageContent(msg.content, navigate)
+                      : msg.content}
                     {msg.isStreaming && (
                       <span className="inline-block w-1.5 h-4 ml-1 align-middle bg-primary/50 animate-pulse" />
                     )}
@@ -196,8 +272,8 @@ export function ChatWidget() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input */}
-            <div className="p-4 bg-card border-t border-border">
+            {/* Input + CTA */}
+            <div className="p-4 bg-card border-t border-border space-y-2">
               <form onSubmit={handleSubmit} className="flex gap-2">
                 <input
                   type="text"
@@ -214,6 +290,18 @@ export function ChatWidget() {
                   <Send className="w-5 h-5" />
                 </button>
               </form>
+
+              {/* Evolving contextual CTA */}
+              <button
+                onClick={() => {
+                  navigate(cta.href);
+                  setIsOpen(false);
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/70 transition-colors text-sm font-medium text-foreground/80 hover:text-foreground"
+              >
+                <span>{cta.label}</span>
+                <ArrowRight className="w-4 h-4 shrink-0" />
+              </button>
             </div>
           </motion.div>
         )}

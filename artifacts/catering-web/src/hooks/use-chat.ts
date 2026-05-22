@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { getSessionId } from "@/lib/session";
 import type { ChatHistoryMessage } from "@workspace/api-client-react";
 
@@ -7,29 +7,97 @@ export interface Message extends ChatHistoryMessage {
   isStreaming?: boolean;
 }
 
+const CHAT_STORAGE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const CHAT_MAX_MESSAGES = 200;
+
+interface PersistedState {
+  messages: Message[];
+  savedAt: number;
+  inquiryId: number | null;
+}
+
+function storageKey(sid: string) {
+  return `chat_messages_${sid}`;
+}
+
+function loadPersisted(sid: string): PersistedState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(storageKey(sid));
+    if (!raw) return null;
+    const p: PersistedState = JSON.parse(raw);
+    if (!p.savedAt || Date.now() - p.savedAt > CHAT_STORAGE_TTL_MS) {
+      localStorage.removeItem(storageKey(sid));
+      return null;
+    }
+    const messages = (p.messages ?? [])
+      .filter((m: any) => m.id && m.role && typeof m.content === "string")
+      .slice(-CHAT_MAX_MESSAGES) as Message[];
+    return { messages, savedAt: p.savedAt, inquiryId: p.inquiryId ?? null };
+  } catch {
+    return null;
+  }
+}
+
+function savePersisted(sid: string, messages: Message[], inquiryId: number | null) {
+  if (typeof window === "undefined") return;
+  try {
+    const realMessages = messages.filter(m => !m.id.startsWith("_welcome"));
+    const state: PersistedState = {
+      messages: realMessages.slice(-CHAT_MAX_MESSAGES),
+      savedAt: Date.now(),
+      inquiryId,
+    };
+    localStorage.setItem(storageKey(sid), JSON.stringify(state));
+  } catch {}
+}
+
+const DEFAULT_WELCOME: Message = {
+  id: "_welcome",
+  role: "assistant",
+  content: "Hi, I'm dashy! Want to browse our menu, or get a hand planning your event?",
+};
+
+const WELCOME_BACK: Message = {
+  id: "_welcome_back",
+  role: "assistant",
+  content: "Welcome back! You can pick up where we left off — just keep chatting.",
+};
+
 export function useChatStream() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "Hi, I'm dashy! Want to browse our menu, or get a hand planning your event?",
-    },
-  ]);
+  // useState lazy initializer runs only once on mount — safe to call getSessionId here.
+  const [sessionId] = useState<string>(() => getSessionId());
+
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const stored = loadPersisted(getSessionId());
+    if (stored && stored.messages.length > 0) {
+      return [...stored.messages, WELCOME_BACK];
+    }
+    return [DEFAULT_WELCOME];
+  });
+
+  const [inquiryId, setInquiryId] = useState<number | null>(() => {
+    const stored = loadPersisted(getSessionId());
+    return stored?.inquiryId ?? null;
+  });
+
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    savePersisted(sessionId, messages, inquiryId);
+  }, [messages, inquiryId, sessionId]);
 
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim()) return;
 
     setError(null);
-    const sessionId = getSessionId();
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", content };
-    
-    // Prepare history for API (exclude initial welcome and ids)
+
     const historyForApi = messages
-      .filter(m => m.id !== "welcome")
-      .map(({ role, content }) => ({ role, content }));
+      .filter(m => !m.id.startsWith("_welcome"))
+      .map(({ role, content: c }) => ({ role, content: c }));
 
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
@@ -64,33 +132,36 @@ export function useChatStream() {
       const decoder = new TextDecoder();
       let assistantContent = "";
 
-      while (true) {
+      outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split("\n");
-        
+
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             const dataStr = line.slice(6).trim();
             if (!dataStr || dataStr === "[DONE]") continue;
-            
+
             try {
               const data = JSON.parse(dataStr);
-              if (data.done) break;
+              if (data.done) {
+                if (data.inquiryId) setInquiryId(data.inquiryId);
+                break outer;
+              }
               if (data.content) {
                 assistantContent += data.content;
-                setMessages((prev) => 
-                  prev.map((msg) => 
-                    msg.id === assistantMsgId 
-                      ? { ...msg, content: assistantContent } 
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMsgId
+                      ? { ...msg, content: assistantContent }
                       : msg
                   )
                 );
               }
             } catch (e) {
-              console.error("Failed to parse SSE chunk:", e);
+              // ignore malformed SSE chunk
             }
           }
         }
@@ -108,7 +179,7 @@ export function useChatStream() {
     } finally {
       setIsTyping(false);
     }
-  }, [messages]);
+  }, [messages, sessionId]);
 
-  return { messages, sendMessage, isTyping, error };
+  return { messages, sendMessage, isTyping, error, inquiryId };
 }
