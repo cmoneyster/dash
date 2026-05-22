@@ -356,6 +356,10 @@ export default function Plan() {
   };
 
   const handleSendCode = async () => {
+    if (iPhone.replace(/\D/g, "").length < 10) {
+      setIVerifyError("Please enter a valid 10-digit US phone number");
+      return;
+    }
     // Capture previous state so a failed resend can restore it (keeps OTP panel visible).
     const prevState = verifyState;
     setVerifyState("sending");
