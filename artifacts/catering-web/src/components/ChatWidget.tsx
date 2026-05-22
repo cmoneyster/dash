@@ -144,7 +144,7 @@ function buildCtaHref(
     };
   }
   if (planItemsAdded && planItemsAdded > 0) {
-    return { label: "Open your plan", href: "/plan" };
+    return { label: "Review your plan", href: "/plan/preview" };
   }
   if (ctx.guestCount && ctx.serviceStyle) {
     const params = new URLSearchParams();

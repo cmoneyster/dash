@@ -458,6 +458,7 @@ export default function Plan() {
   const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());
 
   // Pre-fill planner from Dashy chat query params (?count=N&style=drop_off|on_the_dash&date=YYYY-MM-DD)
+  // Also supports ?openInquiry=1 to auto-open the Request a Quote form.
   const searchStr = useSearch();
   const [chatEventDate, setChatEventDate] = useState<string | null>(null);
   useEffect(() => {
@@ -466,6 +467,7 @@ export default function Plan() {
     const count = params.get("count");
     const style = params.get("style");
     const date = params.get("date");
+    const openInquiry = params.get("openInquiry");
     if (count) {
       const n = parseInt(count, 10);
       if (!isNaN(n) && n > 0 && n <= 999) {
@@ -480,6 +482,9 @@ export default function Plan() {
       // Display the date as MM/DD/YYYY in the banner
       const [y, mo, d] = date.split("-");
       setChatEventDate(`${mo}/${d}/${y}`);
+    }
+    if (openInquiry === "1") {
+      setInquiryOpen(true);
     }
   // Run once on mount — ignore searchStr changes after that
   // eslint-disable-next-line react-hooks/exhaustive-deps
