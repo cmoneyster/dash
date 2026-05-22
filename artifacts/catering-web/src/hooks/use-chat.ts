@@ -35,7 +35,7 @@ function loadPersisted(sid: string): PersistedState | null {
     const messages = (p.messages ?? [])
       .filter((m: any) => m.id && m.role && typeof m.content === "string")
       .slice(-CHAT_MAX_MESSAGES) as Message[];
-    return { messages, savedAt: p.savedAt, inquiryId: p.inquiryId ?? null, planItemsAdded: p.planItemsAdded ?? null };
+    return { messages, savedAt: p.savedAt, inquiryId: p.inquiryId ?? null, inquiryToken: p.inquiryToken ?? null, planItemsAdded: p.planItemsAdded ?? null };
   } catch {
     return null;
   }

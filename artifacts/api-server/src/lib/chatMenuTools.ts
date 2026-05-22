@@ -424,7 +424,8 @@ export const CHAT_TOOL_DEFS = [
           menuItemIds: {
             type: "array",
             items: { type: "number" },
-            description: "Array of menu item IDs (from search_menu or get_menu_item results) to add to the plan.",
+            maxItems: 8,
+            description: "Array of menu item IDs (from search_menu or get_menu_item results) to add to the plan. Maximum 8 items per call.",
           },
         },
         required: ["menuItemIds"],
@@ -915,8 +916,8 @@ export async function runChatTool(
     case "add_items_to_plan": {
       const sessionId = typeof ctx.sessionId === "string" ? ctx.sessionId : "";
       if (!sessionId) return { error: "sessionId required" };
-      const rawIds = Array.isArray(a.menuItemIds) ? a.menuItemIds : [];
-      const validIds = (rawIds as unknown[])
+      const rawIds = Array.isArray(a.menuItemIds) ? (a.menuItemIds as unknown[]).slice(0, 8) : [];
+      const validIds = rawIds
         .map((id) => Number(id))
         .filter((id) => Number.isFinite(id) && snap.items.some((i) => i.id === id));
       if (validIds.length === 0) return { addedCount: 0, items: [] };
