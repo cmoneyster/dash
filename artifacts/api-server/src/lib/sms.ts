@@ -84,7 +84,7 @@ export async function sendOrderReady(opts: {
 
 export async function sendNewInquiryAlert(opts: {
   clientName: string;
-  source: "form" | "cart" | "chat";
+  source: "form" | "cart" | "chat" | "plan";
   eventDate?: string | null;
   guestCount?: number | null;
   total?: string | null;       // pre-formatted, e.g. "$123.45"
@@ -102,7 +102,9 @@ export async function sendNewInquiryAlert(opts: {
       ? "cart order"
       : opts.source === "chat"
         ? "chat handoff"
-        : "form inquiry";
+        : opts.source === "plan"
+          ? "plan inquiry"
+          : "form inquiry";
   const lines: string[] = [
     `New catering ${sourceLabel} from ${opts.clientName}`,
   ];

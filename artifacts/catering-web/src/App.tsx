@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,7 +6,6 @@ import { AdminGuard } from "@/components/AdminGuard";
 
 import Home from "@/pages/Home";
 import Menu from "@/pages/Menu";
-import Cart from "@/pages/Cart";
 import Plan from "@/pages/Plan";
 import Confirmation from "@/pages/Confirmation";
 import NotFound from "@/pages/not-found";
@@ -58,7 +57,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/menu" component={Menu} />
-      <Route path="/cart" component={Cart} />
+      <Route path="/cart">{() => <Redirect to="/plan" />}</Route>
       <Route path="/plan" component={Plan} />
       <Route path="/plan/share/:token" component={SharedPlan} />
       <Route path="/confirmation" component={Confirmation} />

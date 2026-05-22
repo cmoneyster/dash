@@ -58,9 +58,9 @@ This application is a full-stack catering business website that offers online or
 
 ## Product
 
-- **Customer-facing Website:** Home page with AI chat, menu browsing with cart and event planning features, and order confirmation.
+- **Customer-facing Website:** Home page with AI chat, menu browsing, and an Event Plan page where customers curate their selections and submit a catering inquiry ("Request a Quote") directly — the cart has been removed; all customer ordering flows through the plan.
 - **Admin Dashboard:** Comprehensive management for menu items, orders, blackout dates, images, event settings, catering inquiries, and Instagram hashtag wall moderation.
-- **AI Chat Agent:** Provides real-time assistance for event planning and menu suggestions.
+- **AI Chat Agent:** Provides real-time assistance for event planning and menu suggestions. Dashy can add items directly to the guest's event plan via the `add_items_to_plan` tool when the guest explicitly asks — the SSE done event carries a `planItemsAdded` count so the frontend can prompt the guest to open their plan.
 - **Shared Plans:** Allows customers to create and share event plans via unique links and SMS.
 - **Instagram Hashtag Wall:** Displays approved Instagram posts on a public gallery, with admin moderation tools.
 - **Network Printing:** Integrates with Star CloudPRNT printers for kitchen tickets, customer receipts, and item labels.

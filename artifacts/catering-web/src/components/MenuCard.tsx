@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Heart, HeartOff, Info, ChevronRight, Flame } from "lucide-react";
+import { Plus, Heart, HeartOff, Info, ChevronRight, Flame, Check } from "lucide-react";
 import type { MenuItem } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { isPanSizesItem, getPanSizesFromPrice, formatServingsLine } from "@/lib/menu-types";
@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 interface MenuCardProps {
   item: MenuItem;
-  onAddToCart: (item: MenuItem) => void;
+  onAddToPlan: (item: MenuItem) => void;
   onTogglePlan: (item: MenuItem) => void;
   isInPlan?: boolean;
   serviceMode?: "drop_off" | "on_the_dash";
@@ -23,7 +23,7 @@ function TierRow({ label, price, isBase }: { label: string; price: number; isBas
   );
 }
 
-export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan, serviceMode = "drop_off" }: MenuCardProps) {
+export function MenuCard({ item, onAddToPlan, onTogglePlan, isInPlan, serviceMode = "drop_off" }: MenuCardProps) {
   const hasTiers = !!(item.tier2Qty && item.tier2Price);
   const minQty = item.minimumOrderQty ?? 1;
   const isPanSizes = isPanSizesItem(item);
@@ -153,20 +153,29 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan, serviceMod
             </div>
           )}
           <button
-            onClick={() => onAddToCart(item)}
+            onClick={() => onAddToPlan(item)}
             disabled={addDisabled}
             title={blockedByOtd ? "Switch to Standard Drop-Off Catering to add this item" : undefined}
-            className="w-full py-3.5 px-4 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground disabled:opacity-50 disabled:hover:bg-foreground disabled:hover:text-background disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 group/btn mt-auto"
+            className={`w-full py-3.5 px-4 font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 group/btn mt-auto ${
+              isInPlan
+                ? "bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground"
+                : "bg-foreground text-background hover:bg-primary hover:text-primary-foreground disabled:opacity-50 disabled:hover:bg-foreground disabled:hover:text-background disabled:cursor-not-allowed"
+            }`}
           >
-            {isPanSizes ? (
+            {isInPlan ? (
               <>
-                <ChevronRight className="w-5 h-5" />
-                {!item.available ? "Unavailable" : blockedByOtd ? "Drop-Off only" : "Select Size"}
+                <Check className="w-5 h-5" />
+                View in Plan →
+              </>
+            ) : isPanSizes ? (
+              <>
+                <Plus className="w-5 h-5 group-hover/btn:rotate-90 transition-transform duration-300" />
+                {!item.available ? "Unavailable" : blockedByOtd ? "Drop-Off only" : "Add to Plan"}
               </>
             ) : (
               <>
                 <Plus className="w-5 h-5 group-hover/btn:rotate-90 transition-transform duration-300" />
-                {!item.available ? "Unavailable" : blockedByOtd ? "Drop-Off only" : "Add to Order"}
+                {!item.available ? "Unavailable" : blockedByOtd ? "Drop-Off only" : "Add to Plan"}
               </>
             )}
           </button>
@@ -176,7 +185,7 @@ export function MenuCard({ item, onAddToCart, onTogglePlan, isInPlan, serviceMod
   );
 }
 
-export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan, serviceMode = "drop_off" }: MenuCardProps) {
+export function MenuCardCompact({ item, onAddToPlan, onTogglePlan, isInPlan, serviceMode = "drop_off" }: MenuCardProps) {
   const minQty = item.minimumOrderQty ?? 1;
   const isPanSizes = isPanSizesItem(item);
   const panFromPrice = isPanSizes ? getPanSizesFromPrice(item) : null;
@@ -269,20 +278,29 @@ export function MenuCardCompact({ item, onAddToCart, onTogglePlan, isInPlan, ser
         </button>
 
         <button
-          onClick={() => onAddToCart(item)}
+          onClick={() => onAddToPlan(item)}
           disabled={addDisabled}
           title={blockedByOtd ? "Switch to Standard Drop-Off Catering to add this item" : undefined}
-          className="flex items-center gap-1.5 px-4 py-2 bg-foreground text-background text-sm font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            isInPlan
+              ? "bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground"
+              : "bg-foreground text-background hover:bg-primary hover:text-primary-foreground"
+          }`}
         >
           {blockedByOtd ? (
             <>
               <Flame className="w-4 h-4" />
               Drop-Off only
             </>
+          ) : isInPlan ? (
+            <>
+              <Check className="w-4 h-4" />
+              In Plan
+            </>
           ) : isPanSizes ? (
             <>
-              <ChevronRight className="w-4 h-4" />
-              Select Size
+              <Plus className="w-4 h-4" />
+              Add
             </>
           ) : (
             <>

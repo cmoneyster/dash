@@ -130,17 +130,21 @@ function extractContext(messages: Message[], inquiryId: number | null): Conversa
   return { eventDate, guestCount, serviceStyle, inquiryId };
 }
 
-// inquiryToken is passed separately since it's not part of ConversationContext
-// (it comes from the hook, not from message text).
+// inquiryToken and planItemsAdded are passed separately since they come
+// from the hook, not from message text.
 function buildCtaHref(
   ctx: ConversationContext,
   inquiryToken: string | null,
+  planItemsAdded: number | null,
 ): { label: string; href: string } {
   if (inquiryToken) {
     return {
       label: "View your inquiry",
       href: `/inquiry/${inquiryToken}`,
     };
+  }
+  if (planItemsAdded && planItemsAdded > 0) {
+    return { label: "Open your plan", href: "/plan" };
   }
   if (ctx.guestCount && ctx.serviceStyle) {
     const params = new URLSearchParams();
@@ -150,7 +154,6 @@ function buildCtaHref(
     return { label: "Build your plan", href: `/plan?${params.toString()}` };
   }
   if (ctx.eventDate) {
-    // Date known but no count/style yet — invite them to check availability on the plan page.
     const params = new URLSearchParams();
     params.set("date", ctx.eventDate);
     return { label: "Check availability", href: `/plan?${params.toString()}` };
@@ -161,7 +164,7 @@ function buildCtaHref(
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
-  const { messages, sendMessage, isTyping, inquiryId, inquiryToken } = useChatStream();
+  const { messages, sendMessage, isTyping, inquiryId, inquiryToken, planItemsAdded } = useChatStream();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
 
@@ -183,7 +186,7 @@ export function ChatWidget() {
   };
 
   const ctx = extractContext(messages, inquiryId);
-  const cta = buildCtaHref(ctx, inquiryToken);
+  const cta = buildCtaHref(ctx, inquiryToken, planItemsAdded);
 
   return (
     <>

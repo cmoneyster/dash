@@ -15,6 +15,7 @@ interface PersistedState {
   savedAt: number;
   inquiryId: number | null;
   inquiryToken?: string | null;
+  planItemsAdded?: number | null;
 }
 
 function storageKey(sid: string) {
@@ -34,13 +35,13 @@ function loadPersisted(sid: string): PersistedState | null {
     const messages = (p.messages ?? [])
       .filter((m: any) => m.id && m.role && typeof m.content === "string")
       .slice(-CHAT_MAX_MESSAGES) as Message[];
-    return { messages, savedAt: p.savedAt, inquiryId: p.inquiryId ?? null };
+    return { messages, savedAt: p.savedAt, inquiryId: p.inquiryId ?? null, planItemsAdded: p.planItemsAdded ?? null };
   } catch {
     return null;
   }
 }
 
-function savePersisted(sid: string, messages: Message[], inquiryId: number | null, inquiryToken: string | null) {
+function savePersisted(sid: string, messages: Message[], inquiryId: number | null, inquiryToken: string | null, planItemsAdded: number | null) {
   if (typeof window === "undefined") return;
   try {
     const realMessages = messages.filter(m => !m.id.startsWith("_welcome"));
@@ -49,6 +50,7 @@ function savePersisted(sid: string, messages: Message[], inquiryId: number | nul
       savedAt: Date.now(),
       inquiryId,
       inquiryToken,
+      planItemsAdded,
     };
     localStorage.setItem(storageKey(sid), JSON.stringify(state));
   } catch {}
@@ -67,7 +69,6 @@ const WELCOME_BACK: Message = {
 };
 
 export function useChatStream() {
-  // useState lazy initializer runs only once on mount — safe to call getSessionId here.
   const [sessionId] = useState<string>(() => getSessionId());
 
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -88,13 +89,18 @@ export function useChatStream() {
     return stored?.inquiryToken ?? null;
   });
 
+  const [planItemsAdded, setPlanItemsAdded] = useState<number | null>(() => {
+    const stored = loadPersisted(getSessionId());
+    return stored?.planItemsAdded ?? null;
+  });
+
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    savePersisted(sessionId, messages, inquiryId, inquiryToken);
-  }, [messages, inquiryId, inquiryToken, sessionId]);
+    savePersisted(sessionId, messages, inquiryId, inquiryToken, planItemsAdded);
+  }, [messages, inquiryId, inquiryToken, sessionId, planItemsAdded]);
 
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim()) return;
@@ -156,6 +162,9 @@ export function useChatStream() {
               if (data.done) {
                 if (data.inquiryId) setInquiryId(data.inquiryId);
                 if (data.inquiryToken) setInquiryToken(data.inquiryToken);
+                if (data.planItemsAdded && typeof data.planItemsAdded === "number" && data.planItemsAdded > 0) {
+                  setPlanItemsAdded(prev => (prev ?? 0) + data.planItemsAdded);
+                }
                 break outer;
               }
               if (data.content) {
@@ -189,5 +198,5 @@ export function useChatStream() {
     }
   }, [messages, sessionId]);
 
-  return { messages, sendMessage, isTyping, error, inquiryId, inquiryToken };
+  return { messages, sendMessage, isTyping, error, inquiryId, inquiryToken, planItemsAdded };
 }

@@ -2,18 +2,15 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import {
   useGetPlan,
-  useAddToCart,
-  addToCart as addToCartApi,
   getGetPlanQueryKey,
-  getGetCartQueryKey,
 } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import { TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import {
-  Trash2, ShoppingBag, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
-  Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck, Calendar,
+  Trash2, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
+  Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck, Calendar, Send,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation, useSearch } from "wouter";
@@ -22,8 +19,6 @@ import { useCategories, splitCategoryName, type Category } from "@/lib/categorie
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
 import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
 import { computePlannerCoverage } from "@/lib/plannerMath";
-import { MergeReplaceDialog, type MergeReplaceChoice } from "@/components/MergeReplaceDialog";
-import { fetchCurrentItemCount } from "@/lib/menuPackages";
 
 // ── Category helpers (derived from API) ──────────────────────────────────────
 
@@ -207,8 +202,6 @@ export default function Plan() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const [addingAll, setAddingAll] = useState(false);
-  const [cartMergePrompt, setCartMergePrompt] = useState<{ existingCount: number } | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
 
   // ── Categories from API ──
@@ -317,83 +310,6 @@ export default function Plan() {
     }
   };
 
-  const addToCart = useAddToCart({
-    mutation: {
-      onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
-        const planItem = plan?.items.find(i => i.menuItemId === variables.data.menuItemId);
-        if (planItem) removePlanItem(planItem.id);
-        toast({ title: "Moved to Cart", description: "Item is now in your order." });
-      },
-    },
-  });
-
-  const performAddAllToCart = async (mode: "merge" | "replace") => {
-    if (!plan?.items.length) return;
-    setAddingAll(true);
-    try {
-      if (mode === "replace") {
-        await fetch("/api/cart", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId }),
-        });
-      }
-      for (const item of plan.items) {
-        const isPanSizes = (item.menuItem as any).pricingTemplate === "pan_sizes";
-        if (isPanSizes) {
-          const slots = panQtys[item.id] ?? {};
-          const entries = Object.entries(slots).filter(([, q]) => q > 0);
-          for (const [idxStr, qty] of entries) {
-            const idx = Number(idxStr);
-            const lbl = (item.menuItem as any)[`size${idx}Label`];
-            const prc = parseFloat(String((item.menuItem as any)[`size${idx}Price`]));
-            await fetch("/api/cart", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sessionId, menuItemId: item.menuItemId, quantity: qty, sizeSlot: idx, sizeLabel: lbl, sizePrice: prc }),
-            });
-          }
-        } else {
-          const minQ = item.menuItem.minimumOrderQty ?? 1;
-          const isSb  = isSmallBite(item.menuItem.category);
-          const isEnt = isEntree(item.menuItem.category);
-          const qty = isSb  ? Math.max(minQ, piecesMap[item.id]   ?? 0)
-                    : isEnt ? Math.max(minQ, servingsMap[item.id] ?? 0)
-                    : minQ;
-          await addToCartApi({ sessionId, menuItemId: item.menuItemId, quantity: qty });
-        }
-      }
-      queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
-      const verb = mode === "replace" ? "now in your cart" : "added — ready to checkout.";
-      toast({ title: mode === "replace" ? "Cart replaced" : "Added to cart!", description: `${plan.items.length} item${plan.items.length !== 1 ? "s" : ""} ${verb}` });
-      navigate("/cart");
-    } catch {
-      toast({ title: "Something went wrong", description: "Some items may not have been added. Please try again.", variant: "destructive" });
-    } finally {
-      setAddingAll(false);
-    }
-  };
-
-  const handleAddAllToCart = async () => {
-    if (!plan?.items.length || addingAll) return;
-    setAddingAll(true);
-    const cartCount = await fetchCurrentItemCount("cart", sessionId);
-    setAddingAll(false);
-    if (cartCount > 0) {
-      setCartMergePrompt({ existingCount: cartCount });
-    } else {
-      performAddAllToCart("merge");
-    }
-  };
-
-  const handleCartMergeChoice = (choice: MergeReplaceChoice) => {
-    if (choice === "cancel") { setCartMergePrompt(null); return; }
-    const mode = choice;
-    setCartMergePrompt(null);
-    performAddAllToCart(mode);
-  };
-
   const handleClearPlan = async () => {
     try {
       await fetch("/api/plan", {
@@ -410,6 +326,61 @@ export default function Plan() {
       toast({ title: "Plan cleared", description: "Your event plan has been cleared." });
     } catch {
       toast({ title: "Error", description: "Could not clear the plan. Please try again.", variant: "destructive" });
+    }
+  };
+
+  // ── Inquiry form ──
+  const [inquiryOpen, setInquiryOpen] = useState(false);
+  const [iName, setIName] = useState("");
+  const [iEmail, setIEmail] = useState("");
+  const [iPhone, setIPhone] = useState("");
+  const [iEventDate, setIEventDate] = useState("");
+  const [iVenue, setIVenue] = useState("");
+  const [iNotes, setINotes] = useState("");
+  const [iLoading, setILoading] = useState(false);
+  const [iError, setIError] = useState<string | null>(null);
+
+  const openInquiryForm = () => {
+    setIEventDate(chatEventDate ?? "");
+    setInquiryOpen(true);
+    setIError(null);
+  };
+
+  const handleSubmitInquiry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!iName.trim() || !iEmail.trim()) {
+      setIError("Name and email are required.");
+      return;
+    }
+    setILoading(true);
+    setIError(null);
+    try {
+      const res = await fetch("/api/plan/submit-inquiry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          customerName: iName.trim(),
+          customerEmail: iEmail.trim(),
+          customerPhone: iPhone.trim() || undefined,
+          eventDate: iEventDate.trim() || undefined,
+          guestCount: guests,
+          serviceMode,
+          venueAddress: iVenue.trim() || undefined,
+          deliveryNotes: iNotes.trim() || undefined,
+          plannerState: { guests, piecesMap, servingsMap, panQtys },
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? "Failed to submit inquiry");
+      }
+      const { quoteToken } = await res.json() as { quoteToken: string };
+      navigate(`/inquiry/${quoteToken}`);
+    } catch (err: unknown) {
+      setIError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setILoading(false);
     }
   };
 
@@ -1436,37 +1407,6 @@ export default function Plan() {
                                   >
                                     <Trash2 className="w-4 h-4" /> Remove
                                   </button>
-                                  <button
-                                    onClick={async () => {
-                                      const isPanSizes = (item.menuItem as any).pricingTemplate === "pan_sizes";
-                                      if (isPanSizes) {
-                                        const slots = panQtys[item.id] ?? {};
-                                        const entries = Object.entries(slots).filter(([, q]) => q > 0);
-                                        if (entries.length === 0) {
-                                          toast({ title: "Select quantities", description: "Choose at least one pan size before adding to cart.", variant: "destructive" });
-                                          return;
-                                        }
-                                        for (const [idxStr, qty] of entries) {
-                                          const idx = Number(idxStr);
-                                          const lbl = (item.menuItem as any)[`size${idx}Label`];
-                                          const prc = parseFloat(String((item.menuItem as any)[`size${idx}Price`]));
-                                          await fetch("/api/cart", {
-                                            method: "POST",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({ sessionId, menuItemId: item.menuItemId, quantity: qty, sizeSlot: idx, sizeLabel: lbl, sizePrice: prc }),
-                                          });
-                                        }
-                                        queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
-                                        removePlanItem(item.id);
-                                        toast({ title: "Moved to Cart", description: "Item is now in your order." });
-                                      } else {
-                                        addToCart.mutate({ data: { sessionId, menuItemId: item.menuItemId, quantity: item.menuItem.minimumOrderQty ?? 1 } });
-                                      }
-                                    }}
-                                    className="px-4 py-2 bg-foreground text-background font-semibold rounded-xl hover:bg-primary transition-colors flex items-center gap-2 text-sm"
-                                  >
-                                    <ShoppingBag className="w-4 h-4" /> Move to Cart
-                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -1479,7 +1419,7 @@ export default function Plan() {
               })}
             </div>
 
-            {/* ── Add All to Cart ── */}
+            {/* ── Submit Catering Inquiry ── */}
             {plan.items.length > 0 && (() => {
               const total = plan.items.reduce((s, i) => {
                 if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
@@ -1502,18 +1442,15 @@ export default function Plan() {
                   <div className="bg-foreground text-background rounded-2xl shadow-xl px-5 py-4 flex items-center justify-between gap-4">
                     <div>
                       <p className="font-display font-bold text-base leading-tight">
-                        {plan.items.length} item{plan.items.length !== 1 ? "s" : ""} ready to order
+                        {plan.items.length} item{plan.items.length !== 1 ? "s" : ""} in your plan
                       </p>
                       <p className="text-sm opacity-70">{formatCurrency(total)} estimated · {TAX_DISCLOSURE_SHORT}</p>
                     </div>
                     <button
-                      onClick={handleAddAllToCart}
-                      disabled={addingAll}
-                      className="shrink-0 flex items-center gap-2 bg-background text-foreground font-bold px-5 py-2.5 rounded-xl hover:bg-secondary transition-colors disabled:opacity-60 text-sm"
+                      onClick={openInquiryForm}
+                      className="shrink-0 flex items-center gap-2 bg-background text-foreground font-bold px-5 py-2.5 rounded-xl hover:bg-secondary transition-colors text-sm"
                     >
-                      {addingAll
-                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Adding…</>
-                        : <><ShoppingBag className="w-4 h-4" /> Add All to Cart</>}
+                      <Send className="w-4 h-4" /> Request a Quote
                     </button>
                   </div>
                 </div>
@@ -1524,15 +1461,103 @@ export default function Plan() {
         )}
       </div>
 
-      <MergeReplaceDialog
-        open={cartMergePrompt !== null}
-        busy={addingAll}
-        existingCount={cartMergePrompt?.existingCount ?? 0}
-        incomingCount={plan?.items.length ?? 0}
-        title="Cart already has items"
-        message="Do you want to add this event plan to your existing cart, or replace what's there?"
-        onChoose={handleCartMergeChoice}
-      />
+      {/* ── Inquiry form modal ── */}
+      {inquiryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+              <h2 className="font-display font-bold text-2xl">Request a Quote</h2>
+              <button onClick={() => setInquiryOpen(false)} className="p-2 rounded-full hover:bg-secondary transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSubmitInquiry} className="px-6 py-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-semibold mb-1">Your name <span className="text-destructive">*</span></label>
+                  <input
+                    type="text"
+                    value={iName}
+                    onChange={e => setIName(e.target.value)}
+                    required
+                    placeholder="Jane Smith"
+                    className="w-full px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-semibold mb-1">Email <span className="text-destructive">*</span></label>
+                  <input
+                    type="email"
+                    value={iEmail}
+                    onChange={e => setIEmail(e.target.value)}
+                    required
+                    placeholder="jane@example.com"
+                    className="w-full px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-semibold mb-1">Phone <span className="text-muted-foreground font-normal">(optional)</span></label>
+                  <input
+                    type="tel"
+                    value={iPhone}
+                    onChange={e => setIPhone(e.target.value)}
+                    placeholder="(555) 123-4567"
+                    className="w-full px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-semibold mb-1">Event date <span className="text-muted-foreground font-normal">(optional)</span></label>
+                  <input
+                    type="date"
+                    value={iEventDate}
+                    onChange={e => setIEventDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-semibold mb-1">Venue / address <span className="text-muted-foreground font-normal">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={iVenue}
+                    onChange={e => setIVenue(e.target.value)}
+                    placeholder="123 Main St, Olney, MD"
+                    className="w-full px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-semibold mb-1">Notes <span className="text-muted-foreground font-normal">(optional)</span></label>
+                  <textarea
+                    value={iNotes}
+                    onChange={e => setINotes(e.target.value)}
+                    rows={3}
+                    placeholder="Dietary needs, setup time, special requests..."
+                    className="w-full px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm resize-none"
+                  />
+                </div>
+              </div>
+              {iError && <p className="text-sm text-destructive font-medium">{iError}</p>}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setInquiryOpen(false)}
+                  className="flex-1 py-2.5 border border-border rounded-xl font-semibold text-sm hover:bg-secondary transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={iLoading}
+                  className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold text-sm hover:bg-primary/90 disabled:opacity-60 flex items-center justify-center gap-2 transition-colors"
+                >
+                  {iLoading
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</>
+                    : <><Send className="w-4 h-4" /> Submit Inquiry</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

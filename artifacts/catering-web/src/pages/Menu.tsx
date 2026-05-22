@@ -2,35 +2,27 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { MenuCard, MenuCardCompact } from "@/components/MenuCard";
-import { PanSizePicker } from "@/components/PanSizePicker";
 import { PackageDetail } from "@/components/PackageDetail";
 import { fetchPublicPackages, type PublicMenuPackage } from "@/lib/menuPackages";
 import { Users, Package as PackageIcon, Flame } from "lucide-react";
 import { 
-  useListMenuItems, 
-  useAddToCart, 
+  useListMenuItems,
   useAddToPlan, 
   useGetPlan,
-  getGetCartQueryKey,
   getGetPlanQueryKey
 } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Search } from "lucide-react";
 import type { MenuItem } from "@workspace/api-client-react";
-import { isPanSizesItem, type PanSizeMenuItem } from "@/lib/menu-types";
-import type { PanSizeSelection } from "@/components/PanSizePicker";
 import { useCategories } from "@/lib/categories";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
 import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
+import { useLocation } from "wouter";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function Menu() {
-  // Seed the category filter from a `?category=` query param so the chat
-  // bot (and any other deep link) can drop a guest into a specific
-  // section of the menu. We validate against the loaded category list
-  // below — an unknown value falls back to "All Items".
   const initialCategory = (() => {
     if (typeof window === "undefined") return "";
     const c = new URLSearchParams(window.location.search).get("category");
@@ -38,78 +30,32 @@ export default function Menu() {
   })();
   const [category, setCategory] = useState<string>(initialCategory);
   const [categoryFromUrlChecked, setCategoryFromUrlChecked] = useState<boolean>(!initialCategory);
-  const [pickerItem, setPickerItem] = useState<PanSizeMenuItem | null>(null);
-  const [pickerLoading, setPickerLoading] = useState(false);
   const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());
   useEffect(() => { saveServiceMode(serviceMode); }, [serviceMode]);
   const sessionId = getSessionId();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const { data: menuItems, isLoading } = useListMenuItems({ category: category || undefined });
   const { data: plan } = useGetPlan({ sessionId });
-  
-  const addToCart = useAddToCart({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
-        toast({ title: "Added to cart", description: "Item has been added to your order." });
-      }
-    }
-  });
-
-  // Silent variant used for pan-size multi-add — we invalidate + toast once at the end
-  const addToCartSilent = useAddToCart();
 
   const addToPlan = useAddToPlan({
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) });
-        toast({ title: "Saved to plan", description: "Item saved to your event plan." });
+        toast({ title: "Added to plan", description: "Item saved to your event plan." });
       }
     }
   });
 
   const planItemIds = new Set(plan?.items?.map(i => i.menuItemId) || []);
 
-  const handleAddToCart = (item: MenuItem) => {
-    if (isPanSizesItem(item)) {
-      setPickerItem(item);
+  const handleAddToPlan = (item: MenuItem) => {
+    if (planItemIds.has(item.id)) {
+      navigate("/plan");
     } else {
-      addToCart.mutate({ data: { sessionId, menuItemId: item.id, quantity: 1 } });
-    }
-  };
-
-  const handlePanSizeConfirm = async (selections: PanSizeSelection[]) => {
-    if (!pickerItem) return;
-    setPickerLoading(true);
-    try {
-      await Promise.all(
-        selections.map(s =>
-          addToCartSilent.mutateAsync({
-            data: {
-              sessionId,
-              menuItemId: pickerItem.id,
-              quantity: s.qty,
-              sizeSlot: s.slot,
-              sizeLabel: s.label,
-              sizePrice: s.price,
-            },
-          })
-        )
-      );
-      queryClient.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
-      const totalPans = selections.reduce((sum, s) => sum + s.qty, 0);
-      toast({
-        title: "Added to cart",
-        description: `${totalPans} pan${totalPans !== 1 ? "s" : ""} added to your order.`,
-      });
-      setPickerItem(null);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Could not add to cart. Please try again.";
-      toast({ title: "Error", description: message, variant: "destructive" });
-    } finally {
-      setPickerLoading(false);
+      addToPlan.mutate({ data: { sessionId, menuItemId: item.id } });
     }
   };
 
@@ -144,9 +90,6 @@ export default function Menu() {
     fetchPublicPackages().then(setPackages).catch(() => setPackages([]));
   }, []);
 
-  // Once the category list loads, drop any unknown URL-seeded category
-  // back to "All Items" so a stale or mistyped link doesn't leave the
-  // page showing an empty grid.
   useEffect(() => {
     if (categoryFromUrlChecked) return;
     if (!categoryData) return;
@@ -157,14 +100,6 @@ export default function Menu() {
 
   return (
     <Layout>
-      {pickerItem && (
-        <PanSizePicker
-          item={pickerItem}
-          onClose={() => setPickerItem(null)}
-          onConfirm={handlePanSizeConfirm}
-          loading={pickerLoading}
-        />
-      )}
       {openPackageId !== null && (
         <PackageDetail packageId={openPackageId} onClose={() => setOpenPackageId(null)} />
       )}
@@ -249,7 +184,7 @@ export default function Menu() {
           const listed   = menuItems?.filter(i => !i.imageUrl) ?? [];
           const cardProps = (item: typeof featured[0]) => ({
             item,
-            onAddToCart: handleAddToCart,
+            onAddToPlan: handleAddToPlan,
             onTogglePlan: handleTogglePlan,
             isInPlan: planItemIds.has(item.id),
             serviceMode,
@@ -351,3 +286,4 @@ function PackageCard({
     </button>
   );
 }
+

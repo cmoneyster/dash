@@ -1,8 +1,8 @@
 import { Link, useRoute } from "wouter";
-import { ShoppingBag, Heart, MapPin } from "lucide-react";
+import { ShoppingBag, MapPin } from "lucide-react";
 import { ChatWidget } from "./ChatWidget";
 import { ThemeToggle } from "./ThemeToggle";
-import { useGetCart, getGetCartQueryKey } from "@workspace/api-client-react";
+import { useGetPlan, getGetPlanQueryKey } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -28,12 +28,12 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const sessionId = getSessionId();
-  const { data: cart } = useGetCart(
+  const { data: plan } = useGetPlan(
     { sessionId },
-    { query: { queryKey: getGetCartQueryKey({ sessionId }), staleTime: 1000 } },
+    { query: { queryKey: getGetPlanQueryKey({ sessionId }), staleTime: 1000 } },
   );
 
-  const cartItemsCount = cart?.items?.reduce((acc, item) => acc + item.quantity, 0) || 0;
+  const planItemsCount = plan?.items?.length ?? 0;
 
   return (
     <div className="min-h-screen flex flex-col relative">
@@ -65,17 +65,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <ThemeToggle />
             <Link
               href="/plan"
-              className="p-2 text-foreground/70 hover:text-primary transition-colors"
-              title="Event Plan"
-            >
-              <Heart className="w-5 h-5" />
-            </Link>
-            <Link
-              href="/cart"
               className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-full hover:bg-secondary/80 transition-colors"
             >
               <ShoppingBag className="w-5 h-5 text-foreground" />
-              <span className="font-bold text-sm">{cartItemsCount}</span>
+              <span className="font-bold text-sm">{planItemsCount}</span>
             </Link>
             <Link
               href="/admin"

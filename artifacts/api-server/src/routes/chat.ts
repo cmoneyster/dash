@@ -55,7 +55,7 @@ RULES — these are non-negotiable:
    • If guestCountFits is false: tell them the guest count is over what we can take that day and offer suggestedDates.
    • Otherwise: confirm cheerfully and move on to the next planning question (guest count, service style, menu picks).
 7. Keep replies warm, concise, and conversational. Emphasize freshness, quality, and personalized service. Avoid jargon. Use bold sparingly — at most one or two phrases per reply, and never on every option in a list. Never use em-dashes ("—"); use a comma or period instead. Never use markdown headings (no "#", "##", "###" lines), tables, or code fences. Plain sentences with the occasional **bold** phrase or [link](url) only.
-8. If they want to browse, point them to the menu page. If they're decided, encourage them to add to cart and check out.
+8. If they want to browse, point them to the menu page: [Browse our menu](/menu). If they want help building a specific selection, use add_items_to_plan to add chosen items directly to the guest's plan — tell them you've added the items and invite them to visit [their event plan](/plan) to review and submit a catering inquiry. Only add items when the guest has explicitly asked you to pick items for them or confirmed a specific selection.
 9. Lead time — all events and orders need to be booked at least 2 weeks (14 days) in advance. You don't enforce this in the booking flow (the team handles that), but you DO need to flag it for the guest:
    • Whenever the guest mentions, asks about, or asks you to check a specific event date, mentally compare it to today's date. If the event date is fewer than 14 days away (including today), gently let them know that events normally need to be booked at least 2 weeks ahead, and that for anything inside that 2-week window they should email the team directly at dash@HollywoodEastCafe.com so a person can see whether we can still squeeze it in.
    • Phrase it warmly, not as a hard rejection — e.g. "Heads up, our events normally need at least two weeks' notice. For anything inside that window, the best path is to email the team directly at dash@HollywoodEastCafe.com so they can see if we can still fit you in." Then still answer whatever else they asked.
@@ -115,6 +115,7 @@ router.post("/chat/message", async (req, res): Promise<void> => {
     let finalContent = "";
     let chatInquiryId: number | null = null;
     let chatInquiryToken: string | null = null;
+    let chatPlanItemsAdded = 0;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const resp = await openai.chat.completions.create({
@@ -158,6 +159,13 @@ router.post("/chat/message", async (req, res): Promise<void> => {
             chatInquiryToken = r.inquiryToken;
           }
         }
+        // Capture items added to plan.
+        if (tc.function.name === "add_items_to_plan") {
+          const r = result as Record<string, unknown>;
+          if (typeof r.addedCount === "number" && r.addedCount > 0) {
+            chatPlanItemsAdded += r.addedCount;
+          }
+        }
 
         messages.push({
           role: "tool",
@@ -172,7 +180,7 @@ router.post("/chat/message", async (req, res): Promise<void> => {
     }
 
     res.write(`data: ${JSON.stringify({ content: finalContent })}\n\n`);
-    res.write(`data: ${JSON.stringify({ done: true, inquiryId: chatInquiryId, inquiryToken: chatInquiryToken })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, inquiryId: chatInquiryId, inquiryToken: chatInquiryToken, planItemsAdded: chatPlanItemsAdded || null })}\n\n`);
     res.end();
   } catch (err) {
     req.log.error({ err }, "Error in chat");

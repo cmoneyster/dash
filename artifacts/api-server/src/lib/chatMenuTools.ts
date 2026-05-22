@@ -6,8 +6,9 @@ import {
   cateringInquiriesTable,
   contactRequestsTable,
   eventSettingsTable,
+  planItemsTable,
 } from "@workspace/db/schema";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, and } from "drizzle-orm";
 import {
   computeDayLoad,
   findOpenAlternates,
@@ -407,6 +408,26 @@ export const CHAT_TOOL_DEFS = [
           },
         },
         required: ["date"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "add_items_to_plan",
+      description:
+        "Add one or more menu items directly to the guest's event plan. Use this ONLY when the guest explicitly asks you to pick items for them or has confirmed a specific selection (e.g. 'add those to my plan', 'yes, those three'). Never call this speculatively or mid-exploration. Deduplicates automatically — items already in the plan are skipped. After calling, tell the guest what you added and invite them to visit their plan to review.",
+      parameters: {
+        type: "object",
+        properties: {
+          menuItemIds: {
+            type: "array",
+            items: { type: "number" },
+            description: "Array of menu item IDs (from search_menu or get_menu_item results) to add to the plan.",
+          },
+        },
+        required: ["menuItemIds"],
         additionalProperties: false,
       },
     },
@@ -890,6 +911,34 @@ export async function runChatTool(
           ? (serviceStyleRaw as ServiceStyleKey)
           : undefined;
       return checkEventDate({ date, guestCount, serviceStyle });
+    }
+    case "add_items_to_plan": {
+      const sessionId = typeof ctx.sessionId === "string" ? ctx.sessionId : "";
+      if (!sessionId) return { error: "sessionId required" };
+      const rawIds = Array.isArray(a.menuItemIds) ? a.menuItemIds : [];
+      const validIds = (rawIds as unknown[])
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && snap.items.some((i) => i.id === id));
+      if (validIds.length === 0) return { addedCount: 0, items: [] };
+
+      const existing = await db
+        .select({ menuItemId: planItemsTable.menuItemId })
+        .from(planItemsTable)
+        .where(eq(planItemsTable.sessionId, sessionId));
+      const existingSet = new Set(existing.map((r) => r.menuItemId));
+      const toAdd = validIds.filter((id) => !existingSet.has(id));
+
+      if (toAdd.length > 0) {
+        await db
+          .insert(planItemsTable)
+          .values(toAdd.map((menuItemId) => ({ sessionId, menuItemId })));
+      }
+
+      const addedItems = toAdd.map((id) => {
+        const item = snap.items.find((i) => i.id === id)!;
+        return { id: item.id, name: item.name };
+      });
+      return { addedCount: toAdd.length, items: addedItems };
     }
     default:
       return { error: `Unknown tool: ${name}` };

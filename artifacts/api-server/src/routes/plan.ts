@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
+import { randomUUID } from "node:crypto";
 import { db } from "@workspace/db";
-import { planItemsTable, menuItemsTable, sharedPlansTable } from "@workspace/db/schema";
+import { planItemsTable, menuItemsTable, sharedPlansTable, cateringInquiriesTable, menuCategoriesTable, type QuoteLineItem } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
+import { sendNewInquiryAlert } from "../lib/sms";
 const router: IRouter = Router();
 
 const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
@@ -321,6 +323,159 @@ router.delete("/plan/share/:token/items/:itemId", async (req, res): Promise<void
   } catch (err) {
     req.log.error({ err }, "Error removing item from shared plan");
     res.status(500).json({ error: "Failed to remove item" });
+  }
+});
+
+// Submit a catering inquiry from the customer's event plan
+router.post("/plan/submit-inquiry", async (req, res): Promise<void> => {
+  try {
+    const {
+      sessionId,
+      customerName,
+      customerEmail,
+      customerPhone,
+      eventDate,
+      guestCount,
+      serviceMode: rawServiceMode,
+      venueAddress,
+      deliveryNotes,
+      plannerState,
+    } = req.body as {
+      sessionId?: string;
+      customerName?: string;
+      customerEmail?: string;
+      customerPhone?: string;
+      eventDate?: string;
+      guestCount?: number;
+      serviceMode?: string;
+      venueAddress?: string;
+      deliveryNotes?: string;
+      plannerState?: {
+        piecesMap?: Record<string, number>;
+        servingsMap?: Record<string, number>;
+        panQtys?: Record<string, Record<string, number>>;
+        guests?: number;
+      };
+    };
+
+    if (!sessionId || typeof sessionId !== "string") {
+      res.status(400).json({ error: "sessionId is required" });
+      return;
+    }
+    if (!customerName?.trim() || !customerEmail?.trim()) {
+      res.status(400).json({ error: "customerName and customerEmail are required" });
+      return;
+    }
+
+    const planRows = await db
+      .select()
+      .from(planItemsTable)
+      .innerJoin(menuItemsTable, eq(planItemsTable.menuItemId, menuItemsTable.id))
+      .where(eq(planItemsTable.sessionId, sessionId));
+
+    if (planRows.length === 0) {
+      res.status(400).json({ error: "Plan is empty" });
+      return;
+    }
+
+    const categories = await db.select().from(menuCategoriesTable);
+    const catGroupMap = new Map<string, string>(
+      categories.map((c) => [c.name, c.plannerGroup ?? "other"])
+    );
+
+    const pm = plannerState?.piecesMap ?? {};
+    const sm = plannerState?.servingsMap ?? {};
+    const pq = plannerState?.panQtys ?? {};
+
+    const lineItems: QuoteLineItem[] = [];
+    let subtotal = 0;
+
+    for (const row of planRows) {
+      const item = row.menu_items;
+      const planItemId = String(row.plan_items.id);
+      const isPanSizes = item.pricingTemplate === "pan_sizes";
+      const plannerGroup = catGroupMap.get(item.category) ?? "other";
+      const minQty = item.minimumOrderQty ?? 1;
+
+      if (isPanSizes) {
+        const slots = pq[planItemId] ?? {};
+        const slotEntries = Object.entries(slots).filter(([, q]) => Number(q) > 0);
+        if (slotEntries.length > 0) {
+          for (const [idxStr, qty] of slotEntries) {
+            const idx = Number(idxStr);
+            const sizeLabel = (item as Record<string, unknown>)[`size${idx}Label`] as string | null;
+            const sizePrice = (item as Record<string, unknown>)[`size${idx}Price`];
+            if (sizeLabel == null || sizePrice == null) continue;
+            const unitPrice = parseFloat(String(sizePrice));
+            const q = Number(qty);
+            subtotal += unitPrice * q;
+            lineItems.push({ id: randomUUID(), menuItemId: item.id, name: item.name, quantity: q, unitPrice, pricingTemplate: "pan_sizes", sizeSlot: idx, sizeLabel });
+          }
+        } else {
+          const sizeLabel = (item as Record<string, unknown>)[`size1Label`] as string | null;
+          const sizePrice = (item as Record<string, unknown>)[`size1Price`];
+          if (sizeLabel != null && sizePrice != null) {
+            const unitPrice = parseFloat(String(sizePrice));
+            subtotal += unitPrice;
+            lineItems.push({ id: randomUUID(), menuItemId: item.id, name: item.name, quantity: 1, unitPrice, pricingTemplate: "pan_sizes", sizeSlot: 1, sizeLabel });
+          }
+        }
+      } else {
+        const isSmallBite = plannerGroup === "savory" || plannerGroup === "sweet";
+        const isEntreeGroup = plannerGroup === "entree";
+        const qtyFromMap = isSmallBite
+          ? (pm[planItemId] ?? undefined)
+          : isEntreeGroup
+            ? (sm[planItemId] ?? undefined)
+            : undefined;
+        const qty = Math.max(minQty, Number(qtyFromMap ?? 0) || minQty);
+        const unitPrice = parseFloat(item.price);
+        subtotal += unitPrice * qty;
+        const pt = item.pricingTemplate;
+        lineItems.push({ id: randomUUID(), menuItemId: item.id, name: item.name, quantity: qty, unitPrice, pricingTemplate: (pt === "pan_sizes" || pt === "per_unit") ? pt : null });
+      }
+    }
+
+    const serviceMode = (rawServiceMode === "on_the_dash" ? "on_the_dash" : "drop_off") as "drop_off" | "on_the_dash";
+    const resolvedGuestCount = typeof guestCount === "number" ? guestCount : (plannerState?.guests ?? null);
+
+    const [inquiryRow] = await db.insert(cateringInquiriesTable).values({
+      clientName: customerName.trim(),
+      clientEmail: customerEmail.trim(),
+      clientPhone: customerPhone?.trim() || null,
+      eventDate: eventDate?.trim() || null,
+      guestCount: resolvedGuestCount,
+      venueAddress: venueAddress?.trim() || null,
+      menuNotes: deliveryNotes?.trim() || null,
+      source: "plan",
+      lineItems,
+      fees: [],
+      discounts: [],
+      subtotal: subtotal.toFixed(2),
+      feesTotal: "0.00",
+      discountsTotal: "0.00",
+      total: subtotal.toFixed(2),
+      status: "inquiry",
+      serviceMode,
+    }).returning();
+
+    sendNewInquiryAlert({
+      clientName: customerName.trim(),
+      source: "plan",
+      eventDate: eventDate?.trim() || null,
+      guestCount: resolvedGuestCount,
+      total: `$${subtotal.toFixed(2)}`,
+      clientPhone: customerPhone?.trim() || null,
+      venueAddress: venueAddress?.trim() || null,
+    }).catch(() => {});
+
+    res.status(201).json({
+      inquiryId: inquiryRow.id,
+      quoteToken: inquiryRow.quoteToken,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Error submitting plan inquiry");
+    res.status(500).json({ error: "Failed to submit inquiry" });
   }
 });
 

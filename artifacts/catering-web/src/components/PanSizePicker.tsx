@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Minus, Plus, ShoppingCart } from "lucide-react";
+import { X, Minus, Plus, ClipboardList } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import type { PanSizeMenuItem } from "@/lib/menu-types";
 
@@ -158,12 +158,12 @@ export function PanSizePicker({ item, onClose, onConfirm, loading }: PanSizePick
             disabled={loading}
             className="w-full py-3.5 px-4 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
-            <ShoppingCart className="w-4 h-4" />
+            <ClipboardList className="w-4 h-4" />
             {loading
               ? "Adding…"
               : totalPans > 0
-              ? `Add ${totalPans} pan${totalPans !== 1 ? "s" : ""} to Order`
-              : "Add to Order"}
+              ? `Add ${totalPans} pan${totalPans !== 1 ? "s" : ""} to Plan`
+              : "Add to Plan"}
           </button>
           <button
             onClick={onClose}
