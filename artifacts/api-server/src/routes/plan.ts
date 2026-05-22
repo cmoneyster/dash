@@ -1,10 +1,21 @@
 import { Router, type IRouter } from "express";
 import { randomUUID } from "node:crypto";
 import { db } from "@workspace/db";
-import { planItemsTable, menuItemsTable, sharedPlansTable, cateringInquiriesTable, menuCategoriesTable, type QuoteLineItem } from "@workspace/db/schema";
+import { planItemsTable, menuItemsTable, sharedPlansTable, cateringInquiriesTable, menuCategoriesTable, eventSettingsTable, type QuoteLineItem } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { sendNewInquiryAlert } from "../lib/sms";
+import { computeEffectivePriceDetail, computeOtdSetupFeeRow } from "@workspace/pricing";
+import { computeQuoteTotals } from "../lib/quote";
 const router: IRouter = Router();
+
+// Hard fallbacks — mirrors the schema defaults and the same constants in orders.ts.
+const OTD_DEFAULTS = {
+  setupFee: 500,
+  feeWaiverThreshold: 2500,
+  includedHours: 4,
+  additionalHourRate: 150,
+  maxAdditionalHours: 4,
+};
 
 const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
 
@@ -404,20 +415,28 @@ router.post("/plan/submit-inquiry", async (req, res): Promise<void> => {
           for (const [idxStr, qty] of slotEntries) {
             const idx = Number(idxStr);
             const sizeLabel = (item as Record<string, unknown>)[`size${idx}Label`] as string | null;
-            const sizePrice = (item as Record<string, unknown>)[`size${idx}Price`];
+            const sizePrice = (item as Record<string, unknown>)[`size${idx}Price`] as string | number | null | undefined;
             if (sizeLabel == null || sizePrice == null) continue;
-            const unitPrice = parseFloat(String(sizePrice));
             const q = Number(qty);
+            const { price: unitPrice, tier } = computeEffectivePriceDetail(item, q, sizePrice);
             subtotal += unitPrice * q;
-            lineItems.push({ id: randomUUID(), menuItemId: item.id, name: item.name, quantity: q, unitPrice, pricingTemplate: "pan_sizes", sizeSlot: idx, sizeLabel });
+            lineItems.push({
+              id: randomUUID(), menuItemId: item.id, name: item.name, quantity: q,
+              unitPrice, pricingTemplate: "pan_sizes", sizeSlot: idx, sizeLabel,
+              tierApplied: tier === "tier2" || tier === "tier3", priceMode: "auto" as const,
+            });
           }
         } else {
           const sizeLabel = (item as Record<string, unknown>)[`size1Label`] as string | null;
-          const sizePrice = (item as Record<string, unknown>)[`size1Price`];
+          const sizePrice = (item as Record<string, unknown>)[`size1Price`] as string | number | null | undefined;
           if (sizeLabel != null && sizePrice != null) {
-            const unitPrice = parseFloat(String(sizePrice));
+            const { price: unitPrice, tier } = computeEffectivePriceDetail(item, 1, sizePrice);
             subtotal += unitPrice;
-            lineItems.push({ id: randomUUID(), menuItemId: item.id, name: item.name, quantity: 1, unitPrice, pricingTemplate: "pan_sizes", sizeSlot: 1, sizeLabel });
+            lineItems.push({
+              id: randomUUID(), menuItemId: item.id, name: item.name, quantity: 1,
+              unitPrice, pricingTemplate: "pan_sizes", sizeSlot: 1, sizeLabel,
+              tierApplied: tier === "tier2" || tier === "tier3", priceMode: "auto" as const,
+            });
           }
         }
       } else {
@@ -429,15 +448,42 @@ router.post("/plan/submit-inquiry", async (req, res): Promise<void> => {
             ? (sm[planItemId] ?? undefined)
             : undefined;
         const qty = Math.max(minQty, Number(qtyFromMap ?? 0) || minQty);
-        const unitPrice = parseFloat(item.price);
+        const { price: unitPrice, tier } = computeEffectivePriceDetail(item, qty, null);
         subtotal += unitPrice * qty;
         const pt = item.pricingTemplate;
-        lineItems.push({ id: randomUUID(), menuItemId: item.id, name: item.name, quantity: qty, unitPrice, pricingTemplate: (pt === "pan_sizes" || pt === "per_unit") ? pt : null });
+        lineItems.push({
+          id: randomUUID(), menuItemId: item.id, name: item.name, quantity: qty,
+          unitPrice, pricingTemplate: (pt === "pan_sizes" || pt === "per_unit") ? pt : null,
+          tierApplied: tier === "tier2" || tier === "tier3", priceMode: "auto" as const,
+        });
       }
     }
 
     const serviceMode = (rawServiceMode === "on_the_dash" ? "on_the_dash" : "drop_off") as "drop_off" | "on_the_dash";
     const resolvedGuestCount = typeof guestCount === "number" ? guestCount : (plannerState?.guests ?? null);
+    const isOtd = serviceMode === "on_the_dash";
+
+    // Snapshot the live OTD config so this inquiry's quote stays stable even
+    // if admins later edit event settings — mirrors the pattern in orders.ts.
+    const [eventSettings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    const otdConfig = {
+      setupFee:            eventSettings?.otdSetupFee != null            ? parseFloat(eventSettings.otdSetupFee)            : OTD_DEFAULTS.setupFee,
+      feeWaiverThreshold:  eventSettings?.otdFeeWaiverThreshold != null  ? parseFloat(eventSettings.otdFeeWaiverThreshold)  : OTD_DEFAULTS.feeWaiverThreshold,
+      includedHours:       eventSettings?.otdIncludedHours != null       ? parseFloat(eventSettings.otdIncludedHours)       : OTD_DEFAULTS.includedHours,
+      additionalHourRate:  eventSettings?.otdAdditionalHourRate != null  ? parseFloat(eventSettings.otdAdditionalHourRate)  : OTD_DEFAULTS.additionalHourRate,
+      maxAdditionalHours:  eventSettings?.otdMaxAdditionalHours          ?? OTD_DEFAULTS.maxAdditionalHours,
+    };
+
+    // Seed the OTD setup-fee row so the admin Quote Builder shows the correct
+    // fee without requiring a manual edit — matches the orders.ts dual-write.
+    const seededSetupRow = computeOtdSetupFeeRow(
+      serviceMode,
+      otdConfig.setupFee,
+      otdConfig.feeWaiverThreshold,
+      subtotal,
+    );
+    const seededFees = seededSetupRow ? [seededSetupRow] : [];
+    const seededTotals = computeQuoteTotals(lineItems, seededFees, []);
 
     const [inquiryRow] = await db.insert(cateringInquiriesTable).values({
       clientName: customerName.trim(),
@@ -449,14 +495,20 @@ router.post("/plan/submit-inquiry", async (req, res): Promise<void> => {
       menuNotes: deliveryNotes?.trim() || null,
       source: "plan",
       lineItems,
-      fees: [],
+      fees: seededFees,
       discounts: [],
-      subtotal: subtotal.toFixed(2),
-      feesTotal: "0.00",
-      discountsTotal: "0.00",
-      total: subtotal.toFixed(2),
+      subtotal: seededTotals.subtotal.toFixed(2),
+      feesTotal: seededTotals.feesTotal.toFixed(2),
+      discountsTotal: seededTotals.discountsTotal.toFixed(2),
+      total: seededTotals.total.toFixed(2),
       status: "inquiry",
       serviceMode,
+      // OTD snapshot — only populated for on_the_dash inquiries (drop_off leaves null)
+      otdSetupFee:            isOtd ? String(otdConfig.setupFee.toFixed(2))           : null,
+      otdFeeWaiverThreshold:  isOtd ? String(otdConfig.feeWaiverThreshold.toFixed(2)) : null,
+      otdIncludedHours:       isOtd ? String(otdConfig.includedHours.toFixed(2))      : null,
+      otdAdditionalHourRate:  isOtd ? String(otdConfig.additionalHourRate.toFixed(2)) : null,
+      otdMaxAdditionalHours:  isOtd ? otdConfig.maxAdditionalHours                    : null,
     }).returning();
 
     sendNewInquiryAlert({
@@ -464,7 +516,7 @@ router.post("/plan/submit-inquiry", async (req, res): Promise<void> => {
       source: "plan",
       eventDate: eventDate?.trim() || null,
       guestCount: resolvedGuestCount,
-      total: `$${subtotal.toFixed(2)}`,
+      total: `$${seededTotals.total.toFixed(2)}`,
       clientPhone: customerPhone?.trim() || null,
       venueAddress: venueAddress?.trim() || null,
     }).catch(() => {});

@@ -10,7 +10,7 @@ import { formatCurrency } from "@/lib/utils";
 import { TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import {
   Trash2, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
-  Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck, Calendar, Send,
+  Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck, Calendar, Send, ShieldCheck,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation, useSearch } from "wouter";
@@ -340,16 +340,74 @@ export default function Plan() {
   const [iLoading, setILoading] = useState(false);
   const [iError, setIError] = useState<string | null>(null);
 
+  // Phone verification state
+  const [iPhoneVerified,  setIPhoneVerified]  = useState(false);
+  const [iVerifyCode,     setIVerifyCode]     = useState("");
+  const [iVerifySent,     setIVerifySent]     = useState(false);
+  const [iVerifyLoading,  setIVerifyLoading]  = useState(false);
+  const [iVerifyError,    setIVerifyError]    = useState<string | null>(null);
+
+  const resetPhoneVerify = () => {
+    setIPhoneVerified(false);
+    setIVerifySent(false);
+    setIVerifyCode("");
+    setIVerifyError(null);
+  };
+
+  const handleSendCode = async () => {
+    setIVerifyLoading(true);
+    setIVerifyError(null);
+    try {
+      const resp = await fetch("/api/verify/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: iPhone.trim() }),
+      });
+      const data = await resp.json().catch(() => ({})) as { error?: string };
+      if (!resp.ok) throw new Error(data.error ?? "Failed to send code");
+      setIVerifySent(true);
+    } catch (err: unknown) {
+      setIVerifyError(err instanceof Error ? err.message : "Failed to send code");
+    } finally {
+      setIVerifyLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    setIVerifyLoading(true);
+    setIVerifyError(null);
+    try {
+      const resp = await fetch("/api/verify/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: iPhone.trim(), code: iVerifyCode.trim() }),
+      });
+      const data = await resp.json().catch(() => ({})) as { error?: string; verified?: boolean };
+      if (!resp.ok) throw new Error(data.error ?? "Incorrect code");
+      setIPhoneVerified(true);
+      setIVerifyError(null);
+    } catch (err: unknown) {
+      setIVerifyError(err instanceof Error ? err.message : "Incorrect code");
+    } finally {
+      setIVerifyLoading(false);
+    }
+  };
+
   const openInquiryForm = () => {
     setIEventDate(chatEventDate ?? "");
     setInquiryOpen(true);
     setIError(null);
+    resetPhoneVerify();
   };
 
   const handleSubmitInquiry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!iName.trim() || !iEmail.trim()) {
       setIError("Name and email are required.");
+      return;
+    }
+    if (iPhone.trim() && !iPhoneVerified) {
+      setIError("Please verify your phone number before submitting, or clear the phone field.");
       return;
     }
     setILoading(true);
@@ -1523,14 +1581,63 @@ export default function Plan() {
                   />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-semibold mb-1">Phone <span className="text-muted-foreground font-normal">(optional)</span></label>
-                  <input
-                    type="tel"
-                    value={iPhone}
-                    onChange={e => setIPhone(e.target.value)}
-                    placeholder="(555) 123-4567"
-                    className="w-full px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
-                  />
+                  <label className="block text-sm font-semibold mb-1">
+                    Phone <span className="text-muted-foreground font-normal">(optional)</span>
+                    {iPhoneVerified && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-emerald-600 font-semibold">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Verified
+                      </span>
+                    )}
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="tel"
+                      value={iPhone}
+                      onChange={e => { setIPhone(e.target.value); resetPhoneVerify(); }}
+                      placeholder="(555) 123-4567"
+                      className="flex-1 px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                    />
+                    {iPhone.trim() && !iPhoneVerified && !iVerifySent && (
+                      <button
+                        type="button"
+                        onClick={handleSendCode}
+                        disabled={iVerifyLoading}
+                        className="px-3 py-2 bg-secondary text-foreground text-sm font-semibold rounded-xl hover:bg-secondary/80 disabled:opacity-60 transition-colors whitespace-nowrap"
+                      >
+                        {iVerifyLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send code"}
+                      </button>
+                    )}
+                  </div>
+                  {iVerifySent && !iPhoneVerified && (
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={iVerifyCode}
+                        onChange={e => setIVerifyCode(e.target.value)}
+                        placeholder="6-digit code"
+                        className="flex-1 px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyCode}
+                        disabled={iVerifyLoading || !iVerifyCode.trim()}
+                        className="px-3 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-xl hover:bg-primary/90 disabled:opacity-60 transition-colors whitespace-nowrap"
+                      >
+                        {iVerifyLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSendCode}
+                        disabled={iVerifyLoading}
+                        className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
+                      >
+                        Resend
+                      </button>
+                    </div>
+                  )}
+                  {iVerifyError && <p className="mt-1 text-xs text-destructive">{iVerifyError}</p>}
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-semibold mb-1">Event date <span className="text-muted-foreground font-normal">(optional)</span></label>

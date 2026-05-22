@@ -170,12 +170,12 @@ export function MenuCard({ item, onAddToPlan, onTogglePlan, isInPlan, serviceMod
             ) : isPanSizes ? (
               <>
                 <Plus className="w-5 h-5 group-hover/btn:rotate-90 transition-transform duration-300" />
-                {!item.available ? "Unavailable" : blockedByOtd ? "Drop-Off only" : "Add to Plan"}
+                {!item.available ? "Unavailable" : blockedByOtd ? "Drop-Off only" : "Add to Event Plan"}
               </>
             ) : (
               <>
                 <Plus className="w-5 h-5 group-hover/btn:rotate-90 transition-transform duration-300" />
-                {!item.available ? "Unavailable" : blockedByOtd ? "Drop-Off only" : "Add to Plan"}
+                {!item.available ? "Unavailable" : blockedByOtd ? "Drop-Off only" : "Add to Event Plan"}
               </>
             )}
           </button>

@@ -162,8 +162,8 @@ export function PanSizePicker({ item, onClose, onConfirm, loading }: PanSizePick
             {loading
               ? "Adding…"
               : totalPans > 0
-              ? `Add ${totalPans} pan${totalPans !== 1 ? "s" : ""} to Plan`
-              : "Add to Plan"}
+              ? `Add ${totalPans} pan${totalPans !== 1 ? "s" : ""} to Event Plan`
+              : "Add to Event Plan"}
           </button>
           <button
             onClick={onClose}
