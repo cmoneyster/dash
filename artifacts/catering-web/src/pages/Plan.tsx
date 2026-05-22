@@ -417,8 +417,12 @@ export default function Plan() {
       setIError("Name and email are required.");
       return;
     }
-    if (iPhone.trim() && verifyState !== "verified") {
-      setIError("Please verify your phone number before submitting, or clear the phone field.");
+    if (!iPhone.trim()) {
+      setIError("A verified phone number is required to submit an inquiry.");
+      return;
+    }
+    if (verifyState !== "verified") {
+      setIError("Please verify your phone number before submitting.");
       return;
     }
     setILoading(true);
@@ -1598,7 +1602,7 @@ export default function Plan() {
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-semibold mb-1">
-                    Phone <span className="text-muted-foreground font-normal">(optional)</span>
+                    Phone <span className="text-destructive">*</span>
                   </label>
 
                   {verifyState === "verified" ? (
