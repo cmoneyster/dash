@@ -7,7 +7,7 @@ import {
 import { getSessionId } from "@/lib/session";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import { TAX_DISCLOSURE_SHORT } from "@/lib/tax";
+import { TAX_DISCLOSURE, TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import {
   Trash2, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
   Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck, Calendar, Send, ShieldCheck,
@@ -18,7 +18,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useCategories, splitCategoryName, type Category } from "@/lib/categories";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
-import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
+import { loadServiceMode, saveServiceMode, computeOtdSetupFee, type ServiceMode, type OtdConfig, OTD_DEFAULTS } from "@/lib/serviceMode";
 import { computePlannerCoverage } from "@/lib/plannerMath";
 
 // ── Category helpers (derived from API) ──────────────────────────────────────
@@ -506,6 +506,43 @@ export default function Plan() {
   }, []);
   useEffect(() => { saveServiceMode(serviceMode); }, [serviceMode]);
 
+  // Live OTD pricing config — falls back to schema defaults if the fetch fails.
+  const [otdConfig, setOtdConfig] = useState<OtdConfig>(OTD_DEFAULTS);
+  useEffect(() => {
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    fetch(`${base}/api/event-settings/otd-config`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: OtdConfig | null) => { if (d) setOtdConfig(d); })
+      .catch(() => {});
+  }, []);
+
+  // ── Computed totals (hoisted so sticky bar + modal can share them) ──────────
+  const foodSubtotal = useMemo(() => {
+    if (!plan?.items) return 0;
+    return plan.items.reduce((s, i) => {
+      if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
+        const slots = panQtys[i.id] ?? {};
+        let panTotal = 0;
+        for (let idx = 1; idx <= 5; idx++) {
+          const prc = (i.menuItem as any)[`size${idx}Price`];
+          if (prc != null) panTotal += (slots[idx] ?? 0) * parseFloat(String(prc));
+        }
+        return s + panTotal;
+      }
+      const minQ = i.menuItem.minimumOrderQty ?? 1;
+      const qty = catMaps.savory.has(i.menuItem.category) || catMaps.sweet.has(i.menuItem.category)
+                ? Math.max(minQ, piecesMap[i.id] ?? 0)
+                : catMaps.entree.has(i.menuItem.category)
+                ? Math.max(minQ, servingsMap[i.id] ?? 0)
+                : 1;
+      return s + qty * parseFloat(String(i.menuItem.price));
+    }, 0);
+  }, [plan?.items, panQtys, piecesMap, servingsMap, catMaps]);
+
+  const otdSetupFee     = serviceMode === "on_the_dash" ? computeOtdSetupFee(foodSubtotal, otdConfig) : 0;
+  const isWaiverApplied = serviceMode === "on_the_dash" && otdSetupFee === 0 && otdConfig.feeWaiverThreshold > 0;
+  const grandTotal      = foodSubtotal + otdSetupFee;
+
   // ── Persist planner state to localStorage so it survives navigation ──
   useEffect(() => {
     try {
@@ -946,6 +983,44 @@ export default function Plan() {
               <Truck className="w-4 h-4" />
               Switch to Standard Drop-Off
             </button>
+          </div>
+        )}
+
+        {/* ── On the Dash fee explainer ── */}
+        {serviceMode === "on_the_dash" && (
+          <div className="mb-6 p-4 rounded-xl border border-orange-200 dark:border-orange-800/50 bg-orange-50/60 dark:bg-orange-950/30 space-y-2">
+            <div className="flex justify-between items-baseline text-sm">
+              <span className="font-semibold text-orange-900 dark:text-orange-200">On-site setup fee</span>
+              {isWaiverApplied ? (
+                <span className="flex items-baseline gap-2">
+                  <span className="text-muted-foreground line-through text-xs">{formatCurrency(otdConfig.setupFee)}</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">Waived</span>
+                </span>
+              ) : (
+                <span className="font-bold text-orange-900 dark:text-orange-200">{formatCurrency(otdConfig.setupFee)}</span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Includes {otdConfig.includedHours} {otdConfig.includedHours === 1 ? "hour" : "hours"} of on-site service.
+              Additional hours are {formatCurrency(otdConfig.additionalHourRate)}/hr (up to {otdConfig.maxAdditionalHours} extra),
+              billed after the event.
+            </p>
+            {!isWaiverApplied && otdConfig.feeWaiverThreshold > 0 && foodSubtotal > 0 && (
+              <p className="text-xs text-orange-700 dark:text-orange-300">
+                Add {formatCurrency(Math.max(0, otdConfig.feeWaiverThreshold - foodSubtotal))} more to waive the setup fee
+                (waived at {formatCurrency(otdConfig.feeWaiverThreshold)}+).
+              </p>
+            )}
+            {!isWaiverApplied && otdConfig.feeWaiverThreshold > 0 && foodSubtotal === 0 && (
+              <p className="text-xs text-orange-700 dark:text-orange-300">
+                Fee is waived when your food order reaches {formatCurrency(otdConfig.feeWaiverThreshold)}.
+              </p>
+            )}
+            {isWaiverApplied && (
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                Setup fee waived — your order is over {formatCurrency(otdConfig.feeWaiverThreshold)}.
+              </p>
+            )}
           </div>
         )}
 
@@ -1498,42 +1573,34 @@ export default function Plan() {
             </div>
 
             {/* ── Submit Catering Inquiry ── */}
-            {plan.items.length > 0 && (() => {
-              const total = plan.items.reduce((s, i) => {
-                if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
-                  const slots = panQtys[i.id] ?? {};
-                  let panTotal = 0;
-                  for (let idx = 1; idx <= 5; idx++) {
-                    const prc = (i.menuItem as any)[`size${idx}Price`];
-                    if (prc != null) panTotal += (slots[idx] ?? 0) * parseFloat(String(prc));
-                  }
-                  return s + panTotal;
-                }
-                const minQ = i.menuItem.minimumOrderQty ?? 1;
-                const qty = isSmallBite(i.menuItem.category) ? Math.max(minQ, piecesMap[i.id] ?? 0)
-                          : isEntree(i.menuItem.category)    ? Math.max(minQ, servingsMap[i.id] ?? 0)
-                          : 1;
-                return s + qty * parseFloat(String(i.menuItem.price));
-              }, 0);
-              return (
-                <div className="sticky bottom-4 z-20">
-                  <div className="bg-foreground text-background rounded-2xl shadow-xl px-5 py-4 flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-display font-bold text-base leading-tight">
-                        {plan.items.length} item{plan.items.length !== 1 ? "s" : ""} in your plan
+            {plan.items.length > 0 && (
+              <div className="sticky bottom-4 z-20">
+                <div className="bg-foreground text-background rounded-2xl shadow-xl px-5 py-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="font-display font-bold text-base leading-tight">
+                      {plan.items.length} item{plan.items.length !== 1 ? "s" : ""} in your plan
+                    </p>
+                    {serviceMode === "on_the_dash" && otdSetupFee > 0 ? (
+                      <p className="text-sm opacity-70">
+                        {formatCurrency(foodSubtotal)} food + {formatCurrency(otdSetupFee)} setup = <span className="font-semibold">{formatCurrency(grandTotal)}</span> est. · {TAX_DISCLOSURE_SHORT}
                       </p>
-                      <p className="text-sm opacity-70">{formatCurrency(total)} estimated · {TAX_DISCLOSURE_SHORT}</p>
-                    </div>
-                    <button
-                      onClick={openInquiryForm}
-                      className="shrink-0 flex items-center gap-2 bg-background text-foreground font-bold px-5 py-2.5 rounded-xl hover:bg-secondary transition-colors text-sm"
-                    >
-                      <Send className="w-4 h-4" /> Request a Quote
-                    </button>
+                    ) : serviceMode === "on_the_dash" && isWaiverApplied ? (
+                      <p className="text-sm opacity-70">
+                        {formatCurrency(foodSubtotal)} food · setup fee waived · {TAX_DISCLOSURE_SHORT}
+                      </p>
+                    ) : (
+                      <p className="text-sm opacity-70">{formatCurrency(foodSubtotal)} estimated · {TAX_DISCLOSURE_SHORT}</p>
+                    )}
                   </div>
+                  <button
+                    onClick={openInquiryForm}
+                    className="shrink-0 flex items-center gap-2 bg-background text-foreground font-bold px-5 py-2.5 rounded-xl hover:bg-secondary transition-colors text-sm"
+                  >
+                    <Send className="w-4 h-4" /> Request a Quote
+                  </button>
                 </div>
-              );
-            })()}
+              </div>
+            )}
 
           </div>
         )}
@@ -1574,6 +1641,35 @@ export default function Plan() {
                         {new Date(iEventDate + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                       </span>
                     </div>
+                  )}
+                  {/* ── Fee breakdown ── */}
+                  {plan.items.length > 0 && (
+                    <>
+                      <div className="border-t border-border/50 my-1" />
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Food subtotal</span>
+                        <span className="font-semibold">{formatCurrency(foodSubtotal)}</span>
+                      </div>
+                      {serviceMode === "on_the_dash" && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">On-site setup fee</span>
+                          {isWaiverApplied ? (
+                            <span className="flex items-baseline gap-1.5">
+                              <span className="text-muted-foreground line-through text-xs">{formatCurrency(otdConfig.setupFee)}</span>
+                              <span className="font-semibold text-emerald-600 dark:text-emerald-400">Waived</span>
+                            </span>
+                          ) : (
+                            <span className="font-semibold">{formatCurrency(otdSetupFee)}</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex justify-between font-bold text-foreground">
+                        <span>Estimated total</span>
+                        <span>{formatCurrency(grandTotal)}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{TAX_DISCLOSURE}</p>
+                      <p className="text-xs font-medium text-primary">No payment required yet — we'll follow up with a formal quote.</p>
+                    </>
                   )}
                 </div>
               )}
