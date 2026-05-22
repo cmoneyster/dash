@@ -916,30 +916,54 @@ export async function runChatTool(
     case "add_items_to_plan": {
       const sessionId = typeof ctx.sessionId === "string" ? ctx.sessionId : "";
       if (!sessionId) return { error: "sessionId required" };
+
+      // Dedupe incoming IDs and cap at 8 before any validation.
       const rawIds = Array.isArray(a.menuItemIds) ? (a.menuItemIds as unknown[]).slice(0, 8) : [];
-      const validIds = rawIds
-        .map((id) => Number(id))
-        .filter((id) => Number.isFinite(id) && snap.items.some((i) => i.id === id));
-      if (validIds.length === 0) return { addedCount: 0, items: [] };
+      const uniqueRawIds = Array.from(new Set(rawIds.map((id) => Number(id)).filter((id) => Number.isFinite(id))));
+
+      // Split into valid (exist in snapshot) and invalid.
+      const validIds = uniqueRawIds.filter((id) => snap.items.some((i) => i.id === id));
+      const invalidMenuItemIds = uniqueRawIds.filter((id) => !snap.items.some((i) => i.id === id));
+
+      if (validIds.length === 0) {
+        return {
+          addedCount: 0,
+          addedItems: [],
+          alreadyPresent: [],
+          invalidMenuItemIds,
+        };
+      }
 
       const existing = await db
         .select({ menuItemId: planItemsTable.menuItemId })
         .from(planItemsTable)
         .where(eq(planItemsTable.sessionId, sessionId));
       const existingSet = new Set(existing.map((r) => r.menuItemId));
+
       const toAdd = validIds.filter((id) => !existingSet.has(id));
+      const alreadyPresentIds = validIds.filter((id) => existingSet.has(id));
 
       if (toAdd.length > 0) {
         await db
           .insert(planItemsTable)
-          .values(toAdd.map((menuItemId) => ({ sessionId, menuItemId })));
+          .values(toAdd.map((menuItemId) => ({ sessionId, menuItemId })))
+          .onConflictDoNothing();
       }
 
       const addedItems = toAdd.map((id) => {
         const item = snap.items.find((i) => i.id === id)!;
         return { id: item.id, name: item.name };
       });
-      return { addedCount: toAdd.length, items: addedItems };
+      const alreadyPresent = alreadyPresentIds.map((id) => {
+        const item = snap.items.find((i) => i.id === id)!;
+        return { id: item.id, name: item.name };
+      });
+      return {
+        addedCount: toAdd.length,
+        addedItems,
+        alreadyPresent,
+        invalidMenuItemIds,
+      };
     }
     default:
       return { error: `Unknown tool: ${name}` };
