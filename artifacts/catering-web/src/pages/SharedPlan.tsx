@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { Layout } from "@/components/Layout";
 import { formatCurrency } from "@/lib/utils";
-import { TAX_DISCLOSURE } from "@/lib/tax";
+import { TAX_DISCLOSURE, TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import { getSessionId } from "@/lib/session";
 import {
   Trash2, Heart, Users, AlertTriangle, Copy, CheckCheck, Loader2,
-  Calculator, Utensils, ChevronDown, ChevronUp, Truck,
+  Calculator, Utensils, ChevronDown, ChevronUp, Truck, Send,
 } from "lucide-react";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useToast } from "@/hooks/use-toast";
@@ -207,6 +207,7 @@ export default function SharedPlan() {
   const token = params.token;
   const { toast } = useToast();
   const sessionId = getSessionId();
+  const [, navigate] = useLocation();
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const [plan, setPlan] = useState<SharedPlanData | null>(null);
@@ -425,6 +426,29 @@ export default function SharedPlan() {
   const haveSweet   = coverage.haveSweet;
   const haveEntrees = coverage.haveEntrees;
 
+  // ── Estimated total (mirrors Plan.tsx sticky bar logic) ──
+  const estimatedTotal = useMemo(() => {
+    if (!plan?.items) return 0;
+    return plan.items.reduce((s, i) => {
+      if ((i.menuItem as any).pricingTemplate === "pan_sizes") {
+        const slots = panQtys[String(i.id)] ?? {};
+        let panTotal = 0;
+        for (let idx = 1; idx <= 5; idx++) {
+          const prc = (i.menuItem as any)[`size${idx}Price`];
+          if (prc != null) panTotal += (Number(slots[String(idx)]) || 0) * parseFloat(String(prc));
+        }
+        return s + panTotal;
+      }
+      const minQ = i.menuItem.minimumOrderQty ?? 1;
+      const qty = isSmallBite(i.menuItem.category)
+        ? Math.max(minQ, Number(piecesMap[String(i.id)]) || 0)
+        : isEntree(i.menuItem.category)
+        ? Math.max(minQ, Number(servingsMap[String(i.id)]) || 0)
+        : 1;
+      return s + qty * parseFloat(String(i.menuItem.price));
+    }, 0);
+  }, [plan?.items, panQtys, piecesMap, servingsMap, isSmallBite, isEntree]);
+
   // ── Item actions ──
   const handleRemove = async (itemId: number) => {
     setRemovingId(itemId);
@@ -477,6 +501,25 @@ export default function SharedPlan() {
     } finally {
       setCopying(false);
     }
+  };
+
+  const handleRequestQuote = async () => {
+    if (!plan || copying) return;
+    setCopying(true);
+    try {
+      for (const item of plan.items) {
+        await fetch("/api/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, menuItemId: item.menuItemId }),
+        });
+      }
+    } catch {
+      // proceed even if some items fail — user can adjust on the plan page
+    } finally {
+      setCopying(false);
+    }
+    navigate("/plan");
   };
 
   const handleCopyLink = async () => {
@@ -1016,6 +1059,28 @@ export default function SharedPlan() {
             <p className="text-xs text-muted-foreground text-center pt-1">
               {TAX_DISCLOSURE}
             </p>
+
+            {/* ── Estimated Total + Request a Quote ── */}
+            <div className="sticky bottom-4 z-20">
+              <div className="bg-foreground text-background rounded-2xl shadow-xl px-5 py-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-display font-bold text-base leading-tight">
+                    {plan.items.length} item{plan.items.length !== 1 ? "s" : ""} in plan
+                  </p>
+                  <p className="text-sm opacity-70">{formatCurrency(estimatedTotal)} estimated · {TAX_DISCLOSURE_SHORT}</p>
+                  <p className="text-xs opacity-50 mt-0.5">Estimate only — final price confirmed by our team</p>
+                </div>
+                <button
+                  onClick={handleRequestQuote}
+                  disabled={copying}
+                  className="shrink-0 flex items-center gap-2 bg-background text-foreground font-bold px-5 py-2.5 rounded-xl hover:bg-secondary transition-colors text-sm disabled:opacity-60"
+                >
+                  {copying
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                    : <><Send className="w-4 h-4" /> Request a Quote</>}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
