@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { X as XIcon, Users, AlertTriangle, ShoppingBag, Heart, Loader2, ImageIcon, Flame } from "lucide-react";
+import { X as XIcon, Users, AlertTriangle, Heart, Loader2, ImageIcon, Flame } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   fetchPublicPackage,
   fetchCurrentItemCount,
-  loadPackageIntoCart,
   loadPackageIntoPlanner,
   type PublicMenuPackage,
   type LoadMode,
@@ -16,7 +15,7 @@ import { MergeReplaceDialog, type MergeReplaceChoice } from "@/components/MergeR
 import { useCategories, buildPlannerGroupMap } from "@/lib/categories";
 import { getSessionId } from "@/lib/session";
 import { formatCurrency } from "@/lib/utils";
-import { getGetCartQueryKey, getGetPlanQueryKey } from "@workspace/api-client-react";
+import { getGetPlanQueryKey } from "@workspace/api-client-react";
 
 type Props = {
   packageId: number;
@@ -27,7 +26,7 @@ export function PackageDetail({ packageId, onClose }: Props) {
   const [pkg, setPkg] = useState<PublicMenuPackage | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [pendingTarget, setPendingTarget] = useState<"cart" | "plan" | null>(null);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const [pendingExisting, setPendingExisting] = useState(0);
   const sessionId = getSessionId();
   const { toast } = useToast();
@@ -45,8 +44,6 @@ export function PackageDetail({ packageId, onClose }: Props) {
       .finally(() => setLoading(false));
   }, [packageId, toast]);
 
-  // Per-item subtotal: pan-size items use the size price; everything
-  // else uses the unit price. Total is the sum.
   const breakdown = useMemo(() => {
     if (!pkg) return { rows: [] as { id: number; unitPrice: number; subtotal: number }[], total: 0 };
     let total = 0;
@@ -64,25 +61,16 @@ export function PackageDetail({ packageId, onClose }: Props) {
     return { rows, total };
   }, [pkg]);
 
-  const performLoad = async (target: "cart" | "plan", mode: LoadMode) => {
+  const performLoad = async (mode: LoadMode) => {
     if (!pkg) return;
     setBusy(true);
     try {
-      if (target === "cart") {
-        await loadPackageIntoCart(pkg, sessionId, mode);
-        qc.invalidateQueries({ queryKey: getGetCartQueryKey({ sessionId }) });
-        toast({ title: "Added to cart", description: `${pkg.name} loaded into your order.` });
-        setPendingTarget(null);
-        onClose();
-        navigate("/cart");
-      } else {
-        await loadPackageIntoPlanner(pkg, sessionId, mode, groupOf);
-        qc.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) });
-        toast({ title: "Saved to plan", description: `${pkg.name} loaded into your event plan.` });
-        setPendingTarget(null);
-        onClose();
-        navigate("/plan");
-      }
+      await loadPackageIntoPlanner(pkg, sessionId, mode, groupOf);
+      qc.invalidateQueries({ queryKey: getGetPlanQueryKey({ sessionId }) });
+      toast({ title: "Saved to plan", description: `${pkg.name} loaded into your event plan.` });
+      setMergeOpen(false);
+      onClose();
+      navigate("/plan");
     } catch {
       toast({ title: "Something went wrong", variant: "destructive" });
     } finally {
@@ -90,26 +78,22 @@ export function PackageDetail({ packageId, onClose }: Props) {
     }
   };
 
-  const handleClick = async (target: "cart" | "plan") => {
+  const handleClick = async () => {
     if (busy) return;
     setBusy(true);
-    // Always re-fetch the current cart/plan count on click so we
-    // never silently merge into a populated cart/plan whose state
-    // hasn't loaded yet.
-    const count = await fetchCurrentItemCount(target, sessionId);
+    const count = await fetchCurrentItemCount("plan", sessionId);
     setBusy(false);
     if (count > 0) {
       setPendingExisting(count);
-      setPendingTarget(target);
+      setMergeOpen(true);
     } else {
-      performLoad(target, "merge");
+      performLoad("merge");
     }
   };
 
   const handleChoice = (choice: MergeReplaceChoice) => {
-    if (!pendingTarget) return;
-    if (choice === "cancel") { setPendingTarget(null); return; }
-    performLoad(pendingTarget, choice);
+    if (choice === "cancel") { setMergeOpen(false); return; }
+    performLoad(choice);
   };
 
   return (
@@ -216,38 +200,27 @@ export function PackageDetail({ packageId, onClose }: Props) {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleClick("plan")}
-                  disabled={busy || pkg.items.length === 0}
-                  className="px-5 py-3 rounded-xl bg-secondary text-foreground font-semibold hover:bg-secondary/80 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Heart className="w-4 h-4" /> Load into Event Planner
-                </button>
-                <button
-                  onClick={() => handleClick("cart")}
-                  disabled={busy || pkg.items.length === 0}
-                  className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
-                >
-                  <ShoppingBag className="w-4 h-4" /> Add to Cart
-                </button>
-              </div>
+              <button
+                onClick={handleClick}
+                disabled={busy || pkg.items.length === 0}
+                className="w-full px-5 py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+              >
+                {busy
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Loading…</>
+                  : <><Heart className="w-4 h-4" /> Add to Event Plan</>}
+              </button>
             </div>
           </>
         )}
       </div>
 
       <MergeReplaceDialog
-        open={pendingTarget !== null}
+        open={mergeOpen}
         busy={busy}
         existingCount={pendingExisting}
         incomingCount={pkg?.items.length ?? 0}
-        title={pendingTarget === "cart" ? "Cart already has items" : "Plan already has items"}
-        message={
-          pendingTarget === "cart"
-            ? "Do you want to add this package to your existing cart, or replace what's there?"
-            : "Do you want to add this package to your existing event plan, or replace what's there?"
-        }
+        title="Plan already has items"
+        message="Do you want to add this package to your existing event plan, or replace what's there?"
         onChoose={handleChoice}
       />
     </div>

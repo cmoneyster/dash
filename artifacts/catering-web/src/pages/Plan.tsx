@@ -1472,6 +1472,33 @@ export default function Plan() {
               </button>
             </div>
             <form onSubmit={handleSubmitInquiry} className="px-6 py-5 space-y-4">
+              {/* Plan summary — read-only context for the guest */}
+              {plan && (
+                <div className="bg-secondary/40 rounded-xl px-4 py-3 text-sm space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Items in plan</span>
+                    <span className="font-semibold">{plan.items.length}</span>
+                  </div>
+                  {guests > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Estimated guests</span>
+                      <span className="font-semibold">{guests}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Service</span>
+                    <span className="font-semibold">{serviceMode === "on_the_dash" ? "On the Dash" : "Drop-Off"}</span>
+                  </div>
+                  {iEventDate && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Event date</span>
+                      <span className="font-semibold">
+                        {new Date(iEventDate + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-semibold mb-1">Your name <span className="text-destructive">*</span></label>
