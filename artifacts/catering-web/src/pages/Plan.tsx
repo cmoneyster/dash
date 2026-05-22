@@ -356,6 +356,8 @@ export default function Plan() {
   };
 
   const handleSendCode = async () => {
+    // Capture previous state so a failed resend can restore it (keeps OTP panel visible).
+    const prevState = verifyState;
     setVerifyState("sending");
     setIVerifyCode("");
     setIVerifyError(null);
@@ -370,7 +372,9 @@ export default function Plan() {
       setVerifyState("awaiting_code");
       toast({ title: "Code sent!", description: "Check your phone for a 6-digit verification code." });
     } catch (err: unknown) {
-      setVerifyState("idle");
+      // Restore previous state — if we were already in the OTP flow (awaiting_code),
+      // stay there so the panel stays visible and the error renders inline inside it.
+      setVerifyState(prevState === "awaiting_code" ? "awaiting_code" : "idle");
       setIVerifyError(err instanceof Error ? err.message : "Failed to send code");
     }
   };
@@ -1625,7 +1629,7 @@ export default function Plan() {
                           >
                             {verifyState === "sending" ? (
                               <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</>
-                            ) : verifyState === "awaiting_code" ? (
+                            ) : verifyState === "awaiting_code" || verifyState === "verifying" ? (
                               <><RefreshCw className="w-4 h-4" /> Resend</>
                             ) : (
                               <><Phone className="w-4 h-4" /> Send Code</>
