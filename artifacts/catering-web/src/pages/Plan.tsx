@@ -11,6 +11,7 @@ import { TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import {
   Trash2, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
   Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck, Calendar, Send, ShieldCheck,
+  Phone, RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation, useSearch } from "wouter";
@@ -340,22 +341,23 @@ export default function Plan() {
   const [iLoading, setILoading] = useState(false);
   const [iError, setIError] = useState<string | null>(null);
 
-  // Phone verification state
-  const [iPhoneVerified,  setIPhoneVerified]  = useState(false);
-  const [iVerifyCode,     setIVerifyCode]     = useState("");
-  const [iVerifySent,     setIVerifySent]     = useState(false);
-  const [iVerifyLoading,  setIVerifyLoading]  = useState(false);
-  const [iVerifyError,    setIVerifyError]    = useState<string | null>(null);
+  // Phone verification state machine
+  type VerifyState = "idle" | "sending" | "awaiting_code" | "verifying" | "verified";
+  const [verifyState,   setVerifyState]   = useState<VerifyState>("idle");
+  const [verifiedPhone, setVerifiedPhone] = useState("");
+  const [iVerifyCode,   setIVerifyCode]   = useState("");
+  const [iVerifyError,  setIVerifyError]  = useState<string | null>(null);
 
   const resetPhoneVerify = () => {
-    setIPhoneVerified(false);
-    setIVerifySent(false);
+    setVerifyState("idle");
+    setVerifiedPhone("");
     setIVerifyCode("");
     setIVerifyError(null);
   };
 
   const handleSendCode = async () => {
-    setIVerifyLoading(true);
+    setVerifyState("sending");
+    setIVerifyCode("");
     setIVerifyError(null);
     try {
       const resp = await fetch("/api/verify/send", {
@@ -365,16 +367,17 @@ export default function Plan() {
       });
       const data = await resp.json().catch(() => ({})) as { error?: string };
       if (!resp.ok) throw new Error(data.error ?? "Failed to send code");
-      setIVerifySent(true);
+      setVerifyState("awaiting_code");
+      toast({ title: "Code sent!", description: "Check your phone for a 6-digit verification code." });
     } catch (err: unknown) {
+      setVerifyState("idle");
       setIVerifyError(err instanceof Error ? err.message : "Failed to send code");
-    } finally {
-      setIVerifyLoading(false);
     }
   };
 
   const handleVerifyCode = async () => {
-    setIVerifyLoading(true);
+    if (iVerifyCode.trim().length !== 6) { setIVerifyError("Enter the 6-digit code"); return; }
+    setVerifyState("verifying");
     setIVerifyError(null);
     try {
       const resp = await fetch("/api/verify/confirm", {
@@ -384,12 +387,12 @@ export default function Plan() {
       });
       const data = await resp.json().catch(() => ({})) as { error?: string; verified?: boolean };
       if (!resp.ok) throw new Error(data.error ?? "Incorrect code");
-      setIPhoneVerified(true);
-      setIVerifyError(null);
+      setVerifiedPhone(iPhone.trim());
+      setVerifyState("verified");
+      toast({ title: "Phone verified!", description: "Your number has been confirmed." });
     } catch (err: unknown) {
+      setVerifyState("awaiting_code");
       setIVerifyError(err instanceof Error ? err.message : "Incorrect code");
-    } finally {
-      setIVerifyLoading(false);
     }
   };
 
@@ -406,7 +409,7 @@ export default function Plan() {
       setIError("Name and email are required.");
       return;
     }
-    if (iPhone.trim() && !iPhoneVerified) {
+    if (iPhone.trim() && verifyState !== "verified") {
       setIError("Please verify your phone number before submitting, or clear the phone field.");
       return;
     }
@@ -1588,61 +1591,82 @@ export default function Plan() {
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-semibold mb-1">
                     Phone <span className="text-muted-foreground font-normal">(optional)</span>
-                    {iPhoneVerified && (
-                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-emerald-600 font-semibold">
-                        <ShieldCheck className="w-3.5 h-3.5" /> Verified
-                      </span>
-                    )}
                   </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="tel"
-                      value={iPhone}
-                      onChange={e => { setIPhone(e.target.value); resetPhoneVerify(); }}
-                      placeholder="(555) 123-4567"
-                      className="flex-1 px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
-                    />
-                    {iPhone.trim() && !iPhoneVerified && !iVerifySent && (
+
+                  {verifyState === "verified" ? (
+                    <div className="flex items-center gap-3 px-3 py-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-xl">
+                      <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Verified: {verifiedPhone}</span>
                       <button
                         type="button"
-                        onClick={handleSendCode}
-                        disabled={iVerifyLoading}
-                        className="px-3 py-2 bg-secondary text-foreground text-sm font-semibold rounded-xl hover:bg-secondary/80 disabled:opacity-60 transition-colors whitespace-nowrap"
+                        onClick={() => { setIPhone(""); resetPhoneVerify(); }}
+                        className="ml-auto text-xs text-emerald-600 dark:text-emerald-400 hover:underline"
                       >
-                        {iVerifyLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send code"}
-                      </button>
-                    )}
-                  </div>
-                  {iVerifySent && !iPhoneVerified && (
-                    <div className="mt-2 flex gap-2">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        value={iVerifyCode}
-                        onChange={e => setIVerifyCode(e.target.value)}
-                        placeholder="6-digit code"
-                        className="flex-1 px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleVerifyCode}
-                        disabled={iVerifyLoading || !iVerifyCode.trim()}
-                        className="px-3 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-xl hover:bg-primary/90 disabled:opacity-60 transition-colors whitespace-nowrap"
-                      >
-                        {iVerifyLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSendCode}
-                        disabled={iVerifyLoading}
-                        className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
-                      >
-                        Resend
+                        Change
                       </button>
                     </div>
+                  ) : (
+                    <>
+                      <div className="flex gap-2">
+                        <input
+                          type="tel"
+                          value={iPhone}
+                          onChange={e => { setIPhone(e.target.value); resetPhoneVerify(); }}
+                          placeholder="(555) 123-4567"
+                          disabled={verifyState === "sending" || verifyState === "awaiting_code" || verifyState === "verifying"}
+                          className="flex-1 px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm disabled:opacity-60"
+                        />
+                        {iPhone.trim() && (
+                          <button
+                            type="button"
+                            onClick={handleSendCode}
+                            disabled={verifyState === "sending" || verifyState === "verifying"}
+                            className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-foreground text-background text-sm font-semibold rounded-xl hover:bg-primary transition-colors disabled:opacity-60 whitespace-nowrap"
+                          >
+                            {verifyState === "sending" ? (
+                              <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</>
+                            ) : verifyState === "awaiting_code" ? (
+                              <><RefreshCw className="w-4 h-4" /> Resend</>
+                            ) : (
+                              <><Phone className="w-4 h-4" /> Send Code</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+
+                      {(verifyState === "awaiting_code" || verifyState === "verifying") && (
+                        <div className="mt-3 p-4 bg-secondary/50 border border-border rounded-xl space-y-3">
+                          <p className="text-sm text-muted-foreground">Enter the 6-digit code sent to your phone:</p>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={6}
+                              value={iVerifyCode}
+                              onChange={e => { setIVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setIVerifyError(null); }}
+                              placeholder="000000"
+                              className="flex-1 px-3 py-2.5 bg-background border border-border rounded-xl text-center font-mono text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleVerifyCode}
+                              disabled={verifyState === "verifying" || iVerifyCode.length < 6}
+                              className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-foreground text-background text-sm font-semibold rounded-xl hover:bg-primary transition-colors disabled:opacity-60 whitespace-nowrap"
+                            >
+                              {verifyState === "verifying"
+                                ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</>
+                                : <><ShieldCheck className="w-4 h-4" /> Verify</>}
+                            </button>
+                          </div>
+                          {iVerifyError && <p className="text-destructive text-xs">{iVerifyError}</p>}
+                        </div>
+                      )}
+
+                      {iVerifyError && verifyState === "idle" && (
+                        <p className="mt-1 text-xs text-destructive">{iVerifyError}</p>
+                      )}
+                    </>
                   )}
-                  {iVerifyError && <p className="mt-1 text-xs text-destructive">{iVerifyError}</p>}
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-semibold mb-1">Event date <span className="text-muted-foreground font-normal">(optional)</span></label>
