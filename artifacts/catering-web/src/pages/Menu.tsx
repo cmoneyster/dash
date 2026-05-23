@@ -18,7 +18,7 @@ import type { MenuItem } from "@workspace/api-client-react";
 import { useCategories } from "@/lib/categories";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
 import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -30,6 +30,20 @@ export default function Menu() {
   })();
   const [category, setCategory] = useState<string>(initialCategory);
   const [categoryFromUrlChecked, setCategoryFromUrlChecked] = useState<boolean>(!initialCategory);
+
+  // Keep category in sync with ?category= when navigate() changes only the
+  // query string (same /menu path, no remount). This is what makes Dashy's
+  // item links — e.g. [Smoked Brisket](/menu?category=Entrées) — actually
+  // scroll to and highlight the right category instead of appearing to do nothing.
+  const searchStr = useSearch();
+  useEffect(() => {
+    const paramCat = new URLSearchParams(searchStr).get("category") ?? "";
+    setCategory(paramCat);
+    if (paramCat) setCategoryFromUrlChecked(false); // re-trigger validation
+  // searchStr is the only real dependency; setters are stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchStr]);
+
   const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());
   useEffect(() => { saveServiceMode(serviceMode); }, [serviceMode]);
   const sessionId = getSessionId();
