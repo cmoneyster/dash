@@ -18,6 +18,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useCategories, splitCategoryName, type Category } from "@/lib/categories";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
+import { VenueAutocomplete } from "@/components/VenueAutocomplete";
 import { loadServiceMode, saveServiceMode, computeOtdSetupFee, type ServiceMode, type OtdConfig, OTD_DEFAULTS } from "@/lib/serviceMode";
 import { computePlannerCoverage } from "@/lib/plannerMath";
 
@@ -1785,14 +1786,13 @@ export default function Plan() {
                     className="w-full px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
                   />
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-2 relative">
                   <label className="block text-sm font-semibold mb-1">Venue / address <span className="text-muted-foreground font-normal">(optional)</span></label>
-                  <input
-                    type="text"
+                  <VenueAutocomplete
                     value={iVenue}
-                    onChange={e => setIVenue(e.target.value)}
-                    placeholder="123 Main St, Olney, MD"
-                    className="w-full px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                    onChange={(val) => setIVenue(val)}
+                    placeholder="Search a venue or type an address…"
+                    inputClassName="w-full px-3 py-2 border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
                   />
                 </div>
                 <div className="col-span-2">
