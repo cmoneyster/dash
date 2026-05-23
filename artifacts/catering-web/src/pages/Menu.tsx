@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { MenuCard, MenuCardCompact } from "@/components/MenuCard";
@@ -33,8 +33,7 @@ export default function Menu() {
 
   // Keep category in sync with ?category= when navigate() changes only the
   // query string (same /menu path, no remount). This is what makes Dashy's
-  // item links — e.g. [Smoked Brisket](/menu?category=Entrées) — actually
-  // scroll to and highlight the right category instead of appearing to do nothing.
+  // item links actually update the category filter without a full remount.
   const searchStr = useSearch();
   useEffect(() => {
     const paramCat = new URLSearchParams(searchStr).get("category") ?? "";
@@ -43,6 +42,15 @@ export default function Menu() {
   // searchStr is the only real dependency; setters are stable
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchStr]);
+
+  // Parse ?item=<id> so Dashy links can deep-link to a specific card.
+  const targetItemId = useMemo(() => {
+    const v = new URLSearchParams(searchStr).get("item");
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [searchStr]);
+
+  const [highlightedItemId, setHighlightedItemId] = useState<number | null>(null);
 
   const [serviceMode, setServiceMode] = useState<ServiceMode>(() => loadServiceMode());
   useEffect(() => { saveServiceMode(serviceMode); }, [serviceMode]);
@@ -53,6 +61,18 @@ export default function Menu() {
 
   const { data: menuItems, isLoading } = useListMenuItems({ category: category || undefined });
   const { data: plan } = useGetPlan({ sessionId });
+
+  // Once the items for the target category have loaded, scroll to the
+  // specific item card and briefly highlight it with a ring.
+  useEffect(() => {
+    if (!targetItemId || !menuItems?.length) return;
+    const el = document.getElementById(`menu-item-${targetItemId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedItemId(targetItemId);
+    const t = setTimeout(() => setHighlightedItemId(null), 2500);
+    return () => clearTimeout(t);
+  }, [targetItemId, menuItems]);
 
   const addToPlan = useAddToPlan({
     mutation: {
@@ -208,7 +228,15 @@ export default function Menu() {
               {/* Featured — items with photos */}
               {featured.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {featured.map(item => <MenuCard key={item.id} {...cardProps(item)} />)}
+                  {featured.map(item => (
+                    <div
+                      key={item.id}
+                      id={`menu-item-${item.id}`}
+                      className={highlightedItemId === item.id ? "rounded-2xl ring-2 ring-primary ring-offset-2 ring-offset-background transition-shadow" : ""}
+                    >
+                      <MenuCard {...cardProps(item)} />
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -225,7 +253,15 @@ export default function Menu() {
                     </div>
                   )}
                   <div className="space-y-3">
-                    {listed.map(item => <MenuCardCompact key={item.id} {...cardProps(item)} />)}
+                    {listed.map(item => (
+                      <div
+                        key={item.id}
+                        id={`menu-item-${item.id}`}
+                        className={highlightedItemId === item.id ? "rounded-xl ring-2 ring-primary ring-offset-2 ring-offset-background transition-shadow" : ""}
+                      >
+                        <MenuCardCompact {...cardProps(item)} />
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

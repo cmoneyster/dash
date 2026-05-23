@@ -59,8 +59,9 @@ const inflight = new Map<string, Promise<Snapshot>>();
 // `/...` URLs) can turn them into real <a> tags. Returning absolute
 // URLs would defeat that filter and the links would render as plain
 // text.
-export function buildMenuLink(category: string): string {
-  return `/menu?category=${encodeURIComponent(category)}`;
+export function buildMenuLink(category: string, id?: number): string {
+  const base = `/menu?category=${encodeURIComponent(category)}`;
+  return id != null ? `${base}&item=${id}` : base;
 }
 
 function evictExpiredAndCap(now: number) {
@@ -245,7 +246,7 @@ export function searchMenu(snap: Snapshot, args: SearchArgs) {
     servingSize: item.servingSize,
     unit: item.unit,
     allergens: item.allergens,
-    link: buildMenuLink(item.category),
+    link: buildMenuLink(item.category, item.id),
   }));
 }
 
@@ -265,7 +266,7 @@ export function listRecommendedItems(snap: Snapshot) {
       servingSize: item.servingSize,
       unit: item.unit,
       allergens: item.allergens,
-      link: buildMenuLink(item.category),
+      link: buildMenuLink(item.category, item.id),
     }));
 }
 
@@ -280,7 +281,7 @@ export function getMenuItem(snap: Snapshot, id: number) {
     servingSize: item.servingSize,
     unit: item.unit,
     allergens: item.allergens,
-    link: buildMenuLink(item.category),
+    link: buildMenuLink(item.category, item.id),
   };
 }
 
