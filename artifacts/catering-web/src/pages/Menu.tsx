@@ -66,12 +66,27 @@ export default function Menu() {
   // specific item card and briefly highlight it with a ring.
   useEffect(() => {
     if (!targetItemId || !menuItems?.length) return;
-    const el = document.getElementById(`menu-item-${targetItemId}`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    setHighlightedItemId(targetItemId);
-    const t = setTimeout(() => setHighlightedItemId(null), 2500);
-    return () => clearTimeout(t);
+    // requestAnimationFrame defers until after the browser has painted the
+    // new cards. Without it, on desktop with cached React Query data the
+    // effect can fire in the same flush as the render — before the DOM
+    // nodes are committed — so getElementById returns null and scroll is skipped.
+    const rafId = requestAnimationFrame(() => {
+      const el = document.getElementById(`menu-item-${targetItemId}`);
+      if (!el) return;
+      // Manual scroll so we can subtract the sticky header (h-20 = 80px)
+      // plus a small breathing gap. scrollIntoView({ block:"center" }) can
+      // silently no-op on desktop when the item is already near the viewport
+      // top, and doesn't account for the fixed header.
+      const HEADER_H = 88; // 80px nav + 8px gap
+      const top = el.getBoundingClientRect().top + window.scrollY - HEADER_H;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      setHighlightedItemId(targetItemId);
+      const t = setTimeout(() => setHighlightedItemId(null), 2500);
+      // t cleanup is best-effort; the 2.5s timeout is harmless if it fires
+      // after the component unmounts
+      return () => clearTimeout(t);
+    });
+    return () => cancelAnimationFrame(rafId);
   }, [targetItemId, menuItems]);
 
   const addToPlan = useAddToPlan({
