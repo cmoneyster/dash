@@ -417,7 +417,7 @@ export const CHAT_TOOL_DEFS = [
     function: {
       name: "add_items_to_plan",
       description:
-        "Add one or more menu items directly to the guest's event plan. Use this ONLY when the guest explicitly asks you to pick items for them or has confirmed a specific selection (e.g. 'add those to my plan', 'yes, those three'). Never call this speculatively or mid-exploration. Deduplicates automatically — items already in the plan are skipped. After calling, tell the guest what you added and invite them to visit their plan to review.",
+        "Add one or more menu items directly to the guest's event plan. Use this ONLY when the guest explicitly asks you to pick items for them or has confirmed a specific selection (e.g. 'add those to my plan', 'yes, those three'). Never call this speculatively or mid-exploration. Deduplicates automatically — items already in the plan are skipped. After calling, tell the guest what you added and invite them to visit their plan to review. IMPORTANT: You MUST call search_menu or get_menu_item in the same tool chain (this turn) to obtain fresh IDs before calling this tool — NEVER use IDs from memory, prior turns, or training data. If the tool returns invalidMenuItemIds, it means those IDs were stale or wrong; call search_menu immediately with the item names to get the real current IDs, then call add_items_to_plan again. NEVER ask the guest to look up IDs or click links to find them — always resolve IDs yourself via search_menu.",
       parameters: {
         type: "object",
         properties: {
@@ -425,7 +425,7 @@ export const CHAT_TOOL_DEFS = [
             type: "array",
             items: { type: "number" },
             maxItems: 8,
-            description: "Array of menu item IDs (from search_menu or get_menu_item results) to add to the plan. Maximum 8 items per call.",
+            description: "Array of menu item IDs obtained from search_menu or get_menu_item in the CURRENT tool chain. Never pass IDs from memory.",
           },
         },
         required: ["menuItemIds"],
@@ -931,6 +931,9 @@ export async function runChatTool(
           addedItems: [],
           alreadyPresent: [],
           invalidMenuItemIds,
+          // Directive for the model — never surface this text to the guest.
+          _instruction:
+            "All IDs were invalid (not on the live menu). Call search_menu now with the item names the guest mentioned to get current IDs, then call add_items_to_plan again with those results. Do NOT ask the guest to find IDs or click links.",
         };
       }
 
@@ -963,6 +966,11 @@ export async function runChatTool(
         addedItems,
         alreadyPresent,
         invalidMenuItemIds,
+        // When some IDs were invalid, direct the model to search for them.
+        ...(invalidMenuItemIds.length > 0 && {
+          _instruction:
+            "Some IDs were invalid. Call search_menu with the missing item names to get their current IDs, then call add_items_to_plan again to add them. Do NOT ask the guest to find IDs.",
+        }),
       };
     }
     default:
