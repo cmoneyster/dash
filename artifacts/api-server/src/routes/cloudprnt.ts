@@ -27,6 +27,19 @@ const router: IRouter = Router();
  * same URL; the Accept header is the differentiator.
  */
 
+/**
+ * Polling interval returned with every idle response.
+ * Overrides the printer's built-in default (which can be 300–600 s on some
+ * TSP143IV firmware) so the printer checks back every 10 seconds instead.
+ */
+const POLL_INTERVAL_SECONDS = 10;
+
+/** Idle response — no job waiting. Includes pollingInterval so the printer
+ *  doesn't fall back to its (potentially very long) factory default. */
+function idlePayload() {
+  return { jobReady: false, pollingInterval: POLL_INTERVAL_SECONDS };
+}
+
 /** Build the standard jobReady payload used in both GET and POST poll responses. */
 function jobReadyPayload(jobId: number, contentType: string) {
   return {
@@ -34,6 +47,7 @@ function jobReadyPayload(jobId: number, contentType: string) {
     mediaTypes: [contentType],
     jobToken: String(jobId),
     clientAction: [],          // must be an array per spec; empty = no special actions
+    pollingInterval: POLL_INTERVAL_SECONDS,
   };
 }
 
@@ -82,19 +96,19 @@ async function serveJobBytes(
 router.get("/cloudprnt/:token", async (req, res) => {
   const printer = await findPrinterByToken(req.params.token);
   if (!printer) {
-    res.status(404).json({ jobReady: false });
+    res.status(404).json(idlePayload());
     return;
   }
   if (!printer.enabled) {
     await recordPrinterPoll(printer.id, "disabled");
-    res.json({ jobReady: false });
+    res.json(idlePayload());
     return;
   }
   await recordPrinterPoll(printer.id, "online");
 
   const next = await peekNextJobForPrinter(printer.id);
   if (!next) {
-    res.json({ jobReady: false });
+    res.json(idlePayload());
     return;
   }
 
@@ -153,7 +167,7 @@ router.post("/cloudprnt/:token", async (req, res) => {
   }
   if (!printer.enabled) {
     await recordPrinterPoll(printer.id, "disabled");
-    res.json({ jobReady: false });
+    res.json(idlePayload());
     return;
   }
   await recordPrinterPoll(printer.id, "online");
@@ -193,7 +207,7 @@ router.post("/cloudprnt/:token", async (req, res) => {
   // need an extra round-trip after receiving a status-only POST.
   const next = await peekNextJobForPrinter(printer.id);
   if (!next) {
-    res.json({ jobReady: false });
+    res.json(idlePayload());
     return;
   }
   req.log.info({ printerId: printer.id, jobId: next.id }, "[cloudprnt] POST poll → jobReady");
