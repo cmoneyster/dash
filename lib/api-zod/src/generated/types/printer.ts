@@ -5,6 +5,7 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { PrinterPrintMode } from "./printerPrintMode";
 import type { PrinterStatus } from "./printerStatus";
 
 export interface Printer {
@@ -21,7 +22,9 @@ export interface Printer {
   printsCustomerReceipt: boolean;
   printsItemLabels: boolean;
   autoPrintOnNewOrder: boolean;
-  allowLanFallback: boolean;
+  /** cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.
+   */
+  printMode: PrinterPrintMode;
   suppressItemLabelsForPlateLines: boolean;
   enabled: boolean;
   status: PrinterStatus;

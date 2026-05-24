@@ -21,7 +21,7 @@ export const printJobStatusValues = [
 ] as const;
 export type PrintJobStatus = (typeof printJobStatusValues)[number];
 
-export const printJobDeliveryValues = ["cloudprnt", "lan_fallback"] as const;
+export const printJobDeliveryValues = ["cloudprnt", "lan_fallback", "lan_browser"] as const;
 export type PrintJobDelivery = (typeof printJobDeliveryValues)[number];
 
 // Generic envelope for renderer input. Stored as jsonb so the renderer can

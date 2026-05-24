@@ -882,6 +882,19 @@ export interface OpenaiError {
   error: string;
 }
 
+/**
+ * cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.
+
+ */
+export type PrinterPrintMode =
+  (typeof PrinterPrintMode)[keyof typeof PrinterPrintMode];
+
+export const PrinterPrintMode = {
+  cloudprnt: "cloudprnt",
+  lan_browser: "lan_browser",
+  cloudprnt_lan_fallback: "cloudprnt_lan_fallback",
+} as const;
+
 export type PrinterStatus = (typeof PrinterStatus)[keyof typeof PrinterStatus];
 
 export const PrinterStatus = {
@@ -905,7 +918,9 @@ export interface Printer {
   printsCustomerReceipt: boolean;
   printsItemLabels: boolean;
   autoPrintOnNewOrder: boolean;
-  allowLanFallback: boolean;
+  /** cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.
+   */
+  printMode: PrinterPrintMode;
   suppressItemLabelsForPlateLines: boolean;
   enabled: boolean;
   status: PrinterStatus;
@@ -914,6 +929,15 @@ export interface Printer {
   createdAt: string;
   updatedAt: string;
 }
+
+export type CreatePrinterBodyPrintMode =
+  (typeof CreatePrinterBodyPrintMode)[keyof typeof CreatePrinterBodyPrintMode];
+
+export const CreatePrinterBodyPrintMode = {
+  cloudprnt: "cloudprnt",
+  lan_browser: "lan_browser",
+  cloudprnt_lan_fallback: "cloudprnt_lan_fallback",
+} as const;
 
 export interface CreatePrinterBody {
   name: string;
@@ -924,10 +948,19 @@ export interface CreatePrinterBody {
   printsCustomerReceipt?: boolean;
   printsItemLabels?: boolean;
   autoPrintOnNewOrder?: boolean;
-  allowLanFallback?: boolean;
+  printMode?: CreatePrinterBodyPrintMode;
   suppressItemLabelsForPlateLines?: boolean;
   enabled?: boolean;
 }
+
+export type UpdatePrinterBodyPrintMode =
+  (typeof UpdatePrinterBodyPrintMode)[keyof typeof UpdatePrinterBodyPrintMode];
+
+export const UpdatePrinterBodyPrintMode = {
+  cloudprnt: "cloudprnt",
+  lan_browser: "lan_browser",
+  cloudprnt_lan_fallback: "cloudprnt_lan_fallback",
+} as const;
 
 export interface UpdatePrinterBody {
   name?: string;
@@ -938,7 +971,7 @@ export interface UpdatePrinterBody {
   printsCustomerReceipt?: boolean;
   printsItemLabels?: boolean;
   autoPrintOnNewOrder?: boolean;
-  allowLanFallback?: boolean;
+  printMode?: UpdatePrinterBodyPrintMode;
   suppressItemLabelsForPlateLines?: boolean;
   enabled?: boolean;
 }
@@ -959,8 +992,9 @@ export interface TestPrintBody {
 }
 
 export interface TestLanResult {
-  ok: boolean;
+  jobId: number;
   lanIp: string;
+  message: string;
 }
 
 export type PrintJobJobType =
@@ -1001,6 +1035,7 @@ export type PrintJobDeliveredVia =
 export const PrintJobDeliveredVia = {
   cloudprnt: "cloudprnt",
   lan_fallback: "lan_fallback",
+  lan_browser: "lan_browser",
 } as const;
 
 export interface PrintJob {

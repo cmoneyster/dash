@@ -89,7 +89,7 @@ export async function selectPrintersFor(
  * and increments `attempts`. Returns null if the queue is empty.
  *
  * Uses an UPDATE...RETURNING with a subquery picking one row by created_at
- * so concurrent polls (CloudPRNT + LAN fallback) can't grab the same job.
+ * so concurrent polls (CloudPRNT + browser agent) can't grab the same job.
  */
 export async function claimNextJobForPrinter(printerId: number): Promise<PrintJob | null> {
   const result = await db.execute<PrintJob>(sql`
@@ -114,7 +114,7 @@ export async function claimNextJobForPrinter(printerId: number): Promise<PrintJo
 /**
  * Atomically claim a specific job for a specific printer. Used when the
  * printer fetches the URL from `clientAction.url` (which embeds the job
- * id). Guarantees that the LAN fallback and CloudPRNT can't both deliver
+ * id). Guarantees that the browser agent and CloudPRNT can't both deliver
  * the same job, and prevents one printer's token from claiming jobs that
  * belong to another printer.
  */
@@ -142,6 +142,72 @@ export async function claimJobForPrinterById(
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 }
 
+/**
+ * Atomically claim a job for the browser print agent. Only claims jobs that
+ * belong to LAN-capable printers (lan_browser or cloudprnt_lan_fallback) and
+ * are still in queued state. Sets delivered_via = 'lan_browser'.
+ *
+ * Returns null (caller should respond 409) if the job was already claimed by
+ * CloudPRNT or another agent instance.
+ */
+export async function claimJobForAgent(jobId: number): Promise<PrintJob | null> {
+  const result = await db.execute<PrintJob>(sql`
+    UPDATE print_jobs
+    SET status = 'delivered',
+        attempts = attempts + 1,
+        delivered_at = now(),
+        delivered_via = 'lan_browser'
+    WHERE id = (
+      SELECT pj.id FROM print_jobs pj
+      JOIN printers p ON p.id = pj.printer_id
+      WHERE pj.id = ${jobId}
+        AND pj.status = 'queued'
+        AND p.print_mode IN ('lan_browser', 'cloudprnt_lan_fallback')
+        AND p.lan_ip IS NOT NULL
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING *
+  `);
+  const rows = (result as unknown as { rows?: PrintJob[] }).rows ?? (result as unknown as PrintJob[]);
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+/**
+ * Return queued jobs eligible for browser-based LAN delivery.
+ * Includes:
+ *   (a) all queued jobs for `lan_browser` printers
+ *   (b) queued jobs for `cloudprnt_lan_fallback` printers whose created_at is
+ *       older than the stale threshold (default 8 s) — these have been waiting
+ *       long enough that CloudPRNT hasn't claimed them, so the agent takes over.
+ *
+ * Returns up to 10 jobs, oldest first, each augmented with the printer's lanIp.
+ */
+export async function getQueuedJobsForLanAgent(
+  staleSeconds = 8,
+): Promise<(PrintJob & { lanIp: string })[]> {
+  const result = await db.execute<PrintJob & { lanIp: string }>(sql`
+    SELECT pj.*, p.lan_ip AS "lanIp"
+    FROM print_jobs pj
+    JOIN printers p ON p.id = pj.printer_id
+    WHERE pj.status = 'queued'
+      AND p.enabled = true
+      AND p.lan_ip IS NOT NULL
+      AND (
+        p.print_mode = 'lan_browser'
+        OR (
+          p.print_mode = 'cloudprnt_lan_fallback'
+          AND pj.created_at < NOW() - (${staleSeconds} || ' seconds')::interval
+        )
+      )
+    ORDER BY pj.created_at ASC
+    LIMIT 10
+  `);
+  const rows = (result as unknown as { rows?: (PrintJob & { lanIp: string })[] }).rows
+    ?? (result as unknown as (PrintJob & { lanIp: string })[]);
+  return Array.isArray(rows) ? rows : [];
+}
+
 /** Peek the next queued job for a printer without claiming it. */
 export async function peekNextJobForPrinter(printerId: number): Promise<PrintJob | null> {
   const rows = await db
@@ -158,7 +224,7 @@ export async function getJobById(jobId: number): Promise<PrintJob | null> {
   return rows[0] ?? null;
 }
 
-export async function markJobPrinted(jobId: number, deliveredVia?: "cloudprnt" | "lan_fallback"): Promise<void> {
+export async function markJobPrinted(jobId: number, deliveredVia?: "cloudprnt" | "lan_fallback" | "lan_browser"): Promise<void> {
   const updates: Record<string, unknown> = { status: "printed", printedAt: new Date(), error: null };
   if (deliveredVia) updates.deliveredVia = deliveredVia;
   await db.update(printJobsTable).set(updates).where(eq(printJobsTable.id, jobId));

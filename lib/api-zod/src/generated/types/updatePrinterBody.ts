@@ -5,6 +5,7 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdatePrinterBodyPrintMode } from "./updatePrinterBodyPrintMode";
 
 export interface UpdatePrinterBody {
   name?: string;
@@ -15,7 +16,7 @@ export interface UpdatePrinterBody {
   printsCustomerReceipt?: boolean;
   printsItemLabels?: boolean;
   autoPrintOnNewOrder?: boolean;
-  allowLanFallback?: boolean;
+  printMode?: UpdatePrinterBodyPrintMode;
   suppressItemLabelsForPlateLines?: boolean;
   enabled?: boolean;
 }

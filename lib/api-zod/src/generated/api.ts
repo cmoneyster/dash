@@ -1900,7 +1900,11 @@ export const ListPrintersResponseItem = zod.object({
   printsCustomerReceipt: zod.boolean(),
   printsItemLabels: zod.boolean(),
   autoPrintOnNewOrder: zod.boolean(),
-  allowLanFallback: zod.boolean(),
+  printMode: zod
+    .enum(["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"])
+    .describe(
+      "cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.\n",
+    ),
   suppressItemLabelsForPlateLines: zod.boolean(),
   enabled: zod.boolean(),
   status: zod.enum(["online", "offline", "error", "disabled"]),
@@ -1923,7 +1927,9 @@ export const CreatePrinterBody = zod.object({
   printsCustomerReceipt: zod.boolean().optional(),
   printsItemLabels: zod.boolean().optional(),
   autoPrintOnNewOrder: zod.boolean().optional(),
-  allowLanFallback: zod.boolean().optional(),
+  printMode: zod
+    .enum(["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"])
+    .optional(),
   suppressItemLabelsForPlateLines: zod.boolean().optional(),
   enabled: zod.boolean().optional(),
 });
@@ -1944,7 +1950,9 @@ export const UpdatePrinterBody = zod.object({
   printsCustomerReceipt: zod.boolean().optional(),
   printsItemLabels: zod.boolean().optional(),
   autoPrintOnNewOrder: zod.boolean().optional(),
-  allowLanFallback: zod.boolean().optional(),
+  printMode: zod
+    .enum(["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"])
+    .optional(),
   suppressItemLabelsForPlateLines: zod.boolean().optional(),
   enabled: zod.boolean().optional(),
 });
@@ -1969,7 +1977,11 @@ export const UpdatePrinterResponse = zod.object({
   printsCustomerReceipt: zod.boolean(),
   printsItemLabels: zod.boolean(),
   autoPrintOnNewOrder: zod.boolean(),
-  allowLanFallback: zod.boolean(),
+  printMode: zod
+    .enum(["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"])
+    .describe(
+      "cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.\n",
+    ),
   suppressItemLabelsForPlateLines: zod.boolean(),
   enabled: zod.boolean(),
   status: zod.enum(["online", "offline", "error", "disabled"]),
@@ -2017,7 +2029,9 @@ export const TestPrintPrinterResponse = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod.enum(["cloudprnt", "lan_fallback"]).nullish(),
+  deliveredVia: zod
+    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
+    .nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),
@@ -2032,8 +2046,9 @@ export const TestLanPrinterParams = zod.object({
 });
 
 export const TestLanPrinterResponse = zod.object({
-  ok: zod.boolean(),
+  jobId: zod.number(),
   lanIp: zod.string(),
+  message: zod.string(),
 });
 
 /**
@@ -2061,7 +2076,9 @@ export const ListPrintJobsResponseItem = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod.enum(["cloudprnt", "lan_fallback"]).nullish(),
+  deliveredVia: zod
+    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
+    .nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),
@@ -2091,7 +2108,9 @@ export const RetryPrintJobResponse = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod.enum(["cloudprnt", "lan_fallback"]).nullish(),
+  deliveredVia: zod
+    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
+    .nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),

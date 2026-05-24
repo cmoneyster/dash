@@ -2674,8 +2674,13 @@ components:
           type: boolean
         autoPrintOnNewOrder:
           type: boolean
-        allowLanFallback:
-          type: boolean
+        printMode:
+          type: string
+          enum: [cloudprnt, lan_browser, cloudprnt_lan_fallback]
+          description: >
+            cloudprnt = printer polls server directly;
+            lan_browser = browser agent delivers via WebPRNT;
+            cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.
         suppressItemLabelsForPlateLines:
           type: boolean
         enabled:
@@ -2705,7 +2710,7 @@ components:
         - printsCustomerReceipt
         - printsItemLabels
         - autoPrintOnNewOrder
-        - allowLanFallback
+        - printMode
         - suppressItemLabelsForPlateLines
         - enabled
         - status
@@ -2733,8 +2738,9 @@ components:
           type: boolean
         autoPrintOnNewOrder:
           type: boolean
-        allowLanFallback:
-          type: boolean
+        printMode:
+          type: string
+          enum: [cloudprnt, lan_browser, cloudprnt_lan_fallback]
         suppressItemLabelsForPlateLines:
           type: boolean
         enabled:
@@ -2763,8 +2769,9 @@ components:
           type: boolean
         autoPrintOnNewOrder:
           type: boolean
-        allowLanFallback:
-          type: boolean
+        printMode:
+          type: string
+          enum: [cloudprnt, lan_browser, cloudprnt_lan_fallback]
         suppressItemLabelsForPlateLines:
           type: boolean
         enabled:
@@ -2786,13 +2793,16 @@ components:
     TestLanResult:
       type: object
       properties:
-        ok:
-          type: boolean
+        jobId:
+          type: integer
         lanIp:
           type: string
+        message:
+          type: string
       required:
-        - ok
+        - jobId
         - lanIp
+        - message
 
     PrintJob:
       type: object
@@ -2821,7 +2831,7 @@ components:
         deliveredVia:
           type: string
           nullable: true
-          enum: [cloudprnt, lan_fallback]
+          enum: [cloudprnt, lan_fallback, lan_browser]
         error:
           type: string
           nullable: true

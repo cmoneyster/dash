@@ -7,6 +7,7 @@
  */
 
 export interface TestLanResult {
-  ok: boolean;
+  jobId: number;
   lanIp: string;
+  message: string;
 }

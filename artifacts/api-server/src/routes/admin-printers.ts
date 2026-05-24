@@ -11,7 +11,6 @@ import {
   requeueJob,
 } from "../lib/printQueue";
 import { renderJob } from "../lib/printRenderer";
-import { sendViaLanTcp } from "../lib/lanPrint";
 import type {
   KitchenTicketPayload,
   CustomerReceiptPayload,
@@ -40,6 +39,10 @@ router.post("/admin/printers", async (req, res) => {
       res.status(400).json({ error: "name required" });
       return;
     }
+    const printMode = typeof b.printMode === "string" &&
+      ["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"].includes(b.printMode)
+      ? b.printMode
+      : "cloudprnt";
     const [row] = await db
       .insert(printersTable)
       .values({
@@ -47,12 +50,12 @@ router.post("/admin/printers", async (req, res) => {
         model: typeof b.model === "string" && b.model ? b.model : "TSP143IV",
         cloudprntToken: generateCloudPrntToken(),
         lanIp: typeof b.lanIp === "string" && b.lanIp.trim() ? b.lanIp.trim() : null,
+        printMode,
         location: typeof b.location === "string" && b.location.trim() ? b.location.trim() : null,
         printsKitchenTicket: !!b.printsKitchenTicket,
         printsCustomerReceipt: !!b.printsCustomerReceipt,
         printsItemLabels: !!b.printsItemLabels,
         autoPrintOnNewOrder: b.autoPrintOnNewOrder !== false,
-        allowLanFallback: b.allowLanFallback !== false,
         suppressItemLabelsForPlateLines: b.suppressItemLabelsForPlateLines !== false,
         enabled: b.enabled !== false,
       })
@@ -73,12 +76,15 @@ router.patch("/admin/printers/:id", async (req, res) => {
     if (typeof b.model === "string") updates.model = b.model;
     if (b.lanIp !== undefined) updates.lanIp = typeof b.lanIp === "string" && b.lanIp.trim() ? b.lanIp.trim() : null;
     if (b.location !== undefined) updates.location = typeof b.location === "string" && b.location.trim() ? b.location.trim() : null;
+    if (typeof b.printMode === "string" &&
+      ["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"].includes(b.printMode)) {
+      updates.printMode = b.printMode;
+    }
     for (const k of [
       "printsKitchenTicket",
       "printsCustomerReceipt",
       "printsItemLabels",
       "autoPrintOnNewOrder",
-      "allowLanFallback",
       "suppressItemLabelsForPlateLines",
       "enabled",
     ] as const) {
@@ -177,9 +183,12 @@ router.post("/admin/printers/:id/test-print", async (req, res) => {
 /**
  * POST /admin/printers/:id/test-lan
  *
- * Send a test ticket directly to the printer's LAN IP on TCP port 9100,
- * bypassing the CloudPRNT queue entirely. Useful for verifying network
- * reachability before relying on the LAN fallback path.
+ * Enqueues a test job for a LAN-capable printer so the browser-based print
+ * agent can pick it up and deliver it. Returns the enqueued job.
+ *
+ * Unlike the old server-side TCP path, this works for cloud-hosted deployments
+ * because delivery happens in the browser (on the same LAN as the printer).
+ * The browser agent page / embedded hook picks the job up within ~2 seconds.
  */
 router.post("/admin/printers/:id/test-lan", async (req, res) => {
   try {
@@ -193,17 +202,19 @@ router.post("/admin/printers/:id/test-lan", async (req, res) => {
       res.status(400).json({ error: "No LAN IP configured for this printer" });
       return;
     }
-    const { bytes } = renderJob({
-      type: "test",
-      printerName: printer.name,
-      message: "LAN direct-print test via TCP port 9100.",
+    const job = await enqueuePrintJob({
+      printerId: printer.id,
+      jobType: "test",
+      payload: {
+        type: "test",
+        printerName: printer.name,
+        message: "LAN browser agent test — delivered via WebPRNT.",
+      } as unknown as Record<string, unknown>,
     });
-    await sendViaLanTcp(printer.lanIp, bytes);
-    res.json({ ok: true, lanIp: printer.lanIp });
+    res.json({ jobId: job.id, lanIp: printer.lanIp, message: "Test job queued — the LAN print agent on your local device will deliver it." });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown error";
-    req.log.warn({ err }, "[lan-print] test-lan failed");
-    res.status(502).json({ error: message });
+    req.log.error({ err }, "test-lan enqueue failed");
+    res.status(500).json({ error: "Failed to enqueue LAN test job" });
   }
 });
 
