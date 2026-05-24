@@ -1366,7 +1366,11 @@ export default function EventTakerOrder() {
             <div key={cat} className={cat ? "mb-6" : undefined}>
               {cat && <h2 className="font-display font-bold text-lg mb-2 px-1">{cat}</h2>}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {(cat ? menu.filter(m => m.category === cat) : menu).map(item => {
+                {(cat
+                  ? menu.filter(m => m.category === cat)
+                  : arrangeGrid.map(id => id === null ? null : (menu.find(m => m.id === id) ?? null))
+                ).map((item, idx) => {
+                  if (item === null) return <div key={`gap-${idx}`} />;
                   const stock = item.eventStock;
                   const outOfStock = stock !== null && stock <= 0;
                   // Mirror the Guest Event page's "low stock" treatment so
