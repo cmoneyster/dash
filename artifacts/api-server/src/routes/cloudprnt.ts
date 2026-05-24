@@ -14,17 +14,70 @@ import { renderJob, type RenderablePayload } from "../lib/printRenderer";
 const router: IRouter = Router();
 
 /**
- * Star CloudPRNT polling endpoint. The printer hits this every few seconds
- * with GET (asking if there's work) and POST (status updates). Spec:
- * https://www.starmicronics.com/support/cloudprnt/
+ * Star CloudPRNT protocol — observed printer cycle:
  *
- * GET response shape:
- *   { jobReady: false }                              when queue is empty
- *   { jobReady: true, mediaTypes: ["..."],
- *     jobToken: "...", clientAction: [] }            when there's a job
+ *   1. DELETE /cloudprnt/:token          ← acknowledge/clear previous job
+ *   2. POST   /cloudprnt/:token          ← status check-in, get jobReady
+ *   3. GET    /cloudprnt/:token          ← fetch job bytes (Accept: text/plain)
+ *      POST   /cloudprnt/:token          ← report print result (jobToken in body)
  *
- * The printer then GETs the job content (text/plain bytes here) and POSTs
- * back its status.
+ * The GET handler must detect whether the printer wants a JSON status poll
+ * (Accept: application/json, no mediaType param) or the actual print bytes
+ * (Accept: text/plain or ?mediaType=... query param). Both paths hit the
+ * same URL; the Accept header is the differentiator.
+ */
+
+/** Build the standard jobReady payload used in both GET and POST poll responses. */
+function jobReadyPayload(jobId: number, contentType: string) {
+  return {
+    jobReady: true,
+    mediaTypes: [contentType],
+    jobToken: String(jobId),
+    clientAction: [],          // must be an array per spec; empty = no special actions
+  };
+}
+
+/**
+ * Serve raw print bytes for the next queued job, marking it delivered.
+ * Used by both the GET (Accept-header) and /content/:jobId paths.
+ */
+async function serveJobBytes(
+  req: Parameters<Parameters<typeof router.get>[1]>[0],
+  res: Parameters<Parameters<typeof router.get>[1]>[1],
+  printerId: number,
+  jobId: number,
+): Promise<void> {
+  const job = await claimJobForPrinterById(printerId, jobId);
+  if (!job) {
+    // Job was already claimed (e.g. by LAN fallback race) — tell the printer nothing to print.
+    res.status(204).end();
+    return;
+  }
+  try {
+    const { bytes, contentType } = renderJob(job.payload as unknown as RenderablePayload);
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "no-store");
+    res.send(bytes);
+  } catch (err) {
+    req.log.error({ err, jobId: job.id }, "[cloudprnt] render failed");
+    await markJobFailed(job.id, err instanceof Error ? err.message : "render failed");
+    res.status(500).end();
+  }
+}
+
+/**
+ * GET /cloudprnt/:token
+ *
+ * The printer's observed cycle is: DELETE → POST → GET.
+ * The POST already returns jobReady status; the GET that immediately follows
+ * is the content-fetch — the printer expects raw print bytes, not another
+ * JSON poll response. So the rule is simple:
+ *
+ *   job in queue  → serve bytes (content fetch, regardless of Accept header)
+ *   queue empty   → return { jobReady: false } JSON (idle poll)
+ *
+ * Exception: if ?mediaType=... is absent AND Accept explicitly requests
+ * application/json, honour it as a pure poll (some integrations poll via GET).
  */
 router.get("/cloudprnt/:token", async (req, res) => {
   const printer = await findPrinterByToken(req.params.token);
@@ -45,24 +98,30 @@ router.get("/cloudprnt/:token", async (req, res) => {
     return;
   }
 
-  // Star CloudPRNT poll response. `clientAction.url` tells the printer
-  // exactly where to GET the bytes — including the `jobId` lets us claim
-  // the specific job (FOR UPDATE SKIP LOCKED) and lets the LAN fallback
-  // race the CloudPRNT poll without double-printing.
-  const base = `${req.protocol}://${req.get("host")}`;
-  const contentUrl = `${base}/api/cloudprnt/${req.params.token}/content/${next.id}`;
-  res.json({
-    jobReady: true,
-    mediaTypes: [next.contentType],
-    jobToken: String(next.id),
-    clientAction: { url: contentUrl },
-  });
+  // If the caller explicitly only accepts JSON it's a programmatic poll
+  // (e.g. LAN fallback check), not the printer's content-fetch GET.
+  const acceptHeader = (req.headers.accept ?? "").toLowerCase();
+  const isPurePoll =
+    acceptHeader.includes("application/json") &&
+    !acceptHeader.includes("text/plain") &&
+    req.query.mediaType == null;
+
+  if (isPurePoll) {
+    req.log.info({ printerId: printer.id, jobId: next.id }, "[cloudprnt] GET JSON poll → jobReady");
+    res.json(jobReadyPayload(next.id, next.contentType));
+    return;
+  }
+
+  // Default when a job is waiting: this is the printer's content-fetch GET.
+  req.log.info({ printerId: printer.id, jobId: next.id }, "[cloudprnt] GET content fetch → serving bytes");
+  await serveJobBytes(req, res, printer.id, next.id);
 });
 
 /**
- * The printer fetches the actual bytes here. We claim the job atomically so
- * concurrent polls (CloudPRNT + WebPRNT fallback) can't both grab it.
- * `:jobId` is the same number returned as `jobToken` from the poll above.
+ * GET /cloudprnt/:token/content/:jobId
+ *
+ * Kept as an explicit content URL for LAN-fallback / older firmware that
+ * follows the clientAction.url path instead of the Accept-header approach.
  */
 router.get("/cloudprnt/:token/content/:jobId", async (req, res) => {
   const printer = await findPrinterByToken(req.params.token);
@@ -75,28 +134,16 @@ router.get("/cloudprnt/:token/content/:jobId", async (req, res) => {
     res.status(400).end();
     return;
   }
-  const job = await claimJobForPrinterById(printer.id, jobId);
-  if (!job) {
-    res.status(204).end();
-    return;
-  }
-  try {
-    const { bytes, contentType } = renderJob(job.payload as unknown as RenderablePayload);
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "no-store");
-    res.send(bytes);
-  } catch (err) {
-    req.log.error({ err, jobId: job.id }, "print render failed");
-    await markJobFailed(job.id, err instanceof Error ? err.message : "render failed");
-    res.status(500).end();
-  }
+  req.log.info({ printerId: printer.id, jobId }, "[cloudprnt] GET content/:jobId");
+  await serveJobBytes(req, res, printer.id, jobId);
 });
 
 /**
- * Status update from the printer. Star CloudPRNT uses POST for both
- * status reporting *and* job polling — the printer POSTs its current state
- * and the server responds with job-readiness in the same response body.
- * (Some firmware variants also GET separately, but POST is the primary path.)
+ * POST /cloudprnt/:token
+ *
+ * Dual-purpose per Star CloudPRNT spec:
+ *  (a) Status report — body contains { jobToken, status/statusCode } after a job
+ *  (b) Poll check-in — body is empty or status-only; response carries jobReady
  */
 router.post("/cloudprnt/:token", async (req, res) => {
   const printer = await findPrinterByToken(req.params.token);
@@ -104,13 +151,11 @@ router.post("/cloudprnt/:token", async (req, res) => {
     res.status(404).end();
     return;
   }
-
   if (!printer.enabled) {
     await recordPrinterPoll(printer.id, "disabled");
     res.json({ jobReady: false });
     return;
   }
-
   await recordPrinterPoll(printer.id, "online");
 
   const body = (req.body ?? {}) as Record<string, unknown>;
@@ -119,44 +164,60 @@ router.post("/cloudprnt/:token", async (req, res) => {
   const statusCode = typeof body.statusCode === "string" ? body.statusCode : null;
 
   // If the printer is reporting the result of a previously-claimed job, mark it.
-  // Verify the referenced job belongs to this printer before touching it.
   if (jobToken !== undefined && jobToken !== null) {
     const jobId = Number(jobToken);
     if (!Number.isNaN(jobId)) {
       const job = await getJobById(jobId);
       if (job && job.printerId === printer.id) {
-        const failed = (status && /error|fail/i.test(status)) || (statusCode && statusCode !== "200");
+        const failed =
+          (status && /error|fail/i.test(status)) ||
+          (statusCode && statusCode !== "200");
         if (failed) {
           await markJobFailed(jobId, `${status ?? statusCode ?? "printer error"}`);
           await recordPrinterError(printer.id, `${status ?? statusCode ?? "error"}`);
+          req.log.warn({ printerId: printer.id, jobId, status, statusCode }, "[cloudprnt] job failed");
         } else {
           await markJobPrinted(jobId, "cloudprnt");
+          req.log.info({ printerId: printer.id, jobId }, "[cloudprnt] job printed ✓");
         }
       } else if (job && job.printerId !== printer.id) {
         req.log.warn(
           { tokenPrinterId: printer.id, jobId, jobPrinterId: job.printerId },
-          "[cloudprnt] cross-printer status update rejected"
+          "[cloudprnt] cross-printer status update rejected",
         );
       }
     }
   }
 
-  // Always include job-readiness in the POST response — this is the primary
-  // polling mechanism for most Star CloudPRNT firmware versions.
+  // Always respond with the next pending job (if any) so the printer doesn't
+  // need an extra round-trip after receiving a status-only POST.
   const next = await peekNextJobForPrinter(printer.id);
   if (!next) {
     res.json({ jobReady: false });
     return;
   }
+  req.log.info({ printerId: printer.id, jobId: next.id }, "[cloudprnt] POST poll → jobReady");
+  res.json(jobReadyPayload(next.id, next.contentType));
+});
 
-  const base = `${req.protocol}://${req.get("host")}`;
-  const contentUrl = `${base}/api/cloudprnt/${req.params.token}/content/${next.id}`;
-  res.json({
-    jobReady: true,
-    mediaTypes: [next.contentType],
-    jobToken: String(next.id),
-    clientAction: { url: contentUrl },
-  });
+/**
+ * DELETE /cloudprnt/:token
+ *
+ * Printer sends DELETE to acknowledge job completion (clears its internal
+ * job state). We accept it gracefully — job status is already tracked via
+ * POST status reports, so we just return 200 here.
+ */
+router.delete("/cloudprnt/:token", async (req, res) => {
+  const printer = await findPrinterByToken(req.params.token);
+  if (!printer) {
+    res.status(404).end();
+    return;
+  }
+  // If the printer never sent a POST status report, treat DELETE as confirmation
+  // that the last delivered job printed successfully.
+  // (This covers firmware that acknowledges via DELETE instead of POST result.)
+  req.log.info({ printerId: printer.id }, "[cloudprnt] DELETE ack");
+  res.status(200).json({ ok: true });
 });
 
 export default router;
