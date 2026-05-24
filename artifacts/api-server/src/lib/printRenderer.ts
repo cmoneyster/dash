@@ -453,12 +453,13 @@ function webPrntPlateLabel(p: PlateLabelPayload): string {
 }
 
 function webPrntTest(_p: TestPayload): string {
-  // Minimal XML — no cut, no formatting, just text + line feeds so any output feeds out visibly.
+  // Minimal XML with generous line feeds to push content past the output slot, plus a cut.
   return (
     `<?xml version="1.0" encoding="utf-8"?>` +
     `<StarWebPRNT:Request Version="1.00" xmlns:StarWebPRNT="http://www.star-m.jp/StarWebPRNT/V1.00/">` +
     `<PrintData><Printer>` +
-    `<Text>HELLO WORLD&#10;&#10;&#10;&#10;&#10;</Text>` +
+    `<Text>HELLO WORLD&#10;&#10;&#10;&#10;&#10;&#10;&#10;&#10;&#10;&#10;</Text>` +
+    `<CutPaper Method="Partial"/>` +
     `</Printer></PrintData>` +
     `</StarWebPRNT:Request>`
   );
