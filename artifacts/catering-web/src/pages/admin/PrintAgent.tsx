@@ -105,7 +105,7 @@ function useWakeLock(active: boolean): { held: boolean; supported: boolean } {
 }
 
 export default function PrintAgent() {
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(false);
   const agent = usePrintAgent({ enabled });
   const wakeLock = useWakeLock(enabled);
 
