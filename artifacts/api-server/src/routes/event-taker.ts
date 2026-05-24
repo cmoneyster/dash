@@ -215,8 +215,10 @@ router.post("/event-taker/verify", async (req, res) => {
 router.get("/event-taker/menu", verifyTakerPassword, async (req, res) => {
   try {
     const settings = await getSettings();
-    const savedOrder: number[] = Array.isArray(settings?.takerMenuOrder)
-      ? (settings.takerMenuOrder as number[])
+    // Layout is the raw (number|null)[] from event_settings. Null entries are
+    // intentional empty cells; the frontend uses them to build the fixed-slot grid.
+    const rawLayout = Array.isArray(settings?.takerMenuOrder)
+      ? (settings.takerMenuOrder as (number | null)[])
       : [];
 
     const items = await db
@@ -251,20 +253,22 @@ router.get("/event-taker/menu", verifyTakerPassword, async (req, res) => {
         };
       });
 
-    if (savedOrder.length === 0) {
-      res.json(formatted);
-      return;
-    }
+    // Build the `items` array in slot order: slots in rawLayout that contain a
+    // valid item ID, nulls skipped. Items not present in the layout append at
+    // the end in default alpha order so new menu additions are never lost.
+    const formattedById = new Map(formatted.map(f => [f.id, f]));
+    const validIds = new Set(formatted.map(f => f.id));
+    const placed = new Set<number>();
+    const orderedItems = rawLayout
+      .filter((id): id is number => id !== null && validIds.has(id) && !placed.has(id))
+      .map(id => { placed.add(id); return formattedById.get(id)!; });
+    const unplaced = formatted.filter(f => !placed.has(f.id));
+    const sortedItems = [...orderedItems, ...unplaced];
 
-    // Apply saved custom order. Items not in the list append at the end
-    // in their default alpha order so newly-added items appear automatically.
-    const orderMap = new Map(savedOrder.map((id, i) => [id, i]));
-    const sorted = [...formatted].sort((a, b) => {
-      const ai = orderMap.has(a.id) ? orderMap.get(a.id)! : Infinity;
-      const bi = orderMap.has(b.id) ? orderMap.get(b.id)! : Infinity;
-      return ai - bi;
-    });
-    res.json(sorted);
+    // Return both the ordered items list (for normal mode) and the raw layout
+    // array (for the arrange-mode fixed-slot grid). The frontend keeps them
+    // in separate state variables.
+    res.json({ items: sortedItems, layout: rawLayout });
   } catch (err) {
     req.log.error({ err }, "Error fetching taker menu");
     res.status(500).json({ error: "Failed to fetch menu" });
@@ -274,16 +278,25 @@ router.get("/event-taker/menu", verifyTakerPassword, async (req, res) => {
 router.put("/event-taker/menu-order", verifyTakerPassword, async (req, res) => {
   try {
     const { order } = req.body as { order?: unknown };
-    if (
-      !Array.isArray(order) ||
-      order.some(v => !Number.isInteger(v) || v < 0)
-    ) {
-      res.status(400).json({ error: "order must be an array of non-negative integers" });
+    if (!Array.isArray(order)) {
+      res.status(400).json({ error: "order must be an array" });
+      return;
+    }
+    // Each entry is either null (empty cell) or a positive integer (item ID).
+    const invalid = order.some(v => v !== null && (!Number.isInteger(v) || v <= 0));
+    if (invalid) {
+      res.status(400).json({ error: "order entries must be null or positive integers" });
+      return;
+    }
+    // Disallow duplicate item IDs (nulls may repeat — they're empty cells).
+    const ids = order.filter((v): v is number => v !== null);
+    if (new Set(ids).size !== ids.length) {
+      res.status(400).json({ error: "duplicate item IDs in order" });
       return;
     }
     await db
       .update(eventSettingsTable)
-      .set({ takerMenuOrder: order as number[] })
+      .set({ takerMenuOrder: order as (number | null)[] })
       .where(eq(eventSettingsTable.id, 1));
     res.json({ ok: true });
   } catch (err) {

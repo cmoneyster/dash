@@ -12,14 +12,10 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
+  useDraggable,
+  useDroppable,
+  DragOverlay,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  arrayMove,
-  rectSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
@@ -148,29 +144,63 @@ function setStoredPassword(v: string | null) {
   try { v ? sessionStorage.setItem(PASSWORD_KEY, v) : sessionStorage.removeItem(PASSWORD_KEY); } catch {}
 }
 
-function SortableArrangeCard({ item }: { item: MenuItem }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
+// Pure helper: build the full fixed-slot render grid from the server layout +
+// current menu. Stale IDs (items removed from menu) are converted to null.
+// Items not yet in the layout are appended. The grid is padded to a full row
+// plus one extra empty row so staff always have blank cells to drag into.
+function buildArrangeGrid(menu: MenuItem[], layout: (number | null)[]): (number | null)[] {
+  const COLS = 3;
+  const menuIds = new Set(menu.map(m => m.id));
+  // Drop stale IDs while preserving intentional nulls
+  const clean: (number | null)[] = layout.map(id => (id === null || menuIds.has(id)) ? id : null);
+  // Append items not yet placed anywhere in the layout
+  const placed = new Set(clean.filter((id): id is number => id !== null));
+  const unplaced = menu.filter(m => !placed.has(m.id)).map(m => m.id);
+  const grid: (number | null)[] = [...clean, ...unplaced];
+  // Pad to complete the last row, then add one full extra empty row
+  const remainder = grid.length % COLS;
+  const pad = (remainder === 0 ? 0 : COLS - remainder) + COLS;
+  for (let i = 0; i < pad; i++) grid.push(null);
+  return grid;
+}
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 10 : undefined,
-    position: isDragging ? ("relative" as const) : undefined,
-  };
+// Visual-only card rendered in the DragOverlay (no hooks — follows the pointer).
+function ArrangeCardOverlay({ item }: { item: MenuItem }) {
+  return (
+    <div className="relative bg-card border-2 border-indigo-400 ring-2 ring-indigo-400/30 rounded-2xl overflow-hidden shadow-2xl opacity-95 select-none rotate-1 pointer-events-none">
+      {item.imageUrl && (
+        <div className="aspect-[4/3] bg-secondary">
+          <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
+        </div>
+      )}
+      <div className="p-3">
+        <p className="font-semibold text-sm leading-tight">{item.name}</p>
+        <span className="font-bold text-base text-indigo-600">${item.effectivePrice.toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
+
+// A slot occupied by a menu item — draggable (via grip handle) and droppable.
+function DraggableItemCard({
+  item,
+  slotIndex,
+  isBeingDragged,
+}: {
+  item: MenuItem;
+  slotIndex: number;
+  isBeingDragged: boolean;
+}) {
+  const { setNodeRef: setDragRef, listeners, attributes } = useDraggable({ id: item.id });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: slotIndex });
+  const setRef = (node: HTMLElement | null) => { setDragRef(node); setDropRef(node); };
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      className="relative bg-card border border-border rounded-2xl overflow-hidden select-none"
+      ref={setRef}
+      className={`relative bg-card border rounded-2xl overflow-hidden select-none transition-opacity ${
+        isBeingDragged ? "opacity-25" : "opacity-100"
+      } ${isOver && !isBeingDragged ? "border-indigo-400 ring-2 ring-indigo-400/20" : "border-border"}`}
     >
       <div
         {...attributes}
@@ -190,10 +220,30 @@ function SortableArrangeCard({ item }: { item: MenuItem }) {
           <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
         </div>
       )}
-      <div className="p-3 pt-3">
+      <div className="p-3">
         <p className="font-semibold text-sm leading-tight">{item.name}</p>
         <span className="font-bold text-base text-indigo-600">${item.effectivePrice.toFixed(2)}</span>
       </div>
+    </div>
+  );
+}
+
+// An empty cell — droppable target only. Grows to match item card height via
+// CSS grid row sizing (all cells in a row share the tallest cell's height).
+function ArrangeEmptySlot({ slotIndex }: { slotIndex: number }) {
+  const { setNodeRef, isOver } = useDroppable({ id: slotIndex });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`rounded-2xl border-2 border-dashed transition-colors flex items-center justify-center min-h-[80px] ${
+        isOver
+          ? "border-indigo-400 bg-indigo-50/60 dark:bg-indigo-950/20"
+          : "border-border/40 bg-secondary/10"
+      }`}
+    >
+      {isOver && (
+        <span className="text-xs font-medium text-indigo-500 pointer-events-none">Drop here</span>
+      )}
     </div>
   );
 }
@@ -262,12 +312,12 @@ export default function EventTakerOrder() {
   // Server-backed printer settings modal (scoped to the Taker surface).
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
 
-  // Arrange-mode state. When true, the menu grid switches to a flat
-  // drag-and-drop sortable view. orderedMenu holds the local drag state;
-  // it's initialised from `menu` when arrange mode is entered and synced
-  // back to `menu` when the user taps "Done".
+  // Arrange-mode state. slotLayout mirrors the server's takerMenuOrder:
+  // null entries are intentional empty cells. buildArrangeGrid() pads it
+  // at render time so there are always blank cells to drag into.
   const [arrangeMode, setArrangeMode] = useState(false);
-  const [orderedMenu, setOrderedMenu] = useState<MenuItem[]>([]);
+  const [slotLayout, setSlotLayout] = useState<(number | null)[]>([]);
+  const [activeItemId, setActiveItemId] = useState<number | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
 
   // Per-ticket print status so staff can see whether each auto-print actually
@@ -289,28 +339,45 @@ export default function EventTakerOrder() {
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
   );
 
+  // The full fixed-slot render grid, recomputed whenever the layout or menu changes.
+  const arrangeGrid = useMemo(
+    () => (menu ? buildArrangeGrid(menu, slotLayout) : []),
+    [menu, slotLayout],
+  );
+
   async function handleDragEnd(event: DragEndEvent) {
+    setActiveItemId(null);
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = orderedMenu.findIndex(m => m.id === active.id);
-    const newIndex = orderedMenu.findIndex(m => m.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-    const newOrder = arrayMove(orderedMenu, oldIndex, newIndex);
-    const snapshot = orderedMenu;
-    setOrderedMenu(newOrder);
+    if (!over) return;
+    const draggedItemId = active.id as number;
+    const targetSlotIndex = over.id as number;
+    const sourceSlotIndex = arrangeGrid.indexOf(draggedItemId);
+    if (sourceSlotIndex === -1 || sourceSlotIndex === targetSlotIndex) return;
+
+    // Swap: dragged item goes to the target slot; the target's occupant
+    // (null for an empty slot, or another item ID) moves to the source slot.
+    const newGrid = [...arrangeGrid];
+    newGrid[sourceSlotIndex] = arrangeGrid[targetSlotIndex];
+    newGrid[targetSlotIndex] = draggedItemId;
+
+    // Trim trailing nulls for compact server storage — buildArrangeGrid
+    // re-adds padding at render time so the grid always has expansion room.
+    let lastNonNull = newGrid.length - 1;
+    while (lastNonNull >= 0 && newGrid[lastNonNull] === null) lastNonNull--;
+    const toSave = newGrid.slice(0, lastNonNull + 1);
+
+    const snapshot = slotLayout;
+    setSlotLayout(toSave);
     setSavingOrder(true);
     try {
       const res = await fetch(`${BASE}/api/event-taker/menu-order`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
-        body: JSON.stringify({ order: newOrder.map(m => m.id) }),
+        body: JSON.stringify({ order: toSave }),
       });
       if (!res.ok) throw new Error("Save failed");
     } catch {
-      // Roll back both sources of truth so menu is never left in the
-      // optimistic state regardless of whether the user exited arrange mode.
-      setOrderedMenu(snapshot);
-      setMenu(snapshot);
+      setSlotLayout(snapshot);
       toast.error("Failed to save order — please try again");
     } finally {
       setSavingOrder(false);
@@ -331,9 +398,9 @@ export default function EventTakerOrder() {
         headers: { Authorization: `Bearer ${password}` },
       });
       if (!menuRes.ok) throw new Error("Reload failed");
-      const freshMenu: MenuItem[] = await menuRes.json();
-      setMenu(freshMenu);
-      setOrderedMenu(freshMenu);
+      const data: { items: MenuItem[]; layout: (number | null)[] } = await menuRes.json();
+      setMenu(data.items);
+      setSlotLayout(data.layout);
     } catch {
       toast.error("Failed to reset order — please try again");
     } finally {
@@ -442,7 +509,9 @@ export default function EventTakerOrder() {
       });
       if (res.status === 401) { handleLogout(); return; }
       if (!res.ok) throw new Error("Failed to load menu");
-      setMenu(await res.json());
+      const data: { items: MenuItem[]; layout: (number | null)[] } = await res.json();
+      setMenu(data.items);
+      setSlotLayout(data.layout);
     } catch {
       setMenuError("Failed to load menu");
     }
@@ -460,7 +529,8 @@ export default function EventTakerOrder() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
-      const fresh: MenuItem[] = await res.json();
+      const data: { items: MenuItem[]; layout: (number | null)[] } = await res.json();
+      const fresh = data.items;
       const stockById = new Map(fresh.map(m => [m.id, m.eventStock] as const));
       setMenu(prev => {
         if (!prev) return fresh;
@@ -1180,10 +1250,15 @@ export default function EventTakerOrder() {
                 disabled={savingOrder}
                 onClick={() => {
                   if (!arrangeMode) {
-                    setOrderedMenu(menu ?? []);
                     setArrangeMode(true);
                   } else {
-                    setMenu(orderedMenu);
+                    // Sync menu to slot order so normal view reflects the layout.
+                    const itemById = new Map((menu ?? []).map(m => [m.id, m]));
+                    const ordered = arrangeGrid
+                      .filter((id): id is number => id !== null)
+                      .map(id => itemById.get(id))
+                      .filter((m): m is MenuItem => m !== undefined);
+                    setMenu(ordered);
                     setArrangeMode(false);
                   }
                 }}
@@ -1235,16 +1310,18 @@ export default function EventTakerOrder() {
               <p className="text-sm mt-2">Toggle items on in Menu Manager → "Taker" column.</p>
             </div>
           )}
-          {/* Arrange mode — flat drag-and-drop grid */}
+          {/* Arrange mode — fixed-slot grid with empty cells */}
           {menu && menu.length > 0 && arrangeMode && (
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
+              onDragStart={({ active }) => setActiveItemId(active.id as number)}
               onDragEnd={handleDragEnd}
+              onDragCancel={() => setActiveItemId(null)}
             >
               <div className="mb-4 flex items-center justify-between px-1 gap-3">
                 <p className="text-sm text-muted-foreground">
-                  Drag cards to set the order for all staff tablets.
+                  Drag cards into any position. Empty cells are placeholders — drag items there to leave gaps.
                   {savingOrder && <span className="ml-2 text-indigo-500">Saving…</span>}
                 </p>
                 <button
@@ -1257,13 +1334,29 @@ export default function EventTakerOrder() {
                   Reset order
                 </button>
               </div>
-              <SortableContext items={orderedMenu.map(m => m.id)} strategy={rectSortingStrategy}>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {orderedMenu.map(item => (
-                    <SortableArrangeCard key={item.id} item={item} />
-                  ))}
-                </div>
-              </SortableContext>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {arrangeGrid.map((slotId, i) => {
+                  if (slotId === null) {
+                    return <ArrangeEmptySlot key={`e-${i}`} slotIndex={i} />;
+                  }
+                  const item = menu.find(m => m.id === slotId);
+                  if (!item) return <ArrangeEmptySlot key={`e-${i}`} slotIndex={i} />;
+                  return (
+                    <DraggableItemCard
+                      key={slotId}
+                      item={item}
+                      slotIndex={i}
+                      isBeingDragged={activeItemId === slotId}
+                    />
+                  );
+                })}
+              </div>
+              <DragOverlay dropAnimation={null}>
+                {activeItemId !== null && (() => {
+                  const item = menu.find(m => m.id === activeItemId);
+                  return item ? <ArrangeCardOverlay item={item} /> : null;
+                })()}
+              </DragOverlay>
             </DndContext>
           )}
 
