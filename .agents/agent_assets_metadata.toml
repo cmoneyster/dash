@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "ZSD6Dvr1HOmVL1sDFKZ29"
@@ -12,3 +11,9 @@ id = "9w8_TL774aP0Zb5cnRG6_"
 uri = "file://artifacts/catering-web/public/images/hero.png"
 type = "image"
 title = "chinese catering spread no sesame"
+
+[[outputs]]
+id = "pqhxzD8OoPAHAORD-wMqC"
+uri = "file://.local/dev-print-agent-qr.png"
+type = "image"
+title = "Scan to open Dev Print Agent"
