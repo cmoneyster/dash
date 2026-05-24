@@ -33,6 +33,8 @@ export type AgentJobResult = {
   deliveredAt: Date;
   ok: boolean;
   error?: string;
+  /** Raw response body from the printer — useful for diagnosing silent failures. */
+  printerResponse?: string;
 };
 
 export type PrintAgentStatus = "idle" | "polling" | "delivering" | "error";
@@ -74,7 +76,11 @@ function authHeaders(): Record<string, string> {
  * The printer must have HTTPS enabled and the browser must have accepted the
  * printer's self-signed certificate (visit https://<ip> once to trust it).
  */
-async function deliverViaWebPrnt(job: QueuedJob): Promise<void> {
+/**
+ * Returns the raw printer response body string (for diagnostic display).
+ * Throws if the printer reports a failure or is unreachable.
+ */
+async function deliverViaWebPrnt(job: QueuedJob): Promise<string> {
   let response: Response;
   try {
     response = await fetch(`https://${job.lanIp}/StarWebPRNT/SendMessage`, {
@@ -103,7 +109,6 @@ async function deliverViaWebPrnt(job: QueuedJob): Promise<void> {
   if (body.trim()) {
     try {
       const doc = new DOMParser().parseFromString(body, "text/xml");
-      // <Success>false</Success> signals a printer-level failure.
       const successEl = doc.querySelector("Success");
       if (successEl && successEl.textContent?.trim().toLowerCase() === "false") {
         const errorEl =
@@ -114,18 +119,19 @@ async function deliverViaWebPrnt(job: QueuedJob): Promise<void> {
         throw new Error(`Printer reported failure: ${detail}`);
       }
     } catch (err) {
-      // Re-throw errors we threw intentionally (printer reported failure).
       if (err instanceof Error && err.message.startsWith("Printer reported")) throw err;
-      // Otherwise XML parse errors are non-fatal — treat as success.
+      // XML parse errors are non-fatal — treat as success.
     }
   }
+
+  return body;
 }
 
 type UsePrintAgentOptions = {
   /** Set false to stop the polling loop without unmounting the hook. */
   enabled?: boolean;
   /** Override the delivery function (e.g. for non-Star printers). */
-  deliver?: (job: QueuedJob) => Promise<void>;
+  deliver?: (job: QueuedJob) => Promise<string>;
 };
 
 export function usePrintAgent(options: UsePrintAgentOptions = {}): PrintAgentState {
@@ -187,7 +193,7 @@ export function usePrintAgent(options: UsePrintAgentOptions = {}): PrintAgentSta
             }
             if (!claimRes.ok) throw new Error(`Claim failed: ${claimRes.status}`);
 
-            await deliverRef.current(job);
+            const printerResponse = await deliverRef.current(job);
 
             await apiPost(`/api/print-agent/jobs/${job.id}/complete`);
 
@@ -198,6 +204,7 @@ export function usePrintAgent(options: UsePrintAgentOptions = {}): PrintAgentSta
               lanIp: job.lanIp,
               deliveredAt: new Date(),
               ok: true,
+              printerResponse: printerResponse || undefined,
             };
             setState(s => ({
               ...s,

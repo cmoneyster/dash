@@ -38,7 +38,12 @@ function JobRow({ r }: { r: AgentJobResult }) {
           <span className="ml-2 text-xs text-slate-500 dark:text-slate-400 font-normal">→ {r.lanIp}</span>
         </div>
         {r.error && (
-          <div className="text-xs text-red-600 dark:text-red-400 mt-0.5 truncate">{r.error}</div>
+          <div className="text-xs text-red-600 dark:text-red-400 mt-0.5 break-all">{r.error}</div>
+        )}
+        {r.printerResponse && (
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 break-all font-mono">
+            {r.printerResponse.slice(0, 300)}
+          </div>
         )}
       </div>
       <div className="text-xs text-slate-500 dark:text-slate-400 shrink-0">
