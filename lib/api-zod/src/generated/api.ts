@@ -2025,6 +2025,18 @@ export const TestPrintPrinterResponse = zod.object({
 });
 
 /**
+ * @summary Send a test ticket directly to the printer's LAN IP via TCP port 9100
+ */
+export const TestLanPrinterParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const TestLanPrinterResponse = zod.object({
+  ok: zod.boolean(),
+  lanIp: zod.string(),
+});
+
+/**
  * @summary Recent print jobs (most recent first)
  */
 export const listPrintJobsQueryLimitDefault = 100;

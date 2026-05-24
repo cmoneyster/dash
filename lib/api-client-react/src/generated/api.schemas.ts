@@ -958,6 +958,11 @@ export interface TestPrintBody {
   message?: string | null;
 }
 
+export interface TestLanResult {
+  ok: boolean;
+  lanIp: string;
+}
+
 export type PrintJobJobType =
   (typeof PrintJobJobType)[keyof typeof PrintJobJobType];
 
@@ -1050,6 +1055,10 @@ export type GetCartParams = {
 
 export type GetPlanParams = {
   sessionId: string;
+};
+
+export type TestLanPrinter502 = {
+  error?: string;
 };
 
 export type ListPrintJobsParams = {

@@ -6,6 +6,7 @@ import {
   useUpdatePrinter,
   useDeletePrinter,
   useTestPrintPrinter,
+  useTestLanPrinter,
   useListPrintJobs,
   useRetryPrintJob,
   getListPrintersQueryKey,
@@ -15,7 +16,7 @@ import {
   type PrintJob,
 } from "@workspace/api-client-react";
 import { useForm } from "react-hook-form";
-import { Printer as PrinterIcon, Plus, Trash2, Pencil, Wifi, WifiOff, AlertTriangle, Copy, Check, RefreshCw, X, Eye, XCircle } from "lucide-react";
+import { Printer as PrinterIcon, Plus, Trash2, Pencil, Wifi, WifiOff, AlertTriangle, Copy, Check, RefreshCw, X, Eye, XCircle, Network } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 
@@ -200,14 +201,33 @@ function PrinterDialog({
   );
 }
 
+type LanResult = { ok: boolean; message: string } | null;
+
 function PrinterCard({ p }: { p: Printer }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [lanResult, setLanResult] = useState<LanResult>(null);
   const del = useDeletePrinter({
     mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) },
   });
   const test = useTestPrintPrinter({
     mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintJobsQueryKey() }) },
+  });
+  const testLan = useTestLanPrinter({
+    mutation: {
+      onSuccess: (data) => {
+        setLanResult({ ok: true, message: `Sent to ${data.lanIp}` });
+        setTimeout(() => setLanResult(null), 4000);
+      },
+      onError: (err: unknown) => {
+        const msg =
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message: unknown }).message)
+            : "Connection failed";
+        setLanResult({ ok: false, message: msg });
+        setTimeout(() => setLanResult(null), 6000);
+      },
+    },
   });
   const cloudprntUrl = `${window.location.origin}/api/cloudprnt/${p.cloudprntToken}`;
 
@@ -283,7 +303,31 @@ function PrinterCard({ p }: { p: Printer }) {
           disabled={test.isPending}
           className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
         >Test label</button>
+        {p.lanIp && (
+          <button
+            onClick={() => testLan.mutate({ id: p.id })}
+            disabled={testLan.isPending}
+            className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-1.5"
+            title={`Send directly to ${p.lanIp} via TCP port 9100`}
+          >
+            <Network className="w-3 h-3" />
+            {testLan.isPending ? "Sending…" : "Test via LAN"}
+          </button>
+        )}
       </div>
+      {lanResult !== null && (
+        <div className={`mt-2 text-xs px-3 py-2 rounded-lg flex items-center gap-2 ${
+          lanResult.ok
+            ? "bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-300"
+            : "bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300"
+        }`}>
+          {lanResult.ok
+            ? <Check className="w-3.5 h-3.5 shrink-0" />
+            : <XCircle className="w-3.5 h-3.5 shrink-0" />}
+          {lanResult.ok ? "Printed via LAN — " : "LAN error — "}
+          <span className="font-mono">{lanResult.message}</span>
+        </div>
+      )}
 
       <PrinterDialog open={editing} initial={p} onClose={() => setEditing(false)} />
     </div>

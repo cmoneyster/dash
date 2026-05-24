@@ -11,6 +11,7 @@ import {
   requeueJob,
 } from "../lib/printQueue";
 import { renderJob } from "../lib/printRenderer";
+import { sendViaLanTcp } from "../lib/lanPrint";
 import type {
   KitchenTicketPayload,
   CustomerReceiptPayload,
@@ -170,6 +171,39 @@ router.post("/admin/printers/:id/test-print", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "test print failed");
     res.status(500).json({ error: "Failed to enqueue test print" });
+  }
+});
+
+/**
+ * POST /admin/printers/:id/test-lan
+ *
+ * Send a test ticket directly to the printer's LAN IP on TCP port 9100,
+ * bypassing the CloudPRNT queue entirely. Useful for verifying network
+ * reachability before relying on the LAN fallback path.
+ */
+router.post("/admin/printers/:id/test-lan", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, id));
+    if (!printer) {
+      res.status(404).json({ error: "not found" });
+      return;
+    }
+    if (!printer.lanIp) {
+      res.status(400).json({ error: "No LAN IP configured for this printer" });
+      return;
+    }
+    const { bytes } = renderJob({
+      type: "test",
+      printerName: printer.name,
+      message: "LAN direct-print test via TCP port 9100.",
+    });
+    await sendViaLanTcp(printer.lanIp, bytes);
+    res.json({ ok: true, lanIp: printer.lanIp });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown error";
+    req.log.warn({ err }, "[lan-print] test-lan failed");
+    res.status(502).json({ error: message });
   }
 });
 

@@ -993,6 +993,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/PrintJob"
 
+  /admin/printers/{id}/test-lan:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: testLanPrinter
+      tags: [printers]
+      summary: Send a test ticket directly to the printer's LAN IP via TCP port 9100
+      responses:
+        "200":
+          description: Ticket sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestLanResult"
+        "400":
+          description: No LAN IP configured
+        "502":
+          description: TCP connection failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
   /admin/print-jobs:
     get:
       operationId: listPrintJobs
@@ -2752,6 +2782,17 @@ components:
           nullable: true
       required:
         - jobType
+
+    TestLanResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        lanIp:
+          type: string
+      required:
+        - ok
+        - lanIp
 
     PrintJob:
       type: object

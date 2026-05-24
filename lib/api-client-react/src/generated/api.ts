@@ -66,6 +66,8 @@ import type {
   SyncRecommendationsBody,
   SyncRecommendationsResponse,
   TakerMenuResponse,
+  TestLanPrinter502,
+  TestLanResult,
   TestPrintBody,
   TopSeller,
   UpdateCartItemBody,
@@ -4286,6 +4288,90 @@ export const useTestPrintPrinter = <
   TContext
 > => {
   return useMutation(getTestPrintPrinterMutationOptions(options));
+};
+
+/**
+ * @summary Send a test ticket directly to the printer's LAN IP via TCP port 9100
+ */
+export const getTestLanPrinterUrl = (id: number) => {
+  return `/api/admin/printers/${id}/test-lan`;
+};
+
+export const testLanPrinter = async (
+  id: number,
+  options?: RequestInit,
+): Promise<TestLanResult> => {
+  return customFetch<TestLanResult>(getTestLanPrinterUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getTestLanPrinterMutationOptions = <
+  TError = ErrorType<void | TestLanPrinter502>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testLanPrinter>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof testLanPrinter>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["testLanPrinter"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof testLanPrinter>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return testLanPrinter(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TestLanPrinterMutationResult = NonNullable<
+  Awaited<ReturnType<typeof testLanPrinter>>
+>;
+
+export type TestLanPrinterMutationError = ErrorType<void | TestLanPrinter502>;
+
+/**
+ * @summary Send a test ticket directly to the printer's LAN IP via TCP port 9100
+ */
+export const useTestLanPrinter = <
+  TError = ErrorType<void | TestLanPrinter502>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testLanPrinter>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof testLanPrinter>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getTestLanPrinterMutationOptions(options));
 };
 
 /**

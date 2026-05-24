@@ -13,6 +13,7 @@ import type {
   PlateLabelPayload,
   OrderLine,
 } from "./printRenderer";
+import { tryLanFallback } from "./lanPrint";
 import { expandAllItemLabels, type LabelLineInput, type LabelPolicy } from "./labelExpand";
 
 type EventOrderRow = typeof eventOrdersTable.$inferSelect;
@@ -122,13 +123,14 @@ export async function fanoutPrintForEventOrder(args: {
       lines: order.items.map((it) => ({ name: it.name, quantity: it.quantity })),
     };
     for (const p of kitchenPrinters) {
-      await enqueuePrintJob({
+      const job = await enqueuePrintJob({
         printerId: p.id,
         jobType: "kitchen_ticket",
         payload: payload as unknown as Record<string, unknown>,
         orderSource: "event_order",
         orderId: order.id,
       });
+      void tryLanFallback(p, job.id, payload);
       enqueued++;
     }
   }
@@ -155,13 +157,14 @@ export async function fanoutPrintForEventOrder(args: {
       footer: "Thank you!",
     };
     for (const p of receiptPrinters) {
-      await enqueuePrintJob({
+      const job = await enqueuePrintJob({
         printerId: p.id,
         jobType: "customer_receipt",
         payload: payload as unknown as Record<string, unknown>,
         orderSource: "event_order",
         orderId: order.id,
       });
+      void tryLanFallback(p, job.id, payload);
       enqueued++;
     }
   }
@@ -215,13 +218,14 @@ export async function fanoutPrintForEventOrder(args: {
           isFullBox: lbl.isFullBox,
           placedAt,
         };
-        await enqueuePrintJob({
+        const itemJob = await enqueuePrintJob({
           printerId: printer.id,
           jobType: "item_label",
           payload: payload as unknown as Record<string, unknown>,
           orderSource: "event_order",
           orderId: order.id,
         });
+        void tryLanFallback(printer, itemJob.id, payload);
         enqueued++;
       }
 
@@ -243,13 +247,14 @@ export async function fanoutPrintForEventOrder(args: {
           lines,
           placedAt,
         };
-        await enqueuePrintJob({
+        const plJob = await enqueuePrintJob({
           printerId: printer.id,
           jobType: "plate_label",
           payload: plPayload as unknown as Record<string, unknown>,
           orderSource: "event_order",
           orderId: order.id,
         });
+        void tryLanFallback(printer, plJob.id, plPayload);
         enqueued++;
       }
     }
@@ -394,13 +399,14 @@ export async function fanoutItemLabelsForEventOrderId(args: {
         isFullBox: lbl.isFullBox,
         placedAt,
       };
-      await enqueuePrintJob({
+      const itemJob2 = await enqueuePrintJob({
         printerId: printer.id,
         jobType: "item_label",
         payload: payload as unknown as Record<string, unknown>,
         orderSource: "event_order",
         orderId: order.id,
       });
+      void tryLanFallback(printer, itemJob2.id, payload);
       enqueued++;
     }
   }
