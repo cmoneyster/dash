@@ -332,7 +332,20 @@ export interface MenuItem {
   labelPolicy?: MenuItemLabelPolicy;
   /** Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2). */
   labelBoxSize?: number | null;
+  /** Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses. */
+  effectivePrice?: number | null;
+  /** Internal kitchen/staff notes not shown to customers. */
+  internalNotes?: string | null;
   createdAt: string;
+}
+
+/**
+ * Response from GET /event-taker/menu — the filtered, ordered menu items and the raw slot-layout array used by the arrange-mode grid.
+ */
+export interface TakerMenuResponse {
+  items: MenuItem[];
+  /** Raw slot-layout array. Each entry is a menu item ID or null (empty slot) for the fixed-slot arrange-mode grid. */
+  layout: (number | null)[];
 }
 
 export type CreateMenuItemBodyLabelPolicy =

@@ -116,6 +116,7 @@ export * from "./syncRecommendationsBody";
 export * from "./syncRecommendationsBodyMode";
 export * from "./syncRecommendationsResponse";
 export * from "./syncRecommendationsResponseMode";
+export * from "./takerMenuResponse";
 export * from "./testPrintBody";
 export * from "./testPrintBodyJobType";
 export * from "./topSeller";

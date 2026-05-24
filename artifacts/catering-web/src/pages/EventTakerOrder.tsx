@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getEventTakerMenu } from "@workspace/api-client-react";
 import { TAX_DISCLOSURE, TAX_INCLUDED_NOTE } from "@/lib/tax";
 import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers, Pencil, GripVertical, RotateCcw } from "lucide-react";
 import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
@@ -394,13 +395,11 @@ export default function EventTakerOrder() {
         body: JSON.stringify({ order: [] }),
       });
       if (!clearRes.ok) throw new Error("Reset failed");
-      const menuRes = await fetch(`${BASE}/api/event-taker/menu`, {
+      const data = await getEventTakerMenu({
         headers: { Authorization: `Bearer ${password}` },
       });
-      if (!menuRes.ok) throw new Error("Reload failed");
-      const data: { items: MenuItem[]; layout: (number | null)[] } = await menuRes.json();
-      setMenu(data.items);
-      setSlotLayout(data.layout);
+      setMenu(data.items as MenuItem[]);
+      setSlotLayout(data.layout as (number | null)[]);
     } catch {
       toast.error("Failed to reset order — please try again");
     } finally {
@@ -504,15 +503,16 @@ export default function EventTakerOrder() {
   async function loadMenu(token: string) {
     setMenuError("");
     try {
-      const res = await fetch(`${BASE}/api/event-taker/menu`, {
+      const data = await getEventTakerMenu({
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.status === 401) { handleLogout(); return; }
-      if (!res.ok) throw new Error("Failed to load menu");
-      const data: { items: MenuItem[]; layout: (number | null)[] } = await res.json();
-      setMenu(data.items);
-      setSlotLayout(data.layout);
-    } catch {
+      setMenu(data.items as MenuItem[]);
+      setSlotLayout(data.layout as (number | null)[]);
+    } catch (err) {
+      if (err && typeof err === "object" && "status" in err && err.status === 401) {
+        handleLogout();
+        return;
+      }
       setMenuError("Failed to load menu");
     }
   }
@@ -525,12 +525,10 @@ export default function EventTakerOrder() {
   // server-side (added/removed item) so new items still appear.
   async function refreshStock(token: string) {
     try {
-      const res = await fetch(`${BASE}/api/event-taker/menu`, {
+      const data = await getEventTakerMenu({
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return;
-      const data: { items: MenuItem[]; layout: (number | null)[] } = await res.json();
-      const fresh = data.items;
+      const fresh = data.items as MenuItem[];
       const stockById = new Map(fresh.map(m => [m.id, m.eventStock] as const));
       setMenu(prev => {
         if (!prev) return fresh;

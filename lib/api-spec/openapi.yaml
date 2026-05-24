@@ -1081,6 +1081,26 @@ paths:
         "401":
           description: Unauthorized
 
+  # Event Taker endpoints
+  /event-taker/menu:
+    get:
+      operationId: getEventTakerMenu
+      tags: [event-taker]
+      summary: Get the staff event order taker menu with slot layout
+      responses:
+        "200":
+          description: Taker menu items (ordered and filtered) plus the raw slot-layout array
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TakerMenuResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     ClientPollsByFamily:
@@ -1633,6 +1653,14 @@ components:
           type: integer
           nullable: true
           description: Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).
+        effectivePrice:
+          type: number
+          description: Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.
+          nullable: true
+        internalNotes:
+          type: string
+          nullable: true
+          description: Internal kitchen/staff notes not shown to customers.
         createdAt:
           type: string
           format: date-time
@@ -1648,6 +1676,24 @@ components:
         - available
         - minimumOrderQty
         - createdAt
+
+    TakerMenuResponse:
+      type: object
+      description: Response from GET /event-taker/menu — the filtered, ordered menu items and the raw slot-layout array used by the arrange-mode grid.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MenuItem"
+        layout:
+          type: array
+          description: Raw slot-layout array. Each entry is a menu item ID or null (empty slot) for the fixed-slot arrange-mode grid.
+          items:
+            type: integer
+            nullable: true
+      required:
+        - items
+        - layout
 
     CreateMenuItemBody:
       type: object

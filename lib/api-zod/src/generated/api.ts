@@ -90,6 +90,16 @@ export const ListMenuItemsResponseItem = zod.object({
     .describe(
       "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
     ),
+  effectivePrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+    ),
+  internalNotes: zod
+    .string()
+    .nullish()
+    .describe("Internal kitchen\/staff notes not shown to customers."),
   createdAt: zod.coerce.date(),
 });
 export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
@@ -169,6 +179,16 @@ export const GetMenuItemResponse = zod.object({
     .describe(
       "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
     ),
+  effectivePrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+    ),
+  internalNotes: zod
+    .string()
+    .nullish()
+    .describe("Internal kitchen\/staff notes not shown to customers."),
   createdAt: zod.coerce.date(),
 });
 
@@ -243,6 +263,16 @@ export const AdminListMenuItemsResponseItem = zod.object({
     .describe(
       "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
     ),
+  effectivePrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+    ),
+  internalNotes: zod
+    .string()
+    .nullish()
+    .describe("Internal kitchen\/staff notes not shown to customers."),
   createdAt: zod.coerce.date(),
 });
 export const AdminListMenuItemsResponse = zod.array(
@@ -377,6 +407,16 @@ export const UpdateMenuItemResponse = zod.object({
     .describe(
       "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
     ),
+  effectivePrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+    ),
+  internalNotes: zod
+    .string()
+    .nullish()
+    .describe("Internal kitchen\/staff notes not shown to customers."),
   createdAt: zod.coerce.date(),
 });
 
@@ -743,6 +783,16 @@ export const GetCartResponse = zod.object({
           .describe(
             "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
+        effectivePrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+          ),
+        internalNotes: zod
+          .string()
+          .nullish()
+          .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
@@ -842,6 +892,16 @@ export const AddToCartResponse = zod.object({
           .describe(
             "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
+        effectivePrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+          ),
+        internalNotes: zod
+          .string()
+          .nullish()
+          .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
@@ -943,6 +1003,16 @@ export const UpdateCartItemResponse = zod.object({
           .describe(
             "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
+        effectivePrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+          ),
+        internalNotes: zod
+          .string()
+          .nullish()
+          .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
@@ -1039,6 +1109,16 @@ export const RemoveFromCartResponse = zod.object({
           .describe(
             "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
+        effectivePrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+          ),
+        internalNotes: zod
+          .string()
+          .nullish()
+          .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
       }),
       quantity: zod.number(),
@@ -1133,6 +1213,16 @@ export const GetPlanResponse = zod.object({
           .describe(
             "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
+        effectivePrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+          ),
+        internalNotes: zod
+          .string()
+          .nullish()
+          .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
       }),
     }),
@@ -1223,6 +1313,16 @@ export const AddToPlanResponse = zod.object({
           .describe(
             "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
+        effectivePrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+          ),
+        internalNotes: zod
+          .string()
+          .nullish()
+          .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
       }),
     }),
@@ -1314,6 +1414,16 @@ export const RemoveFromPlanResponse = zod.object({
           .describe(
             "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
+        effectivePrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+          ),
+        internalNotes: zod
+          .string()
+          .nullish()
+          .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
       }),
     }),
@@ -1549,6 +1659,16 @@ export const SuggestMenuItemsResponse = zod.object({
           .describe(
             "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
           ),
+        effectivePrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+          ),
+        internalNotes: zod
+          .string()
+          .nullish()
+          .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
       }),
       recommendedQuantity: zod.number(),
@@ -2561,3 +2681,102 @@ export const GetSalesReportResponse = zod.object({
       'Explicit per-type breakdowns plus a combined order list. Use allOrders to render a unified chronological table — items are tagged with type=\"event\" or type=\"catering\" for row-level branching.\n',
     ),
 });
+
+/**
+ * @summary Get the staff event order taker menu with slot layout
+ */
+export const getEventTakerMenuResponseItemsItemMinimumOrderQtyDefault = 1;
+
+export const GetEventTakerMenuResponse = zod
+  .object({
+    items: zod.array(
+      zod.object({
+        id: zod.number(),
+        name: zod.string(),
+        description: zod.string(),
+        category: zod.string(),
+        price: zod.number(),
+        servingSize: zod.number().describe("Number of people one unit serves"),
+        unit: zod.string().describe('e.g. \"tray\", \"dozen\", \"per person\"'),
+        imageUrl: zod.string().nullish(),
+        allergens: zod.array(zod.string()),
+        available: zod.boolean(),
+        prepTime: zod.string().nullish(),
+        minimumOrderQty: zod
+          .number()
+          .default(getEventTakerMenuResponseItemsItemMinimumOrderQtyDefault)
+          .describe("Minimum quantity required to add this item to an order"),
+        tier2Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 2 pricing"),
+        tier2Price: zod.number().nullish().describe("Price per unit at tier 2"),
+        tier3Qty: zod
+          .number()
+          .nullish()
+          .describe("Minimum quantity to unlock tier 3 pricing"),
+        tier3Price: zod.number().nullish().describe("Price per unit at tier 3"),
+        eventActive: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the on-site event ordering page (guest-facing \/event)",
+          ),
+        eventTakerVisible: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is shown on the staff Event Order Taker page (\/event-taker)",
+          ),
+        eventTakerPrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Separate per-unit price for the staff Event Order Taker page (`\/event-taker`). Strict — items with this null are hidden from the order taker (no fallback to `price`).",
+          ),
+        eventStock: zod
+          .number()
+          .nullish()
+          .describe(
+            "Optional inventory cap for event ordering. Decremented on each event\/POS order; null means unlimited.",
+          ),
+        otdEligible: zod
+          .boolean()
+          .optional()
+          .describe(
+            'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
+        labelPolicy: zod
+          .enum(["per_unit", "combined", "per_box"])
+          .optional()
+          .describe(
+            "How many physical item labels to print per quantity ordered.",
+          ),
+        labelBoxSize: zod
+          .number()
+          .nullish()
+          .describe(
+            "Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2).",
+          ),
+        effectivePrice: zod
+          .number()
+          .nullish()
+          .describe(
+            "Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses.",
+          ),
+        internalNotes: zod
+          .string()
+          .nullish()
+          .describe("Internal kitchen\/staff notes not shown to customers."),
+        createdAt: zod.coerce.date(),
+      }),
+    ),
+    layout: zod
+      .array(zod.number().nullable())
+      .describe(
+        "Raw slot-layout array. Each entry is a menu item ID or null (empty slot) for the fixed-slot arrange-mode grid.",
+      ),
+  })
+  .describe(
+    "Response from GET \/event-taker\/menu — the filtered, ordered menu items and the raw slot-layout array used by the arrange-mode grid.",
+  );

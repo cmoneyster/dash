@@ -45,5 +45,9 @@ export interface MenuItem {
   labelPolicy?: MenuItemLabelPolicy;
   /** Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2). */
   labelBoxSize?: number | null;
+  /** Resolved selling price for this context (e.g. eventTakerPrice on the POS). Only present on taker-menu responses. */
+  effectivePrice?: number | null;
+  /** Internal kitchen/staff notes not shown to customers. */
+  internalNotes?: string | null;
   createdAt: Date;
 }

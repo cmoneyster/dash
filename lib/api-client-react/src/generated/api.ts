@@ -65,6 +65,7 @@ import type {
   SuggestItemsResponse,
   SyncRecommendationsBody,
   SyncRecommendationsResponse,
+  TakerMenuResponse,
   TestPrintBody,
   TopSeller,
   UpdateCartItemBody,
@@ -4551,6 +4552,81 @@ export function useGetSalesReport<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetSalesReportQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get the staff event order taker menu with slot layout
+ */
+export const getGetEventTakerMenuUrl = () => {
+  return `/api/event-taker/menu`;
+};
+
+export const getEventTakerMenu = async (
+  options?: RequestInit,
+): Promise<TakerMenuResponse> => {
+  return customFetch<TakerMenuResponse>(getGetEventTakerMenuUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetEventTakerMenuQueryKey = () => {
+  return [`/api/event-taker/menu`] as const;
+};
+
+export const getGetEventTakerMenuQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEventTakerMenu>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEventTakerMenu>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetEventTakerMenuQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEventTakerMenu>>
+  > = ({ signal }) => getEventTakerMenu({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEventTakerMenu>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEventTakerMenuQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEventTakerMenu>>
+>;
+export type GetEventTakerMenuQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get the staff event order taker menu with slot layout
+ */
+
+export function useGetEventTakerMenu<
+  TData = Awaited<ReturnType<typeof getEventTakerMenu>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEventTakerMenu>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEventTakerMenuQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
