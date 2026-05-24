@@ -326,15 +326,15 @@ class WebPrntBuilder {
 
   text(s: string) { if (s) this.cmds.push(`<Text>${xmlEsc(s)}</Text>`); return this; }
   line(s = "")   { this.cmds.push(`<Text>${xmlEsc(s)}\n</Text>`); return this; }
-  bold(on: boolean) { this.cmds.push(`<Bold>${on}</Bold>`); return this; }
+  bold(on: boolean) { this.cmds.push(`<Bold on="${on}"/>`); return this; }
   double(on: boolean) {
     this.cmds.push(on
       ? `<CharacterExpansion Method="DoubleWidthDoubleHeight"/>`
       : `<CharacterExpansion Method="Normal"/>`);
     return this;
   }
-  center() { this.cmds.push(`<Alignment>Center</Alignment>`); return this; }
-  left()   { this.cmds.push(`<Alignment>Left</Alignment>`); return this; }
+  center() { this.cmds.push(`<Alignment Method="Center"/>`); return this; }
+  left()   { this.cmds.push(`<Alignment Method="Left"/>`); return this; }
   div(c = "-") { return this.line(c.repeat(LINE_WIDTH)); }
 
   build(): string {
