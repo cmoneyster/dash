@@ -6,6 +6,14 @@ import { sendOrderConfirmation } from "../lib/sms";
 import { getOrderingChannelStates } from "./event-ordering";
 import { detectAndMarkLowStockCrossings, fireLowStockAlertIfAny, DEFAULT_LOW_STOCK_THRESHOLD } from "../lib/lowStockAlerts";
 import { fanoutPrintForEventOrder } from "../lib/printFanout";
+import {
+  getSquareConfig,
+  createTerminalCheckout,
+  getTerminalCheckout,
+  cancelTerminalCheckout,
+  SquareApiError,
+} from "../lib/square";
+import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
 
@@ -175,6 +183,10 @@ router.get("/event-taker/settings", async (req, res) => {
       hasPassword: !!resolved,
       venmoHandle: s?.venmoHandle ?? null,
       venmoQrImageUrl: s?.venmoQrImageUrl ?? null,
+      // True when both Square is configured AND a Terminal device ID is set.
+      // The frontend uses this to decide whether card taps auto-fire the
+      // Terminal or fall back to the manual instruction screen.
+      terminalEnabled: !!(s?.squareTerminalDeviceId) && !!getSquareConfig(),
       orderingState: channels.taker.state,
       orderingPausedUntil: channels.taker.pausedUntil,
       orderingRemainingSec: channels.taker.remainingSec,
@@ -1005,6 +1017,102 @@ router.post("/event-taker/orders/:id/void", verifyTakerPassword, async (req, res
     }
     req.log.error({ err }, "Error voiding order");
     res.status(500).json({ error: "Failed to void order" });
+  }
+});
+
+// ── Square Terminal checkout routes ─────────────────────────────────────────
+// All three routes are gated by verifyTakerPassword. The device ID comes from
+// event_settings so the frontend never needs to know it directly.
+
+router.post("/event-taker/terminal-checkout", verifyTakerPassword, async (req, res): Promise<void> => {
+  try {
+    const { orderId } = req.body as { orderId?: unknown };
+    if (typeof orderId !== "number" || !Number.isInteger(orderId) || orderId <= 0) {
+      res.status(400).json({ error: "orderId is required and must be a positive integer" });
+      return;
+    }
+    const settings = await getSettings();
+    const deviceId = settings?.squareTerminalDeviceId?.trim();
+    if (!deviceId) {
+      res.status(424).json({ error: "No Square Terminal device configured. Set a Device ID in Admin → Event Settings." });
+      return;
+    }
+    if (!getSquareConfig()) {
+      res.status(424).json({ error: "Square is not configured on this server." });
+      return;
+    }
+
+    const [order] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, orderId));
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    const total = order.total != null ? parseFloat(order.total) : 0;
+    if (total <= 0) {
+      res.status(400).json({ error: "Order total must be greater than $0 to charge via Terminal" });
+      return;
+    }
+    const amountCents = Math.round(total * 100);
+
+    const { checkoutId } = await createTerminalCheckout({
+      deviceId,
+      amountCents,
+      referenceId: `order-${orderId}`,
+      idempotencyKey: `taker-checkout-${orderId}-${randomUUID()}`,
+    });
+
+    req.log.info({ orderId, checkoutId, amountCents }, "[terminal] checkout created");
+    res.json({ checkoutId });
+  } catch (err) {
+    if (err instanceof SquareApiError) {
+      const firstCode = err.errors[0]?.code;
+      if (firstCode === "TERMINAL_CHECKOUT_ALREADY_QUEUED" || err.status === 409) {
+        res.status(409).json({ error: "The terminal already has an active request. Complete or cancel it first." });
+        return;
+      }
+    }
+    req.log.error({ err }, "[terminal] create checkout failed");
+    res.status(500).json({ error: "Failed to create Terminal checkout" });
+  }
+});
+
+router.get("/event-taker/terminal-checkout/:checkoutId", verifyTakerPassword, async (req, res): Promise<void> => {
+  try {
+    if (!getSquareConfig()) {
+      res.status(424).json({ error: "Square is not configured" });
+      return;
+    }
+    const checkoutId = String(req.params.checkoutId);
+    const { status } = await getTerminalCheckout(checkoutId);
+    res.json({ checkoutId, status });
+  } catch (err) {
+    if (err instanceof SquareApiError && err.status === 404) {
+      res.status(404).json({ error: "Checkout not found" });
+      return;
+    }
+    req.log.error({ err }, "[terminal] get checkout failed");
+    res.status(500).json({ error: "Failed to fetch Terminal checkout status" });
+  }
+});
+
+router.post("/event-taker/terminal-checkout/:checkoutId/cancel", verifyTakerPassword, async (req, res): Promise<void> => {
+  try {
+    if (!getSquareConfig()) {
+      res.status(424).json({ error: "Square is not configured" });
+      return;
+    }
+    const checkoutId = String(req.params.checkoutId);
+    await cancelTerminalCheckout(checkoutId);
+    req.log.info({ checkoutId }, "[terminal] checkout cancelled");
+    res.json({ ok: true });
+  } catch (err) {
+    if (err instanceof SquareApiError && err.status === 400) {
+      // Already completed or canceled — treat as success so the UI can recover.
+      res.json({ ok: true });
+      return;
+    }
+    req.log.error({ err }, "[terminal] cancel checkout failed");
+    res.status(500).json({ error: "Failed to cancel Terminal checkout" });
   }
 });
 

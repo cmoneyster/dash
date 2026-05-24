@@ -59,6 +59,7 @@ interface TakerSettings {
   taxRate: number | null;
   venmoHandle: string | null;
   venmoQrImageUrl: string | null;
+  terminalEnabled?: boolean;
   orderingState?: "accepting" | "paused" | "closed";
   orderingPausedUntil?: string | null;
   orderingRemainingSec?: number | null;
@@ -1311,6 +1312,7 @@ export default function EventTakerOrder() {
           password={password}
           venmoHandle={settings?.venmoHandle ?? null}
           venmoQrImageUrl={settings?.venmoQrImageUrl ?? null}
+          terminalEnabled={!!(settings?.terminalEnabled)}
           onHold={() => { setPaymentOrder(null); if (password) loadPending(password); }}
           onCancel={() => handleCancelOrder(paymentOrder.id)}
           onEdit={() => handleEditOrder(paymentOrder)}
@@ -1432,13 +1434,14 @@ function PrintStatusRow({
 // Each per-method screen has Back to method picker, plus the method's
 // confirm action. "Hold for later" leaves the order in the pending queue.
 function PaymentModal({
-  order, password, venmoHandle, venmoQrImageUrl,
+  order, password, venmoHandle, venmoQrImageUrl, terminalEnabled,
   onHold, onCancel, onEdit, onComplete, onPlatingChanged,
 }: {
   order: PendingOrder;
   password: string;
   venmoHandle: string | null;
   venmoQrImageUrl: string | null;
+  terminalEnabled?: boolean;
   onHold: () => void;
   onCancel: () => void;
   onEdit: () => void;
@@ -1450,12 +1453,16 @@ function PaymentModal({
   // the line. We disable Edit Order in that case (and the in-modal override
   // option, since you can't override what's already overridden).
   const isOverride = order.paymentStatus === "override";
-  const [step, setStep] = useState<"method" | "cash" | "card" | "venmo">("method");
+  const [step, setStep] = useState<"method" | "cash" | "card" | "terminal" | "venmo">("method");
   const [cashStr, setCashStr] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  // Terminal checkout state — only used when step === "terminal"
+  const [terminalCheckoutId, setTerminalCheckoutId] = useState<string | null>(null);
+  const [terminalPhase, setTerminalPhase] = useState<"creating" | "waiting" | "canceling" | "done">("creating");
+  const [terminalError, setTerminalError] = useState<string | null>(null);
   // Plating layout — locally tracks the latest server-confirmed plates and
   // controls the opt-in plating modal. Defaults to whatever the order row
   // carries (re-opening a held order keeps the prior layout).
@@ -1520,6 +1527,68 @@ function PaymentModal({
       setSubmitting(false);
     }
   }
+
+  // Auto-create a Square Terminal checkout and poll for completion.
+  // Only active while step === "terminal".
+  useEffect(() => {
+    if (step !== "terminal") return;
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${password}` };
+
+    async function createCheckout() {
+      setTerminalPhase("creating");
+      setTerminalError(null);
+      try {
+        const res = await fetch(`${BASE}/api/event-taker/terminal-checkout`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ orderId: order.id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          setTerminalError(data.error ?? "Failed to start Terminal checkout");
+          return;
+        }
+        const checkoutId = data.checkoutId as string;
+        setTerminalCheckoutId(checkoutId);
+        setTerminalPhase("waiting");
+        schedulePoll(checkoutId);
+      } catch {
+        if (!cancelled) setTerminalError("Could not reach the server");
+      }
+    }
+
+    async function pollStatus(checkoutId: string) {
+      try {
+        const res = await fetch(`${BASE}/api/event-taker/terminal-checkout/${encodeURIComponent(checkoutId)}`, { headers });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) { setTerminalError(data.error ?? "Error checking terminal status"); return; }
+        const status: string = data.status;
+        if (status === "COMPLETED") {
+          await confirm("card");
+        } else if (status === "CANCELED" || status === "CANCEL_REQUESTED") {
+          setTerminalError("Payment was canceled on the device.");
+        } else {
+          schedulePoll(checkoutId);
+        }
+      } catch {
+        if (!cancelled) schedulePoll(checkoutId);
+      }
+    }
+
+    function schedulePoll(checkoutId: string) {
+      pollTimer = setTimeout(() => { if (!cancelled) pollStatus(checkoutId); }, 1500);
+    }
+
+    createCheckout();
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Quick-cash buttons rounded up from the total
   const quickCash = useMemo(() => {
@@ -1606,12 +1675,24 @@ function PaymentModal({
                 <span className="ml-auto text-xs text-muted-foreground">Calculate change</span>
               </button>
               <button
-                onClick={() => { setStep("card"); setError(""); }}
+                onClick={() => {
+                  if (terminalEnabled) {
+                    setTerminalCheckoutId(null);
+                    setTerminalPhase("creating");
+                    setTerminalError(null);
+                    setStep("terminal");
+                  } else {
+                    setStep("card");
+                  }
+                  setError("");
+                }}
                 className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-colors"
               >
                 <CreditCard className="w-6 h-6 text-indigo-600" />
                 <span className="font-bold text-lg">Credit Card</span>
-                <span className="ml-auto text-xs text-muted-foreground">Process on terminal</span>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {terminalEnabled ? "Auto-charge terminal" : "Process on terminal"}
+                </span>
               </button>
               {(() => {
                 const venmoConfigured = !!(venmoHandle || venmoQrImageUrl);
@@ -1803,6 +1884,74 @@ function PaymentModal({
               </button>
             </div>
             {!isOverride && (
+              <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
+                Override — send to kitchen unpaid
+              </button>
+            )}
+          </div>
+        )}
+
+        {step === "terminal" && (
+          <div className="p-6 space-y-4">
+            <div className="text-center">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Square Terminal</p>
+              <p className="text-3xl font-display font-bold text-indigo-600">${total.toFixed(2)}</p>
+            </div>
+            {terminalError ? (
+              <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-4 text-sm text-destructive space-y-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <p>{terminalError}</p>
+                </div>
+                <button
+                  onClick={() => { setStep("method"); setError(""); }}
+                  className="flex items-center gap-1.5 text-sm font-semibold hover:underline"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Back to payment methods
+                </button>
+              </div>
+            ) : (
+              <div className="bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50 rounded-xl p-4 text-sm text-indigo-900 dark:text-indigo-200 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <p className="font-semibold">
+                    {terminalPhase === "creating" ? "Sending to terminal…" :
+                     terminalPhase === "canceling" ? "Canceling…" :
+                     "Waiting for card…"}
+                  </p>
+                </div>
+                {terminalPhase === "waiting" && (
+                  <p className="text-xs opacity-80">Have the customer tap or insert their card on the Square Terminal.</p>
+                )}
+              </div>
+            )}
+            {terminalCheckoutId && !terminalError && terminalPhase !== "canceling" && (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={async () => {
+                  setTerminalPhase("canceling");
+                  try {
+                    await fetch(`${BASE}/api/event-taker/terminal-checkout/${encodeURIComponent(terminalCheckoutId)}/cancel`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
+                    });
+                  } finally {
+                    setStep("method");
+                    setError("");
+                  }
+                }}
+                className="w-full px-4 py-2.5 text-sm font-semibold border border-border rounded-xl hover:bg-secondary disabled:opacity-50"
+              >
+                Cancel transaction
+              </button>
+            )}
+            {submitting && (
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Recording payment…
+              </div>
+            )}
+            {!isOverride && !terminalError && (
               <button onClick={gotoOverride} className="w-full text-xs text-muted-foreground hover:text-amber-700 underline">
                 Override — send to kitchen unpaid
               </button>

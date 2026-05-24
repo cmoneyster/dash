@@ -109,6 +109,7 @@ export default function EventSettings() {
   const [venmoQrImageUrl, setVenmoQrImageUrl] = useState<string | null>(null);
   const [venmoUploading, setVenmoUploading] = useState(false);
   const [venmoUploadError, setVenmoUploadError] = useState("");
+  const [squareTerminalDeviceId, setSquareTerminalDeviceId] = useState("");
   // ── On the Dash Experience pricing config ──
   // String-backed inputs so we can preserve admin keystrokes (decimals,
   // empty while typing, etc.). Validated and coerced to numbers on save.
@@ -156,6 +157,7 @@ export default function EventSettings() {
         setCateringTaxRate(data.cateringTaxRate != null ? String(data.cateringTaxRate) : "");
         setVenmoHandle(data.venmoHandle ?? "");
         setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
+        setSquareTerminalDeviceId(data.squareTerminalDeviceId ?? "");
         if (data.otdSetupFee != null) setOtdSetupFee(String(data.otdSetupFee));
         if (data.otdFeeWaiverThreshold != null) setOtdFeeWaiverThreshold(String(data.otdFeeWaiverThreshold));
         if (data.otdIncludedHours != null) setOtdIncludedHours(String(data.otdIncludedHours));
@@ -206,6 +208,7 @@ export default function EventSettings() {
         cateringTaxRate: cateringTaxRate.trim() === "" ? null : Number(cateringTaxRate),
         venmoHandle: venmoHandle.trim() === "" ? null : venmoHandle.trim(),
         venmoQrImageUrl: venmoQrImageUrl ?? null,
+        squareTerminalDeviceId: squareTerminalDeviceId.trim() === "" ? null : squareTerminalDeviceId.trim(),
         otdSetupFee: otdSetupFee.trim() === "" ? 0 : Number(otdSetupFee),
         otdFeeWaiverThreshold: otdFeeWaiverThreshold.trim() === "" ? 0 : Number(otdFeeWaiverThreshold),
         otdIncludedHours: otdIncludedHours.trim() === "" ? 0 : Number(otdIncludedHours),
@@ -253,6 +256,7 @@ export default function EventSettings() {
       setCateringTaxRate(data.cateringTaxRate != null ? String(data.cateringTaxRate) : "");
       setVenmoHandle(data.venmoHandle ?? "");
       setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
+      setSquareTerminalDeviceId(data.squareTerminalDeviceId ?? "");
       setOrderPassword("");
       setKitchenPassword("");
       setEventTakerPassword("");
@@ -463,6 +467,28 @@ export default function EventSettings() {
                 )}
                 {venmoUploadError && <p className="text-xs text-destructive mt-1.5">{venmoUploadError}</p>}
                 <p className="text-xs text-muted-foreground mt-1.5">Square images work best. Click Save Settings below to confirm changes.</p>
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-5 space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <CreditCard className="w-4 h-4" />
+                <span className="font-semibold text-foreground">Square Terminal</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When set, tapping <strong>Credit Card</strong> on the Staff Order Taker automatically pushes the charge to this Square Terminal device — no manual amount entry needed. Leave blank to use the manual approval screen instead.
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Terminal Device ID</label>
+                <input
+                  value={squareTerminalDeviceId}
+                  onChange={e => setSquareTerminalDeviceId(e.target.value)}
+                  placeholder="e.g. 9fa747a2-25ff-48ee-b078-04381f7c828f"
+                  className="w-full px-4 py-2 border border-border rounded-xl bg-background font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Find this in your Square dashboard under Devices → Terminal. Requires SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID to be set on the server.
+                </p>
               </div>
             </div>
 

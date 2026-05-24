@@ -20,6 +20,10 @@ export const eventSettingsTable = pgTable("event_settings", {
   // Venmo display info shown on the POS payment screen
   venmoHandle: text("venmo_handle"),
   venmoQrImageUrl: text("venmo_qr_image_url"),
+  // Square Terminal device ID for the Staff Order Taker card-present flow.
+  // When set (and Square is configured), tapping Credit Card auto-fires a
+  // Terminal checkout to this device instead of showing a manual prompt.
+  squareTerminalDeviceId: text("square_terminal_device_id"),
   // Kitchen-controlled ordering toggles. State is one of: 'accepting' | 'paused' | 'closed'.
   // When state='paused', pausedUntil holds the auto-resume timestamp.
   guestOrderingState: text("guest_ordering_state").notNull().default("accepting"),

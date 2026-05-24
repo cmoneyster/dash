@@ -23,6 +23,7 @@ router.get("/admin/event-settings", async (req, res) => {
       cateringTaxRate: settings?.cateringTaxRate != null ? parseFloat(settings.cateringTaxRate) : null,
       venmoHandle: settings?.venmoHandle ?? "",
       venmoQrImageUrl: settings?.venmoQrImageUrl ?? null,
+      squareTerminalDeviceId: settings?.squareTerminalDeviceId ?? null,
       // Replaces the legacy `twilioConfigured` flag — used by the admin
       // shell to badge SMS-related links when the gateway is unreachable.
       ejoinConfigured: isEjoinConfigured(),
@@ -57,7 +58,7 @@ router.put("/admin/event-settings", async (req, res) => {
       eventName, orderPassword, kitchenPassword,
       eventTakerPassword, eventTakerTaxEnabled, eventTakerTaxRate,
       cateringTaxEnabled, cateringTaxRate,
-      venmoHandle, venmoQrImageUrl,
+      venmoHandle, venmoQrImageUrl, squareTerminalDeviceId,
       otdSetupFee, otdFeeWaiverThreshold, otdIncludedHours,
       otdAdditionalHourRate, otdMaxAdditionalHours,
       dailyGuestCap, dailyDropOffSlots, dailyOnTheDashSlots,
@@ -73,6 +74,7 @@ router.put("/admin/event-settings", async (req, res) => {
       cateringTaxRate?: number | string | null;
       venmoHandle?: string | null;
       venmoQrImageUrl?: string | null;
+      squareTerminalDeviceId?: string | null;
       otdSetupFee?: number | string | null;
       otdFeeWaiverThreshold?: number | string | null;
       otdIncludedHours?: number | string | null;
@@ -98,6 +100,7 @@ router.put("/admin/event-settings", async (req, res) => {
       cateringTaxRate: s.cateringTaxRate != null ? parseFloat(s.cateringTaxRate) : null,
       venmoHandle: s.venmoHandle ?? "",
       venmoQrImageUrl: s.venmoQrImageUrl ?? null,
+      squareTerminalDeviceId: s.squareTerminalDeviceId ?? null,
       ejoinConfigured: isEjoinConfigured(),
       otdSetupFee: s.otdSetupFee != null ? parseFloat(s.otdSetupFee) : 500,
       otdFeeWaiverThreshold: s.otdFeeWaiverThreshold != null ? parseFloat(s.otdFeeWaiverThreshold) : 2000,
@@ -197,6 +200,11 @@ router.put("/admin/event-settings", async (req, res) => {
           ? null
           : venmoQrImageUrl;
       }
+      if (squareTerminalDeviceId !== undefined) {
+        updates.squareTerminalDeviceId = squareTerminalDeviceId == null || squareTerminalDeviceId === ""
+          ? null
+          : squareTerminalDeviceId.trim();
+      }
       // OTD pricing config — only validate/update fields that were sent so
       // partial PUTs from older clients still work.
       if (otdSetupFee !== undefined) {
@@ -235,6 +243,7 @@ router.put("/admin/event-settings", async (req, res) => {
         cateringTaxRate: (cateringTaxRate === undefined || cateringTaxRate === null || cateringTaxRate === "") ? null : String(Number(cateringTaxRate)),
         venmoHandle: venmoHandle == null ? null : (venmoHandle.trim().replace(/^@/, "") || null),
         venmoQrImageUrl: venmoQrImageUrl == null || venmoQrImageUrl === "" ? null : venmoQrImageUrl,
+        squareTerminalDeviceId: squareTerminalDeviceId == null || squareTerminalDeviceId === "" ? null : squareTerminalDeviceId.trim(),
         otdSetupFee: otdSetupFee !== undefined ? normalizeOtdMoney(otdSetupFee, "otdSetupFee", 100000) : "500.00",
         otdFeeWaiverThreshold: otdFeeWaiverThreshold !== undefined ? normalizeOtdMoney(otdFeeWaiverThreshold, "otdFeeWaiverThreshold", 1000000) : "2000.00",
         otdIncludedHours: otdIncludedHours !== undefined ? normalizeOtdHours(otdIncludedHours, "otdIncludedHours") : "2.00",

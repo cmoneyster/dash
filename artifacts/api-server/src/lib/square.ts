@@ -656,6 +656,72 @@ export async function getInvoiceSnapshot(invoiceId: string): Promise<InvoiceSnap
 }
 
 // ── Webhook signature verification ────────────────────────────────────────────
+// ── Square Terminal (card-present POS) ────────────────────────────────────────
+//
+// Used by the Staff Order Taker to push a charge to a physical Square Terminal
+// device without the cashier manually entering the amount. Requires the same
+// SQUARE_ACCESS_TOKEN / SQUARE_LOCATION_ID as invoices, plus a device ID
+// stored in event_settings.square_terminal_device_id.
+//
+// Checkout lifecycle: PENDING → IN_PROGRESS → COMPLETED | CANCELED
+
+export type TerminalCheckoutStatus =
+  | "PENDING"
+  | "IN_PROGRESS"
+  | "CANCEL_REQUESTED"
+  | "CANCELED"
+  | "COMPLETED";
+
+type TerminalCheckoutResp = {
+  checkout: { id: string; status: TerminalCheckoutStatus };
+};
+
+export async function createTerminalCheckout(opts: {
+  deviceId: string;
+  amountCents: number;
+  referenceId?: string;
+  idempotencyKey: string;
+}): Promise<{ checkoutId: string }> {
+  const cfg = getSquareConfig();
+  if (!cfg) throw new Error("Square is not configured");
+  const resp = await squareFetch<TerminalCheckoutResp>(cfg, "/v2/terminal/checkouts", {
+    method: "POST",
+    body: {
+      idempotency_key: opts.idempotencyKey,
+      checkout: {
+        amount_money: { amount: opts.amountCents, currency: "USD" },
+        device_options: {
+          device_id: opts.deviceId,
+          skip_receipt_screen: false,
+        },
+        payment_type: "CARD_PRESENT",
+        ...(opts.referenceId ? { reference_id: opts.referenceId } : {}),
+      },
+    },
+  });
+  return { checkoutId: resp.checkout.id };
+}
+
+export async function getTerminalCheckout(
+  checkoutId: string,
+): Promise<{ status: TerminalCheckoutStatus }> {
+  const cfg = getSquareConfig();
+  if (!cfg) throw new Error("Square is not configured");
+  const resp = await squareFetch<TerminalCheckoutResp>(
+    cfg,
+    `/v2/terminal/checkouts/${encodeURIComponent(checkoutId)}`,
+  );
+  return { status: resp.checkout.status };
+}
+
+export async function cancelTerminalCheckout(checkoutId: string): Promise<void> {
+  const cfg = getSquareConfig();
+  if (!cfg) throw new Error("Square is not configured");
+  await squareFetch(cfg, `/v2/terminal/checkouts/${encodeURIComponent(checkoutId)}/cancel`, {
+    method: "POST",
+  });
+}
+
 // https://developer.squareup.com/docs/webhooks/step3validate
 
 export function verifyWebhookSignature(opts: {
