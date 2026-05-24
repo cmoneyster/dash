@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Wifi, WifiOff, Loader2, CheckCircle2, XCircle, Network, Info } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Wifi, WifiOff, Loader2, CheckCircle2, XCircle, Network, Info, Moon, ZapOff } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { usePrintAgent, type AgentJobResult } from "@/hooks/usePrintAgent";
 
@@ -48,9 +48,61 @@ function JobRow({ r }: { r: AgentJobResult }) {
   );
 }
 
+/**
+ * Request a Screen WakeLock so the tablet/device doesn't sleep while the
+ * agent is running. The lock is automatically released by the browser when
+ * the tab loses visibility, so we re-acquire it on visibilitychange.
+ * Returns a cleanup function that releases the lock.
+ */
+function useWakeLock(active: boolean): { held: boolean; supported: boolean } {
+  const lockRef = useRef<WakeLockSentinel | null>(null);
+  const [held, setHeld] = useState(false);
+  const supported = typeof navigator !== "undefined" && "wakeLock" in navigator;
+
+  useEffect(() => {
+    if (!active || !supported) return;
+
+    let cancelled = false;
+
+    async function acquire() {
+      try {
+        lockRef.current = await navigator.wakeLock.request("screen");
+        lockRef.current.addEventListener("release", () => {
+          if (!cancelled) setHeld(false);
+        });
+        if (!cancelled) setHeld(true);
+      } catch {
+        // Permission denied or not supported — silently ignore
+        if (!cancelled) setHeld(false);
+      }
+    }
+
+    // Re-acquire after the browser releases on tab hide/switch
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible" && !cancelled) {
+        void acquire();
+      }
+    }
+
+    void acquire();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      lockRef.current?.release().catch(() => {});
+      lockRef.current = null;
+      setHeld(false);
+    };
+  }, [active, supported]);
+
+  return { held, supported };
+}
+
 export default function PrintAgent() {
   const [enabled, setEnabled] = useState(true);
   const agent = usePrintAgent({ enabled });
+  const wakeLock = useWakeLock(enabled);
 
   return (
     <AdminLayout>
@@ -87,6 +139,26 @@ export default function PrintAgent() {
               )}
             </div>
           </div>
+
+          {/* WakeLock status */}
+          {wakeLock.supported && enabled && (
+            <div className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 ${
+              wakeLock.held
+                ? "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300"
+                : "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300"
+            }`}>
+              {wakeLock.held
+                ? <><Moon className="w-3.5 h-3.5 shrink-0" /> Screen wake lock active — this device won't sleep while the agent is running</>
+                : <><ZapOff className="w-3.5 h-3.5 shrink-0" /> Wake lock not held — screen may sleep and pause the agent</>
+              }
+            </div>
+          )}
+          {!wakeLock.supported && enabled && (
+            <div className="flex items-center gap-2 text-xs rounded-lg px-3 py-2 bg-slate-100 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400">
+              <ZapOff className="w-3.5 h-3.5 shrink-0" /> Wake lock not supported on this browser — set your screen timeout to "Never" to prevent the device from sleeping
+            </div>
+          )}
+
           {agent.lastError && (
             <div className="text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl p-3 flex items-start gap-2">
               <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
