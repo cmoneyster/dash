@@ -307,7 +307,10 @@ export default function EventTakerOrder() {
       });
       if (!res.ok) throw new Error("Save failed");
     } catch {
+      // Roll back both sources of truth so menu is never left in the
+      // optimistic state regardless of whether the user exited arrange mode.
       setOrderedMenu(snapshot);
+      setMenu(snapshot);
       toast.error("Failed to save order — please try again");
     } finally {
       setSavingOrder(false);
@@ -1174,6 +1177,7 @@ export default function EventTakerOrder() {
             {password && (
               <button
                 type="button"
+                disabled={savingOrder}
                 onClick={() => {
                   if (!arrangeMode) {
                     setOrderedMenu(menu ?? []);
@@ -1183,7 +1187,7 @@ export default function EventTakerOrder() {
                     setArrangeMode(false);
                   }
                 }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors disabled:opacity-50 disabled:cursor-wait ${
                   arrangeMode
                     ? "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
                     : "bg-secondary text-muted-foreground border-transparent hover:text-foreground"
