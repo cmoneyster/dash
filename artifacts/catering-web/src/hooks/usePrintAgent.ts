@@ -195,7 +195,7 @@ export function usePrintAgent(options: UsePrintAgentOptions = {}): PrintAgentSta
 
             const printerResponse = await deliverRef.current(job);
 
-            await apiPost(`/api/print-agent/jobs/${job.id}/complete`);
+            await apiPost(`/api/print-agent/jobs/${job.id}/complete`, { printerResponse });
 
             const result: AgentJobResult = {
               jobId: job.id,

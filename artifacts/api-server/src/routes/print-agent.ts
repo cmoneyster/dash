@@ -95,7 +95,9 @@ router.post("/print-agent/jobs/:id/claim", async (req, res) => {
 router.post("/print-agent/jobs/:id/complete", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const printerResponse = typeof req.body?.printerResponse === "string" ? req.body.printerResponse : null;
     await markJobPrinted(id, "lan_browser");
+    req.log.info({ jobId: id, printerResponse }, "print-agent: job complete — printer response");
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "print-agent: complete failed");
