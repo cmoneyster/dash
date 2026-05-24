@@ -3,16 +3,19 @@ import { db } from "@workspace/db";
 import { printersTable, printJobsTable } from "@workspace/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import {
+  cancelJob,
   enqueuePrintJob,
   generateCloudPrntToken,
   recentJobs,
   recentJobsForPrinter,
   requeueJob,
 } from "../lib/printQueue";
+import { renderJob } from "../lib/printRenderer";
 import type {
   KitchenTicketPayload,
   CustomerReceiptPayload,
   ItemLabelPayload,
+  RenderablePayload,
   TestPayload,
 } from "../lib/printRenderer";
 
@@ -215,10 +218,56 @@ router.post("/admin/print-jobs/:id/retry", async (req, res) => {
   }
 });
 
-// Suppress unused-import warnings for `and`, `desc`, `printJobsTable` if any path
-// is later trimmed; they may be referenced by future filters.
+/** Cancel a queued job. Returns 404 if not found or already past the queued state. */
+router.delete("/admin/print-jobs/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const row = await cancelJob(id);
+    if (!row) {
+      res.status(404).json({ error: "Job not found or not in queued state" });
+      return;
+    }
+    res.json(row);
+  } catch (err) {
+    req.log.error({ err }, "cancel print job failed");
+    res.status(500).json({ error: "Failed to cancel print job" });
+  }
+});
+
+/**
+ * Render a job's payload and return the human-readable text content.
+ * Binary ESC/GS sequences are stripped so the preview is displayable in a
+ * browser — only printable ASCII + newlines are kept.
+ */
+router.get("/admin/print-jobs/:id/preview", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select()
+      .from(printJobsTable)
+      .where(eq(printJobsTable.id, id))
+      .limit(1);
+    const job = rows[0];
+    if (!job) {
+      res.status(404).json({ error: "not found" });
+      return;
+    }
+    const { bytes } = renderJob(job.payload as unknown as RenderablePayload);
+    // Keep only LF (0x0A) and printable ASCII (0x20-0x7E); strip all binary
+    // escape sequences so the output is safe to embed in JSON / display in a browser.
+    const text = Buffer.from(
+      bytes.filter((b: number) => b === 0x0a || (b >= 0x20 && b <= 0x7e)),
+    )
+      .toString("ascii")
+      .trimEnd();
+    res.json({ id: job.id, jobType: job.jobType, status: job.status, text });
+  } catch (err) {
+    req.log.error({ err }, "preview print job failed");
+    res.status(500).json({ error: "Failed to preview job" });
+  }
+});
+
 void and;
 void desc;
-void printJobsTable;
 
 export default router;

@@ -168,6 +168,18 @@ export async function markJobFailed(jobId: number, error: string): Promise<void>
   await db.update(printJobsTable).set({ status: "failed", error }).where(eq(printJobsTable.id, jobId));
 }
 
+/** Cancel a queued job. Only works while the job is still `queued` — jobs
+ *  already delivered or printed cannot be cancelled. Returns null if not found
+ *  or in a non-cancellable state. */
+export async function cancelJob(jobId: number): Promise<PrintJob | null> {
+  const [row] = await db
+    .update(printJobsTable)
+    .set({ status: "canceled" })
+    .where(and(eq(printJobsTable.id, jobId), eq(printJobsTable.status, "queued")))
+    .returning();
+  return row ?? null;
+}
+
 export async function requeueJob(jobId: number): Promise<PrintJob | null> {
   const [row] = await db
     .update(printJobsTable)

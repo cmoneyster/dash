@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListPrinters,
@@ -15,8 +15,9 @@ import {
   type PrintJob,
 } from "@workspace/api-client-react";
 import { useForm } from "react-hook-form";
-import { Printer as PrinterIcon, Plus, Trash2, Pencil, Wifi, WifiOff, AlertTriangle, Copy, Check, RefreshCw, X } from "lucide-react";
+import { Printer as PrinterIcon, Plus, Trash2, Pencil, Wifi, WifiOff, AlertTriangle, Copy, Check, RefreshCw, X, Eye, XCircle } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
+import { getAdminToken } from "@/components/AdminGuard";
 
 function StatusPill({ p }: { p: Printer }) {
   if (!p.enabled) return <span className="px-2 py-0.5 rounded-full text-[11px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">disabled</span>;
@@ -289,13 +290,68 @@ function PrinterCard({ p }: { p: Printer }) {
   );
 }
 
+function PreviewModal({ jobId, onClose }: { jobId: number; onClose: () => void }) {
+  const [state, setState] = useState<{
+    loading: boolean;
+    text?: string;
+    jobType?: string;
+    status?: string;
+    error?: string;
+  }>({ loading: true });
+
+  useEffect(() => {
+    const token = getAdminToken();
+    fetch(`/api/admin/print-jobs/${jobId}/preview`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.json())
+      .then((d: { text: string; jobType: string; status: string }) =>
+        setState({ loading: false, text: d.text, jobType: d.jobType, status: d.status }),
+      )
+      .catch(() => setState({ loading: false, error: "Failed to load preview" }));
+  }, [jobId]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm max-h-[80vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b">
+          <div>
+            <p className="font-semibold text-sm">Job #{jobId} preview</p>
+            {state.jobType && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {state.jobType}
+                {state.status ? ` · ${state.status}` : ""}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {state.loading && <p className="text-sm text-slate-500">Loading…</p>}
+          {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+          {state.text !== undefined && (
+            <pre className="font-mono text-[11px] leading-snug whitespace-pre bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 overflow-x-auto">
+              {state.text || "(empty)"}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PrintJobsPanel() {
   const { data: jobs = [], refetch } = useListPrintJobs({ limit: 50 }, {
     query: {
       queryKey: getListPrintJobsQueryKey({ limit: 50 }),
-      // 30 s when the tab is visible; pause entirely when hidden.
-      // The previous 5 s cadence was the most aggressive poll in the
-      // app — 12 req/min per open tab — unnecessary for a log panel.
       refetchInterval: 30_000,
       refetchIntervalInBackground: false,
     },
@@ -304,43 +360,83 @@ function PrintJobsPanel() {
   const retry = useRetryPrintJob({
     mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintJobsQueryKey() }) },
   });
+  const [previewJobId, setPreviewJobId] = useState<number | null>(null);
+  const [canceling, setCanceling] = useState<number | null>(null);
+
+  async function handleCancel(id: number) {
+    setCanceling(id);
+    try {
+      const token = getAdminToken();
+      await fetch(`/api/admin/print-jobs/${id}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      await qc.invalidateQueries({ queryKey: getListPrintJobsQueryKey() });
+    } finally {
+      setCanceling(null);
+    }
+  }
 
   return (
-    <div className="bg-white rounded-2xl border shadow-sm">
-      <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="font-semibold">Recent print jobs</h2>
-        <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Refresh"><RefreshCw className="w-4 h-4" /></button>
-      </div>
-      {jobs.length === 0 ? (
-        <div className="p-6 text-center text-sm text-slate-500 dark:text-slate-400">No jobs yet. Send a test print to see them here.</div>
-      ) : (
-        <div className="divide-y">
-          {(jobs as PrintJob[]).map((j) => (
-            <div key={j.id} className="p-3 flex items-center justify-between gap-3 text-sm">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">#{j.id}</span>
-                  <span className="font-medium">{j.jobType}</span>
-                  <StatusBadge status={j.status} />
-                  {j.deliveredVia && <span className="text-[11px] text-slate-500 dark:text-slate-400">via {j.deliveredVia}</span>}
+    <>
+      {previewJobId !== null && (
+        <PreviewModal jobId={previewJobId} onClose={() => setPreviewJobId(null)} />
+      )}
+      <div className="bg-white rounded-2xl border shadow-sm">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="font-semibold">Recent print jobs</h2>
+          <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Refresh"><RefreshCw className="w-4 h-4" /></button>
+        </div>
+        {jobs.length === 0 ? (
+          <div className="p-6 text-center text-sm text-slate-500 dark:text-slate-400">No jobs yet. Send a test print to see them here.</div>
+        ) : (
+          <div className="divide-y">
+            {(jobs as PrintJob[]).map((j) => (
+              <div key={j.id} className="p-3 flex items-center justify-between gap-3 text-sm">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">#{j.id}</span>
+                    <span className="font-medium">{j.jobType}</span>
+                    <StatusBadge status={j.status} />
+                    {j.deliveredVia && <span className="text-[11px] text-slate-500 dark:text-slate-400">via {j.deliveredVia}</span>}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    printer #{j.printerId} · {relTime(j.createdAt as unknown as string)}
+                    {j.attempts > 1 ? ` · ${j.attempts} attempts` : ""}
+                    {j.error ? ` · ${j.error}` : ""}
+                  </div>
                 </div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  printer #{j.printerId} · {relTime(j.createdAt as unknown as string)}
-                  {j.attempts > 1 ? ` · ${j.attempts} attempts` : ""}
-                  {j.error ? ` · ${j.error}` : ""}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => setPreviewJobId(j.id)}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
+                    title="Preview job content"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  {j.status === "queued" && (
+                    <button
+                      onClick={() => handleCancel(j.id)}
+                      disabled={canceling === j.id}
+                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 disabled:opacity-40"
+                      title="Cancel this job"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                  {(j.status === "failed" || j.status === "delivered") && (
+                    <button
+                      onClick={() => retry.mutate({ id: j.id })}
+                      className="text-xs px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    >Retry</button>
+                  )}
                 </div>
               </div>
-              {(j.status === "failed" || j.status === "delivered") && (
-                <button
-                  onClick={() => retry.mutate({ id: j.id })}
-                  className="text-xs px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
-                >Retry</button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
