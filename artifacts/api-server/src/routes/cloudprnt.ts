@@ -93,8 +93,10 @@ router.get("/cloudprnt/:token/content/:jobId", async (req, res) => {
 });
 
 /**
- * Status update from the printer. Star posts a small JSON body with a
- * status code; we accept it loosely to stay forward-compatible.
+ * Status update from the printer. Star CloudPRNT uses POST for both
+ * status reporting *and* job polling — the printer POSTs its current state
+ * and the server responds with job-readiness in the same response body.
+ * (Some firmware variants also GET separately, but POST is the primary path.)
  */
 router.post("/cloudprnt/:token", async (req, res) => {
   const printer = await findPrinterByToken(req.params.token);
@@ -102,6 +104,13 @@ router.post("/cloudprnt/:token", async (req, res) => {
     res.status(404).end();
     return;
   }
+
+  if (!printer.enabled) {
+    await recordPrinterPoll(printer.id, "disabled");
+    res.json({ jobReady: false });
+    return;
+  }
+
   await recordPrinterPoll(printer.id, "online");
 
   const body = (req.body ?? {}) as Record<string, unknown>;
@@ -109,9 +118,8 @@ router.post("/cloudprnt/:token", async (req, res) => {
   const status = typeof body.status === "string" ? body.status : null;
   const statusCode = typeof body.statusCode === "string" ? body.statusCode : null;
 
-  // The printer only POSTs status when it acknowledges a job. Mark it.
-  // Verify the referenced job actually belongs to *this* printer so a
-  // holder of one printer's token can't move another printer's jobs.
+  // If the printer is reporting the result of a previously-claimed job, mark it.
+  // Verify the referenced job belongs to this printer before touching it.
   if (jobToken !== undefined && jobToken !== null) {
     const jobId = Number(jobToken);
     if (!Number.isNaN(jobId)) {
@@ -133,7 +141,22 @@ router.post("/cloudprnt/:token", async (req, res) => {
     }
   }
 
-  res.json({ ok: true });
+  // Always include job-readiness in the POST response — this is the primary
+  // polling mechanism for most Star CloudPRNT firmware versions.
+  const next = await peekNextJobForPrinter(printer.id);
+  if (!next) {
+    res.json({ jobReady: false });
+    return;
+  }
+
+  const base = `${req.protocol}://${req.get("host")}`;
+  const contentUrl = `${base}/api/cloudprnt/${req.params.token}/content/${next.id}`;
+  res.json({
+    jobReady: true,
+    mediaTypes: [next.contentType],
+    jobToken: String(next.id),
+    clientAction: { url: contentUrl },
+  });
 });
 
 export default router;
