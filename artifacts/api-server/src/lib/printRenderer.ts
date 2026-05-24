@@ -452,20 +452,16 @@ function webPrntPlateLabel(p: PlateLabelPayload): string {
   return b.build();
 }
 
-function webPrntTest(p: TestPayload): string {
-  const b = new WebPrntBuilder();
-  b.center().bold(true).double(true).line("TEST PRINT").double(false).bold(false).left();
-  b.div("=");
-  b.line(`Printer: ${p.printerName}`);
-  b.line(`Time:    ${fmtTime(new Date())}`);
-  b.div();
-  b.line(p.message ?? "If you can read this, LAN printing works.");
-  b.line();
-  b.line("- Bold:");
-  b.bold(true).line("    The quick brown fox").bold(false);
-  b.line("- Double:");
-  b.double(true).line(" 80mm test").double(false);
-  return b.build();
+function webPrntTest(_p: TestPayload): string {
+  // Minimal XML — no cut, no formatting, just text + line feeds so any output feeds out visibly.
+  return (
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<StarWebPRNT:Request Version="1.00" xmlns:StarWebPRNT="http://www.star-m.jp/StarWebPRNT/V1.00/">` +
+    `<PrintData><Printer>` +
+    `<Text>HELLO WORLD&#10;&#10;&#10;&#10;&#10;</Text>` +
+    `</Printer></PrintData>` +
+    `</StarWebPRNT:Request>`
+  );
 }
 
 /** Build a StarWebPRNT high-level XML request for browser-based LAN delivery. */
