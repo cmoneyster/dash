@@ -65,11 +65,12 @@ function authHeaders(): Record<string, string> {
 /**
  * Deliver ESC/POS bytes to a Star printer via WebPRNT.
  *
+ * Star WebPRNT expects the request XML posted directly as the body with
+ * Content-Type: text/xml. The response is also XML. We parse it with
+ * DOMParser to check for printer-reported errors.
+ *
  * The printer must have HTTPS enabled and the browser must have accepted the
  * printer's self-signed certificate (visit https://<ip> once to trust it).
- *
- * If HTTPS fails for a network reason (e.g. cert not yet trusted) the error
- * message will guide the operator to the trust URL.
  */
 async function deliverViaWebPrnt(job: QueuedJob): Promise<void> {
   const requestXml =
@@ -84,35 +85,45 @@ async function deliverViaWebPrnt(job: QueuedJob): Promise<void> {
   try {
     response = await fetch(`https://${job.lanIp}/StarWebPRNT/SendMessage`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        requestId: `job-${job.id}-${Date.now()}`,
-        timeout: 10000,
-        encoding: "StarPRNT",
-        passCode: "",
-        request: requestXml,
-      }),
+      headers: { "Content-Type": "text/xml; charset=utf-8" },
+      body: requestXml,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // Common failure: browser blocked the fetch because the cert isn't trusted.
-    const certHint = msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("network")
-      ? ` — visit https://${job.lanIp} in this browser and accept the printer's certificate, then retry.`
-      : "";
+    const certHint =
+      msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("network")
+        ? ` — visit https://${job.lanIp} in this browser and accept the printer's certificate, then retry.`
+        : "";
     throw new Error(`WebPRNT fetch error: ${msg}${certHint}`);
   }
 
+  const body = await response.text().catch(() => "");
+
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
     throw new Error(`WebPRNT HTTP ${response.status}: ${body.slice(0, 200)}`);
   }
 
-  const result = await response.json().catch(() => ({})) as Record<string, unknown>;
-  const status = typeof result.status === "string" ? result.status : "";
-  // Success indicators vary by firmware. Accept anything that isn't an explicit error.
-  const errorStatuses = ["PrinterHoldingError", "PrinterError", "PrintDataError", "PrinterUnderline"];
-  if (errorStatuses.includes(status)) {
-    throw new Error(`Printer reported error: ${status}`);
+  // Parse the XML response and surface any printer-reported errors.
+  // A missing or unparseable response is treated as success — some
+  // firmware versions return an empty 200 body on success.
+  if (body.trim()) {
+    try {
+      const doc = new DOMParser().parseFromString(body, "text/xml");
+      // <Success>false</Success> signals a printer-level failure.
+      const successEl = doc.querySelector("Success");
+      if (successEl && successEl.textContent?.trim().toLowerCase() === "false") {
+        const errorEl =
+          doc.querySelector("PrinterError") ??
+          doc.querySelector("ErrorCode") ??
+          doc.querySelector("Error");
+        const detail = errorEl?.textContent?.trim() ?? "unknown error";
+        throw new Error(`Printer reported failure: ${detail}`);
+      }
+    } catch (err) {
+      // Re-throw errors we threw intentionally (printer reported failure).
+      if (err instanceof Error && err.message.startsWith("Printer reported")) throw err;
+      // Otherwise XML parse errors are non-fatal — treat as success.
+    }
   }
 }
 
