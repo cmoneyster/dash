@@ -305,3 +305,176 @@ export function renderJob(payload: RenderablePayload): { bytes: Buffer; contentT
   }
   return { bytes, contentType: "text/plain; charset=utf-8" };
 }
+
+// ─── StarWebPRNT XML renderer ────────────────────────────────────────────────
+//
+// Produces native StarWebPRNT high-level XML elements rather than raw ESC/POS
+// bytes.  The printer's firmware interprets these commands regardless of its
+// language-mode setting (Star Line Mode vs ESC/POS), making it more reliable
+// for browser-based LAN delivery (WebPRNT) than the raw-byte path used by
+// CloudPRNT.
+
+function xmlEsc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+class WebPrntBuilder {
+  private cmds: string[] = [];
+
+  text(s: string) { if (s) this.cmds.push(`<Text>${xmlEsc(s)}</Text>`); return this; }
+  line(s = "")   { this.cmds.push(`<Text>${xmlEsc(s)}\n</Text>`); return this; }
+  bold(on: boolean) { this.cmds.push(`<Bold>${on}</Bold>`); return this; }
+  double(on: boolean) {
+    this.cmds.push(on
+      ? `<CharacterExpansion Method="DoubleWidthDoubleHeight"/>`
+      : `<CharacterExpansion Method="Normal"/>`);
+    return this;
+  }
+  center() { this.cmds.push(`<Alignment>Center</Alignment>`); return this; }
+  left()   { this.cmds.push(`<Alignment>Left</Alignment>`); return this; }
+  div(c = "-") { return this.line(c.repeat(LINE_WIDTH)); }
+
+  build(): string {
+    this.cmds.push(`<CutPaper Method="Partial"/>`);
+    const inner = this.cmds.join("");
+    return (
+      `<?xml version="1.0" encoding="utf-8"?>` +
+      `<StarWebPRNT:Request Version="1.00" xmlns:StarWebPRNT="http://www.star-m.jp/StarWebPRNT/V1.00/">` +
+      `<PrintData><Printer>${inner}</Printer></PrintData>` +
+      `</StarWebPRNT:Request>`
+    );
+  }
+}
+
+function webPrntKitchenTicket(p: KitchenTicketPayload): string {
+  const b = new WebPrntBuilder();
+  b.center().double(true).bold(true).line("KITCHEN").double(false).bold(false).left();
+  b.div("=");
+  b.bold(true).line(`ORDER #${p.header.orderNumber}`).bold(false);
+  b.line(`Guest: ${p.header.guestName}`);
+  if (p.header.tableNumber) b.line(`Table: ${p.header.tableNumber}`);
+  b.line(`Time:  ${fmtTime(new Date(p.header.placedAt))}`);
+  b.line(`Source: ${p.header.source}`);
+  b.div();
+
+  const renderLines = (lines: OrderLine[]) => {
+    for (const l of lines) {
+      b.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
+      if (l.modifiers?.length) for (const m of l.modifiers) wrap(`+ ${m}`, 4).forEach((w) => b.line(w));
+      if (l.notes) wrap(`* ${l.notes}`, 4).forEach((w) => b.line(w));
+    }
+  };
+
+  if (p.plates?.length) {
+    for (const plate of p.plates) {
+      b.bold(true).line(`-- ${plate.label} --`).bold(false);
+      renderLines(plate.lines);
+      b.line();
+    }
+  }
+  if (p.lines.length) {
+    if (p.plates?.length) b.bold(true).line("-- Unassigned --").bold(false);
+    renderLines(p.lines);
+  }
+  if (p.header.notes) {
+    b.div();
+    b.bold(true).line("NOTES:").bold(false);
+    wrap(p.header.notes).forEach((w) => b.line(w));
+  }
+  return b.build();
+}
+
+function webPrntCustomerReceipt(p: CustomerReceiptPayload): string {
+  const b = new WebPrntBuilder();
+  if (p.businessName) b.center().bold(true).line(p.businessName).bold(false).left();
+  b.center().line(fmtTime(new Date(p.header.placedAt))).left();
+  b.div();
+  b.line(`Order #${p.header.orderNumber}`);
+  b.line(`Guest: ${p.header.guestName}`);
+  if (p.header.tableNumber) b.line(`Table: ${p.header.tableNumber}`);
+  b.div();
+  for (const l of p.lines) {
+    const right = l.unitPrice != null ? `$${(l.unitPrice * l.quantity).toFixed(2)}` : "";
+    b.line(pad(`${l.quantity}x ${l.name}`, right));
+    if (l.modifiers?.length) for (const m of l.modifiers) b.line(`   + ${m}`);
+  }
+  b.div();
+  if (p.subtotal != null) b.line(pad("Subtotal", `$${p.subtotal.toFixed(2)}`));
+  if (p.tax != null) b.line(pad("Tax", `$${p.tax.toFixed(2)}`));
+  if (p.tip != null) b.line(pad("Tip", `$${p.tip.toFixed(2)}`));
+  b.bold(true).line(pad("TOTAL", `$${p.total.toFixed(2)}`)).bold(false);
+  if (p.paymentMethod) b.line(`Paid: ${p.paymentMethod}`);
+  if (p.footer) {
+    b.line();
+    b.center();
+    wrap(p.footer).forEach((w) => b.line(w));
+    b.left();
+  }
+  return b.build();
+}
+
+function webPrntItemLabel(p: ItemLabelPayload): string {
+  const b = new WebPrntBuilder();
+  b.bold(true).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
+  b.line(`Guest: ${p.guestName}`);
+  b.div();
+  b.bold(true).double(true);
+  wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => b.line(w));
+  b.double(false).bold(false);
+  if (p.isFullBox) b.line("[FULL BOX]");
+  if (p.modifiers?.length) for (const m of p.modifiers) wrap(`+ ${m}`, 2).forEach((w) => b.line(w));
+  if (p.notes) {
+    b.div();
+    wrap(p.notes).forEach((w) => b.line(w));
+  }
+  b.div();
+  b.line(fmtTime(new Date(p.placedAt)));
+  return b.build();
+}
+
+function webPrntPlateLabel(p: PlateLabelPayload): string {
+  const b = new WebPrntBuilder();
+  b.bold(true).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
+  b.line(`Guest: ${p.guestName}`);
+  b.div();
+  b.bold(true).double(true).line(p.plateLabel).double(false).bold(false);
+  b.div();
+  for (const l of p.lines) {
+    b.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
+    if (l.modifiers?.length) for (const m of l.modifiers) b.line(`  + ${m}`);
+    if (l.notes) wrap(`* ${l.notes}`, 2).forEach((w) => b.line(w));
+  }
+  b.div();
+  b.line(fmtTime(new Date(p.placedAt)));
+  return b.build();
+}
+
+function webPrntTest(p: TestPayload): string {
+  const b = new WebPrntBuilder();
+  b.center().bold(true).double(true).line("TEST PRINT").double(false).bold(false).left();
+  b.div("=");
+  b.line(`Printer: ${p.printerName}`);
+  b.line(`Time:    ${fmtTime(new Date())}`);
+  b.div();
+  b.line(p.message ?? "If you can read this, LAN printing works.");
+  b.line();
+  b.line("- Bold:");
+  b.bold(true).line("    The quick brown fox").bold(false);
+  b.line("- Double:");
+  b.double(true).line(" 80mm test").double(false);
+  return b.build();
+}
+
+/** Build a StarWebPRNT high-level XML request for browser-based LAN delivery. */
+export function buildWebPrntXml(payload: RenderablePayload): string {
+  switch (payload.type) {
+    case "kitchen_ticket":  return webPrntKitchenTicket(payload);
+    case "customer_receipt": return webPrntCustomerReceipt(payload);
+    case "item_label":      return webPrntItemLabel(payload);
+    case "plate_label":     return webPrntPlateLabel(payload);
+    case "test":            return webPrntTest(payload);
+  }
+}

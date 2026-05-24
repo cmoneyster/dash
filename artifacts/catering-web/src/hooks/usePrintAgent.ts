@@ -53,7 +53,7 @@ type QueuedJob = {
   printerId: number;
   jobType: string;
   lanIp: string;
-  bytesBase64: string;
+  webPrntXml: string;
   createdAt: string;
 };
 
@@ -63,30 +63,24 @@ function authHeaders(): Record<string, string> {
 }
 
 /**
- * Deliver ESC/POS bytes to a Star printer via WebPRNT.
+ * Deliver a StarWebPRNT XML job to a Star printer.
  *
- * Star WebPRNT expects the request XML posted directly as the body with
- * Content-Type: text/xml. The response is also XML. We parse it with
- * DOMParser to check for printer-reported errors.
+ * The server pre-builds the StarWebPRNT high-level XML (Text, Bold,
+ * CharacterExpansion, CutPaper elements) so the printer's firmware
+ * interprets commands natively regardless of its language-mode setting.
+ * We POST it directly with Content-Type: text/xml and parse the XML
+ * response to surface any printer-reported errors.
  *
  * The printer must have HTTPS enabled and the browser must have accepted the
  * printer's self-signed certificate (visit https://<ip> once to trust it).
  */
 async function deliverViaWebPrnt(job: QueuedJob): Promise<void> {
-  const requestXml =
-    `<?xml version="1.0" encoding="utf-8"?>` +
-    `<StarWebPRNT:Request Version="1.00" xmlns:StarWebPRNT="http://www.star-m.jp/StarWebPRNT/V1.00/">` +
-    `<PrintData><Printer>` +
-    `<RawData encoding="Base64">${job.bytesBase64}</RawData>` +
-    `</Printer></PrintData>` +
-    `</StarWebPRNT:Request>`;
-
   let response: Response;
   try {
     response = await fetch(`https://${job.lanIp}/StarWebPRNT/SendMessage`, {
       method: "POST",
       headers: { "Content-Type": "text/xml; charset=utf-8" },
-      body: requestXml,
+      body: job.webPrntXml,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
