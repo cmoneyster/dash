@@ -1358,12 +1358,15 @@ export default function EventTakerOrder() {
             </DndContext>
           )}
 
-          {/* Normal mode — categorised grid (unchanged) */}
-          {menu && menu.length > 0 && !arrangeMode && categories.map(cat => (
-            <div key={cat} className="mb-6">
-              <h2 className="font-display font-bold text-lg mb-2 px-1">{cat}</h2>
+          {/* Normal mode: flat slot-ordered grid when a custom layout exists,
+              otherwise the regular alphabetical categorised view. */}
+          {menu && menu.length > 0 && !arrangeMode && (
+            slotLayout.length > 0 ? [""] : categories
+          ).map(cat => (
+            <div key={cat} className={cat ? "mb-6" : undefined}>
+              {cat && <h2 className="font-display font-bold text-lg mb-2 px-1">{cat}</h2>}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {menu.filter(m => m.category === cat).map(item => {
+                {(cat ? menu.filter(m => m.category === cat) : menu).map(item => {
                   const stock = item.eventStock;
                   const outOfStock = stock !== null && stock <= 0;
                   // Mirror the Guest Event page's "low stock" treatment so
