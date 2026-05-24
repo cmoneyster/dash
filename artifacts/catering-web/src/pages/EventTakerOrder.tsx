@@ -1,8 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TAX_DISCLOSURE, TAX_INCLUDED_NOTE } from "@/lib/tax";
-import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers, Pencil } from "lucide-react";
+import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers, Pencil, GripVertical, RotateCcw } from "lucide-react";
 import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { toast } from "sonner";
+import {
+  DndContext,
+  closestCenter,
+  type DragEndEvent,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  arrayMove,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PASSWORD_KEY = "event_taker_password";
@@ -131,6 +148,56 @@ function setStoredPassword(v: string | null) {
   try { v ? sessionStorage.setItem(PASSWORD_KEY, v) : sessionStorage.removeItem(PASSWORD_KEY); } catch {}
 }
 
+function SortableArrangeCard({ item }: { item: MenuItem }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+    position: isDragging ? ("relative" as const) : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="relative bg-card border border-border rounded-2xl overflow-hidden select-none"
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute top-2 left-2 z-10 p-1 rounded bg-background/80 backdrop-blur-sm text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
+        aria-label="Drag to reorder"
+      >
+        <GripVertical className="w-4 h-4" />
+      </div>
+      <div className="absolute top-2 right-2 z-10">
+        <span className="text-[10px] font-medium bg-secondary/90 text-muted-foreground px-1.5 py-0.5 rounded-full leading-none">
+          {item.category}
+        </span>
+      </div>
+      {item.imageUrl && (
+        <div className="aspect-[4/3] bg-secondary">
+          <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
+        </div>
+      )}
+      <div className="p-3 pt-3">
+        <p className="font-semibold text-sm leading-tight">{item.name}</p>
+        <span className="font-bold text-base text-indigo-600">${item.effectivePrice.toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function EventTakerOrder() {
   const [password, setPassword] = useState<string | null>(getStoredPassword());
   const [pwInput, setPwInput] = useState("");
@@ -195,6 +262,14 @@ export default function EventTakerOrder() {
   // Server-backed printer settings modal (scoped to the Taker surface).
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
 
+  // Arrange-mode state. When true, the menu grid switches to a flat
+  // drag-and-drop sortable view. orderedMenu holds the local drag state;
+  // it's initialised from `menu` when arrange mode is entered and synced
+  // back to `menu` when the user taps "Done".
+  const [arrangeMode, setArrangeMode] = useState(false);
+  const [orderedMenu, setOrderedMenu] = useState<MenuItem[]>([]);
+  const [savingOrder, setSavingOrder] = useState(false);
+
   // Per-ticket print status so staff can see whether each auto-print actually
   // reached the printer. `idle` = not attempted yet, `printing` = dialog open,
   // `printed` = afterprint fired after a real print, `canceled` = dialog closed
@@ -209,6 +284,60 @@ export default function EventTakerOrder() {
   // beforeprint/afterprint listeners: if beforeprint never fires the dialog
   // was blocked entirely; if afterprint follows beforeprint within a few
   // hundred ms we treat it as a cancel (no real print job sent).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+  );
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = orderedMenu.findIndex(m => m.id === active.id);
+    const newIndex = orderedMenu.findIndex(m => m.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newOrder = arrayMove(orderedMenu, oldIndex, newIndex);
+    const snapshot = orderedMenu;
+    setOrderedMenu(newOrder);
+    setSavingOrder(true);
+    try {
+      const res = await fetch(`${BASE}/api/event-taker/menu-order`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
+        body: JSON.stringify({ order: newOrder.map(m => m.id) }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+    } catch {
+      setOrderedMenu(snapshot);
+      toast.error("Failed to save order — please try again");
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
+  async function handleResetOrder() {
+    if (!password) return;
+    setSavingOrder(true);
+    try {
+      const clearRes = await fetch(`${BASE}/api/event-taker/menu-order`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
+        body: JSON.stringify({ order: [] }),
+      });
+      if (!clearRes.ok) throw new Error("Reset failed");
+      const menuRes = await fetch(`${BASE}/api/event-taker/menu`, {
+        headers: { Authorization: `Bearer ${password}` },
+      });
+      if (!menuRes.ok) throw new Error("Reload failed");
+      const freshMenu: MenuItem[] = await menuRes.json();
+      setMenu(freshMenu);
+      setOrderedMenu(freshMenu);
+    } catch {
+      toast.error("Failed to reset order — please try again");
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
   function runPrint(kind: "receipt" | "kitchen"): Promise<PrintStatus> {
     const setStatus = kind === "kitchen" ? setKitchenStatus : setReceiptStatus;
     setPrintMode(kind);
@@ -1042,6 +1171,29 @@ export default function EventTakerOrder() {
               </div>
             )}
             <ThemeToggle />
+            {password && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!arrangeMode) {
+                    setOrderedMenu(menu ?? []);
+                    setArrangeMode(true);
+                  } else {
+                    setMenu(orderedMenu);
+                    setArrangeMode(false);
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                  arrangeMode
+                    ? "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
+                    : "bg-secondary text-muted-foreground border-transparent hover:text-foreground"
+                }`}
+                title={arrangeMode ? "Exit arrange mode" : "Arrange menu order"}
+              >
+                <Layers className="w-4 h-4" />
+                <span className="hidden sm:inline">{arrangeMode ? "Done" : "Arrange"}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setPrinterModalOpen(true)}
@@ -1079,7 +1231,40 @@ export default function EventTakerOrder() {
               <p className="text-sm mt-2">Toggle items on in Menu Manager → "Taker" column.</p>
             </div>
           )}
-          {menu && menu.length > 0 && categories.map(cat => (
+          {/* Arrange mode — flat drag-and-drop grid */}
+          {menu && menu.length > 0 && arrangeMode && (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="mb-4 flex items-center justify-between px-1 gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Drag cards to set the order for all staff tablets.
+                  {savingOrder && <span className="ml-2 text-indigo-500">Saving…</span>}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleResetOrder}
+                  disabled={savingOrder}
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Reset order
+                </button>
+              </div>
+              <SortableContext items={orderedMenu.map(m => m.id)} strategy={rectSortingStrategy}>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {orderedMenu.map(item => (
+                    <SortableArrangeCard key={item.id} item={item} />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
+
+          {/* Normal mode — categorised grid (unchanged) */}
+          {menu && menu.length > 0 && !arrangeMode && categories.map(cat => (
             <div key={cat} className="mb-6">
               <h2 className="font-display font-bold text-lg mb-2 px-1">{cat}</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

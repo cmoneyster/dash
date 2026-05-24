@@ -214,6 +214,11 @@ router.post("/event-taker/verify", async (req, res) => {
 
 router.get("/event-taker/menu", verifyTakerPassword, async (req, res) => {
   try {
+    const settings = await getSettings();
+    const savedOrder: number[] = Array.isArray(settings?.takerMenuOrder)
+      ? (settings.takerMenuOrder as number[])
+      : [];
+
     const items = await db
       .select({
         id: menuItemsTable.id,
@@ -245,10 +250,45 @@ router.get("/event-taker/menu", verifyTakerPassword, async (req, res) => {
           effectivePrice: taker,
         };
       });
-    res.json(formatted);
+
+    if (savedOrder.length === 0) {
+      res.json(formatted);
+      return;
+    }
+
+    // Apply saved custom order. Items not in the list append at the end
+    // in their default alpha order so newly-added items appear automatically.
+    const orderMap = new Map(savedOrder.map((id, i) => [id, i]));
+    const sorted = [...formatted].sort((a, b) => {
+      const ai = orderMap.has(a.id) ? orderMap.get(a.id)! : Infinity;
+      const bi = orderMap.has(b.id) ? orderMap.get(b.id)! : Infinity;
+      return ai - bi;
+    });
+    res.json(sorted);
   } catch (err) {
     req.log.error({ err }, "Error fetching taker menu");
     res.status(500).json({ error: "Failed to fetch menu" });
+  }
+});
+
+router.put("/event-taker/menu-order", verifyTakerPassword, async (req, res) => {
+  try {
+    const { order } = req.body as { order?: unknown };
+    if (
+      !Array.isArray(order) ||
+      order.some(v => !Number.isInteger(v) || v < 0)
+    ) {
+      res.status(400).json({ error: "order must be an array of non-negative integers" });
+      return;
+    }
+    await db
+      .update(eventSettingsTable)
+      .set({ takerMenuOrder: order as number[] })
+      .where(eq(eventSettingsTable.id, 1));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Error saving taker menu order");
+    res.status(500).json({ error: "Failed to save menu order" });
   }
 });
 

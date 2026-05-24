@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, integer, text, timestamp, boolean, numeric } from "drizzle-orm/pg-core";
+import { pgTable, integer, text, timestamp, boolean, numeric, jsonb } from "drizzle-orm/pg-core";
 
 export const eventSettingsTable = pgTable("event_settings", {
   id: integer("id").primaryKey(),
@@ -24,6 +24,11 @@ export const eventSettingsTable = pgTable("event_settings", {
   // When set (and Square is configured), tapping Credit Card auto-fires a
   // Terminal checkout to this device instead of showing a manual prompt.
   squareTerminalDeviceId: text("square_terminal_device_id"),
+  // Custom menu grid order for the Staff Order Taker. Stored as an ordered
+  // array of menu item IDs. When set, items are returned in this order;
+  // items not present in the list append at the end in default sort order.
+  // An empty array (or null) means "use default alpha order".
+  takerMenuOrder: jsonb("taker_menu_order").$type<number[]>(),
   // Kitchen-controlled ordering toggles. State is one of: 'accepting' | 'paused' | 'closed'.
   // When state='paused', pausedUntil holds the auto-resume timestamp.
   guestOrderingState: text("guest_ordering_state").notNull().default("accepting"),
