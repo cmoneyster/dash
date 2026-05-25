@@ -1,12 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListPrinters,
   useCreatePrinter,
   useUpdatePrinter,
   useDeletePrinter,
-  useTestPrintPrinter,
-  useTestLanPrinter,
   useListPrintJobs,
   useRetryPrintJob,
   getListPrintersQueryKey,
@@ -15,10 +13,9 @@ import {
   type Printer,
   type CreatePrinterBody,
   type PrintJob,
-  type TestLanResult,
 } from "@workspace/api-client-react";
 import { useForm } from "react-hook-form";
-import { Printer as PrinterIcon, Plus, Trash2, Pencil, Wifi, WifiOff, AlertTriangle, Copy, Check, RefreshCw, X, Eye, XCircle, Network, Terminal, ChevronDown, ChevronUp } from "lucide-react";
+import { Printer as PrinterIcon, Plus, Trash2, Pencil, Wifi, WifiOff, AlertTriangle, Copy, Check, RefreshCw, X, Eye, XCircle, Loader2, Terminal, ChevronDown, ChevronUp } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 
@@ -70,7 +67,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
+      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all text-slate-700 dark:text-slate-300"
     >
       {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
       {copied ? "Copied" : "Copy"}
@@ -312,8 +309,9 @@ function PrinterDialog({
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl bg-muted hover:bg-muted/80">Cancel</button>
-            <button type="submit" disabled={create.isPending || update.isPending} className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-60">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 active:scale-95 transition-all">Cancel</button>
+            <button type="submit" disabled={create.isPending || update.isPending} className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 active:scale-95 transition-all disabled:opacity-60 inline-flex items-center gap-2">
+              {(create.isPending || update.isPending) && <Loader2 className="w-4 h-4 animate-spin" />}
               {initial ? "Save changes" : "Add printer"}
             </button>
           </div>
@@ -323,69 +321,32 @@ function PrinterDialog({
   );
 }
 
-type LanTestState = { phase: "idle" } | { phase: "pending" } | { phase: "queued"; jobId: number } | { phase: "done"; ok: boolean; message: string };
-
 function PrinterCard({ p }: { p: Printer }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [lanTest, setLanTest] = useState<LanTestState>({ phase: "idle" });
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [testState, setTestState] = useState<"idle" | "pending" | "ok" | "err">("idle");
   const del = useDeletePrinter({
     mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) },
   });
-  const test = useTestPrintPrinter({
-    mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintJobsQueryKey() }) },
-  });
-  const testLan = useTestLanPrinter({
-    mutation: {
-      onSuccess: (data: TestLanResult) => {
-        if (data.jobId) {
-          setLanTest({ phase: "queued", jobId: data.jobId });
-          startPolling(data.jobId);
-        } else {
-          setLanTest({ phase: "done", ok: true, message: "Job queued" });
-          setTimeout(() => setLanTest({ phase: "idle" }), 5000);
-        }
-      },
-      onError: (err: unknown) => {
-        const msg = err && typeof err === "object" && "message" in err ? String((err as { message: unknown }).message) : "Failed to queue test";
-        setLanTest({ phase: "done", ok: false, message: msg });
-        setTimeout(() => setLanTest({ phase: "idle" }), 6000);
-      },
-    },
-  });
 
-  function startPolling(jobId: number) {
+  async function handleTestPrint() {
+    setTestState("pending");
     const token = getAdminToken();
-    const deadline = Date.now() + 15_000;
-    pollRef.current = setInterval(async () => {
-      if (Date.now() > deadline) {
-        stopPolling();
-        setLanTest({ phase: "done", ok: false, message: "Timeout — is the Print Agent running on a device on this network?" });
-        setTimeout(() => setLanTest({ phase: "idle" }), 8000);
-        return;
-      }
-      try {
-        const res = await fetch(`/api/print-agent/jobs/${jobId}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) return;
-        const job = await res.json() as { status: string; error?: string | null; deliveredVia?: string | null };
-        if (job.status === "printed") {
-          stopPolling();
-          setLanTest({ phase: "done", ok: true, message: `Printed via ${job.deliveredVia ?? "lan_browser"}` });
-          setTimeout(() => setLanTest({ phase: "idle" }), 5000);
-        } else if (job.status === "failed") {
-          stopPolling();
-          setLanTest({ phase: "done", ok: false, message: job.error ?? "Print failed" });
-          setTimeout(() => setLanTest({ phase: "idle" }), 6000);
-        }
-      } catch { /* silent */ }
-    }, 2000);
-  }
-
-  function stopPolling() {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    try {
+      const res = await fetch(`/api/admin/printers/${p.id}/test-print`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ jobType: "test" }),
+      });
+      setTestState(res.ok ? "ok" : "err");
+    } catch {
+      setTestState("err");
+    }
+    await qc.invalidateQueries({ queryKey: getListPrintJobsQueryKey() });
+    setTimeout(() => setTestState("idle"), 3000);
   }
 
   const cloudprntUrl = `${window.location.origin}/api/cloudprnt/${p.cloudprntToken}`;
@@ -416,10 +377,19 @@ function PrinterCard({ p }: { p: Printer }) {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setEditing(true)} className="p-2 rounded-lg hover:bg-muted" title="Edit"><Pencil className="w-4 h-4" /></button>
           <button
-            onClick={() => { if (confirm(`Delete printer "${p.name}"?`)) del.mutate({ id: p.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) }); }}
-            className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 text-red-700 dark:text-red-400"
+            onClick={() => setEditing(true)}
+            className="p-2 rounded-lg hover:bg-muted active:scale-95 transition-all"
+            title="Edit"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => {
+              if (confirm(`Delete printer "${p.name}"?`))
+                del.mutate({ id: p.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) });
+            }}
+            className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 active:scale-95 transition-all text-red-700 dark:text-red-400"
             title="Delete"
           >
             <Trash2 className="w-4 h-4" />
@@ -445,64 +415,137 @@ function PrinterCard({ p }: { p: Printer }) {
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex items-center gap-2">
         <button
-          onClick={() => test.mutate({ id: p.id, data: { jobType: "test" } })}
-          disabled={test.isPending}
-          className="text-xs px-3 py-1.5 rounded-lg bg-foreground text-background hover:opacity-90 disabled:opacity-60"
-        >Test page</button>
-        <button
-          onClick={() => test.mutate({ id: p.id, data: { jobType: "kitchen_ticket" } })}
-          disabled={test.isPending}
-          className="text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80"
-        >Test kitchen ticket</button>
-        <button
-          onClick={() => test.mutate({ id: p.id, data: { jobType: "customer_receipt" } })}
-          disabled={test.isPending}
-          className="text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80"
-        >Test receipt</button>
-        <button
-          onClick={() => test.mutate({ id: p.id, data: { jobType: "item_label" } })}
-          disabled={test.isPending}
-          className="text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80"
-        >Test label</button>
-        {p.lanIp && (
-          <button
-            onClick={() => { setLanTest({ phase: "pending" }); testLan.mutate({ id: p.id }); }}
-            disabled={testLan.isPending || lanTest.phase === "queued"}
-            className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 inline-flex items-center gap-1.5"
-            title={`Queue a test job for LAN delivery to ${p.lanIp}`}
-          >
-            <Network className="w-3 h-3" />
-            {lanTest.phase === "queued" ? "Waiting for agent…" : lanTest.phase === "pending" ? "Queuing…" : "Test via LAN"}
-          </button>
-        )}
+          onClick={handleTestPrint}
+          disabled={testState === "pending"}
+          className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all active:scale-95 disabled:opacity-60 ${
+            testState === "ok"
+              ? "bg-green-600 text-white"
+              : testState === "err"
+              ? "bg-red-600 text-white"
+              : "bg-foreground text-background hover:opacity-85"
+          }`}
+        >
+          {testState === "pending"
+            ? <><Loader2 className="w-3 h-3 animate-spin" /> Sending…</>
+            : testState === "ok"
+            ? <><Check className="w-3 h-3" /> Sent</>
+            : testState === "err"
+            ? <><XCircle className="w-3 h-3" /> Failed</>
+            : "Test Print"}
+        </button>
+        <span className="text-[11px] text-muted-foreground">Sends a test page to this printer only</span>
       </div>
-
-      {lanTest.phase === "done" && (
-        <div className={`mt-2 text-xs px-3 py-2 rounded-lg flex items-center gap-2 ${
-          lanTest.ok
-            ? "bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-300"
-            : "bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300"
-        }`}>
-          {lanTest.ok
-            ? <Check className="w-3.5 h-3.5 shrink-0" />
-            : <XCircle className="w-3.5 h-3.5 shrink-0" />}
-          {lanTest.ok ? "Printed via LAN agent — " : "LAN error — "}
-          <span>{lanTest.message}</span>
-        </div>
-      )}
-      {lanTest.phase === "queued" && (
-        <div className="mt-2 text-xs px-3 py-2 rounded-lg flex items-center gap-2 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300">
-          <Network className="w-3.5 h-3.5 shrink-0 animate-pulse" />
-          Test job #{lanTest.jobId} queued — waiting for the LAN Print Agent to deliver it…
-          {" "}<a href="/admin/print-agent" className="underline font-medium">Open agent</a>
-        </div>
-      )}
 
       {p.lanIp && <RouterAgentSetup printerIp={p.lanIp} />}
 
       <PrinterDialog open={editing} initial={p} onClose={() => setEditing(false)} />
+    </div>
+  );
+}
+
+type BroadcastPhase =
+  | { phase: "idle" }
+  | { phase: "sending"; jobType: string }
+  | { phase: "done"; jobType: string; count: number };
+
+function BroadcastTestPanel({ printers }: { printers: Printer[] }) {
+  const qc = useQueryClient();
+  const [state, setState] = useState<BroadcastPhase>({ phase: "idle" });
+
+  async function broadcast(
+    jobType: "kitchen_ticket" | "customer_receipt" | "item_label",
+    filter: (p: Printer) => boolean,
+  ) {
+    const eligible = (printers as Printer[]).filter((p) => p.enabled && filter(p));
+    setState({ phase: "sending", jobType });
+    const token = getAdminToken();
+    let count = 0;
+    await Promise.all(
+      eligible.map(async (p) => {
+        try {
+          const res = await fetch(`/api/admin/printers/${p.id}/test-print`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ jobType }),
+          });
+          if (res.ok) count++;
+        } catch { /* silent */ }
+      }),
+    );
+    await qc.invalidateQueries({ queryKey: getListPrintJobsQueryKey() });
+    setState({ phase: "done", jobType, count });
+    setTimeout(() => setState({ phase: "idle" }), 3000);
+  }
+
+  const sending = state.phase === "sending";
+
+  const BtnCls = (active: boolean) =>
+    `inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all active:scale-95 disabled:opacity-60 ${
+      active ? "bg-foreground text-background hover:opacity-85" : "bg-muted hover:bg-muted/70 text-foreground"
+    }`;
+
+  return (
+    <div className="bg-card rounded-2xl border p-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <PrinterIcon className="w-4 h-4 text-muted-foreground" />
+        <span className="font-semibold text-sm">Broadcast test prints</span>
+        <span className="text-xs text-muted-foreground hidden sm:inline">— sends to every printer configured for that type</span>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => broadcast("kitchen_ticket", (p) => !!p.printsKitchenTicket)}
+          disabled={sending}
+          className={BtnCls(state.phase === "sending" && state.jobType === "kitchen_ticket")}
+        >
+          {state.phase === "sending" && state.jobType === "kitchen_ticket"
+            ? <Loader2 className="w-3 h-3 animate-spin" />
+            : null}
+          Test kitchen ticket
+        </button>
+
+        <button
+          onClick={() => broadcast("customer_receipt", (p) => !!p.printsCustomerReceipt)}
+          disabled={sending}
+          className={BtnCls(state.phase === "sending" && state.jobType === "customer_receipt")}
+        >
+          {state.phase === "sending" && state.jobType === "customer_receipt"
+            ? <Loader2 className="w-3 h-3 animate-spin" />
+            : null}
+          Test receipt
+        </button>
+
+        <button
+          onClick={() => broadcast("item_label", (p) => !!p.printsItemLabels)}
+          disabled={sending}
+          className={BtnCls(state.phase === "sending" && state.jobType === "item_label")}
+        >
+          {state.phase === "sending" && state.jobType === "item_label"
+            ? <Loader2 className="w-3 h-3 animate-spin" />
+            : null}
+          Test label
+        </button>
+      </div>
+
+      {state.phase === "done" && (
+        <div className={`mt-3 text-xs px-3 py-2 rounded-lg flex items-center gap-2 ${
+          state.count > 0
+            ? "bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-300"
+            : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300"
+        }`}>
+          {state.count > 0
+            ? <Check className="w-3.5 h-3.5 shrink-0" />
+            : <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+          {state.count > 0
+            ? `Sent to ${state.count} printer${state.count === 1 ? "" : "s"}`
+            : `No enabled printers are configured for ${state.jobType.replace(/_/g, " ")}`}
+        </div>
+      )}
     </div>
   );
 }
@@ -602,7 +645,7 @@ function PrintJobsPanel() {
       <div className="bg-card rounded-2xl border shadow-sm">
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="font-semibold">Recent print jobs</h2>
-          <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-muted" title="Refresh"><RefreshCw className="w-4 h-4" /></button>
+          <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-muted active:scale-95 transition-all" title="Refresh"><RefreshCw className="w-4 h-4" /></button>
         </div>
         {jobs.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">No jobs yet. Send a test print to see them here.</div>
@@ -626,7 +669,7 @@ function PrintJobsPanel() {
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => setPreviewJobId(j.id)}
-                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+                    className="p-1.5 rounded-lg hover:bg-muted active:scale-95 transition-all text-muted-foreground"
                     title="Preview job content"
                   >
                     <Eye className="w-4 h-4" />
@@ -635,7 +678,7 @@ function PrintJobsPanel() {
                     <button
                       onClick={() => handleCancel(j.id)}
                       disabled={canceling === j.id}
-                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 disabled:opacity-40"
+                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 active:scale-95 transition-all text-red-600 dark:text-red-400 disabled:opacity-40"
                       title="Cancel this job"
                     >
                       <XCircle className="w-4 h-4" />
@@ -644,7 +687,7 @@ function PrintJobsPanel() {
                   {(j.status === "failed" || j.status === "delivered") && (
                     <button
                       onClick={() => retry.mutate({ id: j.id })}
-                      className="text-xs px-2 py-1 rounded-lg bg-muted hover:bg-muted/80"
+                      className="text-xs px-2 py-1 rounded-lg bg-muted hover:bg-muted/70 active:scale-95 transition-all"
                     >Retry</button>
                   )}
                 </div>
@@ -694,11 +737,15 @@ export default function Printers() {
           </div>
           <button
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 active:scale-95 transition-all"
           >
             <Plus className="w-4 h-4" /> Add printer
           </button>
         </div>
+
+        {!isLoading && printers.length > 0 && (
+          <BroadcastTestPanel printers={printers as Printer[]} />
+        )}
 
         {isLoading ? (
           <div className="text-sm text-muted-foreground">Loading…</div>
