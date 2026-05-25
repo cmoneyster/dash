@@ -146,4 +146,89 @@ router.get("/print-agent/jobs/:id", async (req, res) => {
   }
 });
 
+/**
+ * GET /api/print-agent/install.sh?token=TOKEN&printer=IP
+ *
+ * Returns a ready-to-run shell script for the GL.iNet router agent.
+ * Intentionally NOT behind admin auth middleware — registered in index.ts
+ * before the /print-agent auth guard. The caller supplies their own token
+ * as a query param and it gets embedded directly in the downloaded script.
+ */
+export function installShHandler(req: import("express").Request, res: import("express").Response): void {
+  const token = typeof req.query.token === "string" ? req.query.token.trim() : "";
+  const printerIp = typeof req.query.printer === "string" ? req.query.printer.trim() : "192.168.22.208";
+  const serverUrl = `${req.protocol}://${req.get("host")}`;
+
+  if (!token) {
+    res.status(400).type("text/plain").send("Missing ?token= query parameter\n");
+    return;
+  }
+
+  // Note: in a JS template literal only ${...} is interpolated.
+  // Shell constructs like $((i+1)), $?, $JOBS etc. pass through as-is.
+  const script = [
+    "#!/bin/sh",
+    `# dash Catering router print agent — generated ${new Date().toISOString()}`,
+    `# Re-download: wget -O /root/print-agent.sh '${serverUrl}/api/print-agent/install.sh?token=${token}&printer=${printerIp}'`,
+    `SERVER="${serverUrl}"`,
+    `ADMIN_TOKEN="${token}"`,
+    `PRINTER_IP="${printerIp}"`,
+    "PRINTER_PORT=9100",
+    "POLL_INTERVAL=2",
+    "LOG_TAG=print-agent",
+    "",
+    "log() { logger -t \"$LOG_TAG\" \"$1\"; }",
+    "",
+    'log "starting — server=$SERVER printer=$PRINTER_IP:$PRINTER_PORT"',
+    "",
+    "while true; do",
+    "  JOBS=$(curl -sf -H \"Authorization: Bearer $ADMIN_TOKEN\" \\",
+    '    "$SERVER/api/print-agent/queued" 2>/dev/null)',
+    "",
+    '  if [ -z "$JOBS" ] || [ "$JOBS" = "[]" ]; then',
+    "    sleep $POLL_INTERVAL; continue",
+    "  fi",
+    "",
+    "  COUNT=$(printf '%s' \"$JOBS\" | jq 'length' 2>/dev/null)",
+    '  [ -z "$COUNT" ] || [ "$COUNT" -eq 0 ] && { sleep $POLL_INTERVAL; continue; }',
+    "",
+    "  i=0",
+    '  while [ "$i" -lt "$COUNT" ]; do',
+    '    JOB_ID=$(printf \'%s\' "$JOBS"  | jq -r ".[$i].id")',
+    '    JOB_TYPE=$(printf \'%s\' "$JOBS" | jq -r ".[$i].jobType")',
+    '    RAW_B64=$(printf \'%s\' "$JOBS" | jq -r ".[$i].rawBytesBase64")',
+    '    [ -z "$JOB_ID" ] || [ "$JOB_ID" = "null" ] && { i=$((i+1)); continue; }',
+    "",
+    '    log "claiming job $JOB_ID ($JOB_TYPE)"',
+    '    curl -sf -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \\',
+    '      "$SERVER/api/print-agent/jobs/$JOB_ID/claim" -o /dev/null || \\',
+    '      { log "job $JOB_ID already claimed"; i=$((i+1)); continue; }',
+    "",
+    '    log "sending job $JOB_ID to $PRINTER_IP:$PRINTER_PORT"',
+    "    printf '%s' \"$RAW_B64\" | base64 -d | nc -w 10 \"$PRINTER_IP\" \"$PRINTER_PORT\"",
+    "    STATUS=$?",
+    "",
+    '    if [ "$STATUS" -eq 0 ]; then',
+    '      log "job $JOB_ID delivered OK"',
+    '      curl -sf -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \\',
+    '        -H "Content-Type: application/json" \\',
+    "        -d '{\"printerResponse\":\"tcp_9100_ok\"}' \\",
+    '        "$SERVER/api/print-agent/jobs/$JOB_ID/complete" -o /dev/null',
+    "    else",
+    '      log "job $JOB_ID FAILED (nc exit $STATUS)"',
+    '      curl -sf -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \\',
+    '        -H "Content-Type: application/json" -d \'{"error":"tcp_connect_failed"}\' \\',
+    '        "$SERVER/api/print-agent/jobs/$JOB_ID/fail" -o /dev/null',
+    "    fi",
+    "",
+    "    i=$((i+1))",
+    "  done",
+    "  sleep $POLL_INTERVAL",
+    "done",
+    "",
+  ].join("\n");
+
+  res.type("text/plain").send(script);
+}
+
 export default router;
