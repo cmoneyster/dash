@@ -1,0 +1,44 @@
+#!/bin/sh /etc/rc.common
+# OpenWrt init.d service for the Hollywood East Catering print-agent.
+#
+# Installation (via SSH on the GL.iNet router):
+#   cp print-agent.sh /usr/bin/print-agent.sh
+#   chmod +x /usr/bin/print-agent.sh
+#   cp print-agent.init /etc/init.d/print-agent
+#   chmod +x /etc/init.d/print-agent
+#   uci set print-agent.main=config
+#   uci set print-agent.main.server="https://YOUR-APP.replit.app"
+#   uci set print-agent.main.token="YOUR_ADMIN_TOKEN"
+#   uci set print-agent.main.interval="5"
+#   uci commit print-agent
+#   /etc/init.d/print-agent enable
+#   /etc/init.d/print-agent start
+#
+# Or use the one-liner from Admin → Printers → Router Agent Setup.
+
+START=99
+STOP=10
+USE_PROCD=1
+
+start_service() {
+  local server token interval
+  server=$(uci -q get print-agent.main.server)
+  token=$(uci -q get print-agent.main.token)
+  interval=$(uci -q get print-agent.main.interval)
+  interval="${interval:-5}"
+
+  procd_open_instance
+  procd_set_param command /usr/bin/print-agent.sh
+  procd_set_param env \
+    PRINT_AGENT_SERVER="$server" \
+    PRINT_AGENT_TOKEN="$token" \
+    PRINT_AGENT_INTERVAL="$interval"
+  procd_set_param respawn 3600 5 0
+  procd_set_param stdout 1
+  procd_set_param stderr 1
+  procd_close_instance
+}
+
+stop_service() {
+  return 0
+}

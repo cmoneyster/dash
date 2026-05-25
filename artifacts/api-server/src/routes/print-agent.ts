@@ -9,7 +9,7 @@ import {
   markJobFailed,
   getJobById,
 } from "../lib/printQueue";
-import { renderJobWebPrnt } from "../lib/printRenderer";
+import { renderJobWebPrnt, renderJob } from "../lib/printRenderer";
 import type { RenderablePayload } from "../lib/printRenderer";
 import type { PrintTemplate } from "@workspace/db/schema";
 
@@ -87,9 +87,52 @@ router.post("/print-agent/jobs/:id/claim", async (req, res) => {
 });
 
 /**
+ * GET /api/print-agent/jobs/:id/bytes
+ *
+ * Atomically claims a job and returns the rendered ESC/POS bytes as
+ * application/octet-stream, ready to be piped to nc <ip> 9100.
+ */
+router.get("/print-agent/jobs/:id/bytes", async (req, res) => {
+  const jobId = parseInt(req.params.id);
+  if (isNaN(jobId)) {
+    res.status(400).json({ error: "Invalid job id" });
+    return;
+  }
+
+  try {
+    const job = await claimJobForAgent(jobId);
+    if (!job) {
+      res.status(409).json({ error: "Job not available (already claimed or not queued)" });
+      return;
+    }
+
+    const [printer] = await db
+      .select({ lanIp: printersTable.lanIp, printTemplate: printersTable.printTemplate })
+      .from(printersTable)
+      .where(eq(printersTable.id, job.printerId));
+
+    if (!printer?.lanIp) {
+      res.status(422).json({ error: "Printer has no LAN IP" });
+      return;
+    }
+
+    const { bytes } = renderJob(
+      job.payload as unknown as RenderablePayload,
+      printer.printTemplate as PrintTemplate | undefined ?? undefined,
+    );
+
+    res.set("Content-Type", "application/octet-stream");
+    res.send(bytes);
+  } catch (err) {
+    req.log.error({ err, jobId }, "print-agent: bytes fetch failed");
+    res.status(500).json({ error: "Failed to render job" });
+  }
+});
+
+/**
  * POST /api/print-agent/jobs/:id/complete
  *
- * Called by the browser agent after the printer accepted the job.
+ * Called by the router agent after the printer accepted the job.
  */
 router.post("/print-agent/jobs/:id/complete", async (req, res) => {
   const jobId = parseInt(req.params.id);

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Printer, Tag, Pause, Play, Ban, ShoppingBag, Users, X, AlertTriangle, Minus, Plus } from "lucide-react";
 import { getAdminToken } from "@/components/AdminGuard";
-import { usePrintAgent } from "@/hooks/usePrintAgent";
 import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
 import { ItemLabelsModal } from "@/components/ItemLabelsModal";
 
@@ -932,9 +931,6 @@ export default function KitchenDisplay() {
   function printOrder(order: EventOrder, mode: "receipt" | "kitchen") {
     setPrintJob({ order, mode });
   }
-
-  // Silent WebPRNT delivery — runs whenever an admin token is present.
-  usePrintAgent({ enabled: !!getAdminToken() });
 
   // Server-backed printer settings modal (scoped to the Kitchen surface).
   const [printerModalOpen, setPrinterModalOpen] = useState(false);

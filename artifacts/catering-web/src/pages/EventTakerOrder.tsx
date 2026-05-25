@@ -3,7 +3,6 @@ import { getEventTakerMenu } from "@workspace/api-client-react";
 import { TAX_DISCLOSURE, TAX_INCLUDED_NOTE } from "@/lib/tax";
 import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers, Pencil, GripVertical, RotateCcw } from "lucide-react";
 import { getAdminToken } from "@/components/AdminGuard";
-import { usePrintAgent } from "@/hooks/usePrintAgent";
 import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { toast } from "sonner";
@@ -312,8 +311,6 @@ export default function EventTakerOrder() {
     if (stockWarnTimer.current) clearTimeout(stockWarnTimer.current);
   }, []);
   const [printMode, setPrintMode] = useState<"receipt" | "kitchen">("receipt");
-  // Silent WebPRNT delivery — runs whenever an admin token is present.
-  usePrintAgent({ enabled: !!getAdminToken() });
 
   // Server-backed printer settings modal (scoped to the Taker surface).
   const [printerModalOpen, setPrinterModalOpen] = useState(false);

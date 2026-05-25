@@ -40,6 +40,7 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  Terminal,
 } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
@@ -1109,6 +1110,84 @@ function PrintJobsPanel() {
   );
 }
 
+function RouterAgentSetup() {
+  const [open, setOpen] = useState(false);
+  const serverUrl = window.location.origin;
+  const token = getAdminToken() ?? "";
+  const installUrl = `${serverUrl}/api/print-agent/install.sh?server=${encodeURIComponent(serverUrl)}&token=${encodeURIComponent(token)}`;
+  const installCmd = `wget -qO- '${installUrl}' | sh`;
+
+  return (
+    <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Terminal className="w-4 h-4 text-muted-foreground" />
+          <span className="font-semibold text-sm">Router Agent Setup</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">
+            — GL.iNet / OpenWrt TCP/9100 printing
+          </span>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </button>
+
+      {open && (
+        <div className="border-t px-4 py-4 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            The router agent runs on a GL.iNet (OpenWrt) device on the same LAN as your printers.
+            It polls this server every 5 seconds for queued jobs and delivers raw ESC/POS bytes
+            directly via TCP port 9100 — no CORS, no browser required.
+          </p>
+
+          <div className="grid sm:grid-cols-2 gap-3 text-sm">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prerequisites</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
+                <li>GL.iNet router with OpenWrt</li>
+                <li>SSH access to the router</li>
+                <li>busybox <code className="font-mono bg-muted px-1 rounded">wget</code> + <code className="font-mono bg-muted px-1 rounded">nc</code> (netcat) installed</li>
+                <li>LAN IP set on each printer in the Admin Printers list</li>
+              </ul>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">How it works</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
+                <li>Polls <code className="font-mono bg-muted px-1 rounded">/api/print-agent/queued</code></li>
+                <li>Fetches raw ESC/POS bytes per job</li>
+                <li>Pipes bytes to <code className="font-mono bg-muted px-1 rounded">nc &lt;ip&gt; 9100</code></li>
+                <li>Reports success or failure back to server</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Install command — run via SSH on the router
+            </p>
+            <CodeBlock text={installCmd} obscureToken />
+            <p className="text-[11px] text-muted-foreground">
+              This writes <code className="font-mono bg-muted px-0.5 rounded">/usr/bin/print-agent.sh</code>, configures UCI, and starts the
+              service. The admin token is embedded in UCI config — keep SSH access to the router secured.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Useful router commands</p>
+            <div className="space-y-1">
+              <CodeBlock text="logread -f | grep print-agent" />
+              <CodeBlock text="/etc/init.d/print-agent stop" />
+              <CodeBlock text="/etc/init.d/print-agent start" />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Printers() {
   const { data: printers = [], isLoading } = useListPrinters({
     query: {
@@ -1159,6 +1238,7 @@ export default function Printers() {
           </div>
         )}
 
+        <RouterAgentSetup />
         <PrinterDialog open={adding} initial={null} onClose={() => setAdding(false)} />
         <PrintJobsPanel />
       </div>

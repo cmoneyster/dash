@@ -37,6 +37,7 @@ import webhooksSmsRouter from "./webhooks-sms";
 import demoRouter, { adminDemoRouter } from "./demo";
 import adminPrintersRouter from "./admin-printers";
 import printAgentRouter from "./print-agent";
+import printAgentInstallRouter from "./print-agent-install";
 
 const router: IRouter = Router();
 
@@ -59,6 +60,7 @@ router.use(quotePublicRouter);
 router.use(webhooksSquareRouter);
 router.use(webhooksSmsRouter);
 router.use(demoRouter);
+router.use(printAgentInstallRouter);
 
 router.use(adminAuthRouter);
 
