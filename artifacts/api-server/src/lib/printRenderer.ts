@@ -48,14 +48,14 @@ const ALIGN_LEFT   = Buffer.from([ESC, 0x61, 0x00]);
 const SIZE_NORMAL = Buffer.from([GS, 0x21, 0x00]);
 const SIZE_DOUBLE = Buffer.from([GS, 0x21, 0x11]);
 /**
- * Universal partial cut sequence — works in both ESC/POS and StarPRNT modes:
- *   ESC d 3  (1B 64 03) — print buffer + feed 3 lines (Star Line Mode feed)
- *   GS  V 1  (1D 56 01) — partial cut (ESC/POS and StarPRNT both honour this)
+ * Star Line Mode partial cut sequence (TSP143IV default emulation mode):
+ *   ESC d 3  (1B 64 03) — feed 3 lines
+ *   ESC m    (1B 6D)    — partial cut
  *
- * We emit both so the correct one fires regardless of the printer's emulation
- * mode.  The feed comes first to ensure paper clears the cutter.
+ * GS V (ESC/POS cut) is NOT used — in Star Line Mode it is interpreted as
+ * "set barcode height", causing the print engine to stall silently.
  */
-const CUT = Buffer.from([ESC, 0x64, 0x03, GS, 0x56, 0x01]);
+const CUT = Buffer.from([ESC, 0x64, 0x03, ESC, 0x6d]);
 
 const LINE_WIDTH = 48;
 
