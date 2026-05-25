@@ -27,9 +27,22 @@ if [ -z "$SERVER" ]; then
   exit 1
 fi
 
+HEARTBEAT_INTERVAL=30
+last_heartbeat=0
+
 log "Starting (server=$SERVER interval=${INTERVAL}s)"
 
 while true; do
+  # Send heartbeat every 30 s so the admin UI can show live status
+  now=$(date +%s)
+  if [ $((now - last_heartbeat)) -ge $HEARTBEAT_INTERVAL ]; then
+    wget -q -T 5 -O /dev/null \
+      --post-data "{\"token\":\"$TOKEN\",\"serverUrl\":\"$SERVER\"}" \
+      --header "Content-Type: application/json" \
+      "$SERVER/api/print-agent/heartbeat" 2>/dev/null
+    last_heartbeat=$now
+  fi
+
   JOBS=$(wget -q -T 10 -O - \
     --header "Authorization: Bearer $TOKEN" \
     "$SERVER/api/print-agent/queued" 2>/dev/null)

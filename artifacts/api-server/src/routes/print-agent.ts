@@ -12,6 +12,7 @@ import {
 import { renderJobWebPrnt, renderJob } from "../lib/printRenderer";
 import type { RenderablePayload } from "../lib/printRenderer";
 import type { PrintTemplate } from "@workspace/db/schema";
+import { heartbeatStore } from "../lib/printAgentHeartbeat";
 
 const router = Router();
 
@@ -168,6 +169,26 @@ router.post("/print-agent/jobs/:id/fail", async (req, res) => {
     req.log.error({ err, jobId }, "print-agent: fail report failed");
     res.status(500).json({ error: "Failed to mark job failed" });
   }
+});
+
+/**
+ * GET /api/print-agent/heartbeat
+ *
+ * Returns the last-seen heartbeat for the token in the Authorization header.
+ * Called by the admin UI to display live agent status.
+ */
+router.get("/print-agent/heartbeat", (req, res) => {
+  const authHeader = req.headers.authorization ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const entry = heartbeatStore.get(token);
+  res.json({
+    lastSeenAt: entry ? entry.lastSeenAt.toISOString() : null,
+    serverUrl: entry ? entry.serverUrl : null,
+  });
 });
 
 export default router;

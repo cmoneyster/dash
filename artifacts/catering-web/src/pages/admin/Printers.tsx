@@ -8,6 +8,7 @@ import {
   useListPrintJobs,
   useRetryPrintJob,
   useTestLanPrinter,
+  useGetPrintAgentHeartbeat,
   getListPrintersQueryKey,
   getListPrintJobsQueryKey,
   type Printer,
@@ -1112,6 +1113,42 @@ function PrintJobsPanel() {
   );
 }
 
+function RouterAgentHeartbeatBadge() {
+  const { data } = useGetPrintAgentHeartbeat({
+    query: { refetchInterval: 15_000 },
+  });
+
+  const lastSeenAt = data?.lastSeenAt ?? null;
+  const isLive =
+    lastSeenAt !== null &&
+    Date.now() - new Date(lastSeenAt).getTime() < 90_000;
+
+  if (!lastSeenAt) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 inline-block" />
+        Offline
+      </span>
+    );
+  }
+
+  if (!isLive) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 inline-block" />
+        Last seen {relTime(lastSeenAt)}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 dark:text-green-400">
+      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block animate-pulse" />
+      Live · {relTime(lastSeenAt)}
+    </span>
+  );
+}
+
 function RouterAgentSetup({ printer }: { printer: Printer }) {
   const [open, setOpen] = useState(false);
   const serverUrl = window.location.origin;
@@ -1127,12 +1164,13 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between text-left py-1 hover:opacity-70 transition-opacity"
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground">Router Agent Setup</span>
           <span className="text-[11px] text-muted-foreground/60 hidden sm:inline">— GL.iNet / OpenWrt TCP/9100</span>
+          <RouterAgentHeartbeatBadge />
         </div>
-        {open ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+        {open ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
       </button>
 
       {open && (

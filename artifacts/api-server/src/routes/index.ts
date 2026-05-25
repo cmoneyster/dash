@@ -38,6 +38,7 @@ import demoRouter, { adminDemoRouter } from "./demo";
 import adminPrintersRouter from "./admin-printers";
 import printAgentRouter from "./print-agent";
 import printAgentInstallRouter from "./print-agent-install";
+import printAgentHeartbeatPublicRouter from "./print-agent-heartbeat-public";
 
 const router: IRouter = Router();
 
@@ -61,6 +62,7 @@ router.use(webhooksSquareRouter);
 router.use(webhooksSmsRouter);
 router.use(demoRouter);
 router.use(printAgentInstallRouter);
+router.use(printAgentHeartbeatPublicRouter);
 
 router.use(adminAuthRouter);
 

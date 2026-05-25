@@ -4095,3 +4095,35 @@ export const FailPrintAgentJobBody = zod.object({
 export const FailPrintAgentJobResponse = zod.object({
   ok: zod.boolean().optional(),
 });
+
+/**
+ * @summary Router agent liveness ping (public — token carried in body)
+ */
+export const PostPrintAgentHeartbeatBody = zod.object({
+  token: zod
+    .string()
+    .describe("The admin bearer token identifying this agent instance"),
+  serverUrl: zod
+    .string()
+    .describe("The base URL the agent is configured to poll"),
+});
+
+export const PostPrintAgentHeartbeatResponse = zod.object({
+  ok: zod.boolean().optional(),
+});
+
+/**
+ * @summary Get last-seen heartbeat for the calling admin token
+ */
+export const GetPrintAgentHeartbeatResponse = zod.object({
+  lastSeenAt: zod.coerce
+    .date()
+    .nullable()
+    .describe(
+      "ISO timestamp of the most recent heartbeat, or null if never seen",
+    ),
+  serverUrl: zod
+    .string()
+    .nullable()
+    .describe("The serverUrl reported by the agent in its last ping"),
+});

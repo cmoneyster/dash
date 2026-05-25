@@ -60,8 +60,11 @@ import type {
   OpenaiMessage,
   Order,
   Plan,
+  PostPrintAgentHeartbeat200,
   PreviewTemplateBody,
   PreviewTemplateResult,
+  PrintAgentHeartbeatInput,
+  PrintAgentHeartbeatStatus,
   PrintJob,
   Printer,
   RecommendedItem,
@@ -5155,3 +5158,172 @@ export const useFailPrintAgentJob = <
 > => {
   return useMutation(getFailPrintAgentJobMutationOptions(options));
 };
+
+/**
+ * @summary Router agent liveness ping (public — token carried in body)
+ */
+export const getPostPrintAgentHeartbeatUrl = () => {
+  return `/api/print-agent/heartbeat`;
+};
+
+export const postPrintAgentHeartbeat = async (
+  printAgentHeartbeatInput: PrintAgentHeartbeatInput,
+  options?: RequestInit,
+): Promise<PostPrintAgentHeartbeat200> => {
+  return customFetch<PostPrintAgentHeartbeat200>(
+    getPostPrintAgentHeartbeatUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(printAgentHeartbeatInput),
+    },
+  );
+};
+
+export const getPostPrintAgentHeartbeatMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postPrintAgentHeartbeat>>,
+    TError,
+    { data: BodyType<PrintAgentHeartbeatInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postPrintAgentHeartbeat>>,
+  TError,
+  { data: BodyType<PrintAgentHeartbeatInput> },
+  TContext
+> => {
+  const mutationKey = ["postPrintAgentHeartbeat"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postPrintAgentHeartbeat>>,
+    { data: BodyType<PrintAgentHeartbeatInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return postPrintAgentHeartbeat(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostPrintAgentHeartbeatMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postPrintAgentHeartbeat>>
+>;
+export type PostPrintAgentHeartbeatMutationBody =
+  BodyType<PrintAgentHeartbeatInput>;
+export type PostPrintAgentHeartbeatMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Router agent liveness ping (public — token carried in body)
+ */
+export const usePostPrintAgentHeartbeat = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postPrintAgentHeartbeat>>,
+    TError,
+    { data: BodyType<PrintAgentHeartbeatInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof postPrintAgentHeartbeat>>,
+  TError,
+  { data: BodyType<PrintAgentHeartbeatInput> },
+  TContext
+> => {
+  return useMutation(getPostPrintAgentHeartbeatMutationOptions(options));
+};
+
+/**
+ * @summary Get last-seen heartbeat for the calling admin token
+ */
+export const getGetPrintAgentHeartbeatUrl = () => {
+  return `/api/print-agent/heartbeat`;
+};
+
+export const getPrintAgentHeartbeat = async (
+  options?: RequestInit,
+): Promise<PrintAgentHeartbeatStatus> => {
+  return customFetch<PrintAgentHeartbeatStatus>(
+    getGetPrintAgentHeartbeatUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetPrintAgentHeartbeatQueryKey = () => {
+  return [`/api/print-agent/heartbeat`] as const;
+};
+
+export const getGetPrintAgentHeartbeatQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPrintAgentHeartbeat>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPrintAgentHeartbeat>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPrintAgentHeartbeatQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPrintAgentHeartbeat>>
+  > = ({ signal }) => getPrintAgentHeartbeat({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPrintAgentHeartbeat>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPrintAgentHeartbeatQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPrintAgentHeartbeat>>
+>;
+export type GetPrintAgentHeartbeatQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get last-seen heartbeat for the calling admin token
+ */
+
+export function useGetPrintAgentHeartbeat<
+  TData = Awaited<ReturnType<typeof getPrintAgentHeartbeat>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPrintAgentHeartbeat>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPrintAgentHeartbeatQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

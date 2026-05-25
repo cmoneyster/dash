@@ -1156,6 +1156,26 @@ export interface PrintJob {
   printedAt?: string | null;
 }
 
+export interface PrintAgentHeartbeatInput {
+  /** The admin bearer token identifying this agent instance */
+  token: string;
+  /** The base URL the agent is configured to poll */
+  serverUrl: string;
+}
+
+export interface PrintAgentHeartbeatStatus {
+  /**
+   * ISO timestamp of the most recent heartbeat, or null if never seen
+   * @nullable
+   */
+  lastSeenAt: string | null;
+  /**
+   * The serverUrl reported by the agent in its last ping
+   * @nullable
+   */
+  serverUrl: string | null;
+}
+
 export type ListMenuItemsParams = {
   category?: string;
   available?: boolean;
@@ -1258,5 +1278,9 @@ export type FailPrintAgentJobBody = {
 };
 
 export type FailPrintAgentJob200 = {
+  ok?: boolean;
+};
+
+export type PostPrintAgentHeartbeat200 = {
   ok?: boolean;
 };
