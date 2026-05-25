@@ -22,8 +22,6 @@ import {
   Plus,
   Trash2,
   Pencil,
-  Wifi,
-  WifiOff,
   AlertTriangle,
   Check,
   RefreshCw,
@@ -87,23 +85,6 @@ function CodeBlock({ text, obscureToken = false }: { text: string; obscureToken?
   );
 }
 
-function StatusPill({ p }: { p: Printer }) {
-  if (!p.enabled) return <span className="px-2 py-0.5 rounded-full text-[11px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">disabled</span>;
-  const map: Record<string, { cls: string; label: string; icon?: typeof Wifi }> = {
-    online:   { cls: "bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-300", label: "online", icon: Wifi },
-    offline:  { cls: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300", label: "offline", icon: WifiOff },
-    error:    { cls: "bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-300", label: "error", icon: AlertTriangle },
-    disabled: { cls: "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300", label: "disabled" },
-  };
-  const cfg = map[p.status] ?? map.offline;
-  const Icon = cfg.icon;
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${cfg.cls}`}>
-      {Icon && <Icon className="w-3 h-3" />}
-      {cfg.label}
-    </span>
-  );
-}
 
 function TestLanButton({ printer }: { printer: Printer }) {
   const testLan = useTestLanPrinter();
@@ -758,7 +739,7 @@ function PrinterCard({ p }: { p: Printer }) {
           <div className="p-2 bg-muted rounded-xl"><PrinterIcon className="w-5 h-5 text-muted-foreground" /></div>
           <div>
             <div className="font-semibold flex items-center gap-2">
-              {p.name} <StatusPill p={p} />
+              {p.name}
               {hasTemplate && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 font-medium">
                   custom template
@@ -767,10 +748,6 @@ function PrinterCard({ p }: { p: Printer }) {
             </div>
             <div className="text-xs text-muted-foreground">
               {p.model}{p.location ? ` · ${p.location}` : ""}{p.lanIp ? ` · ${p.lanIp}` : ""}
-            </div>
-            <div className="text-xs text-muted-foreground/70 mt-0.5">
-              Last seen {relTime(p.lastPolledAt as unknown as string | null)}
-              {p.lastError ? ` · ${p.lastError}` : ""}
             </div>
           </div>
         </div>
