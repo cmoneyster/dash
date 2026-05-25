@@ -72,8 +72,9 @@ export async function selectPrintersFor(
 }
 
 /**
- * Atomically claim a job for the browser print agent. Only claims jobs that
- * belong to lan_browser printers and are still in queued state.
+ * Atomically claim a job for the browser print agent. Claims any queued job
+ * whose printer has a LAN IP — CloudPRNT is retired so all LAN printers use
+ * the browser agent regardless of their stored print_mode value.
  * Returns null if the job was already claimed by another agent instance.
  */
 export async function claimJobForAgent(jobId: number): Promise<PrintJob | null> {
@@ -88,7 +89,6 @@ export async function claimJobForAgent(jobId: number): Promise<PrintJob | null> 
       JOIN printers p ON p.id = pj.printer_id
       WHERE pj.id = ${jobId}
         AND pj.status = 'queued'
-        AND p.print_mode = 'lan_browser'
         AND p.lan_ip IS NOT NULL
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -101,7 +101,8 @@ export async function claimJobForAgent(jobId: number): Promise<PrintJob | null> 
 
 /**
  * Return queued jobs eligible for browser-based LAN delivery.
- * Only includes jobs for `lan_browser` printers that have a LAN IP.
+ * Includes any enabled printer with a LAN IP — print_mode is not checked
+ * since CloudPRNT is retired and all LAN printers now use the browser agent.
  */
 export async function getQueuedJobsForLanAgent(): Promise<(PrintJob & { lanIp: string; printTemplate: import("@workspace/db/schema").PrintTemplate | null })[]> {
   type Row = PrintJob & { lanIp: string; printTemplate: import("@workspace/db/schema").PrintTemplate | null };
@@ -112,7 +113,6 @@ export async function getQueuedJobsForLanAgent(): Promise<(PrintJob & { lanIp: s
     WHERE pj.status = 'queued'
       AND p.enabled = true
       AND p.lan_ip IS NOT NULL
-      AND p.print_mode = 'lan_browser'
     ORDER BY pj.created_at ASC
     LIMIT 10
   `);
