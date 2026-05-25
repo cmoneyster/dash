@@ -97,6 +97,9 @@ router.patch("/admin/printers/:id", async (req, res) => {
     if (typeof b.model === "string") updates.model = b.model;
     if (b.lanIp !== undefined) updates.lanIp = typeof b.lanIp === "string" && b.lanIp.trim() ? b.lanIp.trim() : null;
     if (b.location !== undefined) updates.location = typeof b.location === "string" && b.location.trim() ? b.location.trim() : null;
+    if (typeof b.printMode === "string" && ["lan_browser", "cloudprnt", "cloudprnt_lan_fallback"].includes(b.printMode)) {
+      updates.printMode = b.printMode;
+    }
     if (b.printTemplate !== undefined) {
       if (b.printTemplate == null) {
         updates.printTemplate = null;
