@@ -36,7 +36,6 @@ import adminSmsMessagesRouter from "./admin-sms-messages";
 import webhooksSmsRouter from "./webhooks-sms";
 import demoRouter, { adminDemoRouter } from "./demo";
 import adminPrintersRouter from "./admin-printers";
-import printAgentRouter, { installShHandler } from "./print-agent";
 
 const router: IRouter = Router();
 
@@ -85,9 +84,6 @@ router.use("/admin/demo-menu", requireAdminAuth);
 router.use("/admin/printers", requireAdminAuth);
 router.use("/admin/print-jobs", requireAdminAuth);
 router.use("/admin/event-orders", requireAdminAuth);
-router.get("/print-agent/install.sh", installShHandler);
-router.use("/print-agent", requireAdminAuth);
-
 router.use(adminMenuRouter);
 router.use(adminMenuCsvRouter);
 router.use(adminCategoriesRouter);
@@ -105,6 +101,5 @@ router.use(adminSmsSettingsRouter);
 router.use(adminSmsMessagesRouter);
 router.use(adminDemoRouter);
 router.use(adminPrintersRouter);
-router.use(printAgentRouter);
 
 export default router;

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getEventTakerMenu } from "@workspace/api-client-react";
 import { TAX_DISCLOSURE, TAX_INCLUDED_NOTE } from "@/lib/tax";
 import { Loader2, Plus, Minus, Trash2, ShoppingCart, Receipt, Check, AlertCircle, LogOut, ChefHat, Printer, PrinterCheck, DollarSign, CreditCard, Smartphone, ArrowLeft, Clock, X as XIcon, AlertTriangle, Layers, Pencil, GripVertical, RotateCcw } from "lucide-react";
-import { usePrintAgent } from "@/hooks/usePrintAgent";
 import { getAdminToken } from "@/components/AdminGuard";
 import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -314,10 +313,6 @@ export default function EventTakerOrder() {
   const [printMode, setPrintMode] = useState<"receipt" | "kitchen">("receipt");
   // Server-backed printer settings modal (scoped to the Taker surface).
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
-
-  // Silent background LAN print agent — runs when an admin token is present
-  // in this browser so the order taker page can also deliver print jobs.
-  const agent = usePrintAgent({ enabled: !!getAdminToken() });
 
   // Arrange-mode state. slotLayout mirrors the server's takerMenuOrder:
   // null entries are intentional empty cells. buildArrangeGrid() pads it
@@ -1276,21 +1271,6 @@ export default function EventTakerOrder() {
                 <Layers className="w-4 h-4" />
                 <span className="hidden sm:inline">{arrangeMode ? "Done" : "Arrange"}</span>
               </button>
-            )}
-            {getAdminToken() && (
-              <span
-                title={`LAN print agent — ${agent.status}${agent.failCount > 0 ? ` (${agent.failCount} failed)` : ""}`}
-                className={`hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${
-                  agent.status === "error"
-                    ? "bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800/40"
-                    : agent.status === "delivering"
-                    ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/40"
-                    : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40"
-                }`}
-              >
-                <PrinterCheck className="w-3 h-3" />
-                LAN agent
-              </span>
             )}
             <button
               type="button"

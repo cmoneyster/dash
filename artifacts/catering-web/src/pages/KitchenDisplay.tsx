@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity, Save, Volume2, VolumeX, CalendarDays, Loader2, LogOut, Info, Printer, Tag, Pause, Play, Ban, ShoppingBag, Users, X, AlertTriangle, Minus, Plus } from "lucide-react";
-import { usePrintAgent } from "@/hooks/usePrintAgent";
 import { getAdminToken } from "@/components/AdminGuard";
 import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
 import { ItemLabelsModal } from "@/components/ItemLabelsModal";
@@ -936,10 +935,6 @@ export default function KitchenDisplay() {
   // Server-backed printer settings modal (scoped to the Kitchen surface).
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
 
-  // Silent background LAN print agent — runs when an admin token is present
-  // in this browser so the kitchen display can also deliver print jobs.
-  const agent = usePrintAgent({ enabled: !!getAdminToken() });
-
   // Per-order "Print Item Labels" modal. Holds the order whose labels
   // we're currently triaging. Reset to null on close.
   const [labelsForOrder, setLabelsForOrder] = useState<EventOrder | null>(null);
@@ -1208,21 +1203,6 @@ export default function KitchenDisplay() {
             >
               {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
-            {getAdminToken() && (
-              <span
-                title={`LAN print agent — ${agent.status}${agent.failCount > 0 ? ` (${agent.failCount} failed)` : ""}`}
-                className={`hidden md:inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                  agent.status === "error"
-                    ? "bg-red-500/20 text-red-400"
-                    : agent.status === "delivering"
-                    ? "bg-amber-500/20 text-amber-400"
-                    : "bg-emerald-500/20 text-emerald-400"
-                }`}
-              >
-                <Printer className="w-3 h-3" />
-                LAN agent
-              </span>
-            )}
             <button
               type="button"
               onClick={() => setPrinterModalOpen(true)}

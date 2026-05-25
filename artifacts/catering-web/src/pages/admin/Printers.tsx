@@ -31,7 +31,6 @@ import {
   EyeOff,
   XCircle,
   Loader2,
-  Terminal,
   ChevronDown,
   ChevronUp,
   Palette,
@@ -101,72 +100,6 @@ function StatusPill({ p }: { p: Printer }) {
       {Icon && <Icon className="w-3 h-3" />}
       {cfg.label}
     </span>
-  );
-}
-
-function RouterAgentSetup({ printerIp }: { printerIp: string }) {
-  const [open, setOpen] = useState(false);
-  const token = getAdminToken() ?? "";
-  const serverUrl = window.location.origin;
-
-  const sshCmd = "ssh -o HostKeyAlgorithms=+ssh-rsa root@192.168.22.1";
-  const wgetCmd = `wget -O /root/print-agent.sh '${serverUrl}/api/print-agent/install.sh?token=${token}&printer=${printerIp}'`;
-  const runCmd = "sh /root/print-agent.sh </dev/null >> /var/log/print-agent.log 2>&1 &";
-  const cronLine = "* * * * * pgrep -f print-agent.sh > /dev/null || sh /root/print-agent.sh </dev/null >> /var/log/print-agent.log 2>&1 &";
-  const rcLine = "sh /root/print-agent.sh </dev/null >> /var/log/print-agent.log 2>&1 &";
-
-  return (
-    <div className="mt-3 border-t pt-3">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-400 hover:underline"
-      >
-        <Terminal className="w-3.5 h-3.5" />
-        Router agent setup
-        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-      </button>
-
-      {open && (
-        <div className="mt-3 space-y-4 text-xs">
-          <p className="text-muted-foreground">
-            Run these commands on your GL.iNet router (SSH as root) to install or re-install the print agent for this printer (<code className="font-mono bg-muted px-1 rounded">{printerIp}</code>).
-            The download URL has your token and printer IP already embedded.
-          </p>
-
-          <div className="space-y-1">
-            <p className="font-medium text-muted-foreground">1. SSH into the router</p>
-            <CodeBlock text={sshCmd} />
-          </div>
-
-          <div className="space-y-1">
-            <p className="font-medium text-muted-foreground">
-              2. Download the pre-configured script
-              {token
-                ? <span className="font-normal ml-1">(token: <code className="bg-muted px-1 rounded">{token.slice(0, 8)}…</code>)</span>
-                : <span className="font-normal ml-1 text-amber-600 dark:text-amber-400"> — log in as admin first</span>
-              }
-            </p>
-            <CodeBlock text={wgetCmd} obscureToken />
-          </div>
-
-          <div className="space-y-1">
-            <p className="font-medium text-muted-foreground">3. Run it in the background</p>
-            <CodeBlock text={runCmd} />
-          </div>
-
-          <div className="space-y-1">
-            <p className="font-medium text-muted-foreground">4. Watchdog cron — paste into <code className="bg-muted px-1 rounded">/etc/crontabs/root</code></p>
-            <CodeBlock text={cronLine} />
-          </div>
-
-          <div className="space-y-1">
-            <p className="font-medium text-muted-foreground">5. Auto-start on boot — paste into <code className="bg-muted px-1 rounded">/etc/rc.local</code></p>
-            <CodeBlock text={rcLine} />
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -899,8 +832,6 @@ function PrinterCard({ p }: { p: Printer }) {
         <span className="text-[11px] text-muted-foreground">Sends a test job · LAN test bypasses queue</span>
       </div>
 
-      {p.lanIp && <RouterAgentSetup printerIp={p.lanIp} />}
-
       <PrinterDialog open={editing} initial={p} onClose={() => setEditing(false)} />
       {designingTemplate && (
         <PrintTemplateDesignerModal
@@ -1197,9 +1128,7 @@ export default function Printers() {
               <PrinterIcon className="w-6 h-6" /> Printers
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Configure Star receipt printers for LAN browser delivery via WebPRNT.
-              Open the <a href="/admin/print-agent" className="underline text-primary">Print Agent</a> page
-              on a device connected to your printer's local network, then use the{" "}
+              Configure Star receipt printers for LAN direct printing via TCP port 9100. Use the{" "}
               <span className="inline-flex items-center gap-1"><Palette className="w-3.5 h-3.5 text-violet-600" /> palette</span>{" "}
               button on each printer to design its receipt template.
             </p>
