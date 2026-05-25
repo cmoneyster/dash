@@ -1186,8 +1186,8 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               1 · SSH into the router
             </p>
-            <CodeBlock text="ssh root@192.168.8.1" />
-            <p className="text-[11px] text-muted-foreground">Replace <code className="font-mono bg-muted px-0.5 rounded">192.168.8.1</code> with your GL.iNet router's LAN IP.</p>
+            <CodeBlock text="ssh root@192.168.22.1" />
+            <p className="text-[11px] text-muted-foreground">Replace <code className="font-mono bg-muted px-0.5 rounded">192.168.22.1</code> with your GL.iNet router's LAN IP if different.</p>
           </div>
 
           <div className="space-y-1">
