@@ -92,6 +92,7 @@ function wrap(text: string, indent = 0): string[] {
 
 function fmtTime(d: Date): string {
   return d.toLocaleString("en-US", {
+    timeZone: "America/New_York",
     month: "numeric",
     day: "numeric",
     year: "2-digit",
