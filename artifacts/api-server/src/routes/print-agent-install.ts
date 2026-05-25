@@ -164,9 +164,17 @@ uci commit print-agent
 /etc/init.d/print-agent enable
 /etc/init.d/print-agent restart 2>/dev/null || /etc/init.d/print-agent start
 
+# Add cron watchdog if not already present
+CRON_LINE="* * * * * pgrep -f print-agent.sh > /dev/null || /etc/init.d/print-agent start"
+( crontab -l 2>/dev/null | grep -qF "print-agent.sh" ) || {
+  ( crontab -l 2>/dev/null; echo "$CRON_LINE" ) | crontab -
+  echo "==> Cron watchdog added."
+}
+
 echo "==> print-agent installed and started."
 echo "    Logs: logread -f | grep print-agent"
 echo "    Stop: /etc/init.d/print-agent stop"
+echo "    Watchdog: crontab -l | grep print-agent"
 `;
 
   res.set("Content-Type", "text/plain; charset=utf-8");
