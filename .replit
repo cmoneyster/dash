@@ -37,3 +37,15 @@ OWNER_PHONE = "+12405158960"
 
 [userenv.development]
 SMS_OUTBOUND_MODE = "shadow"
+
+[[ports]]
+localPort = 8080
+externalPort = 80
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 22476
+externalPort = 3000
