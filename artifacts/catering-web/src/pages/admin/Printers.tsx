@@ -1132,8 +1132,8 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
   const token = getAdminToken() ?? "";
   const installUrl = `${serverUrl}/api/print-agent/install.sh?token=${encodeURIComponent(token)}`;
   const downloadCmd = `wget -O /root/print-agent.sh '${installUrl}'`;
-  const runCmd = `sh /root/print-agent.sh > /var/log/print-agent.log 2>&1 &`;
-  const cronWatchdog = `* * * * * pgrep -f print-agent.sh > /dev/null || sh /root/print-agent.sh >> /var/log/print-agent.log 2>&1 &`;
+  const runCmd = `(trap '' HUP; sh /root/print-agent.sh > /var/log/print-agent.log 2>&1) &`;
+  const cronWatchdog = `* * * * * pgrep -f print-agent.sh > /dev/null || (trap '' HUP; sh /root/print-agent.sh >> /var/log/print-agent.log 2>&1) &`;
 
   return (
     <div className="mt-3 border-t pt-2">
@@ -1181,7 +1181,7 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
             </p>
             <CodeBlock text={runCmd} />
             <p className="text-[11px] text-muted-foreground">
-              Runs the agent in the background. The server URL and token are already baked into the script — it handles all LAN-enabled printers automatically.
+              The server URL and token are baked into the script. <code className="font-mono bg-muted px-0.5 rounded">trap '' HUP</code> keeps it running after you close the SSH session.
             </p>
           </div>
 
@@ -1209,21 +1209,10 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
               Management commands
             </p>
             <div className="space-y-1">
-              <CodeBlock text="/etc/init.d/print-agent stop" />
-              <CodeBlock text="/etc/init.d/print-agent start" />
-              <CodeBlock text="/etc/init.d/print-agent restart" />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Manual install (if one-liner fails)
-            </p>
-            <div className="space-y-1">
-              <CodeBlock text={`wget -qO /usr/bin/print-agent.sh '${serverUrl}/api/print-agent/install.sh?server=${encodeURIComponent(serverUrl)}&token=${encodeURIComponent(token)}'`} obscureToken />
-              <CodeBlock text="chmod +x /usr/bin/print-agent.sh" />
-              <CodeBlock text={`uci set print-agent.main=config\nuci set print-agent.main.server="${serverUrl}"\nuci set print-agent.main.token="YOUR_ADMIN_TOKEN"\nuci set print-agent.main.interval="5"\nuci commit print-agent`} />
-              <CodeBlock text="/etc/init.d/print-agent enable && /etc/init.d/print-agent start" />
+              <p className="text-[11px] text-muted-foreground">Stop:</p>
+              <CodeBlock text="kill $(pgrep -f print-agent.sh)" />
+              <p className="text-[11px] text-muted-foreground">Restart:</p>
+              <CodeBlock text={`kill $(pgrep -f print-agent.sh) 2>/dev/null; ${runCmd}`} />
             </div>
           </div>
         </div>
