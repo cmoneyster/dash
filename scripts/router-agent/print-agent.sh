@@ -7,6 +7,7 @@
 # Square uses, confirmed working on this printer.
 #
 # SETUP (run once on the router as root):
+#   ssh root@192.168.22.1
 #   opkg update && opkg install jq curl
 #   cp print-agent.sh /usr/bin/print-agent.sh
 #   chmod +x /usr/bin/print-agent.sh
