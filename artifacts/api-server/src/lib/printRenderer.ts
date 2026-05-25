@@ -14,38 +14,45 @@
  */
 
 const ESC = 0x1b;
-const LF = 0x0a;
+const GS  = 0x1d;
+const LF  = 0x0a;
 
 /**
- * Star Line Mode command set (TSP143IV native language for CloudPRNT).
- * text/plain CloudPRNT jobs are processed as Star Line Mode, NOT ESC/POS.
- * Key differences from ESC/POS:
- *   - Bold:      ESC E (on) / ESC F (off)       [ESC/POS uses ESC E n]
- *   - Align:     ESC GS a n                      [ESC/POS uses ESC a n]
- *   - Dbl size:  ESC i n1 n2                     [ESC/POS uses GS ! n]
- *   - Cut:       ESC m (partial) / ESC i (full)  [ESC/POS uses GS V]
+ * StarPRNT Core command set — content type: application/vnd.star.starprntcore
+ *
+ * The TSP143IV (TSP100IV series) natively supports starprntcore, which is
+ * explicitly designed to work with BOTH Star Line and StarPRNT emulation
+ * modes, bypassing the printer's emulation-map setting entirely.
+ *
+ * starprntcore uses ESC/POS-compatible commands:
+ *   Init:    ESC @  (1B 40)
+ *   Bold:    ESC E n  (1B 45 n)  n=1 on, n=0 off
+ *   Align:   ESC a n  (1B 61 n)  n=1 center, n=0 left
+ *   DblSize: GS ! n   (1D 21 n)  n=0x11 double H+W, n=0 normal
+ *   Cut:     ESC d n  (1B 64 n)  feed n lines then partial cut
+ *
+ * Reference: Star CloudPRNT Protocol Guide — Content Media Types
+ * https://star-m.jp/products/s_print/sdk/StarCloudPRNT/manual/en/
+ *   protocol-reference/common-spec-reference/content-mediatypes/index.html
  */
 
-/** Initialize printer (clears formatting, resets char set). Same in both modes. */
+/** Initialize printer (clears formatting, resets char set). */
 const INIT = Buffer.from([ESC, 0x40]);
-/** Bold on: ESC E.  Bold off: ESC F. */
-const BOLD_ON  = Buffer.from([ESC, 0x45]);          // ESC E
-const BOLD_OFF = Buffer.from([ESC, 0x46]);          // ESC F
-/** Center align: ESC GS a 1.  Left align: ESC GS a 0. */
-const ALIGN_CENTER = Buffer.from([ESC, 0x1d, 0x61, 0x01]);  // ESC GS a 1
-const ALIGN_LEFT   = Buffer.from([ESC, 0x1d, 0x61, 0x00]);  // ESC GS a 0
+/** Bold on / off. */
+const BOLD_ON  = Buffer.from([ESC, 0x45, 0x01]);
+const BOLD_OFF = Buffer.from([ESC, 0x45, 0x00]);
+/** Center / left align. */
+const ALIGN_CENTER = Buffer.from([ESC, 0x61, 0x01]);
+const ALIGN_LEFT   = Buffer.from([ESC, 0x61, 0x00]);
+/** Character size: 0x00 = normal, 0x11 = double-width + double-height. */
+const SIZE_NORMAL = Buffer.from([GS, 0x21, 0x00]);
+const SIZE_DOUBLE = Buffer.from([GS, 0x21, 0x11]);
 /**
- * Double-width via SO (0x0E) / DC4 (0x14) — standard control chars that
- * work across Star Line Mode without conflicting with cut commands.
- * Note: ESC i (0x1b 0x69) is the *full cut* command in Star Line Mode —
- * do NOT use it for character sizing.
- * True double-height is not supported in Star Line Mode; we omit it and
- * rely on bold + caps for visual emphasis instead.
+ * ESC d 3: feed 3 lines then partial cut (StarPRNT cut command).
+ * In starprntcore ESC d n = "print buffer + feed n lines + partial cut".
+ * This is different from ESC/POS where ESC d = line feed only and GS V = cut.
  */
-const SIZE_NORMAL = Buffer.from([0x14]);                     // DC4 = double-width OFF
-const SIZE_DOUBLE = Buffer.from([0x0e]);                     // SO  = double-width ON
-/** Partial cut (Star Line Mode). ESC m */
-const CUT = Buffer.from([ESC, 0x6d]);
+const CUT = Buffer.from([ESC, 0x64, 0x03]);
 
 const LINE_WIDTH = 48;
 
@@ -319,7 +326,7 @@ export function renderJob(payload: RenderablePayload): { bytes: Buffer; contentT
     case "plate_label": bytes = renderPlateLabel(payload); break;
     case "test": bytes = renderTest(payload); break;
   }
-  return { bytes, contentType: "text/plain" };
+  return { bytes, contentType: "application/vnd.star.starprntcore" };
 }
 
 // ─── StarWebPRNT XML renderer ────────────────────────────────────────────────

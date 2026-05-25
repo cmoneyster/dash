@@ -126,8 +126,13 @@ router.get("/cloudprnt/:token", async (req, res) => {
     return;
   }
 
-  // Default when a job is waiting: this is the printer's content-fetch GET.
-  req.log.info({ printerId: printer.id, jobId: next.id }, "[cloudprnt] GET content fetch → serving bytes");
+  // Printer tells us the exact format it wants via ?type= query param.
+  // Log it so we can verify the printer's preferred media type.
+  const requestedType = typeof req.query.type === "string" ? req.query.type : null;
+  req.log.info(
+    { printerId: printer.id, jobId: next.id, requestedType, query: req.query },
+    "[cloudprnt] GET content fetch → serving bytes",
+  );
   await serveJobBytes(req, res, printer.id, next.id);
 });
 

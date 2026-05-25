@@ -54,7 +54,7 @@ export async function enqueuePrintJob(args: {
       payload: args.payload,
       orderSource: args.orderSource ?? null,
       orderId: args.orderId ?? null,
-      contentType: args.contentType ?? "text/plain",
+      contentType: args.contentType ?? "application/vnd.star.starprntcore",
     })
     .returning();
   return row;
