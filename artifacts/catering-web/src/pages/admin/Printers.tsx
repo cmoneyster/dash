@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListPrinters,
@@ -7,54 +7,48 @@ import {
   useDeletePrinter,
   useListPrintJobs,
   useRetryPrintJob,
+  useTestLanPrinter,
   getListPrintersQueryKey,
   getListPrintJobsQueryKey,
-  CreatePrinterBodyPrintMode,
   type Printer,
   type CreatePrinterBody,
   type PrintJob,
+  type PrintTemplate,
 } from "@workspace/api-client-react";
 import { useForm } from "react-hook-form";
-import { Printer as PrinterIcon, Plus, Trash2, Pencil, Wifi, WifiOff, AlertTriangle, Copy, Check, RefreshCw, X, Eye, XCircle, Loader2, Terminal, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Printer as PrinterIcon,
+  Plus,
+  Trash2,
+  Pencil,
+  Wifi,
+  WifiOff,
+  AlertTriangle,
+  Check,
+  RefreshCw,
+  X,
+  Eye,
+  XCircle,
+  Loader2,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
+  Palette,
+  Copy,
+  Network,
+} from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 
-const PRINT_MODE_LABELS: Record<string, string> = {
-  cloudprnt: "CloudPRNT only",
-  lan_browser: "LAN browser only",
-  cloudprnt_lan_fallback: "CloudPRNT + LAN fallback",
-};
-
-function PrintModeBadge({ mode }: { mode: string }) {
-  const cls =
-    mode === "lan_browser"
-      ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300"
-      : mode === "cloudprnt_lan_fallback"
-      ? "bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300"
-      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300";
-  return (
-    <span className={`text-xs px-2 py-0.5 rounded-full ${cls}`}>
-      {PRINT_MODE_LABELS[mode] ?? mode}
-    </span>
-  );
-}
-
-function StatusPill({ p }: { p: Printer }) {
-  if (!p.enabled) return <span className="px-2 py-0.5 rounded-full text-[11px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">disabled</span>;
-  const map: Record<string, { cls: string; label: string; icon?: typeof Wifi }> = {
-    online:   { cls: "bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-300", label: "online", icon: Wifi },
-    offline:  { cls: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300", label: "offline", icon: WifiOff },
-    error:    { cls: "bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-300", label: "error", icon: AlertTriangle },
-    disabled: { cls: "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300", label: "disabled" },
-  };
-  const cfg = map[p.status] ?? map.offline;
-  const Icon = cfg.icon;
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${cfg.cls}`}>
-      {Icon && <Icon className="w-3 h-3" />}
-      {cfg.label}
-    </span>
-  );
+function relTime(iso: string | Date | null | undefined) {
+  if (!iso) return "never";
+  const t = new Date(iso).getTime();
+  const ms = Date.now() - t;
+  if (ms < 5_000) return "just now";
+  if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
+  return new Date(iso).toLocaleString();
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -75,17 +69,6 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function relTime(iso: string | Date | null | undefined) {
-  if (!iso) return "never";
-  const t = new Date(iso).getTime();
-  const ms = Date.now() - t;
-  if (ms < 5_000) return "just now";
-  if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
-  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
-  return new Date(iso).toLocaleString();
-}
-
 function CodeBlock({ text, obscureToken = false }: { text: string; obscureToken?: boolean }) {
   const display = obscureToken
     ? text.replace(/([0-9a-f]{64})/i, (m) => `${m.slice(0, 8)}…`)
@@ -95,6 +78,24 @@ function CodeBlock({ text, obscureToken = false }: { text: string; obscureToken?
       <span className="flex-1 break-all whitespace-pre-wrap">{display}</span>
       <CopyButton text={text} />
     </div>
+  );
+}
+
+function StatusPill({ p }: { p: Printer }) {
+  if (!p.enabled) return <span className="px-2 py-0.5 rounded-full text-[11px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">disabled</span>;
+  const map: Record<string, { cls: string; label: string; icon?: typeof Wifi }> = {
+    online:   { cls: "bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-300", label: "online", icon: Wifi },
+    offline:  { cls: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300", label: "offline", icon: WifiOff },
+    error:    { cls: "bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-300", label: "error", icon: AlertTriangle },
+    disabled: { cls: "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300", label: "disabled" },
+  };
+  const cfg = map[p.status] ?? map.offline;
+  const Icon = cfg.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${cfg.cls}`}>
+      {Icon && <Icon className="w-3 h-3" />}
+      {cfg.label}
+    </span>
   );
 }
 
@@ -125,7 +126,7 @@ function RouterAgentSetup({ printerIp }: { printerIp: string }) {
         <div className="mt-3 space-y-4 text-xs">
           <p className="text-muted-foreground">
             Run these commands on your GL.iNet router (SSH as root) to install or re-install the print agent for this printer (<code className="font-mono bg-muted px-1 rounded">{printerIp}</code>).
-            The download URL has your token and printer IP already embedded — you can copy it and run it again any time you replace the router.
+            The download URL has your token and printer IP already embedded.
           </p>
 
           <div className="space-y-1">
@@ -138,14 +139,14 @@ function RouterAgentSetup({ printerIp }: { printerIp: string }) {
               2. Download the pre-configured script
               {token
                 ? <span className="font-normal ml-1">(token: <code className="bg-muted px-1 rounded">{token.slice(0, 8)}…</code>)</span>
-                : <span className="font-normal ml-1 text-amber-600 dark:text-amber-400"> — log in as admin first so your token is included</span>
+                : <span className="font-normal ml-1 text-amber-600 dark:text-amber-400"> — log in as admin first</span>
               }
             </p>
             <CodeBlock text={wgetCmd} obscureToken />
           </div>
 
           <div className="space-y-1">
-            <p className="font-medium text-muted-foreground">3. Run it in the background (survives SSH disconnect)</p>
+            <p className="font-medium text-muted-foreground">3. Run it in the background</p>
             <CodeBlock text={runCmd} />
           </div>
 
@@ -155,20 +156,320 @@ function RouterAgentSetup({ printerIp }: { printerIp: string }) {
           </div>
 
           <div className="space-y-1">
-            <p className="font-medium text-muted-foreground">5. Auto-start on boot — paste into <code className="bg-muted px-1 rounded">/etc/rc.local</code> before <code className="bg-muted px-1 rounded">exit 0</code></p>
+            <p className="font-medium text-muted-foreground">5. Auto-start on boot — paste into <code className="bg-muted px-1 rounded">/etc/rc.local</code></p>
             <CodeBlock text={rcLine} />
           </div>
-
-          <p className="text-muted-foreground/70">
-            When replacing the router, repeat from step 1. The wget URL already has everything embedded — just re-run it to get a fresh copy of the script on the new router.
-          </p>
         </div>
       )}
     </div>
   );
 }
 
-type PrinterFormValues = CreatePrinterBody & { id?: number };
+function TestLanButton({ printer }: { printer: Printer }) {
+  const testLan = useTestLanPrinter();
+
+  if (!printer.lanIp) return null;
+
+  const state = testLan.isPending ? "pending" : testLan.isSuccess ? "ok" : testLan.isError ? "err" : "idle";
+
+  return (
+    <button
+      type="button"
+      onClick={() => testLan.mutate({ id: printer.id })}
+      disabled={state === "pending"}
+      title="Send a direct TCP test to port 9100 — bypasses the print queue"
+      className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all active:scale-95 disabled:opacity-60 ${
+        state === "ok"
+          ? "bg-green-600 text-white"
+          : state === "err"
+          ? "bg-red-600 text-white"
+          : "bg-muted hover:bg-muted/70 text-foreground"
+      }`}
+    >
+      {state === "pending"
+        ? <><Loader2 className="w-3 h-3 animate-spin" /> Testing…</>
+        : state === "ok"
+        ? <><Check className="w-3 h-3" /> LAN OK</>
+        : state === "err"
+        ? <><XCircle className="w-3 h-3" /> LAN Failed</>
+        : <><Network className="w-3 h-3" /> Test via LAN</>}
+    </button>
+  );
+}
+
+const TICKET_TYPES = [
+  { value: "kitchen_ticket", label: "Kitchen" },
+  { value: "customer_receipt", label: "Receipt" },
+  { value: "item_label", label: "Item label" },
+  { value: "plate_label", label: "Plate label" },
+] as const;
+
+type TicketType = typeof TICKET_TYPES[number]["value"];
+
+function PrintTemplateDesignerModal({
+  printer,
+  onClose,
+}: {
+  printer: Printer;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const update = useUpdatePrinter({
+    mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) },
+  });
+
+  const existingTemplate = printer.printTemplate as PrintTemplate | null | undefined;
+
+  const [tpl, setTpl] = useState<PrintTemplate>({
+    businessName: existingTemplate?.businessName ?? "",
+    footer: existingTemplate?.footer ?? "",
+    dividerChar: existingTemplate?.dividerChar ?? "-",
+    showTimestamp: existingTemplate?.showTimestamp ?? true,
+    showOrderNumber: existingTemplate?.showOrderNumber ?? true,
+    showGuestName: existingTemplate?.showGuestName ?? true,
+    showSource: existingTemplate?.showSource ?? true,
+    showTableNumber: existingTemplate?.showTableNumber ?? true,
+  });
+
+  const [ticketType, setTicketType] = useState<TicketType>("kitchen_ticket");
+  const [previewText, setPreviewText] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchPreview = (template: PrintTemplate, type: TicketType) => {
+    setPreviewLoading(true);
+    const token = getAdminToken();
+    fetch(`/api/admin/printers/${printer.id}/preview-template`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ ticketType: type, template }),
+    })
+      .then((r) => r.json())
+      .then((d: { text: string }) => {
+        setPreviewText(d.text);
+        setPreviewLoading(false);
+      })
+      .catch(() => {
+        setPreviewText("(preview error)");
+        setPreviewLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchPreview(tpl, ticketType), 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [tpl, ticketType]);
+
+  const handleSave = async () => {
+    const cleanTpl: PrintTemplate = {
+      ...tpl,
+      businessName: tpl.businessName?.trim() || null,
+      footer: tpl.footer?.trim() || null,
+      dividerChar: tpl.dividerChar?.slice(0, 1) || "-",
+    };
+    await update.mutateAsync({ id: printer.id, data: { printTemplate: cleanTpl } });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const setField = <K extends keyof PrintTemplate>(key: K, val: PrintTemplate[K]) =>
+    setTpl((prev) => ({ ...prev, [key]: val }));
+
+  const Toggle = ({ field, label }: { field: keyof PrintTemplate; label: string }) => (
+    <label className="flex items-center gap-2.5 cursor-pointer select-none">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={!!tpl[field]}
+        onClick={() => setField(field, !tpl[field] as PrintTemplate[typeof field])}
+        className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${
+          tpl[field] ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
+            tpl[field] ? "translate-x-4" : "translate-x-0"
+          }`}
+        />
+      </button>
+      <span className="text-sm">{label}</span>
+    </label>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div
+        className="bg-card rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
+          <div>
+            <h2 className="font-semibold text-lg flex items-center gap-2">
+              <Palette className="w-4 h-4 text-muted-foreground" />
+              Receipt template — {printer.name}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Customise what appears on each ticket type. Preview updates live.</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          <div className="w-72 shrink-0 border-r overflow-y-auto p-5 space-y-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Header</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Business name</label>
+                  <input
+                    value={tpl.businessName ?? ""}
+                    onChange={(e) => setField("businessName", e.target.value)}
+                    className="w-full px-3 py-2 border rounded-xl bg-background text-sm"
+                    placeholder="Hollywood East Cafe"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Overrides the default name on tickets.</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Sections</p>
+              <div className="space-y-3">
+                <Toggle field="showTimestamp" label="Show timestamp" />
+                <Toggle field="showOrderNumber" label="Show order #" />
+                <Toggle field="showGuestName" label="Show guest name" />
+                <Toggle field="showSource" label="Show order source" />
+                <Toggle field="showTableNumber" label="Show table number" />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Style</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Divider character</label>
+                  <input
+                    value={tpl.dividerChar ?? "-"}
+                    onChange={(e) => setField("dividerChar", e.target.value.slice(0, 1) || "-")}
+                    className="w-20 px-3 py-2 border rounded-xl bg-background text-sm font-mono text-center"
+                    maxLength={1}
+                    placeholder="-"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Single character repeated across the ticket width.</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Footer</p>
+              <div>
+                <textarea
+                  value={tpl.footer ?? ""}
+                  onChange={(e) => setField("footer", e.target.value)}
+                  className="w-full px-3 py-2 border rounded-xl bg-background text-sm font-mono resize-none"
+                  rows={4}
+                  placeholder="Thank you for your order!"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">Printed at the bottom of each ticket. Use line breaks for multiple lines.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <div className="flex items-center gap-1 px-5 py-3 border-b bg-muted/30 shrink-0 flex-wrap">
+              {TICKET_TYPES.map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setTicketType(t.value)}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    ticketType === t.value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background border hover:bg-muted text-foreground"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+              {previewLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground ml-2" />}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="bg-white dark:bg-slate-950 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 max-w-xs mx-auto shadow-inner">
+                {previewText !== null ? (
+                  <pre className="font-mono text-[11px] leading-[1.5] text-slate-900 dark:text-slate-100 whitespace-pre overflow-x-auto">
+                    {previewText || "(empty ticket)"}
+                  </pre>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  </div>
+                )}
+              </div>
+              <p className="text-center text-[11px] text-muted-foreground mt-3">
+                48-column paper preview · ESC/POS control chars stripped
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between px-5 py-4 border-t shrink-0 bg-muted/20">
+          <button
+            type="button"
+            onClick={() => {
+              setTpl({
+                businessName: "",
+                footer: "",
+                dividerChar: "-",
+                showTimestamp: true,
+                showOrderNumber: true,
+                showGuestName: true,
+                showSource: true,
+                showTableNumber: true,
+              });
+            }}
+            className="text-xs text-muted-foreground hover:text-foreground underline"
+          >
+            Reset to defaults
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 active:scale-95 transition-all text-sm"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={update.isPending || saved}
+              className={`px-5 py-2 rounded-xl font-medium text-sm transition-all active:scale-95 disabled:opacity-60 inline-flex items-center gap-2 ${
+                saved
+                  ? "bg-green-600 text-white"
+                  : "bg-primary text-primary-foreground hover:opacity-90"
+              }`}
+            >
+              {update.isPending
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                : saved
+                ? <><Check className="w-4 h-4" /> Saved</>
+                : "Save template"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type PrinterFormValues = Omit<CreatePrinterBody, "printMode">;
 
 function PrinterDialog({
   open,
@@ -186,7 +487,7 @@ function PrinterDialog({
   const update = useUpdatePrinter({
     mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) },
   });
-  const { register, handleSubmit, reset, watch } = useForm<PrinterFormValues>({
+  const { register, handleSubmit, reset } = useForm<PrinterFormValues>({
     defaultValues: initial ?? {
       name: "",
       model: "TSP143IV",
@@ -196,14 +497,10 @@ function PrinterDialog({
       printsCustomerReceipt: false,
       printsItemLabels: false,
       autoPrintOnNewOrder: true,
-      printMode: CreatePrinterBodyPrintMode.cloudprnt,
       suppressItemLabelsForPlateLines: true,
       enabled: true,
     },
   });
-
-  const printMode = watch("printMode" as keyof PrinterFormValues);
-  const needsLanIp = printMode === "lan_browser" || printMode === "cloudprnt_lan_fallback";
 
   if (!open) return null;
 
@@ -217,7 +514,6 @@ function PrinterDialog({
       printsCustomerReceipt: !!values.printsCustomerReceipt,
       printsItemLabels: !!values.printsItemLabels,
       autoPrintOnNewOrder: !!values.autoPrintOnNewOrder,
-      printMode: values.printMode ?? CreatePrinterBodyPrintMode.cloudprnt,
       suppressItemLabelsForPlateLines: !!values.suppressItemLabelsForPlateLines,
       enabled: !!values.enabled,
     };
@@ -261,19 +557,9 @@ function PrinterDialog({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Print mode</label>
-            <select {...register("printMode" as keyof PrinterFormValues)} className="w-full px-3 py-2 border rounded-xl bg-background">
-              <option value="cloudprnt">CloudPRNT only — printer polls the server directly</option>
-              <option value="lan_browser">LAN browser only — browser agent delivers via WebPRNT</option>
-              <option value="cloudprnt_lan_fallback">CloudPRNT + LAN fallback — agent picks up stale jobs</option>
-            </select>
-          </div>
-
-          <div>
             <label className="block text-sm font-medium mb-1">
               LAN IP
-              {needsLanIp && <span className="text-red-500 ml-1">*</span>}
-              <span className="text-xs text-muted-foreground ml-2">required for LAN delivery modes</span>
+              <span className="text-xs text-muted-foreground ml-2">required for LAN delivery</span>
             </label>
             <input
               {...register("lanIp")}
@@ -296,7 +582,7 @@ function PrinterDialog({
           </div>
 
           <div className="space-y-2 p-3 bg-muted/50 rounded-xl border">
-            <p className="text-sm font-semibold">Behavior</p>
+            <p className="text-sm font-semibold">Behaviour</p>
             <label className="flex items-center gap-2 text-sm">
               <input {...register("autoPrintOnNewOrder")} type="checkbox" className="w-4 h-4" /> Auto-print when a new order arrives
             </label>
@@ -324,6 +610,7 @@ function PrinterDialog({
 function PrinterCard({ p }: { p: Printer }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [designingTemplate, setDesigningTemplate] = useState(false);
   const [testState, setTestState] = useState<"idle" | "pending" | "ok" | "err">("idle");
   const del = useDeletePrinter({
     mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) },
@@ -349,14 +636,12 @@ function PrinterCard({ p }: { p: Printer }) {
     setTimeout(() => setTestState("idle"), 3000);
   }
 
-  const cloudprntUrl = `${window.location.origin}/api/cloudprnt/${p.cloudprntToken}`;
-  const printMode = (p as unknown as Record<string, unknown>).printMode as string ?? "cloudprnt";
-  const showCloudPrntUrl = printMode !== "lan_browser";
-
   const outputs: string[] = [];
   if (p.printsKitchenTicket) outputs.push("Kitchen");
   if (p.printsCustomerReceipt) outputs.push("Receipts");
   if (p.printsItemLabels) outputs.push("Item labels");
+
+  const hasTemplate = !!(p.printTemplate as PrintTemplate | null | undefined);
 
   return (
     <div className="bg-card rounded-2xl border p-4 shadow-sm">
@@ -366,17 +651,29 @@ function PrinterCard({ p }: { p: Printer }) {
           <div>
             <div className="font-semibold flex items-center gap-2">
               {p.name} <StatusPill p={p} />
+              {hasTemplate && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 font-medium">
+                  custom template
+                </span>
+              )}
             </div>
             <div className="text-xs text-muted-foreground">
               {p.model}{p.location ? ` · ${p.location}` : ""}{p.lanIp ? ` · ${p.lanIp}` : ""}
             </div>
             <div className="text-xs text-muted-foreground/70 mt-0.5">
-              Last polled {relTime(p.lastPolledAt as unknown as string | null)}
+              Last seen {relTime(p.lastPolledAt as unknown as string | null)}
               {p.lastError ? ` · ${p.lastError}` : ""}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => setDesigningTemplate(true)}
+            className="p-2 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950/40 active:scale-95 transition-all text-violet-700 dark:text-violet-400"
+            title="Design receipt template"
+          >
+            <Palette className="w-4 h-4" />
+          </button>
           <button
             onClick={() => setEditing(true)}
             className="p-2 rounded-lg hover:bg-muted active:scale-95 transition-all"
@@ -402,20 +699,10 @@ function PrinterCard({ p }: { p: Printer }) {
           ? <span className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">No output toggles enabled</span>
           : outputs.map((o) => <span key={o} className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">{o}</span>)}
         {p.autoPrintOnNewOrder && <span className="text-xs bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-300 px-2 py-0.5 rounded-full">Auto-print</span>}
-        <PrintModeBadge mode={printMode} />
+        <span className="text-xs bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 px-2 py-0.5 rounded-full">LAN browser</span>
       </div>
 
-      {showCloudPrntUrl && (
-        <div className="mt-3 p-2 bg-muted/50 rounded-lg flex items-center justify-between gap-2">
-          <div className="text-[11px] text-muted-foreground break-all">
-            <span className="font-medium">CloudPRNT URL:</span>{" "}
-            <span className="font-mono">{cloudprntUrl}</span>
-          </div>
-          <CopyButton text={cloudprntUrl} />
-        </div>
-      )}
-
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex items-center gap-2 flex-wrap">
         <button
           onClick={handleTestPrint}
           disabled={testState === "pending"}
@@ -435,12 +722,19 @@ function PrinterCard({ p }: { p: Printer }) {
             ? <><XCircle className="w-3 h-3" /> Failed</>
             : "Test Print"}
         </button>
-        <span className="text-[11px] text-muted-foreground">Sends a test page to this printer only</span>
+        <TestLanButton printer={p} />
+        <span className="text-[11px] text-muted-foreground">Sends a test job · LAN test bypasses queue</span>
       </div>
 
       {p.lanIp && <RouterAgentSetup printerIp={p.lanIp} />}
 
       <PrinterDialog open={editing} initial={p} onClose={() => setEditing(false)} />
+      {designingTemplate && (
+        <PrintTemplateDesignerModal
+          printer={p}
+          onClose={() => setDesigningTemplate(false)}
+        />
+      )}
     </div>
   );
 }
@@ -474,7 +768,7 @@ function BroadcastTestPanel({ printers }: { printers: Printer[] }) {
             body: JSON.stringify({ jobType }),
           });
           if (res.ok) count++;
-        } catch { /* silent */ }
+        } catch { }
       }),
     );
     await qc.invalidateQueries({ queryKey: getListPrintJobsQueryKey() });
@@ -608,6 +902,17 @@ function PreviewModal({ jobId, onClose }: { jobId: number; onClose: () => void }
   );
 }
 
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    queued: "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300",
+    delivered: "bg-blue-100 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300",
+    printed: "bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-300",
+    failed: "bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-300",
+    canceled: "bg-muted text-muted-foreground",
+  };
+  return <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${map[status] ?? "bg-muted"}`}>{status}</span>;
+}
+
 function PrintJobsPanel() {
   const { data: jobs = [], refetch } = useListPrintJobs({ limit: 50 }, {
     query: {
@@ -700,17 +1005,6 @@ function PrintJobsPanel() {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    queued: "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300",
-    delivered: "bg-blue-100 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300",
-    printed: "bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-300",
-    failed: "bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-300",
-    canceled: "bg-muted text-muted-foreground",
-  };
-  return <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${map[status] ?? "bg-muted"}`}>{status}</span>;
-}
-
 export default function Printers() {
   const { data: printers = [], isLoading } = useListPrinters({
     query: {
@@ -730,14 +1024,16 @@ export default function Printers() {
               <PrinterIcon className="w-6 h-6" /> Printers
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Configure Star receipt printers. Each printer can run in CloudPRNT, LAN browser, or hybrid mode.
-              For LAN delivery, open the <a href="/admin/print-agent" className="underline text-primary">Print Agent</a> page
-              on a device connected to your printer's local network.
+              Configure Star receipt printers for LAN browser delivery via WebPRNT.
+              Open the <a href="/admin/print-agent" className="underline text-primary">Print Agent</a> page
+              on a device connected to your printer's local network, then use the{" "}
+              <span className="inline-flex items-center gap-1"><Palette className="w-3.5 h-3.5 text-violet-600" /> palette</span>{" "}
+              button on each printer to design its receipt template.
             </p>
           </div>
           <button
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 active:scale-95 transition-all"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 active:scale-95 transition-all shrink-0"
           >
             <Plus className="w-4 h-4" /> Add printer
           </button>

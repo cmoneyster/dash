@@ -1886,37 +1886,45 @@ export const ListPrintersResponseItem = zod.object({
   model: zod
     .string()
     .describe("Star printer model (e.g. TSP143IV, TSP100IV, TSP650II)"),
-  cloudprntToken: zod
-    .string()
-    .describe(
-      "Per-printer secret token; the printer polls \/api\/cloudprnt\/{token}.",
-    ),
   lanIp: zod
     .string()
     .nullish()
-    .describe("Trailer-LAN IP for the WebPRNT browser-side fallback."),
+    .describe("LAN IP for WebPRNT browser-based delivery."),
   location: zod.string().nullish(),
   printsKitchenTicket: zod.boolean(),
   printsCustomerReceipt: zod.boolean(),
   printsItemLabels: zod.boolean(),
   autoPrintOnNewOrder: zod.boolean(),
   printMode: zod
-    .enum(["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"])
-    .describe(
-      "cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.\n",
-    ),
+    .enum(["lan_browser"])
+    .describe("lan_browser = browser agent delivers via StarWebPRNT."),
   suppressItemLabelsForPlateLines: zod.boolean(),
   enabled: zod.boolean(),
   status: zod.enum(["online", "offline", "error", "disabled"]),
   lastPolledAt: zod.coerce.date().nullish(),
   lastError: zod.string().nullish(),
+  printTemplate: zod
+    .object({
+      businessName: zod.string().nullish(),
+      footer: zod.string().nullish(),
+      dividerChar: zod
+        .string()
+        .nullish()
+        .describe('Single character used for divider lines (default \"-\")'),
+      showTimestamp: zod.boolean().nullish(),
+      showOrderNumber: zod.boolean().nullish(),
+      showGuestName: zod.boolean().nullish(),
+      showSource: zod.boolean().nullish(),
+      showTableNumber: zod.boolean().nullish(),
+    })
+    .nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
 export const ListPrintersResponse = zod.array(ListPrintersResponseItem);
 
 /**
- * @summary Register a new CloudPRNT printer
+ * @summary Register a new LAN printer
  */
 export const CreatePrinterBody = zod.object({
   name: zod.string(),
@@ -1927,9 +1935,6 @@ export const CreatePrinterBody = zod.object({
   printsCustomerReceipt: zod.boolean().optional(),
   printsItemLabels: zod.boolean().optional(),
   autoPrintOnNewOrder: zod.boolean().optional(),
-  printMode: zod
-    .enum(["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"])
-    .optional(),
   suppressItemLabelsForPlateLines: zod.boolean().optional(),
   enabled: zod.boolean().optional(),
 });
@@ -1950,11 +1955,23 @@ export const UpdatePrinterBody = zod.object({
   printsCustomerReceipt: zod.boolean().optional(),
   printsItemLabels: zod.boolean().optional(),
   autoPrintOnNewOrder: zod.boolean().optional(),
-  printMode: zod
-    .enum(["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"])
-    .optional(),
   suppressItemLabelsForPlateLines: zod.boolean().optional(),
   enabled: zod.boolean().optional(),
+  printTemplate: zod
+    .object({
+      businessName: zod.string().nullish(),
+      footer: zod.string().nullish(),
+      dividerChar: zod
+        .string()
+        .nullish()
+        .describe('Single character used for divider lines (default \"-\")'),
+      showTimestamp: zod.boolean().nullish(),
+      showOrderNumber: zod.boolean().nullish(),
+      showGuestName: zod.boolean().nullish(),
+      showSource: zod.boolean().nullish(),
+      showTableNumber: zod.boolean().nullish(),
+    })
+    .nullish(),
 });
 
 export const UpdatePrinterResponse = zod.object({
@@ -1963,30 +1980,38 @@ export const UpdatePrinterResponse = zod.object({
   model: zod
     .string()
     .describe("Star printer model (e.g. TSP143IV, TSP100IV, TSP650II)"),
-  cloudprntToken: zod
-    .string()
-    .describe(
-      "Per-printer secret token; the printer polls \/api\/cloudprnt\/{token}.",
-    ),
   lanIp: zod
     .string()
     .nullish()
-    .describe("Trailer-LAN IP for the WebPRNT browser-side fallback."),
+    .describe("LAN IP for WebPRNT browser-based delivery."),
   location: zod.string().nullish(),
   printsKitchenTicket: zod.boolean(),
   printsCustomerReceipt: zod.boolean(),
   printsItemLabels: zod.boolean(),
   autoPrintOnNewOrder: zod.boolean(),
   printMode: zod
-    .enum(["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"])
-    .describe(
-      "cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.\n",
-    ),
+    .enum(["lan_browser"])
+    .describe("lan_browser = browser agent delivers via StarWebPRNT."),
   suppressItemLabelsForPlateLines: zod.boolean(),
   enabled: zod.boolean(),
   status: zod.enum(["online", "offline", "error", "disabled"]),
   lastPolledAt: zod.coerce.date().nullish(),
   lastError: zod.string().nullish(),
+  printTemplate: zod
+    .object({
+      businessName: zod.string().nullish(),
+      footer: zod.string().nullish(),
+      dividerChar: zod
+        .string()
+        .nullish()
+        .describe('Single character used for divider lines (default \"-\")'),
+      showTimestamp: zod.boolean().nullish(),
+      showOrderNumber: zod.boolean().nullish(),
+      showGuestName: zod.boolean().nullish(),
+      showSource: zod.boolean().nullish(),
+      showTableNumber: zod.boolean().nullish(),
+    })
+    .nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -2029,9 +2054,7 @@ export const TestPrintPrinterResponse = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod
-    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
-    .nullish(),
+  deliveredVia: zod.enum(["lan_browser"]).nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),
@@ -2049,6 +2072,42 @@ export const TestLanPrinterResponse = zod.object({
   jobId: zod.number(),
   lanIp: zod.string(),
   message: zod.string(),
+});
+
+/**
+ * @summary Render a sample ticket with the given template and return stripped text for live preview
+ */
+export const PreviewPrinterTemplateParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const PreviewPrinterTemplateBody = zod.object({
+  ticketType: zod.enum([
+    "kitchen_ticket",
+    "customer_receipt",
+    "item_label",
+    "plate_label",
+  ]),
+  template: zod
+    .object({
+      businessName: zod.string().nullish(),
+      footer: zod.string().nullish(),
+      dividerChar: zod
+        .string()
+        .nullish()
+        .describe('Single character used for divider lines (default \"-\")'),
+      showTimestamp: zod.boolean().nullish(),
+      showOrderNumber: zod.boolean().nullish(),
+      showGuestName: zod.boolean().nullish(),
+      showSource: zod.boolean().nullish(),
+      showTableNumber: zod.boolean().nullish(),
+    })
+    .nullish(),
+});
+
+export const PreviewPrinterTemplateResponse = zod.object({
+  ticketType: zod.string(),
+  text: zod.string(),
 });
 
 /**
@@ -2076,9 +2135,7 @@ export const ListPrintJobsResponseItem = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod
-    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
-    .nullish(),
+  deliveredVia: zod.enum(["lan_browser"]).nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),
@@ -2108,9 +2165,7 @@ export const RetryPrintJobResponse = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod
-    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
-    .nullish(),
+  deliveredVia: zod.enum(["lan_browser"]).nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),
@@ -2852,9 +2907,7 @@ export const ClaimPrintAgentJobResponse = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod
-    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
-    .nullish(),
+  deliveredVia: zod.enum(["lan_browser"]).nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),

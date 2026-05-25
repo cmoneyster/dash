@@ -21,13 +21,10 @@ export const printJobStatusValues = [
 ] as const;
 export type PrintJobStatus = (typeof printJobStatusValues)[number];
 
-export const printJobDeliveryValues = ["cloudprnt", "lan_fallback", "lan_browser"] as const;
+export const printJobDeliveryValues = ["lan_browser"] as const;
 export type PrintJobDelivery = (typeof printJobDeliveryValues)[number];
 
-// Generic envelope for renderer input. Stored as jsonb so the renderer can
-// re-render on retry without re-querying upstream sources.
 export type PrintJobPayload = {
-  // Job-type-discriminated payloads. Keep loose here; the renderer narrows.
   [key: string]: unknown;
 };
 
@@ -35,10 +32,7 @@ export const printJobsTable = pgTable("print_jobs", {
   id: serial("id").primaryKey(),
   printerId: integer("printer_id").notNull().references(() => printersTable.id, { onDelete: "cascade" }),
   jobType: text("job_type").notNull(),
-  // Source order context. Either points into orders (customer-facing) or
-  // event_orders (staff order-taker). We don't enforce FK here so a single
-  // column can represent both; the source column disambiguates.
-  orderSource: text("order_source"), // "order" | "event_order" | null (test/manual)
+  orderSource: text("order_source"),
   orderId: integer("order_id"),
   payload: jsonb("payload").$type<PrintJobPayload>().notNull(),
   contentType: text("content_type").notNull().default("application/vnd.star.starprnt"),

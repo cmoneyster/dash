@@ -60,6 +60,8 @@ import type {
   OpenaiMessage,
   Order,
   Plan,
+  PreviewTemplateBody,
+  PreviewTemplateResult,
   PrintJob,
   Printer,
   RecommendedItem,
@@ -3952,7 +3954,7 @@ export function useListPrinters<
 }
 
 /**
- * @summary Register a new CloudPRNT printer
+ * @summary Register a new LAN printer
  */
 export const getCreatePrinterUrl = () => {
   return `/api/admin/printers`;
@@ -4015,7 +4017,7 @@ export type CreatePrinterMutationBody = BodyType<CreatePrinterBody>;
 export type CreatePrinterMutationError = ErrorType<unknown>;
 
 /**
- * @summary Register a new CloudPRNT printer
+ * @summary Register a new LAN printer
  */
 export const useCreatePrinter = <
   TError = ErrorType<unknown>,
@@ -4377,6 +4379,93 @@ export const useTestLanPrinter = <
   TContext
 > => {
   return useMutation(getTestLanPrinterMutationOptions(options));
+};
+
+/**
+ * @summary Render a sample ticket with the given template and return stripped text for live preview
+ */
+export const getPreviewPrinterTemplateUrl = (id: number) => {
+  return `/api/admin/printers/${id}/preview-template`;
+};
+
+export const previewPrinterTemplate = async (
+  id: number,
+  previewTemplateBody: PreviewTemplateBody,
+  options?: RequestInit,
+): Promise<PreviewTemplateResult> => {
+  return customFetch<PreviewTemplateResult>(getPreviewPrinterTemplateUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(previewTemplateBody),
+  });
+};
+
+export const getPreviewPrinterTemplateMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof previewPrinterTemplate>>,
+    TError,
+    { id: number; data: BodyType<PreviewTemplateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof previewPrinterTemplate>>,
+  TError,
+  { id: number; data: BodyType<PreviewTemplateBody> },
+  TContext
+> => {
+  const mutationKey = ["previewPrinterTemplate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof previewPrinterTemplate>>,
+    { id: number; data: BodyType<PreviewTemplateBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return previewPrinterTemplate(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PreviewPrinterTemplateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof previewPrinterTemplate>>
+>;
+export type PreviewPrinterTemplateMutationBody = BodyType<PreviewTemplateBody>;
+export type PreviewPrinterTemplateMutationError = ErrorType<void>;
+
+/**
+ * @summary Render a sample ticket with the given template and return stripped text for live preview
+ */
+export const usePreviewPrinterTemplate = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof previewPrinterTemplate>>,
+    TError,
+    { id: number; data: BodyType<PreviewTemplateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof previewPrinterTemplate>>,
+  TError,
+  { id: number; data: BodyType<PreviewTemplateBody> },
+  TContext
+> => {
+  return useMutation(getPreviewPrinterTemplateMutationOptions(options));
 };
 
 /**

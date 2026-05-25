@@ -7,14 +7,11 @@
  */
 
 /**
- * cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.
-
+ * lan_browser = browser agent delivers via StarWebPRNT.
  */
 export type PrinterPrintMode =
   (typeof PrinterPrintMode)[keyof typeof PrinterPrintMode];
 
 export const PrinterPrintMode = {
-  cloudprnt: "cloudprnt",
   lan_browser: "lan_browser",
-  cloudprnt_lan_fallback: "cloudprnt_lan_fallback",
 } as const;

@@ -472,7 +472,7 @@ export default function EventTakerOrder() {
   }, [lastReceipt?.id]);
 
   // Auto-print on order placement is now handled server-side via the
-  // CloudPRNT fan-out (printFanout.ts), gated by per-printer
+  // print fan-out (printFanout.ts), gated by per-printer
   // auto_print_on_new_order toggles plus the per-surface allowed-kinds
   // matrix. The Taker no longer triggers a browser print on confirmation.
 

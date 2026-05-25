@@ -5,7 +5,7 @@ import { Loader2, Printer, Tag, X, Check, AlertCircle } from "lucide-react";
 // Display. Lists every line item on the order with a Print button per
 // item plus a Print All button at the top. Each press POSTs to
 // `/api/event-ordering/orders/:id/print-labels` which routes labels
-// through the same global CloudPRNT queue as the auto fan-out — so
+// through the same global print queue as the auto fan-out — so
 // labels honor the admin printer settings, the per-surface matrix, and
 // the per-printer "suppress plate-line labels" toggle.
 //

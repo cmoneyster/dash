@@ -1,20 +1,30 @@
-import { pgTable, serial, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const printerStatusValues = ["online", "offline", "error", "disabled"] as const;
 export type PrinterStatus = (typeof printerStatusValues)[number];
 
-export const printerModeValues = ["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"] as const;
+export const printerModeValues = ["lan_browser"] as const;
 export type PrinterMode = (typeof printerModeValues)[number];
+
+export type PrintTemplate = {
+  businessName?: string;
+  footer?: string;
+  dividerChar?: string;
+  showTimestamp?: boolean;
+  showOrderNumber?: boolean;
+  showGuestName?: boolean;
+  showSource?: boolean;
+  showTableNumber?: boolean;
+};
 
 export const printersTable = pgTable("printers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   model: text("model").notNull().default("TSP143IV"),
-  cloudprntToken: text("cloudprnt_token").notNull().unique(),
   lanIp: text("lan_ip"),
-  printMode: text("print_mode").notNull().default("cloudprnt"),
+  printMode: text("print_mode").notNull().default("lan_browser"),
   location: text("location"),
   printsKitchenTicket: boolean("prints_kitchen_ticket").notNull().default(false),
   printsCustomerReceipt: boolean("prints_customer_receipt").notNull().default(false),
@@ -25,13 +35,13 @@ export const printersTable = pgTable("printers", {
   status: text("status").notNull().default("offline"),
   lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
   lastError: text("last_error"),
+  printTemplate: jsonb("print_template").$type<PrintTemplate>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const insertPrinterSchema = createInsertSchema(printersTable).omit({
   id: true,
-  cloudprntToken: true,
   status: true,
   lastPolledAt: true,
   lastError: true,

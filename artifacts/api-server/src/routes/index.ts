@@ -35,7 +35,6 @@ import adminSmsSettingsRouter from "./admin-sms-settings";
 import adminSmsMessagesRouter from "./admin-sms-messages";
 import webhooksSmsRouter from "./webhooks-sms";
 import demoRouter, { adminDemoRouter } from "./demo";
-import cloudprntRouter from "./cloudprnt";
 import adminPrintersRouter from "./admin-printers";
 import printAgentRouter, { installShHandler } from "./print-agent";
 
@@ -57,13 +56,9 @@ router.use(verifyRouter);
 router.use(placesRouter);
 router.use(instagramPublicRouter);
 router.use(quotePublicRouter);
-// Public webhooks — must be mounted BEFORE the admin auth middleware below.
 router.use(webhooksSquareRouter);
 router.use(webhooksSmsRouter);
 router.use(demoRouter);
-// CloudPRNT polling is unauthenticated by design — printers can't send
-// auth headers, so the per-printer token in the URL acts as the secret.
-router.use(cloudprntRouter);
 
 router.use(adminAuthRouter);
 

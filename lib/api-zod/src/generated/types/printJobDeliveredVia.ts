@@ -11,7 +11,5 @@ export type PrintJobDeliveredVia =
   | null;
 
 export const PrintJobDeliveredVia = {
-  cloudprnt: "cloudprnt",
-  lan_fallback: "lan_fallback",
   lan_browser: "lan_browser",
 } as const;

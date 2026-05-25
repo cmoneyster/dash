@@ -20,7 +20,7 @@ tags:
   - name: admin
     description: Admin dashboard operations
   - name: printers
-    description: Network receipt printer management (Star CloudPRNT)
+    description: Network receipt printer management (LAN browser delivery via StarWebPRNT)
   - name: openai
     description: OpenAI AI chat, image, and audio operations
 paths:
@@ -921,7 +921,7 @@ paths:
     post:
       operationId: createPrinter
       tags: [printers]
-      summary: Register a new CloudPRNT printer
+      summary: Register a new LAN printer
       requestBody:
         required: true
         content:
@@ -1022,6 +1022,33 @@ paths:
                 properties:
                   error:
                     type: string
+
+  /admin/printers/{id}/preview-template:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: previewPrinterTemplate
+      tags: [printers]
+      summary: Render a sample ticket with the given template and return stripped text for live preview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewTemplateBody"
+      responses:
+        "200":
+          description: Rendered preview text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewTemplateResult"
+        "404":
+          description: Printer not found
 
   /admin/print-jobs:
     get:
@@ -2807,13 +2834,10 @@ components:
         model:
           type: string
           description: Star printer model (e.g. TSP143IV, TSP100IV, TSP650II)
-        cloudprntToken:
-          type: string
-          description: Per-printer secret token; the printer polls /api/cloudprnt/{token}.
         lanIp:
           type: string
           nullable: true
-          description: Trailer-LAN IP for the WebPRNT browser-side fallback.
+          description: LAN IP for WebPRNT browser-based delivery.
         location:
           type: string
           nullable: true
@@ -2827,11 +2851,8 @@ components:
           type: boolean
         printMode:
           type: string
-          enum: [cloudprnt, lan_browser, cloudprnt_lan_fallback]
-          description: >
-            cloudprnt = printer polls server directly;
-            lan_browser = browser agent delivers via WebPRNT;
-            cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.
+          enum: [lan_browser]
+          description: lan_browser = browser agent delivers via StarWebPRNT.
         suppressItemLabelsForPlateLines:
           type: boolean
         enabled:
@@ -2846,6 +2867,9 @@ components:
         lastError:
           type: string
           nullable: true
+        printTemplate:
+          $ref: "#/components/schemas/PrintTemplate"
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -2856,7 +2880,6 @@ components:
         - id
         - name
         - model
-        - cloudprntToken
         - printsKitchenTicket
         - printsCustomerReceipt
         - printsItemLabels
@@ -2889,9 +2912,6 @@ components:
           type: boolean
         autoPrintOnNewOrder:
           type: boolean
-        printMode:
-          type: string
-          enum: [cloudprnt, lan_browser, cloudprnt_lan_fallback]
         suppressItemLabelsForPlateLines:
           type: boolean
         enabled:
@@ -2920,13 +2940,65 @@ components:
           type: boolean
         autoPrintOnNewOrder:
           type: boolean
-        printMode:
-          type: string
-          enum: [cloudprnt, lan_browser, cloudprnt_lan_fallback]
         suppressItemLabelsForPlateLines:
           type: boolean
         enabled:
           type: boolean
+        printTemplate:
+          $ref: "#/components/schemas/PrintTemplate"
+          nullable: true
+
+    PrintTemplate:
+      type: object
+      properties:
+        businessName:
+          type: string
+          nullable: true
+        footer:
+          type: string
+          nullable: true
+        dividerChar:
+          type: string
+          nullable: true
+          description: Single character used for divider lines (default "-")
+        showTimestamp:
+          type: boolean
+          nullable: true
+        showOrderNumber:
+          type: boolean
+          nullable: true
+        showGuestName:
+          type: boolean
+          nullable: true
+        showSource:
+          type: boolean
+          nullable: true
+        showTableNumber:
+          type: boolean
+          nullable: true
+
+    PreviewTemplateBody:
+      type: object
+      properties:
+        ticketType:
+          type: string
+          enum: [kitchen_ticket, customer_receipt, item_label, plate_label]
+        template:
+          $ref: "#/components/schemas/PrintTemplate"
+          nullable: true
+      required:
+        - ticketType
+
+    PreviewTemplateResult:
+      type: object
+      properties:
+        ticketType:
+          type: string
+        text:
+          type: string
+      required:
+        - ticketType
+        - text
 
     TestPrintBody:
       type: object
@@ -2982,7 +3054,7 @@ components:
         deliveredVia:
           type: string
           nullable: true
-          enum: [cloudprnt, lan_fallback, lan_browser]
+          enum: [lan_browser]
         error:
           type: string
           nullable: true

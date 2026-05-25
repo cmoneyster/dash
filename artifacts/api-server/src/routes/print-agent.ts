@@ -9,9 +9,7 @@
  * Auth: same HMAC Bearer token as all other /admin/* routes, protected by
  * requireAdminAuth in routes/index.ts.
  *
- * Delivery modes:
- *   lan_browser          – printer only delivers via browser agent (no CloudPRNT poll)
- *   cloudprnt_lan_fallback – CloudPRNT primary; agent picks up stale jobs after N seconds
+ * Delivery mode: lan_browser — browser agent delivers via StarWebPRNT.
  */
 
 import { Router, type IRouter } from "express";
@@ -20,13 +18,6 @@ import { buildWebPrntXml, renderJob } from "../lib/printRenderer";
 import type { RenderablePayload } from "../lib/printRenderer";
 
 const router: IRouter = Router();
-
-const DEFAULT_STALE_SECONDS = 8;
-
-function getStaleSeconds(): number {
-  const v = parseInt(process.env.LAN_FALLBACK_STALE_SECONDS ?? "");
-  return Number.isFinite(v) && v > 0 ? v : DEFAULT_STALE_SECONDS;
-}
 
 /**
  * GET /api/print-agent/queued
@@ -39,14 +30,14 @@ function getStaleSeconds(): number {
  */
 router.get("/print-agent/queued", async (req, res) => {
   try {
-    const stale = getStaleSeconds();
-    const jobs = await getQueuedJobsForLanAgent(stale);
+    const jobs = await getQueuedJobsForLanAgent();
 
     const result = jobs.flatMap((job) => {
       try {
         const payload = job.payload as unknown as RenderablePayload;
-        const webPrntXml = buildWebPrntXml(payload);
-        const { bytes } = renderJob(payload);
+        const template = job.printTemplate ?? undefined;
+        const webPrntXml = buildWebPrntXml(payload, template);
+        const { bytes } = renderJob(payload, template);
         return [{
           id: job.id,
           printerId: job.printerId,

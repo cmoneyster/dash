@@ -7,29 +7,28 @@
  */
 import type { PrinterPrintMode } from "./printerPrintMode";
 import type { PrinterStatus } from "./printerStatus";
+import type { PrintTemplate } from "./printTemplate";
 
 export interface Printer {
   id: number;
   name: string;
   /** Star printer model (e.g. TSP143IV, TSP100IV, TSP650II) */
   model: string;
-  /** Per-printer secret token; the printer polls /api/cloudprnt/{token}. */
-  cloudprntToken: string;
-  /** Trailer-LAN IP for the WebPRNT browser-side fallback. */
+  /** LAN IP for WebPRNT browser-based delivery. */
   lanIp?: string | null;
   location?: string | null;
   printsKitchenTicket: boolean;
   printsCustomerReceipt: boolean;
   printsItemLabels: boolean;
   autoPrintOnNewOrder: boolean;
-  /** cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.
-   */
+  /** lan_browser = browser agent delivers via StarWebPRNT. */
   printMode: PrinterPrintMode;
   suppressItemLabelsForPlateLines: boolean;
   enabled: boolean;
   status: PrinterStatus;
   lastPolledAt?: Date | null;
   lastError?: string | null;
+  printTemplate?: PrintTemplate | null;
   createdAt: Date;
   updatedAt: Date;
 }

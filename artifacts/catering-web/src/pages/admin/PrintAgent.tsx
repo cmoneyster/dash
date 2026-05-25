@@ -187,10 +187,8 @@ export default function PrintAgent() {
                 in this browser and accept the security warning. You only need to do this once per browser.
               </p>
               <p>
-                Printer IP addresses are configured in{" "}
+                Printers must have a LAN IP set in{" "}
                 <a href="/admin/printers" className="underline font-medium">Admin → Printers</a>.
-                Set the printer's <strong>Print mode</strong> to{" "}
-                <em>LAN browser only</em> or <em>CloudPRNT + LAN fallback</em>.
               </p>
             </div>
           </div>

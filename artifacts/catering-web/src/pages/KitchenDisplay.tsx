@@ -641,7 +641,7 @@ export default function KitchenDisplay() {
         setNewOrderIds(s => new Set([...s, ...fresh]));
         if (soundEnabledRef.current) playChime();
         if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
-        // Server-side CloudPRNT fan-out (printFanout.ts) handles auto-print
+        // Server-side fan-out (printFanout.ts) handles auto-print
         // on the originating surface; the kitchen tab no longer triggers
         // browser auto-print here.
       }
@@ -914,7 +914,7 @@ export default function KitchenDisplay() {
 
   // ── Print receipts / kitchen tickets ─────────────────────────────
   // Manual per-card "Print ticket / Print receipt" buttons stay as a
-  // browser-print backup; everything else flows through CloudPRNT.
+  // browser-print backup; everything else flows through the print fan-out.
   const [printJob, setPrintJob] = useState<PrintJob | null>(null);
 
   useEffect(() => {

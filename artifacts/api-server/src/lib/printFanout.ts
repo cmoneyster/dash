@@ -48,8 +48,7 @@ const ALLOWED_KINDS_BY_SOURCE: Record<FanoutSource, ReadonlySet<JobKind>> = {
  * even an accidental call from a demo path can't enqueue a job.
  *
  * Returns the number of jobs enqueued. The caller doesn't need to await
- * delivery — CloudPRNT printers poll on their own cadence; lan_browser
- * printers are served by the browser-based print agent.
+ * delivery — lan_browser printers are served by the browser-based print agent.
  */
 export async function fanoutPrintForEventOrder(args: {
   order: EventOrderRow;

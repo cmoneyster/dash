@@ -197,7 +197,7 @@ export function usePrintAgent(options: UsePrintAgentOptions = {}): PrintAgentSta
           try {
             const claimRes = await apiPost(`/api/print-agent/jobs/${job.id}/claim`);
             if (claimRes.status === 409) {
-              // Already claimed by CloudPRNT or another agent instance — skip.
+              // Already claimed by another agent instance — skip.
               return;
             }
             if (!claimRes.ok) throw new Error(`Claim failed: ${claimRes.status}`);

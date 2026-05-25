@@ -883,16 +883,13 @@ export interface OpenaiError {
 }
 
 /**
- * cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.
-
+ * lan_browser = browser agent delivers via StarWebPRNT.
  */
 export type PrinterPrintMode =
   (typeof PrinterPrintMode)[keyof typeof PrinterPrintMode];
 
 export const PrinterPrintMode = {
-  cloudprnt: "cloudprnt",
   lan_browser: "lan_browser",
-  cloudprnt_lan_fallback: "cloudprnt_lan_fallback",
 } as const;
 
 export type PrinterStatus = (typeof PrinterStatus)[keyof typeof PrinterStatus];
@@ -904,40 +901,41 @@ export const PrinterStatus = {
   disabled: "disabled",
 } as const;
 
+export interface PrintTemplate {
+  businessName?: string | null;
+  footer?: string | null;
+  /** Single character used for divider lines (default "-") */
+  dividerChar?: string | null;
+  showTimestamp?: boolean | null;
+  showOrderNumber?: boolean | null;
+  showGuestName?: boolean | null;
+  showSource?: boolean | null;
+  showTableNumber?: boolean | null;
+}
+
 export interface Printer {
   id: number;
   name: string;
   /** Star printer model (e.g. TSP143IV, TSP100IV, TSP650II) */
   model: string;
-  /** Per-printer secret token; the printer polls /api/cloudprnt/{token}. */
-  cloudprntToken: string;
-  /** Trailer-LAN IP for the WebPRNT browser-side fallback. */
+  /** LAN IP for WebPRNT browser-based delivery. */
   lanIp?: string | null;
   location?: string | null;
   printsKitchenTicket: boolean;
   printsCustomerReceipt: boolean;
   printsItemLabels: boolean;
   autoPrintOnNewOrder: boolean;
-  /** cloudprnt = printer polls server directly; lan_browser = browser agent delivers via WebPRNT; cloudprnt_lan_fallback = CloudPRNT primary, agent picks up stale jobs.
-   */
+  /** lan_browser = browser agent delivers via StarWebPRNT. */
   printMode: PrinterPrintMode;
   suppressItemLabelsForPlateLines: boolean;
   enabled: boolean;
   status: PrinterStatus;
   lastPolledAt?: string | null;
   lastError?: string | null;
+  printTemplate?: PrintTemplate | null;
   createdAt: string;
   updatedAt: string;
 }
-
-export type CreatePrinterBodyPrintMode =
-  (typeof CreatePrinterBodyPrintMode)[keyof typeof CreatePrinterBodyPrintMode];
-
-export const CreatePrinterBodyPrintMode = {
-  cloudprnt: "cloudprnt",
-  lan_browser: "lan_browser",
-  cloudprnt_lan_fallback: "cloudprnt_lan_fallback",
-} as const;
 
 export interface CreatePrinterBody {
   name: string;
@@ -948,19 +946,9 @@ export interface CreatePrinterBody {
   printsCustomerReceipt?: boolean;
   printsItemLabels?: boolean;
   autoPrintOnNewOrder?: boolean;
-  printMode?: CreatePrinterBodyPrintMode;
   suppressItemLabelsForPlateLines?: boolean;
   enabled?: boolean;
 }
-
-export type UpdatePrinterBodyPrintMode =
-  (typeof UpdatePrinterBodyPrintMode)[keyof typeof UpdatePrinterBodyPrintMode];
-
-export const UpdatePrinterBodyPrintMode = {
-  cloudprnt: "cloudprnt",
-  lan_browser: "lan_browser",
-  cloudprnt_lan_fallback: "cloudprnt_lan_fallback",
-} as const;
 
 export interface UpdatePrinterBody {
   name?: string;
@@ -971,9 +959,29 @@ export interface UpdatePrinterBody {
   printsCustomerReceipt?: boolean;
   printsItemLabels?: boolean;
   autoPrintOnNewOrder?: boolean;
-  printMode?: UpdatePrinterBodyPrintMode;
   suppressItemLabelsForPlateLines?: boolean;
   enabled?: boolean;
+  printTemplate?: PrintTemplate | null;
+}
+
+export type PreviewTemplateBodyTicketType =
+  (typeof PreviewTemplateBodyTicketType)[keyof typeof PreviewTemplateBodyTicketType];
+
+export const PreviewTemplateBodyTicketType = {
+  kitchen_ticket: "kitchen_ticket",
+  customer_receipt: "customer_receipt",
+  item_label: "item_label",
+  plate_label: "plate_label",
+} as const;
+
+export interface PreviewTemplateBody {
+  ticketType: PreviewTemplateBodyTicketType;
+  template?: PrintTemplate | null;
+}
+
+export interface PreviewTemplateResult {
+  ticketType: string;
+  text: string;
 }
 
 export type TestPrintBodyJobType =
@@ -1033,8 +1041,6 @@ export type PrintJobDeliveredVia =
   | null;
 
 export const PrintJobDeliveredVia = {
-  cloudprnt: "cloudprnt",
-  lan_fallback: "lan_fallback",
   lan_browser: "lan_browser",
 } as const;
 

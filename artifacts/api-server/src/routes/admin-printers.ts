@@ -1,11 +1,10 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { printersTable, printJobsTable } from "@workspace/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { printersTable, printJobsTable, type PrintTemplate } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import {
   cancelJob,
   enqueuePrintJob,
-  generateCloudPrntToken,
   recentJobs,
   recentJobsForPrinter,
   requeueJob,
@@ -39,18 +38,13 @@ router.post("/admin/printers", async (req, res) => {
       res.status(400).json({ error: "name required" });
       return;
     }
-    const printMode = typeof b.printMode === "string" &&
-      ["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"].includes(b.printMode)
-      ? b.printMode
-      : "cloudprnt";
     const [row] = await db
       .insert(printersTable)
       .values({
         name,
         model: typeof b.model === "string" && b.model ? b.model : "TSP143IV",
-        cloudprntToken: generateCloudPrntToken(),
         lanIp: typeof b.lanIp === "string" && b.lanIp.trim() ? b.lanIp.trim() : null,
-        printMode,
+        printMode: "lan_browser",
         location: typeof b.location === "string" && b.location.trim() ? b.location.trim() : null,
         printsKitchenTicket: !!b.printsKitchenTicket,
         printsCustomerReceipt: !!b.printsCustomerReceipt,
@@ -76,9 +70,8 @@ router.patch("/admin/printers/:id", async (req, res) => {
     if (typeof b.model === "string") updates.model = b.model;
     if (b.lanIp !== undefined) updates.lanIp = typeof b.lanIp === "string" && b.lanIp.trim() ? b.lanIp.trim() : null;
     if (b.location !== undefined) updates.location = typeof b.location === "string" && b.location.trim() ? b.location.trim() : null;
-    if (typeof b.printMode === "string" &&
-      ["cloudprnt", "lan_browser", "cloudprnt_lan_fallback"].includes(b.printMode)) {
-      updates.printMode = b.printMode;
+    if (b.printTemplate !== undefined) {
+      updates.printTemplate = b.printTemplate == null ? null : (b.printTemplate as PrintTemplate);
     }
     for (const k of [
       "printsKitchenTicket",
@@ -180,16 +173,6 @@ router.post("/admin/printers/:id/test-print", async (req, res) => {
   }
 });
 
-/**
- * POST /admin/printers/:id/test-lan
- *
- * Enqueues a test job for a LAN-capable printer so the browser-based print
- * agent can pick it up and deliver it. Returns the enqueued job.
- *
- * Unlike the old server-side TCP path, this works for cloud-hosted deployments
- * because delivery happens in the browser (on the same LAN as the printer).
- * The browser agent page / embedded hook picks the job up within ~2 seconds.
- */
 router.post("/admin/printers/:id/test-lan", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -218,6 +201,90 @@ router.post("/admin/printers/:id/test-lan", async (req, res) => {
   }
 });
 
+/**
+ * POST /admin/printers/:id/preview-template
+ *
+ * Renders a sample ticket with the provided template and returns stripped
+ * printable text so the frontend can display a live thermal paper preview.
+ */
+router.post("/admin/printers/:id/preview-template", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, id));
+    if (!printer) {
+      res.status(404).json({ error: "not found" });
+      return;
+    }
+    const b = req.body as Record<string, unknown>;
+    const ticketType = typeof b.ticketType === "string" ? b.ticketType : "customer_receipt";
+    const template = (b.template && typeof b.template === "object" ? b.template : null) as PrintTemplate | null;
+    const now = new Date().toISOString();
+
+    let payload: RenderablePayload;
+    if (ticketType === "kitchen_ticket") {
+      payload = {
+        type: "kitchen_ticket",
+        header: { orderNumber: "1042", guestName: "Jane Smith", source: "event_taker", placedAt: now, tableNumber: "12" },
+        lines: [
+          { name: "Orange Chicken", quantity: 2, modifiers: ["extra sauce"], notes: "well done" },
+          { name: "Spring Rolls", quantity: 5 },
+          { name: "Steamed Rice", quantity: 2 },
+        ],
+      };
+    } else if (ticketType === "item_label") {
+      payload = {
+        type: "item_label",
+        orderNumber: "1042",
+        guestName: "Jane Smith",
+        itemName: "Orange Chicken",
+        quantity: 2,
+        modifiers: ["extra sauce"],
+        notes: "well done",
+        placedAt: now,
+      };
+    } else if (ticketType === "plate_label") {
+      payload = {
+        type: "plate_label",
+        orderNumber: "1042",
+        guestName: "Jane Smith",
+        plateLabel: "Plate 1",
+        lines: [
+          { name: "Orange Chicken", quantity: 1 },
+          { name: "Steamed Rice", quantity: 1 },
+        ],
+        placedAt: now,
+      };
+    } else {
+      payload = {
+        type: "customer_receipt",
+        header: { orderNumber: "1042", guestName: "Jane Smith", source: "event_taker", placedAt: now, tableNumber: "12" },
+        lines: [
+          { name: "Orange Chicken", quantity: 2, unitPrice: 12.5 },
+          { name: "Spring Rolls", quantity: 5, unitPrice: 2.5 },
+          { name: "Steamed Rice", quantity: 2, unitPrice: 3.0 },
+        ],
+        subtotal: 43.5,
+        tax: 2.61,
+        total: 46.11,
+        businessName: "dash by Hollywood East Cafe",
+        footer: "Thank you for your order!",
+      };
+    }
+
+    const { bytes } = renderJob(payload, template ?? undefined);
+    const text = Buffer.from(
+      bytes.filter((b: number) => b === 0x0a || (b >= 0x20 && b <= 0x7e)),
+    )
+      .toString("ascii")
+      .trimEnd();
+
+    res.json({ ticketType, text });
+  } catch (err) {
+    req.log.error({ err }, "preview-template failed");
+    res.status(500).json({ error: "Failed to render preview" });
+  }
+});
+
 router.get("/admin/print-jobs", async (req, res) => {
   try {
     const printerId = req.query.printerId ? parseInt(String(req.query.printerId)) : null;
@@ -230,12 +297,6 @@ router.get("/admin/print-jobs", async (req, res) => {
   }
 });
 
-/**
- * Manual reprint trigger from Kitchen Display / Event Taker.
- * Fans the order out through the same path as auto-print, ignoring the
- * `auto_print_on_new_order` toggle (this is an explicit "send to printers"
- * request from staff). Body: { kind: "kitchen" | "receipt" | "all" }.
- */
 router.post("/admin/event-orders/:id/reprint", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -263,7 +324,6 @@ router.post("/admin/print-jobs/:id/retry", async (req, res) => {
   }
 });
 
-/** Cancel a queued job. Returns 404 if not found or already past the queued state. */
 router.delete("/admin/print-jobs/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -279,11 +339,6 @@ router.delete("/admin/print-jobs/:id", async (req, res) => {
   }
 });
 
-/**
- * Render a job's payload and return the human-readable text content.
- * Binary ESC/GS sequences are stripped so the preview is displayable in a
- * browser — only printable ASCII + newlines are kept.
- */
 router.get("/admin/print-jobs/:id/preview", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -297,9 +352,9 @@ router.get("/admin/print-jobs/:id/preview", async (req, res) => {
       res.status(404).json({ error: "not found" });
       return;
     }
-    const { bytes } = renderJob(job.payload as unknown as RenderablePayload);
-    // Keep only LF (0x0A) and printable ASCII (0x20-0x7E); strip all binary
-    // escape sequences so the output is safe to embed in JSON / display in a browser.
+    const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, job.printerId));
+    const template = printer?.printTemplate ?? undefined;
+    const { bytes } = renderJob(job.payload as unknown as RenderablePayload, template);
     const text = Buffer.from(
       bytes.filter((b: number) => b === 0x0a || (b >= 0x20 && b <= 0x7e)),
     )
@@ -311,8 +366,5 @@ router.get("/admin/print-jobs/:id/preview", async (req, res) => {
     res.status(500).json({ error: "Failed to preview job" });
   }
 });
-
-void and;
-void desc;
 
 export default router;
