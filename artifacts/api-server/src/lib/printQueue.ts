@@ -93,7 +93,21 @@ export async function claimJobForAgent(jobId: number): Promise<PrintJob | null> 
       LIMIT 1
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING *
+    RETURNING
+      id,
+      printer_id        AS "printerId",
+      job_type          AS "jobType",
+      status,
+      payload,
+      order_source      AS "orderSource",
+      order_id          AS "orderId",
+      content_type      AS "contentType",
+      attempts,
+      created_at        AS "createdAt",
+      delivered_at      AS "deliveredAt",
+      printed_at        AS "printedAt",
+      delivered_via     AS "deliveredVia",
+      error
   `);
   const rows = (result as unknown as { rows?: PrintJob[] }).rows ?? (result as unknown as PrintJob[]);
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
