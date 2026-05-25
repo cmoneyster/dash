@@ -1153,8 +1153,9 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
   const [open, setOpen] = useState(false);
   const serverUrl = window.location.origin;
   const token = getAdminToken() ?? "";
-  const installUrl = `${serverUrl}/api/print-agent/install.sh?server=${encodeURIComponent(serverUrl)}&token=${encodeURIComponent(token)}`;
-  const installCmd = `wget -qO- '${installUrl}' | sh`;
+  const installUrl = `${serverUrl}/api/print-agent/install.sh?server=${encodeURIComponent(serverUrl)}&token=${encodeURIComponent(token)}&printer=${encodeURIComponent(printer.lanIp ?? "")}`;
+  const downloadCmd = `wget -O /root/print-agent.sh '${installUrl}'`;
+  const runCmd = `sh /root/print-agent.sh`;
   const cronWatchdog = `* * * * * pgrep -f print-agent.sh > /dev/null || /etc/init.d/print-agent start`;
 
   return (
@@ -1192,9 +1193,16 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
 
           <div className="space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              2 · Run the one-line installer
+              2a · Download the install script
             </p>
-            <CodeBlock text={installCmd} obscureToken />
+            <CodeBlock text={downloadCmd} obscureToken />
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              2b · Run it
+            </p>
+            <CodeBlock text={runCmd} />
             <p className="text-[11px] text-muted-foreground">
               Writes <code className="font-mono bg-muted px-0.5 rounded">/usr/bin/print-agent.sh</code>,
               stores config in UCI, installs{" "}
