@@ -901,6 +901,18 @@ export const PrinterStatus = {
   disabled: "disabled",
 } as const;
 
+/**
+ * Where the logo appears relative to the business name or ticket title in the header section.
+ */
+export type PrintTemplateLogoPosition =
+  | (typeof PrintTemplateLogoPosition)[keyof typeof PrintTemplateLogoPosition]
+  | null;
+
+export const PrintTemplateLogoPosition = {
+  before_name: "before_name",
+  after_name: "after_name",
+} as const;
+
 export type TicketLayoutSectionOrderItem =
   (typeof TicketLayoutSectionOrderItem)[keyof typeof TicketLayoutSectionOrderItem];
 
@@ -931,15 +943,31 @@ export const SectionStyleAlign = {
 } as const;
 
 /**
+ * Text size for this section. normal is standard height; double is double-height ESC/POS.
+ */
+export type SectionStyleSize =
+  | (typeof SectionStyleSize)[keyof typeof SectionStyleSize]
+  | null;
+
+export const SectionStyleSize = {
+  normal: "normal",
+  double: "double",
+} as const;
+
+/**
  * Per-section style overrides for a ticket template.
  */
 export interface SectionStyle {
   /** Whether this section is printed. Defaults to true. */
   visible?: boolean | null;
-  /** Whether this section's text is bold. Inherits section default. */
+  /** Whether this section text is bold. Inherits section default. */
   bold?: boolean | null;
   /** Text alignment for this section. */
   align?: SectionStyleAlign;
+  /** Text size for this section. normal is standard height; double is double-height ESC/POS. */
+  size?: SectionStyleSize;
+  /** When true, a divider line is printed immediately after this section. */
+  dividerAfter?: boolean | null;
 }
 
 /**
@@ -967,6 +995,12 @@ export interface PrintTemplate {
   footer?: string | null;
   /** Single character used for divider lines (default "-"). */
   dividerChar?: string | null;
+  /** Overrides the ticket-type header title (e.g. "KITCHEN"). Applies to kitchen/item/plate tickets. */
+  headerText?: string | null;
+  /** URL of a logo image. Rendered via WebPRNT Image tag; shown as [LOGO] in ESC/POS text preview. */
+  logoUrl?: string | null;
+  /** Where the logo appears relative to the business name or ticket title in the header section. */
+  logoPosition?: PrintTemplateLogoPosition;
   kitchen_ticket?: TicketLayout | null;
   customer_receipt?: TicketLayout | null;
   item_label?: TicketLayout | null;

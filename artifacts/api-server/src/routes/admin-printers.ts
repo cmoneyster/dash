@@ -1,7 +1,34 @@
 import { Router, type IRouter } from "express";
+import { z } from "zod/v4";
 import { db } from "@workspace/db";
 import { printersTable, printJobsTable, type PrintTemplate } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+
+const sectionStyleSchema = z.object({
+  visible:      z.boolean().optional(),
+  bold:         z.boolean().optional(),
+  align:        z.enum(["left", "center", "right"]).optional(),
+  size:         z.enum(["normal", "double"]).optional(),
+  dividerAfter: z.boolean().optional(),
+});
+
+const ticketLayoutSchema = z.object({
+  sectionOrder: z.array(z.string()).optional(),
+  sections:     z.record(z.string(), sectionStyleSchema).optional(),
+});
+
+const printTemplateSchema = z.object({
+  businessName:    z.string().nullable().optional(),
+  footer:          z.string().nullable().optional(),
+  dividerChar:     z.string().max(1).nullable().optional(),
+  headerText:      z.string().nullable().optional(),
+  logoUrl:         z.string().nullable().optional(),
+  logoPosition:    z.enum(["before_name", "after_name"]).nullable().optional(),
+  kitchen_ticket:  ticketLayoutSchema.nullable().optional(),
+  customer_receipt: ticketLayoutSchema.nullable().optional(),
+  item_label:      ticketLayoutSchema.nullable().optional(),
+  plate_label:     ticketLayoutSchema.nullable().optional(),
+});
 import {
   cancelJob,
   enqueuePrintJob,
@@ -71,7 +98,16 @@ router.patch("/admin/printers/:id", async (req, res) => {
     if (b.lanIp !== undefined) updates.lanIp = typeof b.lanIp === "string" && b.lanIp.trim() ? b.lanIp.trim() : null;
     if (b.location !== undefined) updates.location = typeof b.location === "string" && b.location.trim() ? b.location.trim() : null;
     if (b.printTemplate !== undefined) {
-      updates.printTemplate = b.printTemplate == null ? null : (b.printTemplate as PrintTemplate);
+      if (b.printTemplate == null) {
+        updates.printTemplate = null;
+      } else {
+        const parsed = printTemplateSchema.safeParse(b.printTemplate);
+        if (!parsed.success) {
+          res.status(400).json({ error: "Invalid printTemplate", issues: parsed.error.issues });
+          return;
+        }
+        updates.printTemplate = parsed.data as PrintTemplate;
+      }
     }
     for (const k of [
       "printsKitchenTicket",

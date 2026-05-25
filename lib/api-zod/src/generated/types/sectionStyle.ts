@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SectionStyleAlign } from "./sectionStyleAlign";
+import type { SectionStyleSize } from "./sectionStyleSize";
 
 /**
  * Per-section style overrides for a ticket template.
@@ -13,8 +14,12 @@ import type { SectionStyleAlign } from "./sectionStyleAlign";
 export interface SectionStyle {
   /** Whether this section is printed. Defaults to true. */
   visible?: boolean | null;
-  /** Whether this section's text is bold. Inherits section default. */
+  /** Whether this section text is bold. Inherits section default. */
   bold?: boolean | null;
   /** Text alignment for this section. */
   align?: SectionStyleAlign;
+  /** Text size for this section. normal is standard height; double is double-height ESC/POS. */
+  size?: SectionStyleSize;
+  /** When true, a divider line is printed immediately after this section. */
+  dividerAfter?: boolean | null;
 }

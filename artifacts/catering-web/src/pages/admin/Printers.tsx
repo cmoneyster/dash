@@ -208,7 +208,13 @@ type SectionKey =
   | "header" | "orderNumber" | "guestName" | "tableNumber"
   | "timestamp" | "source" | "items" | "totals" | "notes" | "footer";
 type SectionAlign = "left" | "center" | "right";
-type SectionStyleLocal = { visible?: boolean; bold?: boolean; align?: SectionAlign };
+type SectionStyleLocal = {
+  visible?: boolean;
+  bold?: boolean;
+  align?: SectionAlign;
+  size?: "normal" | "double";
+  dividerAfter?: boolean;
+};
 type TicketType = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label";
 
 const TICKET_TYPES: { value: TicketType; label: string }[] = [
@@ -287,80 +293,66 @@ function SectionRow({
   onDown: () => void;
   onChange: (patch: Partial<SectionStyleLocal>) => void;
 }) {
-  const visible = style.visible !== false;
-  const isBold  = style.bold === true;
-  const align   = style.align ?? "left";
+  const visible      = style.visible !== false;
+  const isBold       = style.bold === true;
+  const align        = style.align ?? "left";
+  const isDouble     = style.size === "double";
+  const dividerAfter = style.dividerAfter === true;
 
   const btnBase = "flex items-center justify-center rounded transition-colors";
   const iconSz  = "w-3 h-3";
+  const activeBtn = "bg-primary text-primary-foreground";
+  const inactiveBtn = "hover:bg-muted text-muted-foreground";
 
   return (
-    <div className={`flex items-center gap-1 rounded-lg px-1.5 py-1 transition-opacity ${!visible ? "opacity-40" : ""}`}>
-      <div className="flex flex-col">
-        <button
-          type="button"
-          onClick={onUp}
-          disabled={isFirst}
-          className={`${btnBase} w-5 h-4 hover:bg-muted disabled:opacity-20`}
-          title="Move up"
-        >
-          <ChevronUp className={iconSz} />
+    <div className={`rounded-lg px-1 py-0.5 transition-opacity ${!visible ? "opacity-40" : ""}`}>
+      <div className="flex items-center gap-0.5">
+        <div className="flex flex-col">
+          <button type="button" onClick={onUp} disabled={isFirst}
+            className={`${btnBase} w-5 h-4 hover:bg-muted disabled:opacity-20`} title="Move up">
+            <ChevronUp className={iconSz} />
+          </button>
+          <button type="button" onClick={onDown} disabled={isLast}
+            className={`${btnBase} w-5 h-4 hover:bg-muted disabled:opacity-20`} title="Move down">
+            <ChevronDown className={iconSz} />
+          </button>
+        </div>
+
+        <button type="button" onClick={() => onChange({ visible: !visible })}
+          title={visible ? "Hide" : "Show"}
+          className={`${btnBase} w-6 h-6 shrink-0 ${visible ? `text-foreground hover:bg-muted` : inactiveBtn}`}>
+          {visible ? <Eye className={iconSz} /> : <EyeOff className={iconSz} />}
         </button>
-        <button
-          type="button"
-          onClick={onDown}
-          disabled={isLast}
-          className={`${btnBase} w-5 h-4 hover:bg-muted disabled:opacity-20`}
-          title="Move down"
-        >
-          <ChevronDown className={iconSz} />
+
+        <span className="flex-1 text-xs truncate min-w-0 mx-0.5">{SECTION_LABELS[sectionKey]}</span>
+
+        <button type="button" onClick={() => onChange({ bold: !isBold })}
+          title={isBold ? "Remove bold" : "Bold"}
+          className={`${btnBase} w-6 h-6 shrink-0 ${isBold ? activeBtn : inactiveBtn}`}>
+          <Bold className={iconSz} />
         </button>
+
+        <div className="flex">
+          {(["left", "center", "right"] as SectionAlign[]).map((a) => (
+            <button key={a} type="button" onClick={() => onChange({ align: a })} title={`Align ${a}`}
+              className={`${btnBase} w-5 h-6 ${align === a ? `${activeBtn} rounded` : inactiveBtn}`}>
+              {a === "left" ? <AlignLeft className={iconSz} /> : a === "center" ? <AlignCenter className={iconSz} /> : <AlignRight className={iconSz} />}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => onChange({ visible: !visible })}
-        title={visible ? "Hide section" : "Show section"}
-        className={`${btnBase} w-6 h-6 shrink-0 ${visible ? "text-foreground hover:bg-muted" : "text-muted-foreground hover:bg-muted"}`}
-      >
-        {visible ? <Eye className={iconSz} /> : <EyeOff className={iconSz} />}
-      </button>
-
-      <span className="flex-1 text-xs truncate min-w-0">{SECTION_LABELS[sectionKey]}</span>
-
-      <button
-        type="button"
-        onClick={() => onChange({ bold: !isBold })}
-        title={isBold ? "Remove bold" : "Make bold"}
-        className={`${btnBase} w-6 h-6 shrink-0 font-bold text-[11px] ${
-          isBold
-            ? "bg-primary text-primary-foreground"
-            : "hover:bg-muted text-muted-foreground"
-        }`}
-      >
-        <Bold className={iconSz} />
-      </button>
-
-      <div className="flex">
-        {(["left", "center", "right"] as SectionAlign[]).map((a) => (
-          <button
-            key={a}
-            type="button"
-            onClick={() => onChange({ align: a })}
-            title={`Align ${a}`}
-            className={`${btnBase} w-5 h-6 ${
-              align === a
-                ? "bg-primary text-primary-foreground rounded"
-                : "hover:bg-muted text-muted-foreground"
-            }`}
-          >
-            {a === "left"
-              ? <AlignLeft className={iconSz} />
-              : a === "center"
-              ? <AlignCenter className={iconSz} />
-              : <AlignRight className={iconSz} />}
-          </button>
-        ))}
+      <div className="flex items-center gap-1 pl-10 mt-0.5">
+        <button type="button" onClick={() => onChange({ size: isDouble ? "normal" : "double" })}
+          title={isDouble ? "Switch to normal size" : "Switch to double-height"}
+          className={`text-[10px] px-1.5 h-4 rounded font-mono font-bold transition-colors ${isDouble ? activeBtn : `border ${inactiveBtn}`}`}>
+          {isDouble ? "2x" : "1x"}
+        </button>
+        <button type="button" onClick={() => onChange({ dividerAfter: !dividerAfter })}
+          title={dividerAfter ? "Remove divider after" : "Add divider after section"}
+          className={`text-[10px] px-1.5 h-4 rounded font-mono transition-colors ${dividerAfter ? activeBtn : `border ${inactiveBtn}`}`}>
+          ——
+        </button>
       </div>
     </div>
   );
@@ -383,13 +375,16 @@ function PrintTemplateDesignerModal({
   const existing = printer.printTemplate as PrintTemplate | null | undefined;
 
   const [tpl, setTpl] = useState<PrintTemplate>({
-    businessName: existing?.businessName ?? "",
-    footer: existing?.footer ?? "",
-    dividerChar: existing?.dividerChar ?? "-",
-    kitchen_ticket:   existing?.kitchen_ticket   ?? undefined,
+    businessName:    existing?.businessName    ?? "",
+    footer:          existing?.footer          ?? "",
+    dividerChar:     existing?.dividerChar     ?? "-",
+    headerText:      existing?.headerText      ?? "",
+    logoUrl:         existing?.logoUrl         ?? "",
+    logoPosition:    existing?.logoPosition    ?? null,
+    kitchen_ticket:  existing?.kitchen_ticket  ?? undefined,
     customer_receipt: existing?.customer_receipt ?? undefined,
-    item_label:       existing?.item_label       ?? undefined,
-    plate_label:      existing?.plate_label      ?? undefined,
+    item_label:      existing?.item_label      ?? undefined,
+    plate_label:     existing?.plate_label     ?? undefined,
   });
 
   const [ticketType, setTicketType] = useState<TicketType>("kitchen_ticket");
@@ -456,11 +451,11 @@ function PrintTemplateDesignerModal({
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* ── Left sidebar: global controls + per-ticket section list ── */}
           <div className="w-80 shrink-0 border-r overflow-y-auto">
-            <div className="p-4 space-y-4 border-b">
+            <div className="p-4 space-y-3 border-b">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Global</p>
 
               <div>
-                <label className="block text-xs font-medium mb-1">Business name</label>
+                <label className="block text-xs font-medium mb-1">Business name <span className="text-muted-foreground font-normal">(on receipts)</span></label>
                 <input
                   value={tpl.businessName ?? ""}
                   onChange={(e) => setTpl((p) => ({ ...p, businessName: e.target.value }))}
@@ -470,13 +465,51 @@ function PrintTemplateDesignerModal({
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1">Divider character</label>
+                <label className="block text-xs font-medium mb-1">Ticket header text <span className="text-muted-foreground font-normal">(overrides "KITCHEN" etc.)</span></label>
                 <input
-                  value={tpl.dividerChar ?? "-"}
-                  onChange={(e) => setTpl((p) => ({ ...p, dividerChar: e.target.value.slice(0, 1) || "-" }))}
-                  className="w-16 px-3 py-1.5 border rounded-lg bg-background text-sm font-mono text-center"
-                  maxLength={1}
+                  value={tpl.headerText ?? ""}
+                  onChange={(e) => setTpl((p) => ({ ...p, headerText: e.target.value }))}
+                  className="w-full px-3 py-1.5 border rounded-lg bg-background text-sm"
+                  placeholder="KITCHEN"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1">Logo URL <span className="text-muted-foreground font-normal">(WebPRNT printers)</span></label>
+                <input
+                  value={tpl.logoUrl ?? ""}
+                  onChange={(e) => setTpl((p) => ({ ...p, logoUrl: e.target.value || null }))}
+                  className="w-full px-3 py-1.5 border rounded-lg bg-background text-sm"
+                  placeholder="https://example.com/logo.png"
+                  type="url"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">Shown as [LOGO] in text preview; rendered as image on WebPRNT printers.</p>
+              </div>
+
+              {tpl.logoUrl && (
+                <div>
+                  <label className="block text-xs font-medium mb-1">Logo position</label>
+                  <select
+                    value={tpl.logoPosition ?? "before_name"}
+                    onChange={(e) => setTpl((p) => ({ ...p, logoPosition: e.target.value as "before_name" | "after_name" }))}
+                    className="w-full px-3 py-1.5 border rounded-lg bg-background text-sm"
+                  >
+                    <option value="before_name">Before name / title</option>
+                    <option value="after_name">After name / title</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="flex items-end gap-2">
+                <div>
+                  <label className="block text-xs font-medium mb-1">Divider char</label>
+                  <input
+                    value={tpl.dividerChar ?? "-"}
+                    onChange={(e) => setTpl((p) => ({ ...p, dividerChar: e.target.value.slice(0, 1) || "-" }))}
+                    className="w-12 px-3 py-1.5 border rounded-lg bg-background text-sm font-mono text-center"
+                    maxLength={1}
+                  />
+                </div>
               </div>
 
               <div>

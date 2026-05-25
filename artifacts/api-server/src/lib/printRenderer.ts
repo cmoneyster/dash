@@ -4,15 +4,15 @@ const ESC = 0x1b;
 const GS  = 0x1d;
 const LF  = 0x0a;
 
-const INIT = Buffer.from([ESC, 0x40]);
-const BOLD_ON  = Buffer.from([ESC, 0x45, 0x01]);
-const BOLD_OFF = Buffer.from([ESC, 0x45, 0x00]);
+const INIT        = Buffer.from([ESC, 0x40]);
+const BOLD_ON     = Buffer.from([ESC, 0x45, 0x01]);
+const BOLD_OFF    = Buffer.from([ESC, 0x45, 0x00]);
 const ALIGN_CENTER = Buffer.from([ESC, 0x61, 0x01]);
 const ALIGN_LEFT   = Buffer.from([ESC, 0x61, 0x00]);
 const ALIGN_RIGHT  = Buffer.from([ESC, 0x61, 0x02]);
-const SIZE_NORMAL = Buffer.from([GS, 0x21, 0x00]);
-const SIZE_DOUBLE = Buffer.from([GS, 0x21, 0x11]);
-const CUT = Buffer.from([ESC, 0x64, 0x03, ESC, 0x6d]);
+const SIZE_NORMAL  = Buffer.from([GS, 0x21, 0x00]);
+const SIZE_DOUBLE  = Buffer.from([GS, 0x21, 0x11]);
+const CUT          = Buffer.from([ESC, 0x64, 0x03, ESC, 0x6d]);
 
 const LINE_WIDTH = 48;
 
@@ -58,26 +58,37 @@ function fmtTime(d: Date): string {
   });
 }
 
-// ─── Section resolution ───────────────────────────────────────────────────────
+// ─── Section resolution ────────────────────────────────────────────────────────
 
 type TicketType = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label";
 
-type ResolvedStyle = { visible: boolean; bold: boolean; align: SectionAlign };
-
-const DEFAULT_SECTION_STYLES: Record<SectionKey, ResolvedStyle> = {
-  header:      { visible: true,  bold: true,  align: "center" },
-  orderNumber: { visible: true,  bold: true,  align: "left" },
-  guestName:   { visible: true,  bold: false, align: "left" },
-  tableNumber: { visible: true,  bold: false, align: "left" },
-  timestamp:   { visible: true,  bold: false, align: "left" },
-  source:      { visible: true,  bold: false, align: "left" },
-  items:       { visible: true,  bold: false, align: "left" },
-  totals:      { visible: true,  bold: false, align: "left" },
-  notes:       { visible: true,  bold: false, align: "left" },
-  footer:      { visible: true,  bold: false, align: "center" },
+type ResolvedStyle = {
+  visible: boolean;
+  bold: boolean;
+  align: SectionAlign;
+  size: "normal" | "double";
+  dividerAfter: boolean;
 };
 
-const DEFAULT_ORDERS: Record<TicketType, SectionKey[]> = {
+export const DEFAULT_SECTION_STYLES: Record<SectionKey, ResolvedStyle> = {
+  header:      { visible: true,  bold: true,  align: "center", size: "double", dividerAfter: false },
+  orderNumber: { visible: true,  bold: true,  align: "left",   size: "normal", dividerAfter: false },
+  guestName:   { visible: true,  bold: false, align: "left",   size: "normal", dividerAfter: false },
+  tableNumber: { visible: true,  bold: false, align: "left",   size: "normal", dividerAfter: false },
+  timestamp:   { visible: true,  bold: false, align: "left",   size: "normal", dividerAfter: false },
+  source:      { visible: true,  bold: false, align: "left",   size: "normal", dividerAfter: false },
+  items:       { visible: true,  bold: false, align: "left",   size: "normal", dividerAfter: false },
+  totals:      { visible: true,  bold: false, align: "left",   size: "normal", dividerAfter: false },
+  notes:       { visible: true,  bold: false, align: "left",   size: "normal", dividerAfter: false },
+  footer:      { visible: true,  bold: false, align: "center", size: "normal", dividerAfter: false },
+};
+
+const TICKET_SIZE_OVERRIDES: Partial<Record<TicketType, Partial<Record<SectionKey, Pick<ResolvedStyle, "size" | "bold">>>>> = {
+  item_label:  { orderNumber: { size: "double", bold: true }, items: { size: "double", bold: true } },
+  plate_label: { orderNumber: { size: "double", bold: true }, items: { size: "double", bold: true } },
+};
+
+export const DEFAULT_ORDERS: Record<TicketType, SectionKey[]> = {
   kitchen_ticket:   ["header", "orderNumber", "guestName", "tableNumber", "timestamp", "source", "items", "notes", "footer"],
   customer_receipt: ["header", "timestamp", "orderNumber", "guestName", "tableNumber", "items", "totals", "footer"],
   item_label:       ["orderNumber", "guestName", "tableNumber", "items", "timestamp"],
@@ -93,20 +104,20 @@ function resolveOrder(tmpl: PrintTemplate | undefined, key: TicketType): Section
 }
 
 function resolveStyle(tmpl: PrintTemplate | undefined, key: TicketType, section: SectionKey): ResolvedStyle {
-  const defaults = DEFAULT_SECTION_STYLES[section];
-  const override = getLayout(tmpl, key)?.sections?.[section];
+  const globalDefault = DEFAULT_SECTION_STYLES[section] ?? DEFAULT_SECTION_STYLES.footer;
+  const ticketDefault = TICKET_SIZE_OVERRIDES[key]?.[section] ?? {};
+  const defaults: ResolvedStyle = { ...globalDefault, ...ticketDefault };
+  const override = getLayout(tmpl, key)?.sections?.[section] ?? {};
   return {
-    visible: override?.visible ?? defaults.visible,
-    bold:    override?.bold    ?? defaults.bold,
-    align:   override?.align   ?? defaults.align,
+    visible:      override.visible      ?? defaults.visible,
+    bold:         override.bold         ?? defaults.bold,
+    align:        override.align        ?? defaults.align,
+    size:         override.size         ?? defaults.size,
+    dividerAfter: override.dividerAfter ?? defaults.dividerAfter,
   };
 }
 
-function dc(tmpl?: PrintTemplate, fallback = "-"): string {
-  return divider(tmpl?.dividerChar ?? fallback);
-}
-
-// ─── ESC/POS TicketBuilder ────────────────────────────────────────────────────
+// ─── ESC/POS TicketBuilder ─────────────────────────────────────────────────────
 
 class TicketBuilder {
   private chunks: Buffer[] = [INIT];
@@ -133,7 +144,7 @@ class TicketBuilder {
   }
 }
 
-// ─── Payload types ────────────────────────────────────────────────────────────
+// ─── Payload types ─────────────────────────────────────────────────────────────
 
 export type OrderHeader = {
   orderNumber: string | number;
@@ -209,7 +220,14 @@ export type RenderablePayload =
 
 export type { PrintTemplate };
 
-// ─── ESC/POS kitchen ticket ───────────────────────────────────────────────────
+// ─── Logo helper (ESC/POS text path) ──────────────────────────────────────────
+
+function escLogo(t: TicketBuilder, tmpl: PrintTemplate | undefined, align: SectionAlign): void {
+  if (!tmpl?.logoUrl) return;
+  t.align(align).line("[LOGO]");
+}
+
+// ─── ESC/POS kitchen ticket ────────────────────────────────────────────────────
 
 function renderKitchenLines(t: TicketBuilder, lines: OrderLine[]) {
   for (const l of lines) {
@@ -229,28 +247,31 @@ function renderKitchenSection(
   const dchar = tmpl?.dividerChar ?? "-";
   t.align(style.align);
   switch (section) {
-    case "header":
-      t.double(true).bold(style.bold).line("KITCHEN").double(false).bold(false).left();
+    case "header": {
+      const title = tmpl?.headerText ?? "KITCHEN";
+      if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") escLogo(t, tmpl, style.align);
+      t.double(style.size === "double").bold(style.bold).line(title).double(false).bold(false).left();
+      if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") escLogo(t, tmpl, style.align);
       t.div(dchar === "-" ? "=" : dchar);
       break;
+    }
     case "orderNumber":
-      t.bold(style.bold).line(`ORDER #${p.header.orderNumber}`).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(`ORDER #${p.header.orderNumber}`).double(false).bold(false);
       break;
     case "guestName":
-      t.bold(style.bold).line(`Guest: ${p.header.guestName}`).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(`Guest: ${p.header.guestName}`).double(false).bold(false);
       break;
     case "tableNumber":
-      if (p.header.tableNumber) t.bold(style.bold).line(`Table: ${p.header.tableNumber}`).bold(false);
+      if (p.header.tableNumber) t.bold(style.bold).double(style.size === "double").line(`Table: ${p.header.tableNumber}`).double(false).bold(false);
       break;
     case "timestamp":
-      t.bold(style.bold).line(`Time:  ${fmtTime(new Date(p.header.placedAt))}`).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(`Time:  ${fmtTime(new Date(p.header.placedAt))}`).double(false).bold(false);
       break;
     case "source":
-      t.bold(style.bold).line(`Source: ${p.header.source}`).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(`Source: ${p.header.source}`).double(false).bold(false);
       break;
     case "items":
-      t.left();
-      t.div(dchar);
+      t.left().div(dchar);
       if (p.plates?.length) {
         for (const plate of p.plates) {
           t.bold(true).line(`-- ${plate.label} --`).bold(false);
@@ -282,23 +303,23 @@ function renderKitchenSection(
     }
     default: break;
   }
-  if (section !== "items" && section !== "notes" && section !== "header" && section !== "footer") {
-    t.left();
-  }
+  if (section !== "items" && section !== "notes" && section !== "header" && section !== "footer") t.left();
 }
 
 function renderKitchenTicket(p: KitchenTicketPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
   const order = resolveOrder(tmpl, "kitchen_ticket");
+  const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
     const style = resolveStyle(tmpl, "kitchen_ticket", section);
     if (!style.visible) continue;
     renderKitchenSection(t, p, section, style, tmpl);
+    if (style.dividerAfter) t.left().div(dchar);
   }
   return t.cut();
 }
 
-// ─── ESC/POS customer receipt ─────────────────────────────────────────────────
+// ─── ESC/POS customer receipt ──────────────────────────────────────────────────
 
 function renderReceiptSection(
   t: TicketBuilder,
@@ -312,23 +333,25 @@ function renderReceiptSection(
   const footer  = tmpl?.footer ?? p.footer;
   t.align(style.align);
   switch (section) {
-    case "header":
-      if (bizName) {
-        t.bold(style.bold).line(bizName).bold(false);
-      }
+    case "header": {
+      if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") escLogo(t, tmpl, style.align);
+      if (bizName) t.bold(style.bold).double(style.size === "double").line(bizName).double(false).bold(false);
+      if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") escLogo(t, tmpl, style.align);
+      if (!bizName && tmpl?.logoUrl) escLogo(t, tmpl, style.align);
       t.left().div(dchar);
       break;
+    }
     case "timestamp":
-      t.bold(style.bold).line(fmtTime(new Date(p.header.placedAt))).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(fmtTime(new Date(p.header.placedAt))).double(false).bold(false);
       break;
     case "orderNumber":
-      t.bold(style.bold).line(`Order #${p.header.orderNumber}`).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(`Order #${p.header.orderNumber}`).double(false).bold(false);
       break;
     case "guestName":
-      t.bold(style.bold).line(`Guest: ${p.header.guestName}`).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(`Guest: ${p.header.guestName}`).double(false).bold(false);
       break;
     case "tableNumber":
-      if (p.header.tableNumber) t.bold(style.bold).line(`Table: ${p.header.tableNumber}`).bold(false);
+      if (p.header.tableNumber) t.bold(style.bold).double(style.size === "double").line(`Table: ${p.header.tableNumber}`).double(false).bold(false);
       break;
     case "items":
       t.left().div(dchar);
@@ -357,23 +380,23 @@ function renderReceiptSection(
       break;
     default: break;
   }
-  if (section !== "items" && section !== "totals" && section !== "header" && section !== "footer") {
-    t.left();
-  }
+  if (section !== "items" && section !== "totals" && section !== "header" && section !== "footer") t.left();
 }
 
 function renderCustomerReceipt(p: CustomerReceiptPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
   const order = resolveOrder(tmpl, "customer_receipt");
+  const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
     const style = resolveStyle(tmpl, "customer_receipt", section);
     if (!style.visible) continue;
     renderReceiptSection(t, p, section, style, tmpl);
+    if (style.dividerAfter) t.left().div(dchar);
   }
   return t.cut();
 }
 
-// ─── ESC/POS item label ───────────────────────────────────────────────────────
+// ─── ESC/POS item label ────────────────────────────────────────────────────────
 
 function renderItemLabelSection(
   t: TicketBuilder,
@@ -386,16 +409,16 @@ function renderItemLabelSection(
   t.align(style.align);
   switch (section) {
     case "orderNumber":
-      t.bold(style.bold).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(`#${p.orderNumber}`).double(false).bold(false);
       break;
     case "guestName":
-      t.bold(style.bold).line(`Guest: ${p.guestName}`).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(`Guest: ${p.guestName}`).double(false).bold(false);
       break;
     case "tableNumber":
       break;
     case "items":
       t.left().div(dchar);
-      t.bold(true).double(true);
+      t.bold(style.bold).double(style.size === "double");
       wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => t.line(w));
       t.double(false).bold(false);
       if (p.isFullBox) t.line("[FULL BOX]");
@@ -407,7 +430,7 @@ function renderItemLabelSection(
       t.div(dchar);
       break;
     case "timestamp":
-      t.bold(style.bold).line(fmtTime(new Date(p.placedAt))).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(fmtTime(new Date(p.placedAt))).double(false).bold(false);
       break;
     case "footer": {
       const footer = tmpl?.footer;
@@ -427,15 +450,17 @@ function renderItemLabelSection(
 function renderItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
   const order = resolveOrder(tmpl, "item_label");
+  const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
     const style = resolveStyle(tmpl, "item_label", section);
     if (!style.visible) continue;
     renderItemLabelSection(t, p, section, style, tmpl);
+    if (style.dividerAfter) t.left().div(dchar);
   }
   return t.cut();
 }
 
-// ─── ESC/POS plate label ──────────────────────────────────────────────────────
+// ─── ESC/POS plate label ───────────────────────────────────────────────────────
 
 function renderPlateLabelSection(
   t: TicketBuilder,
@@ -448,14 +473,14 @@ function renderPlateLabelSection(
   t.align(style.align);
   switch (section) {
     case "orderNumber":
-      t.bold(style.bold).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(`#${p.orderNumber}`).double(false).bold(false);
       break;
     case "guestName":
-      t.bold(style.bold).line(`Guest: ${p.guestName}`).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(`Guest: ${p.guestName}`).double(false).bold(false);
       break;
     case "items":
       t.left().div(dchar);
-      t.bold(true).double(true).line(p.plateLabel).double(false).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(p.plateLabel).double(false).bold(false);
       t.div(dchar);
       for (const l of p.lines) {
         t.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
@@ -465,7 +490,7 @@ function renderPlateLabelSection(
       t.div(dchar);
       break;
     case "timestamp":
-      t.bold(style.bold).line(fmtTime(new Date(p.placedAt))).bold(false);
+      t.bold(style.bold).double(style.size === "double").line(fmtTime(new Date(p.placedAt))).double(false).bold(false);
       break;
     case "footer": {
       const footer = tmpl?.footer;
@@ -485,10 +510,12 @@ function renderPlateLabelSection(
 function renderPlateLabel(p: PlateLabelPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
   const order = resolveOrder(tmpl, "plate_label");
+  const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
     const style = resolveStyle(tmpl, "plate_label", section);
     if (!style.visible) continue;
     renderPlateLabelSection(t, p, section, style, tmpl);
+    if (style.dividerAfter) t.left().div(dchar);
   }
   return t.cut();
 }
@@ -524,7 +551,7 @@ export function renderJob(
   return { bytes, contentType: "application/vnd.star.starprntcore" };
 }
 
-// ─── StarWebPRNT XML builder ──────────────────────────────────────────────────
+// ─── StarWebPRNT XML builder ───────────────────────────────────────────────────
 
 function xmlEsc(s: string): string {
   return s
@@ -553,6 +580,10 @@ class WebPrntBuilder {
   center() { this.cmds.push(`<Alignment Method="Center"/>`); return this; }
   left()   { this.cmds.push(`<Alignment Method="Left"/>`);   return this; }
   div(c = "-") { return this.line(divider(c)); }
+  image(src: string, width = 200) {
+    this.cmds.push(`<Image Source="${xmlEsc(src)}" Width="${width}"/>`);
+    return this;
+  }
 
   build(): string {
     this.cmds.push(`<CutPaper Method="Partial"/>`);
@@ -566,7 +597,14 @@ class WebPrntBuilder {
   }
 }
 
-// ─── StarWebPRNT kitchen ticket ───────────────────────────────────────────────
+// ─── Logo helper (WebPRNT path) ────────────────────────────────────────────────
+
+function webLogo(b: WebPrntBuilder, tmpl: PrintTemplate | undefined, align: SectionAlign): void {
+  if (!tmpl?.logoUrl) return;
+  b.align(align).image(tmpl.logoUrl);
+}
+
+// ─── StarWebPRNT kitchen ticket ────────────────────────────────────────────────
 
 function webKitchenLines(b: WebPrntBuilder, lines: OrderLine[]) {
   for (const l of lines) {
@@ -586,24 +624,28 @@ function webKitchenSection(
   const dchar = tmpl?.dividerChar ?? "-";
   b.align(style.align);
   switch (section) {
-    case "header":
-      b.double(true).bold(style.bold).line("KITCHEN").double(false).bold(false).left();
+    case "header": {
+      const title = tmpl?.headerText ?? "KITCHEN";
+      if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") webLogo(b, tmpl, style.align);
+      b.double(style.size === "double").bold(style.bold).line(title).double(false).bold(false).left();
+      if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") webLogo(b, tmpl, style.align);
       b.div(dchar === "-" ? "=" : dchar);
       break;
+    }
     case "orderNumber":
-      b.bold(style.bold).line(`ORDER #${p.header.orderNumber}`).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(`ORDER #${p.header.orderNumber}`).double(false).bold(false);
       break;
     case "guestName":
-      b.bold(style.bold).line(`Guest: ${p.header.guestName}`).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(`Guest: ${p.header.guestName}`).double(false).bold(false);
       break;
     case "tableNumber":
-      if (p.header.tableNumber) b.bold(style.bold).line(`Table: ${p.header.tableNumber}`).bold(false);
+      if (p.header.tableNumber) b.bold(style.bold).double(style.size === "double").line(`Table: ${p.header.tableNumber}`).double(false).bold(false);
       break;
     case "timestamp":
-      b.bold(style.bold).line(`Time:  ${fmtTime(new Date(p.header.placedAt))}`).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(`Time:  ${fmtTime(new Date(p.header.placedAt))}`).double(false).bold(false);
       break;
     case "source":
-      b.bold(style.bold).line(`Source: ${p.header.source}`).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(`Source: ${p.header.source}`).double(false).bold(false);
       break;
     case "items":
       b.left().div(dchar);
@@ -638,23 +680,23 @@ function webKitchenSection(
     }
     default: break;
   }
-  if (section !== "items" && section !== "notes" && section !== "header" && section !== "footer") {
-    b.left();
-  }
+  if (section !== "items" && section !== "notes" && section !== "header" && section !== "footer") b.left();
 }
 
 function webPrntKitchenTicket(p: KitchenTicketPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
   const order = resolveOrder(tmpl, "kitchen_ticket");
+  const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
     const style = resolveStyle(tmpl, "kitchen_ticket", section);
     if (!style.visible) continue;
     webKitchenSection(b, p, section, style, tmpl);
+    if (style.dividerAfter) b.left().div(dchar);
   }
   return b.build();
 }
 
-// ─── StarWebPRNT customer receipt ─────────────────────────────────────────────
+// ─── StarWebPRNT customer receipt ──────────────────────────────────────────────
 
 function webReceiptSection(
   b: WebPrntBuilder,
@@ -668,21 +710,25 @@ function webReceiptSection(
   const footer  = tmpl?.footer ?? p.footer;
   b.align(style.align);
   switch (section) {
-    case "header":
-      if (bizName) b.bold(style.bold).line(bizName).bold(false);
+    case "header": {
+      if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") webLogo(b, tmpl, style.align);
+      if (bizName) b.bold(style.bold).double(style.size === "double").line(bizName).double(false).bold(false);
+      if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") webLogo(b, tmpl, style.align);
+      if (!bizName && tmpl?.logoUrl) webLogo(b, tmpl, style.align);
       b.left().div(dchar);
       break;
+    }
     case "timestamp":
-      b.bold(style.bold).line(fmtTime(new Date(p.header.placedAt))).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(fmtTime(new Date(p.header.placedAt))).double(false).bold(false);
       break;
     case "orderNumber":
-      b.bold(style.bold).line(`Order #${p.header.orderNumber}`).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(`Order #${p.header.orderNumber}`).double(false).bold(false);
       break;
     case "guestName":
-      b.bold(style.bold).line(`Guest: ${p.header.guestName}`).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(`Guest: ${p.header.guestName}`).double(false).bold(false);
       break;
     case "tableNumber":
-      if (p.header.tableNumber) b.bold(style.bold).line(`Table: ${p.header.tableNumber}`).bold(false);
+      if (p.header.tableNumber) b.bold(style.bold).double(style.size === "double").line(`Table: ${p.header.tableNumber}`).double(false).bold(false);
       break;
     case "items":
       b.left().div(dchar);
@@ -711,23 +757,23 @@ function webReceiptSection(
       break;
     default: break;
   }
-  if (section !== "items" && section !== "totals" && section !== "header" && section !== "footer") {
-    b.left();
-  }
+  if (section !== "items" && section !== "totals" && section !== "header" && section !== "footer") b.left();
 }
 
 function webPrntCustomerReceipt(p: CustomerReceiptPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
   const order = resolveOrder(tmpl, "customer_receipt");
+  const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
     const style = resolveStyle(tmpl, "customer_receipt", section);
     if (!style.visible) continue;
     webReceiptSection(b, p, section, style, tmpl);
+    if (style.dividerAfter) b.left().div(dchar);
   }
   return b.build();
 }
 
-// ─── StarWebPRNT item label ───────────────────────────────────────────────────
+// ─── StarWebPRNT item label ────────────────────────────────────────────────────
 
 function webItemLabelSection(
   b: WebPrntBuilder,
@@ -740,14 +786,16 @@ function webItemLabelSection(
   b.align(style.align);
   switch (section) {
     case "orderNumber":
-      b.bold(style.bold).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(`#${p.orderNumber}`).double(false).bold(false);
       break;
     case "guestName":
-      b.bold(style.bold).line(`Guest: ${p.guestName}`).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(`Guest: ${p.guestName}`).double(false).bold(false);
+      break;
+    case "tableNumber":
       break;
     case "items":
       b.left().div(dchar);
-      b.bold(true).double(true);
+      b.bold(style.bold).double(style.size === "double");
       wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => b.line(w));
       b.double(false).bold(false);
       if (p.isFullBox) b.line("[FULL BOX]");
@@ -759,7 +807,7 @@ function webItemLabelSection(
       b.div(dchar);
       break;
     case "timestamp":
-      b.bold(style.bold).line(fmtTime(new Date(p.placedAt))).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(fmtTime(new Date(p.placedAt))).double(false).bold(false);
       break;
     case "footer": {
       const footer = tmpl?.footer;
@@ -779,15 +827,17 @@ function webItemLabelSection(
 function webPrntItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
   const order = resolveOrder(tmpl, "item_label");
+  const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
     const style = resolveStyle(tmpl, "item_label", section);
     if (!style.visible) continue;
     webItemLabelSection(b, p, section, style, tmpl);
+    if (style.dividerAfter) b.left().div(dchar);
   }
   return b.build();
 }
 
-// ─── StarWebPRNT plate label ──────────────────────────────────────────────────
+// ─── StarWebPRNT plate label ───────────────────────────────────────────────────
 
 function webPlateLabelSection(
   b: WebPrntBuilder,
@@ -800,14 +850,14 @@ function webPlateLabelSection(
   b.align(style.align);
   switch (section) {
     case "orderNumber":
-      b.bold(style.bold).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(`#${p.orderNumber}`).double(false).bold(false);
       break;
     case "guestName":
-      b.bold(style.bold).line(`Guest: ${p.guestName}`).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(`Guest: ${p.guestName}`).double(false).bold(false);
       break;
     case "items":
       b.left().div(dchar);
-      b.bold(true).double(true).line(p.plateLabel).double(false).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(p.plateLabel).double(false).bold(false);
       b.div(dchar);
       for (const l of p.lines) {
         b.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
@@ -817,7 +867,7 @@ function webPlateLabelSection(
       b.div(dchar);
       break;
     case "timestamp":
-      b.bold(style.bold).line(fmtTime(new Date(p.placedAt))).bold(false);
+      b.bold(style.bold).double(style.size === "double").line(fmtTime(new Date(p.placedAt))).double(false).bold(false);
       break;
     case "footer": {
       const footer = tmpl?.footer;
@@ -837,13 +887,17 @@ function webPlateLabelSection(
 function webPrntPlateLabel(p: PlateLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
   const order = resolveOrder(tmpl, "plate_label");
+  const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
     const style = resolveStyle(tmpl, "plate_label", section);
     if (!style.visible) continue;
     webPlateLabelSection(b, p, section, style, tmpl);
+    if (style.dividerAfter) b.left().div(dchar);
   }
   return b.build();
 }
+
+// ─── StarWebPRNT test page ─────────────────────────────────────────────────────
 
 function webPrntTest(p: TestPayload): string {
   const b = new WebPrntBuilder();
@@ -861,7 +915,9 @@ function webPrntTest(p: TestPayload): string {
   return b.build();
 }
 
-export function buildWebPrntXml(
+// ─── Public WebPRNT render dispatcher ─────────────────────────────────────────
+
+export function renderJobWebPrnt(
   payload: RenderablePayload,
   template?: PrintTemplate,
 ): string {
@@ -873,8 +929,3 @@ export function buildWebPrntXml(
     case "test":             return webPrntTest(payload);
   }
 }
-
-// ─── Exported defaults (used by frontend designer) ───────────────────────────
-
-export { DEFAULT_ORDERS, DEFAULT_SECTION_STYLES };
-export type { TicketType, ResolvedStyle };

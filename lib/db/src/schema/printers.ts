@@ -26,6 +26,8 @@ export type SectionStyle = {
   visible?: boolean;
   bold?: boolean;
   align?: SectionAlign;
+  size?: "normal" | "double";
+  dividerAfter?: boolean;
 };
 
 export type TicketLayout = {
@@ -37,6 +39,9 @@ export type PrintTemplate = {
   businessName?: string | null;
   footer?: string | null;
   dividerChar?: string | null;
+  headerText?: string | null;
+  logoUrl?: string | null;
+  logoPosition?: "before_name" | "after_name" | null;
   kitchen_ticket?: TicketLayout;
   customer_receipt?: TicketLayout;
   item_label?: TicketLayout;

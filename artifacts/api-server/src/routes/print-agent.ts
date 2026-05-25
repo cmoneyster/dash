@@ -14,7 +14,7 @@
 
 import { Router, type IRouter } from "express";
 import { getQueuedJobsForLanAgent, claimJobForAgent, markJobPrinted, markJobFailed, requeueJob, getJobById } from "../lib/printQueue";
-import { buildWebPrntXml, renderJob } from "../lib/printRenderer";
+import { renderJobWebPrnt, renderJob } from "../lib/printRenderer";
 import type { RenderablePayload } from "../lib/printRenderer";
 
 const router: IRouter = Router();
@@ -36,7 +36,7 @@ router.get("/print-agent/queued", async (req, res) => {
       try {
         const payload = job.payload as unknown as RenderablePayload;
         const template = job.printTemplate ?? undefined;
-        const webPrntXml = buildWebPrntXml(payload, template);
+        const webPrntXml = renderJobWebPrnt(payload, template);
         const { bytes } = renderJob(payload, template);
         return [{
           id: job.id,

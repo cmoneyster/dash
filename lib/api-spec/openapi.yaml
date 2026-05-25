@@ -2959,12 +2959,21 @@ components:
         bold:
           type: boolean
           nullable: true
-          description: Whether this section's text is bold. Inherits section default.
+          description: Whether this section text is bold. Inherits section default.
         align:
           type: string
           nullable: true
           enum: [left, center, right]
           description: Text alignment for this section.
+        size:
+          type: string
+          nullable: true
+          enum: [normal, double]
+          description: Text size for this section. normal is standard height; double is double-height ESC/POS.
+        dividerAfter:
+          type: boolean
+          nullable: true
+          description: When true, a divider line is printed immediately after this section.
 
     TicketLayout:
       type: object
@@ -3000,6 +3009,19 @@ components:
           type: string
           nullable: true
           description: Single character used for divider lines (default "-").
+        headerText:
+          type: string
+          nullable: true
+          description: Overrides the ticket-type header title (e.g. "KITCHEN"). Applies to kitchen/item/plate tickets.
+        logoUrl:
+          type: string
+          nullable: true
+          description: URL of a logo image. Rendered via WebPRNT Image tag; shown as [LOGO] in ESC/POS text preview.
+        logoPosition:
+          type: string
+          nullable: true
+          enum: [before_name, after_name]
+          description: Where the logo appears relative to the business name or ticket title in the header section.
         kitchen_ticket:
           $ref: "#/components/schemas/TicketLayout"
           nullable: true

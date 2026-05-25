@@ -5,6 +5,7 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { PrintTemplateLogoPosition } from "./printTemplateLogoPosition";
 import type { TicketLayout } from "./ticketLayout";
 
 /**
@@ -17,6 +18,12 @@ export interface PrintTemplate {
   footer?: string | null;
   /** Single character used for divider lines (default "-"). */
   dividerChar?: string | null;
+  /** Overrides the ticket-type header title (e.g. "KITCHEN"). Applies to kitchen/item/plate tickets. */
+  headerText?: string | null;
+  /** URL of a logo image. Rendered via WebPRNT Image tag; shown as [LOGO] in ESC/POS text preview. */
+  logoUrl?: string | null;
+  /** Where the logo appears relative to the business name or ticket title in the header section. */
+  logoPosition?: PrintTemplateLogoPosition;
   kitchen_ticket?: TicketLayout | null;
   customer_receipt?: TicketLayout | null;
   item_label?: TicketLayout | null;

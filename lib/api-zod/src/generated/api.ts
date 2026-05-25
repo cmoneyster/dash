@@ -1917,6 +1917,24 @@ export const ListPrintersResponseItem = zod.object({
         .string()
         .nullish()
         .describe('Single character used for divider lines (default \"-\").'),
+      headerText: zod
+        .string()
+        .nullish()
+        .describe(
+          'Overrides the ticket-type header title (e.g. \"KITCHEN\"). Applies to kitchen\/item\/plate tickets.',
+        ),
+      logoUrl: zod
+        .string()
+        .nullish()
+        .describe(
+          "URL of a logo image. Rendered via WebPRNT Image tag; shown as [LOGO] in ESC\/POS text preview.",
+        ),
+      logoPosition: zod
+        .enum(["before_name", "after_name"])
+        .nullish()
+        .describe(
+          "Where the logo appears relative to the business name or ticket title in the header section.",
+        ),
       kitchen_ticket: zod
         .object({
           sectionOrder: zod
@@ -1953,12 +1971,24 @@ export const ListPrintersResponseItem = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2007,12 +2037,24 @@ export const ListPrintersResponseItem = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2061,12 +2103,24 @@ export const ListPrintersResponseItem = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2115,12 +2169,24 @@ export const ListPrintersResponseItem = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2191,6 +2257,24 @@ export const UpdatePrinterBody = zod.object({
         .string()
         .nullish()
         .describe('Single character used for divider lines (default \"-\").'),
+      headerText: zod
+        .string()
+        .nullish()
+        .describe(
+          'Overrides the ticket-type header title (e.g. \"KITCHEN\"). Applies to kitchen\/item\/plate tickets.',
+        ),
+      logoUrl: zod
+        .string()
+        .nullish()
+        .describe(
+          "URL of a logo image. Rendered via WebPRNT Image tag; shown as [LOGO] in ESC\/POS text preview.",
+        ),
+      logoPosition: zod
+        .enum(["before_name", "after_name"])
+        .nullish()
+        .describe(
+          "Where the logo appears relative to the business name or ticket title in the header section.",
+        ),
       kitchen_ticket: zod
         .object({
           sectionOrder: zod
@@ -2227,12 +2311,24 @@ export const UpdatePrinterBody = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2281,12 +2377,24 @@ export const UpdatePrinterBody = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2335,12 +2443,24 @@ export const UpdatePrinterBody = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2389,12 +2509,24 @@ export const UpdatePrinterBody = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2451,6 +2583,24 @@ export const UpdatePrinterResponse = zod.object({
         .string()
         .nullish()
         .describe('Single character used for divider lines (default \"-\").'),
+      headerText: zod
+        .string()
+        .nullish()
+        .describe(
+          'Overrides the ticket-type header title (e.g. \"KITCHEN\"). Applies to kitchen\/item\/plate tickets.',
+        ),
+      logoUrl: zod
+        .string()
+        .nullish()
+        .describe(
+          "URL of a logo image. Rendered via WebPRNT Image tag; shown as [LOGO] in ESC\/POS text preview.",
+        ),
+      logoPosition: zod
+        .enum(["before_name", "after_name"])
+        .nullish()
+        .describe(
+          "Where the logo appears relative to the business name or ticket title in the header section.",
+        ),
       kitchen_ticket: zod
         .object({
           sectionOrder: zod
@@ -2487,12 +2637,24 @@ export const UpdatePrinterResponse = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2541,12 +2703,24 @@ export const UpdatePrinterResponse = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2595,12 +2769,24 @@ export const UpdatePrinterResponse = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2649,12 +2835,24 @@ export const UpdatePrinterResponse = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2764,6 +2962,24 @@ export const PreviewPrinterTemplateBody = zod.object({
         .string()
         .nullish()
         .describe('Single character used for divider lines (default \"-\").'),
+      headerText: zod
+        .string()
+        .nullish()
+        .describe(
+          'Overrides the ticket-type header title (e.g. \"KITCHEN\"). Applies to kitchen\/item\/plate tickets.',
+        ),
+      logoUrl: zod
+        .string()
+        .nullish()
+        .describe(
+          "URL of a logo image. Rendered via WebPRNT Image tag; shown as [LOGO] in ESC\/POS text preview.",
+        ),
+      logoPosition: zod
+        .enum(["before_name", "after_name"])
+        .nullish()
+        .describe(
+          "Where the logo appears relative to the business name or ticket title in the header section.",
+        ),
       kitchen_ticket: zod
         .object({
           sectionOrder: zod
@@ -2800,12 +3016,24 @@ export const PreviewPrinterTemplateBody = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2854,12 +3082,24 @@ export const PreviewPrinterTemplateBody = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2908,12 +3148,24 @@ export const PreviewPrinterTemplateBody = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
@@ -2962,12 +3214,24 @@ export const PreviewPrinterTemplateBody = zod.object({
                     .boolean()
                     .nullish()
                     .describe(
-                      "Whether this section's text is bold. Inherits section default.",
+                      "Whether this section text is bold. Inherits section default.",
                     ),
                   align: zod
                     .enum(["left", "center", "right"])
                     .nullish()
                     .describe("Text alignment for this section."),
+                  size: zod
+                    .enum(["normal", "double"])
+                    .nullish()
+                    .describe(
+                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
                 })
                 .describe("Per-section style overrides for a ticket template."),
             )
