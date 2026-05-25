@@ -58,11 +58,20 @@ while true; do
 
   i=0
   while [ "$i" -lt "$COUNT" ]; do
-    JOB_ID=$(printf '%s' "$JOBS"   | jq -r ".[$i].id")
-    JOB_TYPE=$(printf '%s' "$JOBS" | jq -r ".[$i].jobType")
-    RAW_B64=$(printf '%s' "$JOBS"  | jq -r ".[$i].rawBytesBase64")
+    JOB_ID=$(printf '%s' "$JOBS"      | jq -r ".[$i].id")
+    JOB_TYPE=$(printf '%s' "$JOBS"    | jq -r ".[$i].jobType")
+    JOB_LAN_IP=$(printf '%s' "$JOBS"  | jq -r ".[$i].lanIp")
+    RAW_B64=$(printf '%s' "$JOBS"     | jq -r ".[$i].rawBytesBase64")
 
     if [ -z "$JOB_ID" ] || [ "$JOB_ID" = "null" ]; then
+      i=$((i + 1))
+      continue
+    fi
+
+    # Skip jobs destined for a different printer so multiple router agents
+    # (one per printer IP) can share the same queue endpoint without cross-firing.
+    if [ "$JOB_LAN_IP" != "$PRINTER_IP" ]; then
+      log "job $JOB_ID is for $JOB_LAN_IP — not our printer, skipping"
       i=$((i + 1))
       continue
     fi

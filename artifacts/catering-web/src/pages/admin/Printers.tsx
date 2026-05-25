@@ -18,7 +18,7 @@ import {
   type TestLanResult,
 } from "@workspace/api-client-react";
 import { useForm } from "react-hook-form";
-import { Printer as PrinterIcon, Plus, Trash2, Pencil, Wifi, WifiOff, AlertTriangle, Copy, Check, RefreshCw, X, Eye, XCircle, Network } from "lucide-react";
+import { Printer as PrinterIcon, Plus, Trash2, Pencil, Wifi, WifiOff, AlertTriangle, Copy, Check, RefreshCw, X, Eye, XCircle, Network, Terminal, ChevronDown, ChevronUp } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 
@@ -87,6 +87,88 @@ function relTime(iso: string | Date | null | undefined) {
   if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
   if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
   return new Date(iso).toLocaleString();
+}
+
+function CodeBlock({ text, obscureToken = false }: { text: string; obscureToken?: boolean }) {
+  const display = obscureToken
+    ? text.replace(/([0-9a-f]{64})/i, (m) => `${m.slice(0, 8)}…`)
+    : text;
+  return (
+    <div className="flex items-start gap-2 bg-slate-900 dark:bg-slate-950 rounded-lg p-3 font-mono text-[11px] text-slate-100 overflow-x-auto">
+      <span className="flex-1 break-all whitespace-pre-wrap">{display}</span>
+      <CopyButton text={text} />
+    </div>
+  );
+}
+
+function RouterAgentSetup({ printerIp }: { printerIp: string }) {
+  const [open, setOpen] = useState(false);
+  const token = getAdminToken() ?? "";
+  const serverUrl = window.location.origin;
+
+  const sshCmd = "ssh -o HostKeyAlgorithms=+ssh-rsa root@192.168.22.1";
+  const wgetCmd = `wget -O /root/print-agent.sh '${serverUrl}/api/print-agent/install.sh?token=${token}&printer=${printerIp}'`;
+  const runCmd = "sh /root/print-agent.sh </dev/null >> /var/log/print-agent.log 2>&1 &";
+  const cronLine = "* * * * * pgrep -f print-agent.sh > /dev/null || sh /root/print-agent.sh </dev/null >> /var/log/print-agent.log 2>&1 &";
+  const rcLine = "sh /root/print-agent.sh </dev/null >> /var/log/print-agent.log 2>&1 &";
+
+  return (
+    <div className="mt-3 border-t pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-400 hover:underline"
+      >
+        <Terminal className="w-3.5 h-3.5" />
+        Router agent setup
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-4 text-xs">
+          <p className="text-muted-foreground">
+            Run these commands on your GL.iNet router (SSH as root) to install or re-install the print agent for this printer (<code className="font-mono bg-muted px-1 rounded">{printerIp}</code>).
+            The download URL has your token and printer IP already embedded — you can copy it and run it again any time you replace the router.
+          </p>
+
+          <div className="space-y-1">
+            <p className="font-medium text-muted-foreground">1. SSH into the router</p>
+            <CodeBlock text={sshCmd} />
+          </div>
+
+          <div className="space-y-1">
+            <p className="font-medium text-muted-foreground">
+              2. Download the pre-configured script
+              {token
+                ? <span className="font-normal ml-1">(token: <code className="bg-muted px-1 rounded">{token.slice(0, 8)}…</code>)</span>
+                : <span className="font-normal ml-1 text-amber-600 dark:text-amber-400"> — log in as admin first so your token is included</span>
+              }
+            </p>
+            <CodeBlock text={wgetCmd} obscureToken />
+          </div>
+
+          <div className="space-y-1">
+            <p className="font-medium text-muted-foreground">3. Run it in the background (survives SSH disconnect)</p>
+            <CodeBlock text={runCmd} />
+          </div>
+
+          <div className="space-y-1">
+            <p className="font-medium text-muted-foreground">4. Watchdog cron — paste into <code className="bg-muted px-1 rounded">/etc/crontabs/root</code></p>
+            <CodeBlock text={cronLine} />
+          </div>
+
+          <div className="space-y-1">
+            <p className="font-medium text-muted-foreground">5. Auto-start on boot — paste into <code className="bg-muted px-1 rounded">/etc/rc.local</code> before <code className="bg-muted px-1 rounded">exit 0</code></p>
+            <CodeBlock text={rcLine} />
+          </div>
+
+          <p className="text-muted-foreground/70">
+            When replacing the router, repeat from step 1. The wget URL already has everything embedded — just re-run it to get a fresh copy of the script on the new router.
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 type PrinterFormValues = CreatePrinterBody & { id?: number };
@@ -417,6 +499,8 @@ function PrinterCard({ p }: { p: Printer }) {
           {" "}<a href="/admin/print-agent" className="underline font-medium">Open agent</a>
         </div>
       )}
+
+      {p.lanIp && <RouterAgentSetup printerIp={p.lanIp} />}
 
       <PrinterDialog open={editing} initial={p} onClose={() => setEditing(false)} />
     </div>
