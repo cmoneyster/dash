@@ -173,6 +173,7 @@ router.post("/cloudprnt/:token", async (req, res) => {
   await recordPrinterPoll(printer.id, "online");
 
   const body = (req.body ?? {}) as Record<string, unknown>;
+  req.log.info({ printerId: printer.id, body }, "[cloudprnt] POST body from printer");
   const jobToken = body.jobToken;
   const status = typeof body.status === "string" ? body.status : null;
   const statusCode = typeof body.statusCode === "string" ? body.statusCode : null;

@@ -303,7 +303,7 @@ export function renderJob(payload: RenderablePayload): { bytes: Buffer; contentT
     case "plate_label": bytes = renderPlateLabel(payload); break;
     case "test": bytes = renderTest(payload); break;
   }
-  return { bytes, contentType: "text/plain; charset=utf-8" };
+  return { bytes, contentType: "text/plain" };
 }
 
 // ─── StarWebPRNT XML renderer ────────────────────────────────────────────────
