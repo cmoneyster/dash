@@ -14,22 +14,38 @@
  */
 
 const ESC = 0x1b;
-const GS = 0x1d;
 const LF = 0x0a;
 
-/** Initialize printer (clears formatting, resets char set). */
+/**
+ * Star Line Mode command set (TSP143IV native language for CloudPRNT).
+ * text/plain CloudPRNT jobs are processed as Star Line Mode, NOT ESC/POS.
+ * Key differences from ESC/POS:
+ *   - Bold:      ESC E (on) / ESC F (off)       [ESC/POS uses ESC E n]
+ *   - Align:     ESC GS a n                      [ESC/POS uses ESC a n]
+ *   - Dbl size:  ESC i n1 n2                     [ESC/POS uses GS ! n]
+ *   - Cut:       ESC m (partial) / ESC i (full)  [ESC/POS uses GS V]
+ */
+
+/** Initialize printer (clears formatting, resets char set). Same in both modes. */
 const INIT = Buffer.from([ESC, 0x40]);
-/** Bold on / off. */
-const BOLD_ON = Buffer.from([ESC, 0x45, 0x01]);
-const BOLD_OFF = Buffer.from([ESC, 0x45, 0x00]);
-/** Center / left align. */
-const ALIGN_CENTER = Buffer.from([ESC, 0x61, 0x01]);
-const ALIGN_LEFT = Buffer.from([ESC, 0x61, 0x00]);
-/** Character size: 0 = normal, 0x11 = double-width + double-height. */
-const SIZE_NORMAL = Buffer.from([GS, 0x21, 0x00]);
-const SIZE_DOUBLE = Buffer.from([GS, 0x21, 0x11]);
-/** Star/ESC partial cut + feed. Works on TSP143IV CloudPRNT default. */
-const CUT = Buffer.from([ESC, 0x64, 0x02]);
+/** Bold on: ESC E.  Bold off: ESC F. */
+const BOLD_ON  = Buffer.from([ESC, 0x45]);          // ESC E
+const BOLD_OFF = Buffer.from([ESC, 0x46]);          // ESC F
+/** Center align: ESC GS a 1.  Left align: ESC GS a 0. */
+const ALIGN_CENTER = Buffer.from([ESC, 0x1d, 0x61, 0x01]);  // ESC GS a 1
+const ALIGN_LEFT   = Buffer.from([ESC, 0x1d, 0x61, 0x00]);  // ESC GS a 0
+/**
+ * Double-width via SO (0x0E) / DC4 (0x14) — standard control chars that
+ * work across Star Line Mode without conflicting with cut commands.
+ * Note: ESC i (0x1b 0x69) is the *full cut* command in Star Line Mode —
+ * do NOT use it for character sizing.
+ * True double-height is not supported in Star Line Mode; we omit it and
+ * rely on bold + caps for visual emphasis instead.
+ */
+const SIZE_NORMAL = Buffer.from([0x14]);                     // DC4 = double-width OFF
+const SIZE_DOUBLE = Buffer.from([0x0e]);                     // SO  = double-width ON
+/** Partial cut (Star Line Mode). ESC m */
+const CUT = Buffer.from([ESC, 0x6d]);
 
 const LINE_WIDTH = 48;
 
