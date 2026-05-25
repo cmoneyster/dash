@@ -1115,7 +1115,7 @@ function PrintJobsPanel() {
 
 function RouterAgentHeartbeatBadge() {
   const { data } = useGetPrintAgentHeartbeat({
-    query: { refetchInterval: 15_000 },
+    query: { refetchInterval: 15_000, queryKey: ["printAgentHeartbeat"] },
   });
 
   const lastSeenAt = data?.lastSeenAt ?? null;
@@ -1153,10 +1153,10 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
   const [open, setOpen] = useState(false);
   const serverUrl = window.location.origin;
   const token = getAdminToken() ?? "";
-  const installUrl = `${serverUrl}/api/print-agent/install.sh?server=${encodeURIComponent(serverUrl)}&token=${encodeURIComponent(token)}&printer=${encodeURIComponent(printer.lanIp ?? "")}`;
+  const installUrl = `${serverUrl}/api/print-agent/install.sh?token=${encodeURIComponent(token)}`;
   const downloadCmd = `wget -O /root/print-agent.sh '${installUrl}'`;
-  const runCmd = `sh /root/print-agent.sh`;
-  const cronWatchdog = `* * * * * pgrep -f print-agent.sh > /dev/null || /etc/init.d/print-agent start`;
+  const runCmd = `nohup sh /root/print-agent.sh > /var/log/print-agent.log 2>&1 &`;
+  const cronWatchdog = `* * * * * pgrep -f print-agent.sh > /dev/null || nohup sh /root/print-agent.sh >> /var/log/print-agent.log 2>&1 &`;
 
   return (
     <div className="mt-3 border-t pt-2">
@@ -1177,10 +1177,10 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
       {open && (
         <div className="mt-3 space-y-4">
           <p className="text-xs text-muted-foreground">
-            A shell agent running on a GL.iNet (OpenWrt) router on the same LAN as this printer polls the
-            server every 5 s, fetches raw ESC/POS bytes, and pipes them to{" "}
-            <code className="font-mono bg-muted px-0.5 rounded">{printer.lanIp}:9100</code>{" "}
-            via <code className="font-mono bg-muted px-0.5 rounded">nc</code>. No CORS, no browser required.
+            A shell agent running on a GL.iNet (OpenWrt) router polls the server every 5 s, fetches raw
+            ESC/POS bytes for any queued job, and pipes them to the target printer's IP via{" "}
+            <code className="font-mono bg-muted px-0.5 rounded">nc</code> on TCP port 9100. One agent
+            handles all printers with a LAN IP configured — no CORS, no browser required.
           </p>
 
           <div className="space-y-1">
@@ -1200,13 +1200,11 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
 
           <div className="space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              2b · Run it
+              2b · Launch it (survives SSH disconnect)
             </p>
             <CodeBlock text={runCmd} />
             <p className="text-[11px] text-muted-foreground">
-              Writes <code className="font-mono bg-muted px-0.5 rounded">/usr/bin/print-agent.sh</code>,
-              stores config in UCI, installs{" "}
-              <code className="font-mono bg-muted px-0.5 rounded">/etc/init.d/print-agent</code>, and starts the service.
+              Runs the agent in the background. The server URL and token are already baked into the script — it handles all LAN-enabled printers automatically.
             </p>
           </div>
 
@@ -1214,7 +1212,7 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               3 · Verify it's running
             </p>
-            <CodeBlock text="logread -f | grep print-agent" />
+            <CodeBlock text="tail -f /var/log/print-agent.log" />
             <p className="text-[11px] text-muted-foreground">You should see <em>Starting (server=…)</em> — send a test print above to confirm delivery.</p>
           </div>
 
@@ -1222,8 +1220,11 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               4 · Add cron watchdog (recommended)
             </p>
-            <p className="text-[11px] text-muted-foreground">Restarts the agent automatically if it crashes. Run <code className="font-mono bg-muted px-0.5 rounded">crontab -e</code> and add:</p>
-            <CodeBlock text={cronWatchdog} />
+            <p className="text-[11px] text-muted-foreground">
+              Restarts the agent automatically if it crashes. GL.iNet uses{" "}
+              <code className="font-mono bg-muted px-0.5 rounded">/tmp/gl_crontabs/root</code> — append with:
+            </p>
+            <CodeBlock text={`echo '${cronWatchdog}' >> /tmp/gl_crontabs/root`} />
           </div>
 
           <div className="space-y-1">
