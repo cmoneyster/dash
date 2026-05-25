@@ -95,27 +95,30 @@ async function serveJobBytes(
     const payload = job.payload as unknown as RenderablePayload;
     const isWebPrnt = requestedType?.includes("starwebprnt");
 
-    let body: Buffer | string;
+    let bodyBuf: Buffer;
     let serveAs: string;
-
     if (isWebPrnt) {
       // Printer chose StarWebPRNT XML — the same high-level format used by the
       // browser LAN path (confirmed working on this TSP143IV, jobs 43–48).
-      body = buildWebPrntXml(payload);
+      bodyBuf = Buffer.from(buildWebPrntXml(payload), "utf-8");
       serveAs = "application/vnd.star.starwebprnt+xml";
     } else {
       const { bytes, contentType } = renderJob(payload);
-      body = bytes;
+      bodyBuf = bytes;
       serveAs = requestedType ?? contentType;
     }
 
+    // Use res.end() with a Buffer so Express does NOT append "; charset=utf-8"
+    // to the Content-Type — some printer firmware does exact MIME-type matching.
+    res.removeHeader("ETag");
     res.setHeader("Content-Type", serveAs);
+    res.setHeader("Content-Length", bodyBuf.length);
     res.setHeader("Cache-Control", "no-store");
     req.log.info(
-      { printerId, jobId, requestedType, serveAs, size: typeof body === "string" ? body.length : body.length },
+      { printerId, jobId, requestedType, serveAs, bytes: bodyBuf.length },
       "[cloudprnt] serving job bytes",
     );
-    res.send(body);
+    res.end(bodyBuf);
   } catch (err) {
     req.log.error({ err, jobId: job.id }, "[cloudprnt] render failed");
     await markJobFailed(job.id, err instanceof Error ? err.message : "render failed");
