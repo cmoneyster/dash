@@ -161,7 +161,9 @@ router.post("/print-agent/jobs/:id/fail", async (req, res) => {
     res.status(400).json({ error: "Invalid job id" });
     return;
   }
-  const error = typeof req.body?.error === "string" ? req.body.error : "Unknown error";
+  const error = typeof req.body?.error === "string" ? req.body.error
+    : typeof req.query.error === "string" ? req.query.error
+    : "Unknown error";
   try {
     await markJobFailed(jobId, error);
     res.json({ ok: true });

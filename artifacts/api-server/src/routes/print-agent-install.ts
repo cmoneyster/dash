@@ -7,11 +7,10 @@ const router = Router();
  *
  * Public (no auth) — returns a self-contained shell agent script with the
  * server URL and admin token baked in as defaults. Designed to be downloaded
- * to /root/print-agent.sh on a GL.iNet (OpenWrt) router and run with nohup.
+ * to /root/print-agent.sh on a GL.iNet (OpenWrt) router.
  *
- * The agent polls /api/print-agent/queued, reads the lanIp from each job
- * entry, and delivers raw ESC/POS bytes via nc to that IP:9100. Works for
- * any number of printers — no printer IP needed in the URL.
+ * All API calls use ?token= query params instead of Authorization headers
+ * because this router's busybox wget does not support --header.
  *
  * Query params:
  *   token  - admin Bearer token to embed in the script
@@ -35,12 +34,13 @@ router.get("/print-agent/install.sh", (req, res) => {
 # Polls the server for queued print jobs and delivers raw ESC/POS bytes
 # to Star thermal printers via TCP port 9100.
 # Runs on GL.iNet / OpenWrt with busybox wget + nc.
-# Works for ALL printers with a LAN IP configured in Admin — no printer IP
-# needed here; the server embeds the target IP in each job response.
+# Works for ALL printers with a LAN IP configured in Admin.
 #
-# Usage: sh /root/print-agent.sh > /var/log/print-agent.log 2>&1 &
+# Uses ?token= query params — no --header needed (busybox wget compatible).
+#
+# Usage: (trap '' HUP; sh /root/print-agent.sh > /var/log/print-agent.log 2>&1) &
 
-# Ignore SIGHUP so the process survives SSH disconnect without needing nohup/setsid
+# Ignore SIGHUP so the process survives SSH disconnect
 trap '' HUP
 
 SERVER="\${PRINT_AGENT_SERVER:-${server}}"
@@ -65,19 +65,18 @@ last_heartbeat=0
 log "Starting (server=\$SERVER interval=\${INTERVAL}s)"
 
 while true; do
-  # Send heartbeat every 30 s so the admin UI can show live status
+  # Send heartbeat every 30 s — token + serverUrl passed as query params
+  # so no --header is needed (busybox wget compatible)
   now=\$(date +%s)
   if [ \$((now - last_heartbeat)) -ge \$HEARTBEAT_INTERVAL ]; then
-    wget -q -T 5 -O /dev/null \\
-      --post-data "{\\"token\\":\\"\$TOKEN\\",\\"serverUrl\\":\\"\$SERVER\\"}" \\
-      --header "Content-Type: application/json" \\
-      "\$SERVER/api/print-agent/heartbeat" 2>/dev/null
+    wget -q -T 5 -O /dev/null --post-data '' \\
+      "\$SERVER/api/print-agent/heartbeat?token=\$TOKEN&serverUrl=\$SERVER" 2>/dev/null
     last_heartbeat=\$now
   fi
 
+  # Poll for queued jobs — token in URL, no --header needed
   JOBS=\$(wget -q -T 10 -O - \\
-    --header "Authorization: Bearer \$TOKEN" \\
-    "\$SERVER/api/print-agent/queued" 2>/dev/null)
+    "\$SERVER/api/print-agent/queued?token=\$TOKEN" 2>/dev/null)
 
   if [ -n "\$JOBS" ] && [ "\$JOBS" != "[]" ]; then
     # Parse each job entry: {"id":N,...,"lanIp":"x.x.x.x"}
@@ -89,10 +88,9 @@ while true; do
 
       log "Job \$JOB_ID -> \$LAN_IP:9100"
 
-      # Fetch raw ESC/POS bytes (also atomically claims the job)
+      # Fetch raw ESC/POS bytes (atomically claims the job)
       wget -q -T 15 -O "\$TMPFILE" \\
-        --header "Authorization: Bearer \$TOKEN" \\
-        "\$SERVER/api/print-agent/jobs/\$JOB_ID/bytes" 2>/dev/null
+        "\$SERVER/api/print-agent/jobs/\$JOB_ID/bytes?token=\$TOKEN" 2>/dev/null
 
       if [ \$? -eq 0 ] && [ -s "\$TMPFILE" ]; then
         # Pipe bytes directly to the printer's TCP port 9100
@@ -102,28 +100,19 @@ while true; do
 
         if [ \$NC_STATUS -eq 0 ]; then
           log "Job \$JOB_ID printed OK"
-          wget -q -T 10 -O /dev/null \\
-            --post-data '{}' \\
-            --header "Content-Type: application/json" \\
-            --header "Authorization: Bearer \$TOKEN" \\
-            "\$SERVER/api/print-agent/jobs/\$JOB_ID/complete" 2>/dev/null
+          wget -q -T 10 -O /dev/null --post-data '' \\
+            "\$SERVER/api/print-agent/jobs/\$JOB_ID/complete?token=\$TOKEN" 2>/dev/null
         else
-          ERR_MSG=\$(cat /tmp/print_nc_err 2>/dev/null | head -c 200)
+          ERR_MSG=\$(cat /tmp/print_nc_err 2>/dev/null | head -c 100)
           log "Job \$JOB_ID nc failed (\$NC_STATUS): \$ERR_MSG"
-          wget -q -T 10 -O /dev/null \\
-            --post-data "{\\"error\\":\\"nc exit \$NC_STATUS\\"}" \\
-            --header "Content-Type: application/json" \\
-            --header "Authorization: Bearer \$TOKEN" \\
-            "\$SERVER/api/print-agent/jobs/\$JOB_ID/fail" 2>/dev/null
+          wget -q -T 10 -O /dev/null --post-data '' \\
+            "\$SERVER/api/print-agent/jobs/\$JOB_ID/fail?token=\$TOKEN&error=nc+exit+\$NC_STATUS" 2>/dev/null
         fi
       else
         rm -f "\$TMPFILE"
         log "Job \$JOB_ID bytes fetch failed"
-        wget -q -T 10 -O /dev/null \\
-          --post-data '{"error":"bytes fetch failed"}' \\
-          --header "Content-Type: application/json" \\
-          --header "Authorization: Bearer \$TOKEN" \\
-          "\$SERVER/api/print-agent/jobs/\$JOB_ID/fail" 2>/dev/null
+        wget -q -T 10 -O /dev/null --post-data '' \\
+          "\$SERVER/api/print-agent/jobs/\$JOB_ID/fail?token=\$TOKEN&error=bytes+fetch+failed" 2>/dev/null
       fi
     done
   fi
