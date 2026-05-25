@@ -3,21 +3,29 @@
 # dash Catering — GL.iNet router print agent
 #
 # Polls the server for pending print jobs and sends raw ESC/POS bytes
-# directly to the Star TSP143IV on TCP port 9100 — the same method
-# Square uses, confirmed working on this printer.
+# directly to the Star TSP143IV on TCP port 9100.
+#
+# Confirmed working on GL-SFT1200 running OpenWrt (BusyBox v1.29.3).
+# Requires: curl, jq, openssl (all present on stock GL.iNet firmware).
 #
 # SETUP (run once on the router as root):
-#   ssh root@192.168.22.1
-#   opkg update && opkg install jq curl
-#   cp print-agent.sh /usr/bin/print-agent.sh
-#   chmod +x /usr/bin/print-agent.sh
-#   cp print-agent.init /etc/init.d/print-agent
-#   chmod +x /etc/init.d/print-agent
-#   /etc/init.d/print-agent enable
-#   /etc/init.d/print-agent start
+#   ssh -o HostKeyAlgorithms=+ssh-rsa root@192.168.22.1
+#
+#   # Download pre-filled script from the server:
+#   wget -O /root/print-agent.sh \
+#     'https://YOUR_SERVER/api/print-agent/install.sh?token=TOKEN&printer=PRINTER_IP'
+#
+#   # Launch (survives SSH disconnect via trap '' HUP):
+#   sh /root/print-agent.sh </dev/null >> /var/log/print-agent.log 2>&1 &
+#
+#   # Auto-start on boot — add to /etc/rc.local before "exit 0":
+#   sh /root/print-agent.sh </dev/null >> /var/log/print-agent.log 2>&1 &
+#
+#   # Watchdog cron (restarts if crashed) — write to /etc/crontabs/root:
+#   * * * * * pgrep -f print-agent.sh > /dev/null || sh /root/print-agent.sh </dev/null >> /var/log/print-agent.log 2>&1 &
 #
 # CONFIGURATION — edit these three lines:
-SERVER="https://4dbb42c8-7232-4c1b-9ec9-bd7769d819bd-00-370kak3ug5c9z.kirk.replit.dev"
+SERVER="https://YOUR_SERVER"
 ADMIN_TOKEN="PASTE_YOUR_ADMIN_BEARER_TOKEN_HERE"
 PRINTER_IP="192.168.22.208"
 
@@ -25,41 +33,10 @@ PRINTER_PORT=9100
 POLL_INTERVAL=2
 LOG_TAG="print-agent"
 
+# Ignore SIGHUP so the agent survives SSH disconnects (nohup unavailable on BusyBox).
+trap '' HUP
+
 log() { logger -t "$LOG_TAG" "$1"; }
-
-claim_job() {
-  curl -sf -X POST \
-    -H "Authorization: Bearer $ADMIN_TOKEN" \
-    "$SERVER/api/print-agent/jobs/$1/claim" \
-    -o /dev/null
-  return $?
-}
-
-complete_job() {
-  curl -sf -X POST \
-    -H "Authorization: Bearer $ADMIN_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"printerResponse":"tcp_9100_ok"}' \
-    "$SERVER/api/print-agent/jobs/$1/complete" \
-    -o /dev/null
-}
-
-fail_job() {
-  curl -sf -X POST \
-    -H "Authorization: Bearer $ADMIN_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{\"error\":\"$2\"}" \
-    "$SERVER/api/print-agent/jobs/$1/fail" \
-    -o /dev/null
-}
-
-send_to_printer() {
-  # Decode base64 ESC/POS bytes and pipe to printer TCP port 9100.
-  # -w 10: abort if connection not established within 10 s.
-  # stdin EOF naturally closes the nc connection once all bytes are sent.
-  printf '%s' "$1" | base64 -d | nc -w 10 "$PRINTER_IP" "$PRINTER_PORT"
-  return $?
-}
 
 log "starting — server=$SERVER printer=$PRINTER_IP:$PRINTER_PORT"
 
@@ -91,25 +68,33 @@ while true; do
     fi
 
     log "claiming job $JOB_ID ($JOB_TYPE)"
-    claim_job "$JOB_ID"
-    CLAIM_STATUS=$?
-
-    if [ "$CLAIM_STATUS" -ne 0 ]; then
-      log "job $JOB_ID already claimed — skipping"
-      i=$((i + 1))
-      continue
-    fi
+    curl -sf -X POST \
+      -H "Authorization: Bearer $ADMIN_TOKEN" \
+      "$SERVER/api/print-agent/jobs/$JOB_ID/claim" \
+      -o /dev/null || { log "job $JOB_ID already claimed — skipping"; i=$((i+1)); continue; }
 
     log "sending job $JOB_ID to $PRINTER_IP:$PRINTER_PORT"
-    send_to_printer "$RAW_B64"
-    SEND_STATUS=$?
+    # openssl enc -base64 -d -A handles single-line base64 (no line-wrap requirement).
+    # Plain nc (no flags) closes after stdin EOF — BusyBox nc doesn't support -w.
+    printf '%s' "$RAW_B64" | openssl enc -base64 -d -A | nc "$PRINTER_IP" "$PRINTER_PORT"
+    STATUS=$?
 
-    if [ "$SEND_STATUS" -eq 0 ]; then
+    if [ "$STATUS" -eq 0 ]; then
       log "job $JOB_ID delivered OK"
-      complete_job "$JOB_ID"
+      curl -sf -X POST \
+        -H "Authorization: Bearer $ADMIN_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{"printerResponse":"tcp_9100_ok"}' \
+        "$SERVER/api/print-agent/jobs/$JOB_ID/complete" \
+        -o /dev/null
     else
-      log "job $JOB_ID FAILED (nc exit $SEND_STATUS)"
-      fail_job "$JOB_ID" "tcp_connect_failed"
+      log "job $JOB_ID FAILED (nc exit $STATUS)"
+      curl -sf -X POST \
+        -H "Authorization: Bearer $ADMIN_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "{\"error\":\"tcp_connect_failed\"}" \
+        "$SERVER/api/print-agent/jobs/$JOB_ID/fail" \
+        -o /dev/null
     fi
 
     i=$((i + 1))
