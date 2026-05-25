@@ -1155,8 +1155,8 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
   const token = getAdminToken() ?? "";
   const installUrl = `${serverUrl}/api/print-agent/install.sh?token=${encodeURIComponent(token)}`;
   const downloadCmd = `wget -O /root/print-agent.sh '${installUrl}'`;
-  const runCmd = `nohup sh /root/print-agent.sh > /var/log/print-agent.log 2>&1 &`;
-  const cronWatchdog = `* * * * * pgrep -f print-agent.sh > /dev/null || nohup sh /root/print-agent.sh >> /var/log/print-agent.log 2>&1 &`;
+  const runCmd = `setsid sh /root/print-agent.sh > /var/log/print-agent.log 2>&1 &`;
+  const cronWatchdog = `* * * * * pgrep -f print-agent.sh > /dev/null || setsid sh /root/print-agent.sh >> /var/log/print-agent.log 2>&1 &`;
 
   return (
     <div className="mt-3 border-t pt-2">
@@ -1200,7 +1200,7 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
 
           <div className="space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              2b · Launch it (survives SSH disconnect)
+              2b · Launch it in the background
             </p>
             <CodeBlock text={runCmd} />
             <p className="text-[11px] text-muted-foreground">
