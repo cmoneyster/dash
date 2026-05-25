@@ -40,11 +40,25 @@ function idlePayload() {
   return { jobReady: false, pollingInterval: POLL_INTERVAL_SECONDS };
 }
 
+/**
+ * Media types offered to the printer, in preference order.
+ * The printer picks the first type from this list that it also supports
+ * and then requests content via GET ?type=<chosen>.
+ *
+ * starprntcore (cross-emulation) is preferred; text/plain is the universal
+ * fallback that all TSP143IV firmware versions accept.  The actual bytes
+ * are identical for both — our ESC/POS-compatible StarPRNT command set.
+ */
+const OFFERED_MEDIA_TYPES = [
+  "application/vnd.star.starprntcore",
+  "text/plain",
+];
+
 /** Build the standard jobReady payload used in both GET and POST poll responses. */
-function jobReadyPayload(jobId: number, contentType: string) {
+function jobReadyPayload(jobId: number) {
   return {
     jobReady: true,
-    mediaTypes: [contentType],
+    mediaTypes: OFFERED_MEDIA_TYPES,
     jobToken: String(jobId),
     clientAction: [],          // must be an array per spec; empty = no special actions
     pollingInterval: POLL_INTERVAL_SECONDS,
@@ -54,12 +68,19 @@ function jobReadyPayload(jobId: number, contentType: string) {
 /**
  * Serve raw print bytes for the next queued job, marking it delivered.
  * Used by both the GET (Accept-header) and /content/:jobId paths.
+ *
+ * requestedType: the ?type= value the printer sent, or null.
+ * When provided we echo it back as Content-Type so the printer knows we
+ * honoured its choice.  The rendered bytes are identical regardless of
+ * which type was picked — our ESC/POS-compatible StarPRNT command set
+ * works for both starprntcore and text/plain.
  */
 async function serveJobBytes(
   req: Parameters<Parameters<typeof router.get>[1]>[0],
   res: Parameters<Parameters<typeof router.get>[1]>[1],
   printerId: number,
   jobId: number,
+  requestedType?: string | null,
 ): Promise<void> {
   const job = await claimJobForPrinterById(printerId, jobId);
   if (!job) {
@@ -69,8 +90,15 @@ async function serveJobBytes(
   }
   try {
     const { bytes, contentType } = renderJob(job.payload as unknown as RenderablePayload);
-    res.setHeader("Content-Type", contentType);
+    // Use the type the printer requested (via ?type=) if it sent one,
+    // otherwise fall back to the renderer's declared content type.
+    const serveAs = requestedType ?? contentType;
+    res.setHeader("Content-Type", serveAs);
     res.setHeader("Cache-Control", "no-store");
+    req.log.info(
+      { printerId, jobId, requestedType, serveAs, bytes: bytes.length },
+      "[cloudprnt] serving job bytes",
+    );
     res.send(bytes);
   } catch (err) {
     req.log.error({ err, jobId: job.id }, "[cloudprnt] render failed");
@@ -122,18 +150,17 @@ router.get("/cloudprnt/:token", async (req, res) => {
 
   if (isPurePoll) {
     req.log.info({ printerId: printer.id, jobId: next.id }, "[cloudprnt] GET JSON poll → jobReady");
-    res.json(jobReadyPayload(next.id, next.contentType));
+    res.json(jobReadyPayload(next.id));
     return;
   }
 
   // Printer tells us the exact format it wants via ?type= query param.
-  // Log it so we can verify the printer's preferred media type.
   const requestedType = typeof req.query.type === "string" ? req.query.type : null;
   req.log.info(
     { printerId: printer.id, jobId: next.id, requestedType, query: req.query },
     "[cloudprnt] GET content fetch → serving bytes",
   );
-  await serveJobBytes(req, res, printer.id, next.id);
+  await serveJobBytes(req, res, printer.id, next.id, requestedType);
 });
 
 /**
@@ -217,7 +244,7 @@ router.post("/cloudprnt/:token", async (req, res) => {
     return;
   }
   req.log.info({ printerId: printer.id, jobId: next.id }, "[cloudprnt] POST poll → jobReady");
-  res.json(jobReadyPayload(next.id, next.contentType));
+  res.json(jobReadyPayload(next.id));
 });
 
 /**
