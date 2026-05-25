@@ -9,7 +9,7 @@ import {
   markJobPrinted,
   markJobFailed,
 } from "../lib/printQueue";
-import { renderJob, type RenderablePayload } from "../lib/printRenderer";
+import { renderJob, buildWebPrntXml, type RenderablePayload } from "../lib/printRenderer";
 
 const router: IRouter = Router();
 
@@ -45,13 +45,16 @@ function idlePayload() {
  * The printer picks the first type from this list that it also supports
  * and then requests content via GET ?type=<chosen>.
  *
- * starprntcore (cross-emulation) is preferred; text/plain is the universal
- * fallback that all TSP143IV firmware versions accept.  The actual bytes
- * are identical for both — our ESC/POS-compatible StarPRNT command set.
+ * Priority order:
+ *  1. starprntcore  — binary ESC/POS, works in any emulation mode (preferred)
+ *  2. starwebprnt+xml — high-level XML; confirmed working on this TSP143IV
+ *     (jobs 43–48 all printed via the browser LAN path using this format)
+ *  3. text/plain; charset=utf-8 — ESC/POS text fallback
  */
 const OFFERED_MEDIA_TYPES = [
   "application/vnd.star.starprntcore",
-  "text/plain",
+  "application/vnd.star.starwebprnt+xml",
+  "text/plain; charset=utf-8",
 ];
 
 /** Build the standard jobReady payload used in both GET and POST poll responses. */
@@ -89,17 +92,30 @@ async function serveJobBytes(
     return;
   }
   try {
-    const { bytes, contentType } = renderJob(job.payload as unknown as RenderablePayload);
-    // Use the type the printer requested (via ?type=) if it sent one,
-    // otherwise fall back to the renderer's declared content type.
-    const serveAs = requestedType ?? contentType;
+    const payload = job.payload as unknown as RenderablePayload;
+    const isWebPrnt = requestedType?.includes("starwebprnt");
+
+    let body: Buffer | string;
+    let serveAs: string;
+
+    if (isWebPrnt) {
+      // Printer chose StarWebPRNT XML — the same high-level format used by the
+      // browser LAN path (confirmed working on this TSP143IV, jobs 43–48).
+      body = buildWebPrntXml(payload);
+      serveAs = "application/vnd.star.starwebprnt+xml";
+    } else {
+      const { bytes, contentType } = renderJob(payload);
+      body = bytes;
+      serveAs = requestedType ?? contentType;
+    }
+
     res.setHeader("Content-Type", serveAs);
     res.setHeader("Cache-Control", "no-store");
     req.log.info(
-      { printerId, jobId, requestedType, serveAs, bytes: bytes.length },
+      { printerId, jobId, requestedType, serveAs, size: typeof body === "string" ? body.length : body.length },
       "[cloudprnt] serving job bytes",
     );
-    res.send(bytes);
+    res.send(body);
   } catch (err) {
     req.log.error({ err, jobId: job.id }, "[cloudprnt] render failed");
     await markJobFailed(job.id, err instanceof Error ? err.message : "render failed");
@@ -260,10 +276,16 @@ router.delete("/cloudprnt/:token", async (req, res) => {
     res.status(404).end();
     return;
   }
-  // If the printer never sent a POST status report, treat DELETE as confirmation
-  // that the last delivered job printed successfully.
-  // (This covers firmware that acknowledges via DELETE instead of POST result.)
-  req.log.info({ printerId: printer.id }, "[cloudprnt] DELETE ack");
+  // Some firmware (including certain TSP143IV versions) acks via DELETE rather
+  // than a POST with jobToken.  Treat DELETE as "last delivered job printed OK."
+  const { getLastDeliveredJobForPrinter } = await import("../lib/printQueue");
+  const lastJob = await getLastDeliveredJobForPrinter(printer.id);
+  if (lastJob) {
+    await markJobPrinted(lastJob.id, "cloudprnt");
+    req.log.info({ printerId: printer.id, jobId: lastJob.id }, "[cloudprnt] DELETE ack → job printed ✓");
+  } else {
+    req.log.info({ printerId: printer.id }, "[cloudprnt] DELETE ack (no delivered job to mark)");
+  }
   res.status(200).json({ ok: true });
 });
 

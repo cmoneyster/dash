@@ -255,6 +255,16 @@ export async function requeueJob(jobId: number): Promise<PrintJob | null> {
   return row ?? null;
 }
 
+export async function getLastDeliveredJobForPrinter(printerId: number): Promise<PrintJob | null> {
+  const [row] = await db
+    .select()
+    .from(printJobsTable)
+    .where(and(eq(printJobsTable.printerId, printerId), eq(printJobsTable.status, "delivered")))
+    .orderBy(desc(printJobsTable.deliveredAt))
+    .limit(1);
+  return row ?? null;
+}
+
 export async function recentJobsForPrinter(printerId: number, limit = 50): Promise<PrintJob[]> {
   return db
     .select()
