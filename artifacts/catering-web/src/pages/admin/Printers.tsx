@@ -1155,8 +1155,8 @@ function RouterAgentSetup({ printer }: { printer: Printer }) {
   const token = getAdminToken() ?? "";
   const installUrl = `${serverUrl}/api/print-agent/install.sh?token=${encodeURIComponent(token)}`;
   const downloadCmd = `wget -O /root/print-agent.sh '${installUrl}'`;
-  const runCmd = `setsid sh /root/print-agent.sh > /var/log/print-agent.log 2>&1 &`;
-  const cronWatchdog = `* * * * * pgrep -f print-agent.sh > /dev/null || setsid sh /root/print-agent.sh >> /var/log/print-agent.log 2>&1 &`;
+  const runCmd = `sh /root/print-agent.sh > /var/log/print-agent.log 2>&1 &`;
+  const cronWatchdog = `* * * * * pgrep -f print-agent.sh > /dev/null || sh /root/print-agent.sh >> /var/log/print-agent.log 2>&1 &`;
 
   return (
     <div className="mt-3 border-t pt-2">

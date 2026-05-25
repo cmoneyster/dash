@@ -38,7 +38,10 @@ router.get("/print-agent/install.sh", (req, res) => {
 # Works for ALL printers with a LAN IP configured in Admin — no printer IP
 # needed here; the server embeds the target IP in each job response.
 #
-# Usage: nohup sh /root/print-agent.sh > /var/log/print-agent.log 2>&1 &
+# Usage: sh /root/print-agent.sh > /var/log/print-agent.log 2>&1 &
+
+# Ignore SIGHUP so the process survives SSH disconnect without needing nohup/setsid
+trap '' HUP
 
 SERVER="\${PRINT_AGENT_SERVER:-${server}}"
 TOKEN="\${PRINT_AGENT_TOKEN:-${token}}"
