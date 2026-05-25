@@ -61,8 +61,8 @@ while true; do
 
       if [ $? -eq 0 ] && [ -s "$TMPFILE" ]; then
         # Pipe bytes directly to the printer's TCP port 9100
-        # (busybox nc has no -w flag; use timeout instead)
-        timeout 10 nc "$LAN_IP" 9100 < "$TMPFILE" 2>/tmp/print_nc_err
+        # (busybox nc has no -w flag; busybox timeout uses -t flag)
+        timeout -t 10 nc "$LAN_IP" 9100 < "$TMPFILE" 2>/tmp/print_nc_err
         NC_STATUS=$?
         rm -f "$TMPFILE"
 
