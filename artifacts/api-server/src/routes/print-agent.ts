@@ -205,7 +205,7 @@ export function installShHandler(req: import("express").Request, res: import("ex
     '      { log "job $JOB_ID already claimed"; i=$((i+1)); continue; }',
     "",
     '    log "sending job $JOB_ID to $PRINTER_IP:$PRINTER_PORT"',
-    "    printf '%s' \"$RAW_B64\" | openssl enc -base64 -d | nc \"$PRINTER_IP\" \"$PRINTER_PORT\"",
+    "    printf '%s' \"$RAW_B64\" | openssl enc -base64 -d -A | nc \"$PRINTER_IP\" \"$PRINTER_PORT\"",
     "    STATUS=$?",
     "",
     '    if [ "$STATUS" -eq 0 ]; then',
