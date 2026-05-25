@@ -88,13 +88,22 @@ async function deliverViaWebPrnt(job: QueuedJob): Promise<string> {
       headers: { "Content-Type": "text/xml; charset=utf-8" },
       body: job.webPrntXml,
     });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const certHint =
-      msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("network")
-        ? ` — visit https://${job.lanIp} in this browser and accept the printer's certificate, then retry.`
-        : "";
-    throw new Error(`WebPRNT fetch error: ${msg}${certHint}`);
+  } catch (httpsErr) {
+    // HTTPS failed (cert not trusted or printer doesn't support HTTPS) — try plain HTTP.
+    try {
+      response = await fetch(`http://${job.lanIp}/StarWebPRNT/SendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "text/xml; charset=utf-8" },
+        body: job.webPrntXml,
+      });
+    } catch {
+      const msg = httpsErr instanceof Error ? httpsErr.message : String(httpsErr);
+      const certHint =
+        msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("network")
+          ? ` — visit https://${job.lanIp} in this browser and accept the printer's certificate, then retry.`
+          : "";
+      throw new Error(`WebPRNT fetch error: ${msg}${certHint}`);
+    }
   }
 
   const body = await response.text().catch(() => "");

@@ -29,6 +29,8 @@ import type {
   Cart,
   ChatMessageBody,
   CheckAvailabilityParams,
+  CompletePrintAgentJob200,
+  CompletePrintAgentJobBody,
   CreateBlackoutDateBody,
   CreateBlackoutTimeWindowBody,
   CreateMenuItemBody,
@@ -37,6 +39,8 @@ import type {
   CreatePrinterBody,
   DayLoadResponse,
   ErrorResponse,
+  FailPrintAgentJob200,
+  FailPrintAgentJobBody,
   GenerateDescriptionBody,
   GenerateDescriptionResponse,
   GetCartParams,
@@ -48,6 +52,7 @@ import type {
   ListBlackoutTimeWindowsParams,
   ListMenuItemsParams,
   ListPrintJobsParams,
+  ListQueuedPrintAgentJobs200Item,
   MenuItem,
   OpenaiConversation,
   OpenaiConversationWithMessages,
@@ -4720,3 +4725,344 @@ export function useGetEventTakerMenu<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List queued print jobs for the LAN/router agent
+ */
+export const getListQueuedPrintAgentJobsUrl = () => {
+  return `/api/print-agent/queued`;
+};
+
+export const listQueuedPrintAgentJobs = async (
+  options?: RequestInit,
+): Promise<ListQueuedPrintAgentJobs200Item[]> => {
+  return customFetch<ListQueuedPrintAgentJobs200Item[]>(
+    getListQueuedPrintAgentJobsUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListQueuedPrintAgentJobsQueryKey = () => {
+  return [`/api/print-agent/queued`] as const;
+};
+
+export const getListQueuedPrintAgentJobsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listQueuedPrintAgentJobs>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listQueuedPrintAgentJobs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListQueuedPrintAgentJobsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listQueuedPrintAgentJobs>>
+  > = ({ signal }) => listQueuedPrintAgentJobs({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listQueuedPrintAgentJobs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListQueuedPrintAgentJobsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listQueuedPrintAgentJobs>>
+>;
+export type ListQueuedPrintAgentJobsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List queued print jobs for the LAN/router agent
+ */
+
+export function useListQueuedPrintAgentJobs<
+  TData = Awaited<ReturnType<typeof listQueuedPrintAgentJobs>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listQueuedPrintAgentJobs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListQueuedPrintAgentJobsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Atomically claim a queued job for LAN delivery
+ */
+export const getClaimPrintAgentJobUrl = (id: number) => {
+  return `/api/print-agent/jobs/${id}/claim`;
+};
+
+export const claimPrintAgentJob = async (
+  id: number,
+  options?: RequestInit,
+): Promise<PrintJob> => {
+  return customFetch<PrintJob>(getClaimPrintAgentJobUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getClaimPrintAgentJobMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof claimPrintAgentJob>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof claimPrintAgentJob>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["claimPrintAgentJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof claimPrintAgentJob>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return claimPrintAgentJob(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClaimPrintAgentJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof claimPrintAgentJob>>
+>;
+
+export type ClaimPrintAgentJobMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Atomically claim a queued job for LAN delivery
+ */
+export const useClaimPrintAgentJob = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof claimPrintAgentJob>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof claimPrintAgentJob>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getClaimPrintAgentJobMutationOptions(options));
+};
+
+/**
+ * @summary Mark a job as successfully printed by the LAN agent
+ */
+export const getCompletePrintAgentJobUrl = (id: number) => {
+  return `/api/print-agent/jobs/${id}/complete`;
+};
+
+export const completePrintAgentJob = async (
+  id: number,
+  completePrintAgentJobBody: CompletePrintAgentJobBody,
+  options?: RequestInit,
+): Promise<CompletePrintAgentJob200> => {
+  return customFetch<CompletePrintAgentJob200>(
+    getCompletePrintAgentJobUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(completePrintAgentJobBody),
+    },
+  );
+};
+
+export const getCompletePrintAgentJobMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completePrintAgentJob>>,
+    TError,
+    { id: number; data: BodyType<CompletePrintAgentJobBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completePrintAgentJob>>,
+  TError,
+  { id: number; data: BodyType<CompletePrintAgentJobBody> },
+  TContext
+> => {
+  const mutationKey = ["completePrintAgentJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completePrintAgentJob>>,
+    { id: number; data: BodyType<CompletePrintAgentJobBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return completePrintAgentJob(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompletePrintAgentJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completePrintAgentJob>>
+>;
+export type CompletePrintAgentJobMutationBody =
+  BodyType<CompletePrintAgentJobBody>;
+export type CompletePrintAgentJobMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Mark a job as successfully printed by the LAN agent
+ */
+export const useCompletePrintAgentJob = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completePrintAgentJob>>,
+    TError,
+    { id: number; data: BodyType<CompletePrintAgentJobBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completePrintAgentJob>>,
+  TError,
+  { id: number; data: BodyType<CompletePrintAgentJobBody> },
+  TContext
+> => {
+  return useMutation(getCompletePrintAgentJobMutationOptions(options));
+};
+
+/**
+ * @summary Report a delivery failure — requeues the job for retry
+ */
+export const getFailPrintAgentJobUrl = (id: number) => {
+  return `/api/print-agent/jobs/${id}/fail`;
+};
+
+export const failPrintAgentJob = async (
+  id: number,
+  failPrintAgentJobBody: FailPrintAgentJobBody,
+  options?: RequestInit,
+): Promise<FailPrintAgentJob200> => {
+  return customFetch<FailPrintAgentJob200>(getFailPrintAgentJobUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(failPrintAgentJobBody),
+  });
+};
+
+export const getFailPrintAgentJobMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof failPrintAgentJob>>,
+    TError,
+    { id: number; data: BodyType<FailPrintAgentJobBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof failPrintAgentJob>>,
+  TError,
+  { id: number; data: BodyType<FailPrintAgentJobBody> },
+  TContext
+> => {
+  const mutationKey = ["failPrintAgentJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof failPrintAgentJob>>,
+    { id: number; data: BodyType<FailPrintAgentJobBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return failPrintAgentJob(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FailPrintAgentJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof failPrintAgentJob>>
+>;
+export type FailPrintAgentJobMutationBody = BodyType<FailPrintAgentJobBody>;
+export type FailPrintAgentJobMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Report a delivery failure — requeues the job for retry
+ */
+export const useFailPrintAgentJob = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof failPrintAgentJob>>,
+    TError,
+    { id: number; data: BodyType<FailPrintAgentJobBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof failPrintAgentJob>>,
+  TError,
+  { id: number; data: BodyType<FailPrintAgentJobBody> },
+  TContext
+> => {
+  return useMutation(getFailPrintAgentJobMutationOptions(options));
+};

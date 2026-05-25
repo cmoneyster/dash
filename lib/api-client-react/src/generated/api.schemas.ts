@@ -1131,3 +1131,30 @@ export const GetSalesReportStatus = {
   all: "all",
   completed: "completed",
 } as const;
+
+export type ListQueuedPrintAgentJobs200Item = {
+  id: number;
+  printerId: number;
+  jobType: string;
+  lanIp: string;
+  webPrntXml: string;
+  /** Base64-encoded raw ESC/POS bytes for TCP port-9100 delivery */
+  rawBytesBase64: string;
+  createdAt: string;
+};
+
+export type CompletePrintAgentJobBody = {
+  printerResponse?: string;
+};
+
+export type CompletePrintAgentJob200 = {
+  ok?: boolean;
+};
+
+export type FailPrintAgentJobBody = {
+  error?: string;
+};
+
+export type FailPrintAgentJob200 = {
+  ok?: boolean;
+};

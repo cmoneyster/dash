@@ -15,7 +15,7 @@
  */
 
 import { Router, type IRouter } from "express";
-import { getQueuedJobsForLanAgent, claimJobForAgent, markJobPrinted, markJobFailed, getJobById } from "../lib/printQueue";
+import { getQueuedJobsForLanAgent, claimJobForAgent, markJobPrinted, markJobFailed, requeueJob, getJobById } from "../lib/printQueue";
 import { buildWebPrntXml, renderJob } from "../lib/printRenderer";
 import type { RenderablePayload } from "../lib/printRenderer";
 
@@ -117,8 +117,9 @@ router.post("/print-agent/jobs/:id/complete", async (req, res) => {
 router.post("/print-agent/jobs/:id/fail", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const errorMsg = typeof req.body?.error === "string" ? req.body.error : "Unknown LAN delivery error";
-    await markJobFailed(id, errorMsg);
+    // Requeue rather than permanently fail — allows the router agent or
+    // CloudPRNT to retry on the next poll cycle.
+    await requeueJob(id);
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "print-agent: fail report failed");
@@ -161,6 +162,17 @@ export function installShHandler(req: import("express").Request, res: import("ex
 
   if (!token) {
     res.status(400).type("text/plain").send("Missing ?token= query parameter\n");
+    return;
+  }
+
+  // Validate token: must be exactly 64 lowercase hex chars (HMAC-SHA256 output).
+  if (!/^[0-9a-f]{64}$/.test(token)) {
+    res.status(400).type("text/plain").send("Invalid token format\n");
+    return;
+  }
+  // Validate printer IP: must be a valid IPv4 address.
+  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(printerIp) || printerIp.split(".").some(n => parseInt(n) > 255)) {
+    res.status(400).type("text/plain").send("Invalid printer IP\n");
     return;
   }
 

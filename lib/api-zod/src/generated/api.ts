@@ -2811,3 +2811,82 @@ export const GetEventTakerMenuResponse = zod
   .describe(
     "Response from GET \/event-taker\/menu — the filtered, ordered menu items and the raw slot-layout array used by the arrange-mode grid.",
   );
+
+/**
+ * @summary List queued print jobs for the LAN/router agent
+ */
+export const ListQueuedPrintAgentJobsResponseItem = zod.object({
+  id: zod.number(),
+  printerId: zod.number(),
+  jobType: zod.string(),
+  lanIp: zod.string(),
+  webPrntXml: zod.string(),
+  rawBytesBase64: zod
+    .string()
+    .describe("Base64-encoded raw ESC\/POS bytes for TCP port-9100 delivery"),
+  createdAt: zod.coerce.date(),
+});
+export const ListQueuedPrintAgentJobsResponse = zod.array(
+  ListQueuedPrintAgentJobsResponseItem,
+);
+
+/**
+ * @summary Atomically claim a queued job for LAN delivery
+ */
+export const ClaimPrintAgentJobParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ClaimPrintAgentJobResponse = zod.object({
+  id: zod.number(),
+  printerId: zod.number(),
+  jobType: zod.enum([
+    "kitchen_ticket",
+    "customer_receipt",
+    "item_label",
+    "plate_label",
+    "test",
+  ]),
+  orderSource: zod.enum(["order", "event_order"]).nullish(),
+  orderId: zod.number().nullish(),
+  contentType: zod.string(),
+  status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
+  attempts: zod.number(),
+  deliveredVia: zod
+    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
+    .nullish(),
+  error: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  deliveredAt: zod.coerce.date().nullish(),
+  printedAt: zod.coerce.date().nullish(),
+});
+
+/**
+ * @summary Mark a job as successfully printed by the LAN agent
+ */
+export const CompletePrintAgentJobParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CompletePrintAgentJobBody = zod.object({
+  printerResponse: zod.string().optional(),
+});
+
+export const CompletePrintAgentJobResponse = zod.object({
+  ok: zod.boolean().optional(),
+});
+
+/**
+ * @summary Report a delivery failure — requeues the job for retry
+ */
+export const FailPrintAgentJobParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const FailPrintAgentJobBody = zod.object({
+  error: zod.string().optional(),
+});
+
+export const FailPrintAgentJobResponse = zod.object({
+  ok: zod.boolean().optional(),
+});
