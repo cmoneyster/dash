@@ -28,6 +28,7 @@ import {
   RefreshCw,
   X,
   Eye,
+  EyeOff,
   XCircle,
   Loader2,
   Terminal,
@@ -36,6 +37,10 @@ import {
   Palette,
   Copy,
   Network,
+  Bold,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
 } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
@@ -197,14 +202,171 @@ function TestLanButton({ printer }: { printer: Printer }) {
   );
 }
 
-const TICKET_TYPES = [
-  { value: "kitchen_ticket", label: "Kitchen" },
-  { value: "customer_receipt", label: "Receipt" },
-  { value: "item_label", label: "Item label" },
-  { value: "plate_label", label: "Plate label" },
-] as const;
+// ─── Template designer types & helpers ───────────────────────────────────────
 
-type TicketType = typeof TICKET_TYPES[number]["value"];
+type SectionKey =
+  | "header" | "orderNumber" | "guestName" | "tableNumber"
+  | "timestamp" | "source" | "items" | "totals" | "notes" | "footer";
+type SectionAlign = "left" | "center" | "right";
+type SectionStyleLocal = { visible?: boolean; bold?: boolean; align?: SectionAlign };
+type TicketType = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label";
+
+const TICKET_TYPES: { value: TicketType; label: string }[] = [
+  { value: "kitchen_ticket",   label: "Kitchen" },
+  { value: "customer_receipt", label: "Receipt" },
+  { value: "item_label",       label: "Item label" },
+  { value: "plate_label",      label: "Plate label" },
+];
+
+const SECTION_LABELS: Record<SectionKey, string> = {
+  header:      "Header / title",
+  orderNumber: "Order number",
+  guestName:   "Guest name",
+  tableNumber: "Table number",
+  timestamp:   "Timestamp",
+  source:      "Order source",
+  items:       "Items list",
+  totals:      "Totals",
+  notes:       "Order notes",
+  footer:      "Footer",
+};
+
+const DEFAULT_TICKET_SECTIONS: Record<TicketType, SectionKey[]> = {
+  kitchen_ticket:   ["header", "orderNumber", "guestName", "tableNumber", "timestamp", "source", "items", "notes", "footer"],
+  customer_receipt: ["header", "timestamp", "orderNumber", "guestName", "tableNumber", "items", "totals", "footer"],
+  item_label:       ["orderNumber", "guestName", "tableNumber", "items", "timestamp"],
+  plate_label:      ["orderNumber", "guestName", "items", "timestamp"],
+};
+
+const EMPTY_TEMPLATE: PrintTemplate = { businessName: "", footer: "", dividerChar: "-" };
+
+function getOrder(tpl: PrintTemplate, tt: TicketType): SectionKey[] {
+  const layout = tpl[tt as keyof PrintTemplate] as { sectionOrder?: string[] } | null | undefined;
+  return (layout?.sectionOrder as SectionKey[] | undefined) ?? DEFAULT_TICKET_SECTIONS[tt];
+}
+
+function getStyle(tpl: PrintTemplate, tt: TicketType, key: SectionKey): SectionStyleLocal {
+  const layout = tpl[tt as keyof PrintTemplate] as { sections?: Record<string, SectionStyleLocal> } | null | undefined;
+  return (layout?.sections?.[key]) ?? {};
+}
+
+function patchLayout(tpl: PrintTemplate, tt: TicketType, patch: { sectionOrder?: string[]; sections?: Record<string, SectionStyleLocal> }): PrintTemplate {
+  const prev = (tpl[tt as keyof PrintTemplate] ?? {}) as Record<string, unknown>;
+  return { ...tpl, [tt]: { ...prev, ...patch } };
+}
+
+function patchStyle(tpl: PrintTemplate, tt: TicketType, key: SectionKey, stylePatch: Partial<SectionStyleLocal>): PrintTemplate {
+  const layout = (tpl[tt as keyof PrintTemplate] ?? {}) as { sectionOrder?: string[]; sections?: Record<string, SectionStyleLocal> };
+  return patchLayout(tpl, tt, {
+    ...layout,
+    sections: { ...layout.sections, [key]: { ...layout.sections?.[key], ...stylePatch } },
+  });
+}
+
+function moveSection(tpl: PrintTemplate, tt: TicketType, key: SectionKey, dir: -1 | 1): PrintTemplate {
+  const order = [...getOrder(tpl, tt)];
+  const idx = order.indexOf(key);
+  const next = idx + dir;
+  if (idx < 0 || next < 0 || next >= order.length) return tpl;
+  [order[idx], order[next]] = [order[next], order[idx]];
+  const layout = (tpl[tt as keyof PrintTemplate] ?? {}) as Record<string, unknown>;
+  return patchLayout(tpl, tt, { ...layout, sectionOrder: order });
+}
+
+// ─── Section row component ────────────────────────────────────────────────────
+
+function SectionRow({
+  sectionKey, style, isFirst, isLast,
+  onUp, onDown, onChange,
+}: {
+  sectionKey: SectionKey;
+  style: SectionStyleLocal;
+  isFirst: boolean;
+  isLast: boolean;
+  onUp: () => void;
+  onDown: () => void;
+  onChange: (patch: Partial<SectionStyleLocal>) => void;
+}) {
+  const visible = style.visible !== false;
+  const isBold  = style.bold === true;
+  const align   = style.align ?? "left";
+
+  const btnBase = "flex items-center justify-center rounded transition-colors";
+  const iconSz  = "w-3 h-3";
+
+  return (
+    <div className={`flex items-center gap-1 rounded-lg px-1.5 py-1 transition-opacity ${!visible ? "opacity-40" : ""}`}>
+      <div className="flex flex-col">
+        <button
+          type="button"
+          onClick={onUp}
+          disabled={isFirst}
+          className={`${btnBase} w-5 h-4 hover:bg-muted disabled:opacity-20`}
+          title="Move up"
+        >
+          <ChevronUp className={iconSz} />
+        </button>
+        <button
+          type="button"
+          onClick={onDown}
+          disabled={isLast}
+          className={`${btnBase} w-5 h-4 hover:bg-muted disabled:opacity-20`}
+          title="Move down"
+        >
+          <ChevronDown className={iconSz} />
+        </button>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onChange({ visible: !visible })}
+        title={visible ? "Hide section" : "Show section"}
+        className={`${btnBase} w-6 h-6 shrink-0 ${visible ? "text-foreground hover:bg-muted" : "text-muted-foreground hover:bg-muted"}`}
+      >
+        {visible ? <Eye className={iconSz} /> : <EyeOff className={iconSz} />}
+      </button>
+
+      <span className="flex-1 text-xs truncate min-w-0">{SECTION_LABELS[sectionKey]}</span>
+
+      <button
+        type="button"
+        onClick={() => onChange({ bold: !isBold })}
+        title={isBold ? "Remove bold" : "Make bold"}
+        className={`${btnBase} w-6 h-6 shrink-0 font-bold text-[11px] ${
+          isBold
+            ? "bg-primary text-primary-foreground"
+            : "hover:bg-muted text-muted-foreground"
+        }`}
+      >
+        <Bold className={iconSz} />
+      </button>
+
+      <div className="flex">
+        {(["left", "center", "right"] as SectionAlign[]).map((a) => (
+          <button
+            key={a}
+            type="button"
+            onClick={() => onChange({ align: a })}
+            title={`Align ${a}`}
+            className={`${btnBase} w-5 h-6 ${
+              align === a
+                ? "bg-primary text-primary-foreground rounded"
+                : "hover:bg-muted text-muted-foreground"
+            }`}
+          >
+            {a === "left"
+              ? <AlignLeft className={iconSz} />
+              : a === "center"
+              ? <AlignCenter className={iconSz} />
+              : <AlignRight className={iconSz} />}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── PrintTemplateDesignerModal ───────────────────────────────────────────────
 
 function PrintTemplateDesignerModal({
   printer,
@@ -218,17 +380,16 @@ function PrintTemplateDesignerModal({
     mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) },
   });
 
-  const existingTemplate = printer.printTemplate as PrintTemplate | null | undefined;
+  const existing = printer.printTemplate as PrintTemplate | null | undefined;
 
   const [tpl, setTpl] = useState<PrintTemplate>({
-    businessName: existingTemplate?.businessName ?? "",
-    footer: existingTemplate?.footer ?? "",
-    dividerChar: existingTemplate?.dividerChar ?? "-",
-    showTimestamp: existingTemplate?.showTimestamp ?? true,
-    showOrderNumber: existingTemplate?.showOrderNumber ?? true,
-    showGuestName: existingTemplate?.showGuestName ?? true,
-    showSource: existingTemplate?.showSource ?? true,
-    showTableNumber: existingTemplate?.showTableNumber ?? true,
+    businessName: existing?.businessName ?? "",
+    footer: existing?.footer ?? "",
+    dividerChar: existing?.dividerChar ?? "-",
+    kitchen_ticket:   existing?.kitchen_ticket   ?? undefined,
+    customer_receipt: existing?.customer_receipt ?? undefined,
+    item_label:       existing?.item_label       ?? undefined,
+    plate_label:      existing?.plate_label      ?? undefined,
   });
 
   const [ticketType, setTicketType] = useState<TicketType>("kitchen_ticket");
@@ -249,62 +410,34 @@ function PrintTemplateDesignerModal({
       body: JSON.stringify({ ticketType: type, template }),
     })
       .then((r) => r.json())
-      .then((d: { text: string }) => {
-        setPreviewText(d.text);
-        setPreviewLoading(false);
-      })
-      .catch(() => {
-        setPreviewText("(preview error)");
-        setPreviewLoading(false);
-      });
+      .then((d: { text: string }) => { setPreviewText(d.text); setPreviewLoading(false); })
+      .catch(() => { setPreviewText("(preview error)"); setPreviewLoading(false); });
   };
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchPreview(tpl, ticketType), 400);
+    debounceRef.current = setTimeout(() => fetchPreview(tpl, ticketType), 150);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [tpl, ticketType]);
 
   const handleSave = async () => {
-    const cleanTpl: PrintTemplate = {
+    const clean: PrintTemplate = {
       ...tpl,
       businessName: tpl.businessName?.trim() || null,
       footer: tpl.footer?.trim() || null,
       dividerChar: tpl.dividerChar?.slice(0, 1) || "-",
     };
-    await update.mutateAsync({ id: printer.id, data: { printTemplate: cleanTpl } });
+    await update.mutateAsync({ id: printer.id, data: { printTemplate: clean } });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const setField = <K extends keyof PrintTemplate>(key: K, val: PrintTemplate[K]) =>
-    setTpl((prev) => ({ ...prev, [key]: val }));
-
-  const Toggle = ({ field, label }: { field: keyof PrintTemplate; label: string }) => (
-    <label className="flex items-center gap-2.5 cursor-pointer select-none">
-      <button
-        type="button"
-        role="switch"
-        aria-checked={!!tpl[field]}
-        onClick={() => setField(field, !tpl[field] as PrintTemplate[typeof field])}
-        className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${
-          tpl[field] ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
-            tpl[field] ? "translate-x-4" : "translate-x-0"
-          }`}
-        />
-      </button>
-      <span className="text-sm">{label}</span>
-    </label>
-  );
+  const sectionOrder = getOrder(tpl, ticketType);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
       <div
-        className="bg-card rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+        className="bg-card rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
@@ -313,76 +446,96 @@ function PrintTemplateDesignerModal({
               <Palette className="w-4 h-4 text-muted-foreground" />
               Receipt template — {printer.name}
             </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Customise what appears on each ticket type. Preview updates live.</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Customise each ticket type. Reorder sections and set visibility, bold, and alignment per section.
+            </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted">
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          <div className="w-72 shrink-0 border-r overflow-y-auto p-5 space-y-5">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Header</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Business name</label>
-                  <input
-                    value={tpl.businessName ?? ""}
-                    onChange={(e) => setField("businessName", e.target.value)}
-                    className="w-full px-3 py-2 border rounded-xl bg-background text-sm"
-                    placeholder="Hollywood East Cafe"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1">Overrides the default name on tickets.</p>
-                </div>
-              </div>
-            </div>
+          {/* ── Left sidebar: global controls + per-ticket section list ── */}
+          <div className="w-80 shrink-0 border-r overflow-y-auto">
+            <div className="p-4 space-y-4 border-b">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Global</p>
 
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Sections</p>
-              <div className="space-y-3">
-                <Toggle field="showTimestamp" label="Show timestamp" />
-                <Toggle field="showOrderNumber" label="Show order #" />
-                <Toggle field="showGuestName" label="Show guest name" />
-                <Toggle field="showSource" label="Show order source" />
-                <Toggle field="showTableNumber" label="Show table number" />
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Style</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Divider character</label>
-                  <input
-                    value={tpl.dividerChar ?? "-"}
-                    onChange={(e) => setField("dividerChar", e.target.value.slice(0, 1) || "-")}
-                    className="w-20 px-3 py-2 border rounded-xl bg-background text-sm font-mono text-center"
-                    maxLength={1}
-                    placeholder="-"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1">Single character repeated across the ticket width.</p>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Footer</p>
               <div>
+                <label className="block text-xs font-medium mb-1">Business name</label>
+                <input
+                  value={tpl.businessName ?? ""}
+                  onChange={(e) => setTpl((p) => ({ ...p, businessName: e.target.value }))}
+                  className="w-full px-3 py-1.5 border rounded-lg bg-background text-sm"
+                  placeholder="Hollywood East Cafe"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1">Divider character</label>
+                <input
+                  value={tpl.dividerChar ?? "-"}
+                  onChange={(e) => setTpl((p) => ({ ...p, dividerChar: e.target.value.slice(0, 1) || "-" }))}
+                  className="w-16 px-3 py-1.5 border rounded-lg bg-background text-sm font-mono text-center"
+                  maxLength={1}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1">Footer</label>
                 <textarea
                   value={tpl.footer ?? ""}
-                  onChange={(e) => setField("footer", e.target.value)}
-                  className="w-full px-3 py-2 border rounded-xl bg-background text-sm font-mono resize-none"
-                  rows={4}
+                  onChange={(e) => setTpl((p) => ({ ...p, footer: e.target.value }))}
+                  className="w-full px-3 py-1.5 border rounded-lg bg-background text-sm font-mono resize-none"
+                  rows={3}
                   placeholder="Thank you for your order!"
                 />
-                <p className="text-[11px] text-muted-foreground mt-1">Printed at the bottom of each ticket. Use line breaks for multiple lines.</p>
+              </div>
+            </div>
+
+            <div className="p-4 space-y-2">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Sections — {TICKET_TYPES.find((t) => t.value === ticketType)?.label}
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setTpl((p) => {
+                      const updated = { ...p };
+                      delete (updated as Record<string, unknown>)[ticketType];
+                      return updated;
+                    })
+                  }
+                  className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                  title="Reset this ticket type to defaults"
+                >
+                  Reset
+                </button>
+              </div>
+
+              <p className="text-[10px] text-muted-foreground">
+                Drag-to-reorder not available — use ↑↓ arrows. Toggle eye to hide a section.
+              </p>
+
+              <div className="space-y-0.5">
+                {sectionOrder.map((key, idx) => (
+                  <SectionRow
+                    key={key}
+                    sectionKey={key}
+                    style={getStyle(tpl, ticketType, key)}
+                    isFirst={idx === 0}
+                    isLast={idx === sectionOrder.length - 1}
+                    onUp={() => setTpl((p) => moveSection(p, ticketType, key, -1))}
+                    onDown={() => setTpl((p) => moveSection(p, ticketType, key, 1))}
+                    onChange={(patch) => setTpl((p) => patchStyle(p, ticketType, key, patch))}
+                  />
+                ))}
               </div>
             </div>
           </div>
 
+          {/* ── Right panel: ticket type tabs + live preview ── */}
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            <div className="flex items-center gap-1 px-5 py-3 border-b bg-muted/30 shrink-0 flex-wrap">
+            <div className="flex items-center gap-1 px-4 py-3 border-b bg-muted/30 shrink-0 flex-wrap">
               {TICKET_TYPES.map((t) => (
                 <button
                   key={t.value}
@@ -413,7 +566,7 @@ function PrintTemplateDesignerModal({
                 )}
               </div>
               <p className="text-center text-[11px] text-muted-foreground mt-3">
-                48-column paper preview · ESC/POS control chars stripped
+                48-column preview · ESC/POS control chars stripped
               </p>
             </div>
           </div>
@@ -422,21 +575,10 @@ function PrintTemplateDesignerModal({
         <div className="flex items-center justify-between px-5 py-4 border-t shrink-0 bg-muted/20">
           <button
             type="button"
-            onClick={() => {
-              setTpl({
-                businessName: "",
-                footer: "",
-                dividerChar: "-",
-                showTimestamp: true,
-                showOrderNumber: true,
-                showGuestName: true,
-                showSource: true,
-                showTableNumber: true,
-              });
-            }}
+            onClick={() => setTpl(EMPTY_TEMPLATE)}
             className="text-xs text-muted-foreground hover:text-foreground underline"
           >
-            Reset to defaults
+            Reset all to defaults
           </button>
           <div className="flex items-center gap-2">
             <button
@@ -451,9 +593,7 @@ function PrintTemplateDesignerModal({
               onClick={handleSave}
               disabled={update.isPending || saved}
               className={`px-5 py-2 rounded-xl font-medium text-sm transition-all active:scale-95 disabled:opacity-60 inline-flex items-center gap-2 ${
-                saved
-                  ? "bg-green-600 text-white"
-                  : "bg-primary text-primary-foreground hover:opacity-90"
+                saved ? "bg-green-600 text-white" : "bg-primary text-primary-foreground hover:opacity-90"
               }`}
             >
               {update.isPending

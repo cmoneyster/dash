@@ -2948,33 +2948,69 @@ components:
           $ref: "#/components/schemas/PrintTemplate"
           nullable: true
 
+    SectionStyle:
+      type: object
+      description: Per-section style overrides for a ticket template.
+      properties:
+        visible:
+          type: boolean
+          nullable: true
+          description: Whether this section is printed. Defaults to true.
+        bold:
+          type: boolean
+          nullable: true
+          description: Whether this section's text is bold. Inherits section default.
+        align:
+          type: string
+          nullable: true
+          enum: [left, center, right]
+          description: Text alignment for this section.
+
+    TicketLayout:
+      type: object
+      description: Per-ticket-type layout with section order and per-section style overrides.
+      properties:
+        sectionOrder:
+          type: array
+          nullable: true
+          description: Ordered list of section keys to render. Defaults to the built-in order.
+          items:
+            type: string
+            enum: [header, orderNumber, guestName, tableNumber, timestamp, source, items, totals, notes, footer]
+        sections:
+          type: object
+          nullable: true
+          description: Map of section key to style overrides. Sections not listed use defaults.
+          additionalProperties:
+            $ref: "#/components/schemas/SectionStyle"
+
     PrintTemplate:
       type: object
+      description: Per-printer receipt/label template. Global fields apply to all ticket types; per-type fields override section order and styles.
       properties:
         businessName:
           type: string
           nullable: true
+          description: Overrides the business name shown on receipts.
         footer:
           type: string
           nullable: true
+          description: Footer text printed at the bottom of each ticket.
         dividerChar:
           type: string
           nullable: true
-          description: Single character used for divider lines (default "-")
-        showTimestamp:
-          type: boolean
+          description: Single character used for divider lines (default "-").
+        kitchen_ticket:
+          $ref: "#/components/schemas/TicketLayout"
           nullable: true
-        showOrderNumber:
-          type: boolean
+        customer_receipt:
+          $ref: "#/components/schemas/TicketLayout"
           nullable: true
-        showGuestName:
-          type: boolean
+        item_label:
+          $ref: "#/components/schemas/TicketLayout"
           nullable: true
-        showSource:
-          type: boolean
-          nullable: true
-        showTableNumber:
-          type: boolean
+        plate_label:
+          $ref: "#/components/schemas/TicketLayout"
           nullable: true
 
     PreviewTemplateBody:
@@ -3054,7 +3090,7 @@ components:
         deliveredVia:
           type: string
           nullable: true
-          enum: [lan_browser]
+          enum: [cloudprnt, lan_fallback, lan_browser]
         error:
           type: string
           nullable: true

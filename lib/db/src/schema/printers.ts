@@ -8,15 +8,39 @@ export type PrinterStatus = (typeof printerStatusValues)[number];
 export const printerModeValues = ["lan_browser"] as const;
 export type PrinterMode = (typeof printerModeValues)[number];
 
+export type SectionKey =
+  | "header"
+  | "orderNumber"
+  | "guestName"
+  | "tableNumber"
+  | "timestamp"
+  | "source"
+  | "items"
+  | "totals"
+  | "notes"
+  | "footer";
+
+export type SectionAlign = "left" | "center" | "right";
+
+export type SectionStyle = {
+  visible?: boolean;
+  bold?: boolean;
+  align?: SectionAlign;
+};
+
+export type TicketLayout = {
+  sectionOrder?: SectionKey[];
+  sections?: Partial<Record<SectionKey, SectionStyle>>;
+};
+
 export type PrintTemplate = {
-  businessName?: string;
-  footer?: string;
-  dividerChar?: string;
-  showTimestamp?: boolean;
-  showOrderNumber?: boolean;
-  showGuestName?: boolean;
-  showSource?: boolean;
-  showTableNumber?: boolean;
+  businessName?: string | null;
+  footer?: string | null;
+  dividerChar?: string | null;
+  kitchen_ticket?: TicketLayout;
+  customer_receipt?: TicketLayout;
+  item_label?: TicketLayout;
+  plate_label?: TicketLayout;
 };
 
 export const printersTable = pgTable("printers", {

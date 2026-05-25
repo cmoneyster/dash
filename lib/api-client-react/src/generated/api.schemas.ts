@@ -901,16 +901,76 @@ export const PrinterStatus = {
   disabled: "disabled",
 } as const;
 
+export type TicketLayoutSectionOrderItem =
+  (typeof TicketLayoutSectionOrderItem)[keyof typeof TicketLayoutSectionOrderItem];
+
+export const TicketLayoutSectionOrderItem = {
+  header: "header",
+  orderNumber: "orderNumber",
+  guestName: "guestName",
+  tableNumber: "tableNumber",
+  timestamp: "timestamp",
+  source: "source",
+  items: "items",
+  totals: "totals",
+  notes: "notes",
+  footer: "footer",
+} as const;
+
+/**
+ * Text alignment for this section.
+ */
+export type SectionStyleAlign =
+  | (typeof SectionStyleAlign)[keyof typeof SectionStyleAlign]
+  | null;
+
+export const SectionStyleAlign = {
+  left: "left",
+  center: "center",
+  right: "right",
+} as const;
+
+/**
+ * Per-section style overrides for a ticket template.
+ */
+export interface SectionStyle {
+  /** Whether this section is printed. Defaults to true. */
+  visible?: boolean | null;
+  /** Whether this section's text is bold. Inherits section default. */
+  bold?: boolean | null;
+  /** Text alignment for this section. */
+  align?: SectionStyleAlign;
+}
+
+/**
+ * Map of section key to style overrides. Sections not listed use defaults.
+ */
+export type TicketLayoutSections = { [key: string]: SectionStyle } | null;
+
+/**
+ * Per-ticket-type layout with section order and per-section style overrides.
+ */
+export interface TicketLayout {
+  /** Ordered list of section keys to render. Defaults to the built-in order. */
+  sectionOrder?: TicketLayoutSectionOrderItem[] | null;
+  /** Map of section key to style overrides. Sections not listed use defaults. */
+  sections?: TicketLayoutSections;
+}
+
+/**
+ * Per-printer receipt/label template. Global fields apply to all ticket types; per-type fields override section order and styles.
+ */
 export interface PrintTemplate {
+  /** Overrides the business name shown on receipts. */
   businessName?: string | null;
+  /** Footer text printed at the bottom of each ticket. */
   footer?: string | null;
-  /** Single character used for divider lines (default "-") */
+  /** Single character used for divider lines (default "-"). */
   dividerChar?: string | null;
-  showTimestamp?: boolean | null;
-  showOrderNumber?: boolean | null;
-  showGuestName?: boolean | null;
-  showSource?: boolean | null;
-  showTableNumber?: boolean | null;
+  kitchen_ticket?: TicketLayout | null;
+  customer_receipt?: TicketLayout | null;
+  item_label?: TicketLayout | null;
+  plate_label?: TicketLayout | null;
 }
 
 export interface Printer {
@@ -1041,6 +1101,8 @@ export type PrintJobDeliveredVia =
   | null;
 
 export const PrintJobDeliveredVia = {
+  cloudprnt: "cloudprnt",
+  lan_fallback: "lan_fallback",
   lan_browser: "lan_browser",
 } as const;
 

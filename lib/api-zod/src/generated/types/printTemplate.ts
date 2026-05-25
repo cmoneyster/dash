@@ -5,15 +5,20 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { TicketLayout } from "./ticketLayout";
 
+/**
+ * Per-printer receipt/label template. Global fields apply to all ticket types; per-type fields override section order and styles.
+ */
 export interface PrintTemplate {
+  /** Overrides the business name shown on receipts. */
   businessName?: string | null;
+  /** Footer text printed at the bottom of each ticket. */
   footer?: string | null;
-  /** Single character used for divider lines (default "-") */
+  /** Single character used for divider lines (default "-"). */
   dividerChar?: string | null;
-  showTimestamp?: boolean | null;
-  showOrderNumber?: boolean | null;
-  showGuestName?: boolean | null;
-  showSource?: boolean | null;
-  showTableNumber?: boolean | null;
+  kitchen_ticket?: TicketLayout | null;
+  customer_receipt?: TicketLayout | null;
+  item_label?: TicketLayout | null;
+  plate_label?: TicketLayout | null;
 }

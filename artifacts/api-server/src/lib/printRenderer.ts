@@ -1,4 +1,4 @@
-import type { PrintTemplate } from "@workspace/db/schema";
+import type { PrintTemplate, SectionKey, SectionAlign, TicketLayout } from "@workspace/db/schema";
 
 const ESC = 0x1b;
 const GS  = 0x1d;
@@ -9,6 +9,7 @@ const BOLD_ON  = Buffer.from([ESC, 0x45, 0x01]);
 const BOLD_OFF = Buffer.from([ESC, 0x45, 0x00]);
 const ALIGN_CENTER = Buffer.from([ESC, 0x61, 0x01]);
 const ALIGN_LEFT   = Buffer.from([ESC, 0x61, 0x00]);
+const ALIGN_RIGHT  = Buffer.from([ESC, 0x61, 0x02]);
 const SIZE_NORMAL = Buffer.from([GS, 0x21, 0x00]);
 const SIZE_DOUBLE = Buffer.from([GS, 0x21, 0x11]);
 const CUT = Buffer.from([ESC, 0x64, 0x03, ESC, 0x6d]);
@@ -57,20 +58,72 @@ function fmtTime(d: Date): string {
   });
 }
 
-function tmplDiv(tmpl?: PrintTemplate, fallback = "-"): string {
+// ─── Section resolution ───────────────────────────────────────────────────────
+
+type TicketType = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label";
+
+type ResolvedStyle = { visible: boolean; bold: boolean; align: SectionAlign };
+
+const DEFAULT_SECTION_STYLES: Record<SectionKey, ResolvedStyle> = {
+  header:      { visible: true,  bold: true,  align: "center" },
+  orderNumber: { visible: true,  bold: true,  align: "left" },
+  guestName:   { visible: true,  bold: false, align: "left" },
+  tableNumber: { visible: true,  bold: false, align: "left" },
+  timestamp:   { visible: true,  bold: false, align: "left" },
+  source:      { visible: true,  bold: false, align: "left" },
+  items:       { visible: true,  bold: false, align: "left" },
+  totals:      { visible: true,  bold: false, align: "left" },
+  notes:       { visible: true,  bold: false, align: "left" },
+  footer:      { visible: true,  bold: false, align: "center" },
+};
+
+const DEFAULT_ORDERS: Record<TicketType, SectionKey[]> = {
+  kitchen_ticket:   ["header", "orderNumber", "guestName", "tableNumber", "timestamp", "source", "items", "notes", "footer"],
+  customer_receipt: ["header", "timestamp", "orderNumber", "guestName", "tableNumber", "items", "totals", "footer"],
+  item_label:       ["orderNumber", "guestName", "tableNumber", "items", "timestamp"],
+  plate_label:      ["orderNumber", "guestName", "items", "timestamp"],
+};
+
+function getLayout(tmpl: PrintTemplate | undefined, key: TicketType): TicketLayout | undefined {
+  return tmpl?.[key] as TicketLayout | undefined;
+}
+
+function resolveOrder(tmpl: PrintTemplate | undefined, key: TicketType): SectionKey[] {
+  return getLayout(tmpl, key)?.sectionOrder ?? DEFAULT_ORDERS[key];
+}
+
+function resolveStyle(tmpl: PrintTemplate | undefined, key: TicketType, section: SectionKey): ResolvedStyle {
+  const defaults = DEFAULT_SECTION_STYLES[section];
+  const override = getLayout(tmpl, key)?.sections?.[section];
+  return {
+    visible: override?.visible ?? defaults.visible,
+    bold:    override?.bold    ?? defaults.bold,
+    align:   override?.align   ?? defaults.align,
+  };
+}
+
+function dc(tmpl?: PrintTemplate, fallback = "-"): string {
   return divider(tmpl?.dividerChar ?? fallback);
 }
+
+// ─── ESC/POS TicketBuilder ────────────────────────────────────────────────────
 
 class TicketBuilder {
   private chunks: Buffer[] = [INIT];
 
-  raw(b: Buffer) { this.chunks.push(b); return this; }
+  raw(b: Buffer)  { this.chunks.push(b); return this; }
   text(s: string) { this.chunks.push(Buffer.from(s, "utf-8")); return this; }
-  line(s = "") { this.text(s); this.chunks.push(Buffer.from([LF])); return this; }
+  line(s = "")    { this.text(s); this.chunks.push(Buffer.from([LF])); return this; }
   bold(on: boolean) { this.chunks.push(on ? BOLD_ON : BOLD_OFF); return this; }
   double(on: boolean) { this.chunks.push(on ? SIZE_DOUBLE : SIZE_NORMAL); return this; }
+  align(a: SectionAlign) {
+    if (a === "center") this.chunks.push(ALIGN_CENTER);
+    else if (a === "right") this.chunks.push(ALIGN_RIGHT);
+    else this.chunks.push(ALIGN_LEFT);
+    return this;
+  }
   center() { this.chunks.push(ALIGN_CENTER); return this; }
-  left() { this.chunks.push(ALIGN_LEFT); return this; }
+  left()   { this.chunks.push(ALIGN_LEFT);   return this; }
   div(c = "-") { return this.line(divider(c)); }
 
   cut(): Buffer {
@@ -80,7 +133,7 @@ class TicketBuilder {
   }
 }
 
-// ─── Payload types ──────────────────────────────────────────────────────────
+// ─── Payload types ────────────────────────────────────────────────────────────
 
 export type OrderHeader = {
   orderNumber: string | number;
@@ -156,145 +209,286 @@ export type RenderablePayload =
 
 export type { PrintTemplate };
 
-// ─── ESC/POS renderers ───────────────────────────────────────────────────────
+// ─── ESC/POS kitchen ticket ───────────────────────────────────────────────────
+
+function renderKitchenLines(t: TicketBuilder, lines: OrderLine[]) {
+  for (const l of lines) {
+    t.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
+    if (l.modifiers?.length) for (const m of l.modifiers) wrap(`+ ${m}`, 4).forEach((w) => t.line(w));
+    if (l.notes) wrap(`* ${l.notes}`, 4).forEach((w) => t.line(w));
+  }
+}
+
+function renderKitchenSection(
+  t: TicketBuilder,
+  p: KitchenTicketPayload,
+  section: SectionKey,
+  style: ResolvedStyle,
+  tmpl?: PrintTemplate,
+): void {
+  const dchar = tmpl?.dividerChar ?? "-";
+  t.align(style.align);
+  switch (section) {
+    case "header":
+      t.double(true).bold(style.bold).line("KITCHEN").double(false).bold(false).left();
+      t.div(dchar === "-" ? "=" : dchar);
+      break;
+    case "orderNumber":
+      t.bold(style.bold).line(`ORDER #${p.header.orderNumber}`).bold(false);
+      break;
+    case "guestName":
+      t.bold(style.bold).line(`Guest: ${p.header.guestName}`).bold(false);
+      break;
+    case "tableNumber":
+      if (p.header.tableNumber) t.bold(style.bold).line(`Table: ${p.header.tableNumber}`).bold(false);
+      break;
+    case "timestamp":
+      t.bold(style.bold).line(`Time:  ${fmtTime(new Date(p.header.placedAt))}`).bold(false);
+      break;
+    case "source":
+      t.bold(style.bold).line(`Source: ${p.header.source}`).bold(false);
+      break;
+    case "items":
+      t.left();
+      t.div(dchar);
+      if (p.plates?.length) {
+        for (const plate of p.plates) {
+          t.bold(true).line(`-- ${plate.label} --`).bold(false);
+          renderKitchenLines(t, plate.lines);
+          t.line();
+        }
+      }
+      if (p.lines.length) {
+        if (p.plates?.length) t.bold(true).line("-- Unassigned --").bold(false);
+        renderKitchenLines(t, p.lines);
+      }
+      break;
+    case "notes":
+      if (p.header.notes) {
+        t.left().div(dchar);
+        t.bold(true).line("NOTES:").bold(false);
+        wrap(p.header.notes).forEach((w) => t.line(w));
+      }
+      break;
+    case "footer": {
+      const footer = tmpl?.footer;
+      if (footer) {
+        t.line();
+        t.align(style.align);
+        wrap(footer).forEach((w) => t.bold(style.bold).line(w).bold(false));
+        t.left();
+      }
+      break;
+    }
+    default: break;
+  }
+  if (section !== "items" && section !== "notes" && section !== "header" && section !== "footer") {
+    t.left();
+  }
+}
 
 function renderKitchenTicket(p: KitchenTicketPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
-  const showNum   = tmpl?.showOrderNumber !== false;
-  const showGuest = tmpl?.showGuestName !== false;
-  const showTime  = tmpl?.showTimestamp !== false;
-  const showSrc   = tmpl?.showSource !== false;
-  const showTable = tmpl?.showTableNumber !== false;
-
-  t.center().double(true).bold(true).line("KITCHEN").double(false).bold(false).left();
-  t.line(tmplDiv(tmpl, "="));
-  if (showNum)   t.bold(true).line(`ORDER #${p.header.orderNumber}`).bold(false);
-  if (showGuest) t.line(`Guest: ${p.header.guestName}`);
-  if (showTable && p.header.tableNumber) t.line(`Table: ${p.header.tableNumber}`);
-  if (showTime)  t.line(`Time:  ${fmtTime(new Date(p.header.placedAt))}`);
-  if (showSrc)   t.line(`Source: ${p.header.source}`);
-  t.line(tmplDiv(tmpl));
-
-  const renderLines = (lines: OrderLine[]) => {
-    for (const l of lines) {
-      t.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
-      if (l.modifiers?.length) {
-        for (const m of l.modifiers) wrap(`+ ${m}`, 4).forEach((w) => t.line(w));
-      }
-      if (l.notes) wrap(`* ${l.notes}`, 4).forEach((w) => t.line(w));
-    }
-  };
-
-  if (p.plates?.length) {
-    for (const plate of p.plates) {
-      t.bold(true).line(`-- ${plate.label} --`).bold(false);
-      renderLines(plate.lines);
-      t.line();
-    }
-  }
-  if (p.lines.length) {
-    if (p.plates?.length) t.bold(true).line("-- Unassigned --").bold(false);
-    renderLines(p.lines);
-  }
-
-  if (p.header.notes) {
-    t.line(tmplDiv(tmpl));
-    t.bold(true).line("NOTES:").bold(false);
-    wrap(p.header.notes).forEach((w) => t.line(w));
+  const order = resolveOrder(tmpl, "kitchen_ticket");
+  for (const section of order) {
+    const style = resolveStyle(tmpl, "kitchen_ticket", section);
+    if (!style.visible) continue;
+    renderKitchenSection(t, p, section, style, tmpl);
   }
   return t.cut();
+}
+
+// ─── ESC/POS customer receipt ─────────────────────────────────────────────────
+
+function renderReceiptSection(
+  t: TicketBuilder,
+  p: CustomerReceiptPayload,
+  section: SectionKey,
+  style: ResolvedStyle,
+  tmpl?: PrintTemplate,
+): void {
+  const dchar = tmpl?.dividerChar ?? "-";
+  const bizName = tmpl?.businessName ?? p.businessName;
+  const footer  = tmpl?.footer ?? p.footer;
+  t.align(style.align);
+  switch (section) {
+    case "header":
+      if (bizName) {
+        t.bold(style.bold).line(bizName).bold(false);
+      }
+      t.left().div(dchar);
+      break;
+    case "timestamp":
+      t.bold(style.bold).line(fmtTime(new Date(p.header.placedAt))).bold(false);
+      break;
+    case "orderNumber":
+      t.bold(style.bold).line(`Order #${p.header.orderNumber}`).bold(false);
+      break;
+    case "guestName":
+      t.bold(style.bold).line(`Guest: ${p.header.guestName}`).bold(false);
+      break;
+    case "tableNumber":
+      if (p.header.tableNumber) t.bold(style.bold).line(`Table: ${p.header.tableNumber}`).bold(false);
+      break;
+    case "items":
+      t.left().div(dchar);
+      for (const l of p.lines) {
+        const right = l.unitPrice != null ? `$${(l.unitPrice * l.quantity).toFixed(2)}` : "";
+        t.line(pad(`${l.quantity}x ${l.name}`, right));
+        if (l.modifiers?.length) for (const m of l.modifiers) t.line(`   + ${m}`);
+      }
+      t.div(dchar);
+      break;
+    case "totals":
+      t.left();
+      if (p.subtotal != null) t.line(pad("Subtotal", `$${p.subtotal.toFixed(2)}`));
+      if (p.tax != null) t.line(pad("Tax", `$${p.tax.toFixed(2)}`));
+      if (p.tip != null) t.line(pad("Tip", `$${p.tip.toFixed(2)}`));
+      t.bold(true).line(pad("TOTAL", `$${p.total.toFixed(2)}`)).bold(false);
+      if (p.paymentMethod) t.line(`Paid: ${p.paymentMethod}`);
+      break;
+    case "footer":
+      if (footer) {
+        t.line();
+        t.align(style.align);
+        wrap(footer).forEach((w) => t.bold(style.bold).line(w).bold(false));
+        t.left();
+      }
+      break;
+    default: break;
+  }
+  if (section !== "items" && section !== "totals" && section !== "header" && section !== "footer") {
+    t.left();
+  }
 }
 
 function renderCustomerReceipt(p: CustomerReceiptPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
-  const showNum   = tmpl?.showOrderNumber !== false;
-  const showGuest = tmpl?.showGuestName !== false;
-  const showTime  = tmpl?.showTimestamp !== false;
-  const showTable = tmpl?.showTableNumber !== false;
-  const bizName   = tmpl?.businessName ?? p.businessName;
-  const footer    = tmpl?.footer ?? p.footer;
-
-  if (bizName) t.center().bold(true).line(bizName).bold(false).left();
-  if (showTime) t.center().line(fmtTime(new Date(p.header.placedAt))).left();
-  t.line(tmplDiv(tmpl));
-  if (showNum)   t.line(`Order #${p.header.orderNumber}`);
-  if (showGuest) t.line(`Guest: ${p.header.guestName}`);
-  if (showTable && p.header.tableNumber) t.line(`Table: ${p.header.tableNumber}`);
-  t.line(tmplDiv(tmpl));
-  for (const l of p.lines) {
-    const right = l.unitPrice != null ? `$${(l.unitPrice * l.quantity).toFixed(2)}` : "";
-    t.line(pad(`${l.quantity}x ${l.name}`, right));
-    if (l.modifiers?.length) for (const m of l.modifiers) t.line(`   + ${m}`);
-  }
-  t.line(tmplDiv(tmpl));
-  if (p.subtotal != null) t.line(pad("Subtotal", `$${p.subtotal.toFixed(2)}`));
-  if (p.tax != null) t.line(pad("Tax", `$${p.tax.toFixed(2)}`));
-  if (p.tip != null) t.line(pad("Tip", `$${p.tip.toFixed(2)}`));
-  t.bold(true).line(pad("TOTAL", `$${p.total.toFixed(2)}`)).bold(false);
-  if (p.paymentMethod) t.line(`Paid: ${p.paymentMethod}`);
-  if (footer) {
-    t.line();
-    t.center();
-    wrap(footer).forEach((w) => t.line(w));
-    t.left();
+  const order = resolveOrder(tmpl, "customer_receipt");
+  for (const section of order) {
+    const style = resolveStyle(tmpl, "customer_receipt", section);
+    if (!style.visible) continue;
+    renderReceiptSection(t, p, section, style, tmpl);
   }
   return t.cut();
+}
+
+// ─── ESC/POS item label ───────────────────────────────────────────────────────
+
+function renderItemLabelSection(
+  t: TicketBuilder,
+  p: ItemLabelPayload,
+  section: SectionKey,
+  style: ResolvedStyle,
+  tmpl?: PrintTemplate,
+): void {
+  const dchar = tmpl?.dividerChar ?? "-";
+  t.align(style.align);
+  switch (section) {
+    case "orderNumber":
+      t.bold(style.bold).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
+      break;
+    case "guestName":
+      t.bold(style.bold).line(`Guest: ${p.guestName}`).bold(false);
+      break;
+    case "tableNumber":
+      break;
+    case "items":
+      t.left().div(dchar);
+      t.bold(true).double(true);
+      wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => t.line(w));
+      t.double(false).bold(false);
+      if (p.isFullBox) t.line("[FULL BOX]");
+      if (p.modifiers?.length) for (const m of p.modifiers) wrap(`+ ${m}`, 2).forEach((w) => t.line(w));
+      if (p.notes) {
+        t.div(dchar);
+        wrap(p.notes).forEach((w) => t.line(w));
+      }
+      t.div(dchar);
+      break;
+    case "timestamp":
+      t.bold(style.bold).line(fmtTime(new Date(p.placedAt))).bold(false);
+      break;
+    case "footer": {
+      const footer = tmpl?.footer;
+      if (footer) {
+        t.line();
+        t.align(style.align);
+        wrap(footer).forEach((w) => t.line(w));
+        t.left();
+      }
+      break;
+    }
+    default: break;
+  }
+  if (section !== "items" && section !== "footer") t.left();
 }
 
 function renderItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
-  const showNum   = tmpl?.showOrderNumber !== false;
-  const showGuest = tmpl?.showGuestName !== false;
-  const footer    = tmpl?.footer;
-
-  if (showNum)   t.bold(true).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
-  if (showGuest) t.line(`Guest: ${p.guestName}`);
-  t.line(tmplDiv(tmpl));
-  t.bold(true).double(true);
-  wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => t.line(w));
-  t.double(false).bold(false);
-  if (p.isFullBox) t.line("[FULL BOX]");
-  if (p.modifiers?.length) {
-    for (const m of p.modifiers) wrap(`+ ${m}`, 2).forEach((w) => t.line(w));
-  }
-  if (p.notes) {
-    t.line(tmplDiv(tmpl));
-    wrap(p.notes).forEach((w) => t.line(w));
-  }
-  t.line(tmplDiv(tmpl));
-  t.line(fmtTime(new Date(p.placedAt)));
-  if (footer) {
-    t.line();
-    t.center();
-    wrap(footer).forEach((w) => t.line(w));
-    t.left();
+  const order = resolveOrder(tmpl, "item_label");
+  for (const section of order) {
+    const style = resolveStyle(tmpl, "item_label", section);
+    if (!style.visible) continue;
+    renderItemLabelSection(t, p, section, style, tmpl);
   }
   return t.cut();
 }
 
+// ─── ESC/POS plate label ──────────────────────────────────────────────────────
+
+function renderPlateLabelSection(
+  t: TicketBuilder,
+  p: PlateLabelPayload,
+  section: SectionKey,
+  style: ResolvedStyle,
+  tmpl?: PrintTemplate,
+): void {
+  const dchar = tmpl?.dividerChar ?? "-";
+  t.align(style.align);
+  switch (section) {
+    case "orderNumber":
+      t.bold(style.bold).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
+      break;
+    case "guestName":
+      t.bold(style.bold).line(`Guest: ${p.guestName}`).bold(false);
+      break;
+    case "items":
+      t.left().div(dchar);
+      t.bold(true).double(true).line(p.plateLabel).double(false).bold(false);
+      t.div(dchar);
+      for (const l of p.lines) {
+        t.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
+        if (l.modifiers?.length) for (const m of l.modifiers) t.line(`  + ${m}`);
+        if (l.notes) wrap(`* ${l.notes}`, 2).forEach((w) => t.line(w));
+      }
+      t.div(dchar);
+      break;
+    case "timestamp":
+      t.bold(style.bold).line(fmtTime(new Date(p.placedAt))).bold(false);
+      break;
+    case "footer": {
+      const footer = tmpl?.footer;
+      if (footer) {
+        t.line();
+        t.align(style.align);
+        wrap(footer).forEach((w) => t.line(w));
+        t.left();
+      }
+      break;
+    }
+    default: break;
+  }
+  if (section !== "items" && section !== "footer") t.left();
+}
+
 function renderPlateLabel(p: PlateLabelPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
-  const showNum   = tmpl?.showOrderNumber !== false;
-  const showGuest = tmpl?.showGuestName !== false;
-  const footer    = tmpl?.footer;
-
-  if (showNum)   t.bold(true).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
-  if (showGuest) t.line(`Guest: ${p.guestName}`);
-  t.line(tmplDiv(tmpl));
-  t.bold(true).double(true).line(p.plateLabel).double(false).bold(false);
-  t.line(tmplDiv(tmpl));
-  for (const l of p.lines) {
-    t.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
-    if (l.modifiers?.length) for (const m of l.modifiers) t.line(`  + ${m}`);
-    if (l.notes) wrap(`* ${l.notes}`, 2).forEach((w) => t.line(w));
-  }
-  t.line(tmplDiv(tmpl));
-  t.line(fmtTime(new Date(p.placedAt)));
-  if (footer) {
-    t.line();
-    t.center();
-    wrap(footer).forEach((w) => t.line(w));
-    t.left();
+  const order = resolveOrder(tmpl, "plate_label");
+  for (const section of order) {
+    const style = resolveStyle(tmpl, "plate_label", section);
+    if (!style.visible) continue;
+    renderPlateLabelSection(t, p, section, style, tmpl);
   }
   return t.cut();
 }
@@ -330,7 +524,7 @@ export function renderJob(
   return { bytes, contentType: "application/vnd.star.starprntcore" };
 }
 
-// ─── StarWebPRNT XML renderer ────────────────────────────────────────────────
+// ─── StarWebPRNT XML builder ──────────────────────────────────────────────────
 
 function xmlEsc(s: string): string {
   return s
@@ -343,7 +537,7 @@ class WebPrntBuilder {
   private cmds: string[] = [];
 
   text(s: string) { if (s) this.cmds.push(`<Text>${xmlEsc(s)}</Text>`); return this; }
-  line(s = "")   { this.cmds.push(`<Text>${xmlEsc(s)}\n</Text>`); return this; }
+  line(s = "")    { this.cmds.push(`<Text>${xmlEsc(s)}\n</Text>`); return this; }
   bold(on: boolean) { this.cmds.push(`<Bold on="${on}"/>`); return this; }
   double(on: boolean) {
     this.cmds.push(on
@@ -351,8 +545,13 @@ class WebPrntBuilder {
       : `<CharacterExpansion Method="Normal"/>`);
     return this;
   }
+  align(a: SectionAlign) {
+    const method = a === "center" ? "Center" : a === "right" ? "Right" : "Left";
+    this.cmds.push(`<Alignment Method="${method}"/>`);
+    return this;
+  }
   center() { this.cmds.push(`<Alignment Method="Center"/>`); return this; }
-  left()   { this.cmds.push(`<Alignment Method="Left"/>`); return this; }
+  left()   { this.cmds.push(`<Alignment Method="Left"/>`);   return this; }
   div(c = "-") { return this.line(divider(c)); }
 
   build(): string {
@@ -367,142 +566,281 @@ class WebPrntBuilder {
   }
 }
 
+// ─── StarWebPRNT kitchen ticket ───────────────────────────────────────────────
+
+function webKitchenLines(b: WebPrntBuilder, lines: OrderLine[]) {
+  for (const l of lines) {
+    b.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
+    if (l.modifiers?.length) for (const m of l.modifiers) wrap(`+ ${m}`, 4).forEach((w) => b.line(w));
+    if (l.notes) wrap(`* ${l.notes}`, 4).forEach((w) => b.line(w));
+  }
+}
+
+function webKitchenSection(
+  b: WebPrntBuilder,
+  p: KitchenTicketPayload,
+  section: SectionKey,
+  style: ResolvedStyle,
+  tmpl?: PrintTemplate,
+): void {
+  const dchar = tmpl?.dividerChar ?? "-";
+  b.align(style.align);
+  switch (section) {
+    case "header":
+      b.double(true).bold(style.bold).line("KITCHEN").double(false).bold(false).left();
+      b.div(dchar === "-" ? "=" : dchar);
+      break;
+    case "orderNumber":
+      b.bold(style.bold).line(`ORDER #${p.header.orderNumber}`).bold(false);
+      break;
+    case "guestName":
+      b.bold(style.bold).line(`Guest: ${p.header.guestName}`).bold(false);
+      break;
+    case "tableNumber":
+      if (p.header.tableNumber) b.bold(style.bold).line(`Table: ${p.header.tableNumber}`).bold(false);
+      break;
+    case "timestamp":
+      b.bold(style.bold).line(`Time:  ${fmtTime(new Date(p.header.placedAt))}`).bold(false);
+      break;
+    case "source":
+      b.bold(style.bold).line(`Source: ${p.header.source}`).bold(false);
+      break;
+    case "items":
+      b.left().div(dchar);
+      if (p.plates?.length) {
+        for (const plate of p.plates) {
+          b.bold(true).line(`-- ${plate.label} --`).bold(false);
+          webKitchenLines(b, plate.lines);
+          b.line();
+        }
+      }
+      if (p.lines.length) {
+        if (p.plates?.length) b.bold(true).line("-- Unassigned --").bold(false);
+        webKitchenLines(b, p.lines);
+      }
+      break;
+    case "notes":
+      if (p.header.notes) {
+        b.left().div(dchar);
+        b.bold(true).line("NOTES:").bold(false);
+        wrap(p.header.notes).forEach((w) => b.line(w));
+      }
+      break;
+    case "footer": {
+      const footer = tmpl?.footer;
+      if (footer) {
+        b.line();
+        b.align(style.align);
+        wrap(footer).forEach((w) => b.bold(style.bold).line(w).bold(false));
+        b.left();
+      }
+      break;
+    }
+    default: break;
+  }
+  if (section !== "items" && section !== "notes" && section !== "header" && section !== "footer") {
+    b.left();
+  }
+}
+
 function webPrntKitchenTicket(p: KitchenTicketPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
-  const showNum   = tmpl?.showOrderNumber !== false;
-  const showGuest = tmpl?.showGuestName !== false;
-  const showTime  = tmpl?.showTimestamp !== false;
-  const showSrc   = tmpl?.showSource !== false;
-  const showTable = tmpl?.showTableNumber !== false;
-  const dc = tmpl?.dividerChar ?? "-";
-
-  b.center().double(true).bold(true).line("KITCHEN").double(false).bold(false).left();
-  b.line(tmplDiv(tmpl, "="));
-  if (showNum)   b.bold(true).line(`ORDER #${p.header.orderNumber}`).bold(false);
-  if (showGuest) b.line(`Guest: ${p.header.guestName}`);
-  if (showTable && p.header.tableNumber) b.line(`Table: ${p.header.tableNumber}`);
-  if (showTime)  b.line(`Time:  ${fmtTime(new Date(p.header.placedAt))}`);
-  if (showSrc)   b.line(`Source: ${p.header.source}`);
-  b.div(dc);
-
-  const renderLines = (lines: OrderLine[]) => {
-    for (const l of lines) {
-      b.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
-      if (l.modifiers?.length) for (const m of l.modifiers) wrap(`+ ${m}`, 4).forEach((w) => b.line(w));
-      if (l.notes) wrap(`* ${l.notes}`, 4).forEach((w) => b.line(w));
-    }
-  };
-
-  if (p.plates?.length) {
-    for (const plate of p.plates) {
-      b.bold(true).line(`-- ${plate.label} --`).bold(false);
-      renderLines(plate.lines);
-      b.line();
-    }
-  }
-  if (p.lines.length) {
-    if (p.plates?.length) b.bold(true).line("-- Unassigned --").bold(false);
-    renderLines(p.lines);
-  }
-  if (p.header.notes) {
-    b.div(dc);
-    b.bold(true).line("NOTES:").bold(false);
-    wrap(p.header.notes).forEach((w) => b.line(w));
+  const order = resolveOrder(tmpl, "kitchen_ticket");
+  for (const section of order) {
+    const style = resolveStyle(tmpl, "kitchen_ticket", section);
+    if (!style.visible) continue;
+    webKitchenSection(b, p, section, style, tmpl);
   }
   return b.build();
+}
+
+// ─── StarWebPRNT customer receipt ─────────────────────────────────────────────
+
+function webReceiptSection(
+  b: WebPrntBuilder,
+  p: CustomerReceiptPayload,
+  section: SectionKey,
+  style: ResolvedStyle,
+  tmpl?: PrintTemplate,
+): void {
+  const dchar = tmpl?.dividerChar ?? "-";
+  const bizName = tmpl?.businessName ?? p.businessName;
+  const footer  = tmpl?.footer ?? p.footer;
+  b.align(style.align);
+  switch (section) {
+    case "header":
+      if (bizName) b.bold(style.bold).line(bizName).bold(false);
+      b.left().div(dchar);
+      break;
+    case "timestamp":
+      b.bold(style.bold).line(fmtTime(new Date(p.header.placedAt))).bold(false);
+      break;
+    case "orderNumber":
+      b.bold(style.bold).line(`Order #${p.header.orderNumber}`).bold(false);
+      break;
+    case "guestName":
+      b.bold(style.bold).line(`Guest: ${p.header.guestName}`).bold(false);
+      break;
+    case "tableNumber":
+      if (p.header.tableNumber) b.bold(style.bold).line(`Table: ${p.header.tableNumber}`).bold(false);
+      break;
+    case "items":
+      b.left().div(dchar);
+      for (const l of p.lines) {
+        const right = l.unitPrice != null ? `$${(l.unitPrice * l.quantity).toFixed(2)}` : "";
+        b.line(pad(`${l.quantity}x ${l.name}`, right));
+        if (l.modifiers?.length) for (const m of l.modifiers) b.line(`   + ${m}`);
+      }
+      b.div(dchar);
+      break;
+    case "totals":
+      b.left();
+      if (p.subtotal != null) b.line(pad("Subtotal", `$${p.subtotal.toFixed(2)}`));
+      if (p.tax != null) b.line(pad("Tax", `$${p.tax.toFixed(2)}`));
+      if (p.tip != null) b.line(pad("Tip", `$${p.tip.toFixed(2)}`));
+      b.bold(true).line(pad("TOTAL", `$${p.total.toFixed(2)}`)).bold(false);
+      if (p.paymentMethod) b.line(`Paid: ${p.paymentMethod}`);
+      break;
+    case "footer":
+      if (footer) {
+        b.line();
+        b.align(style.align);
+        wrap(footer).forEach((w) => b.bold(style.bold).line(w).bold(false));
+        b.left();
+      }
+      break;
+    default: break;
+  }
+  if (section !== "items" && section !== "totals" && section !== "header" && section !== "footer") {
+    b.left();
+  }
 }
 
 function webPrntCustomerReceipt(p: CustomerReceiptPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
-  const showNum   = tmpl?.showOrderNumber !== false;
-  const showGuest = tmpl?.showGuestName !== false;
-  const showTime  = tmpl?.showTimestamp !== false;
-  const showTable = tmpl?.showTableNumber !== false;
-  const bizName   = tmpl?.businessName ?? p.businessName;
-  const footer    = tmpl?.footer ?? p.footer;
-  const dc = tmpl?.dividerChar ?? "-";
-
-  if (bizName) b.center().bold(true).line(bizName).bold(false).left();
-  if (showTime) b.center().line(fmtTime(new Date(p.header.placedAt))).left();
-  b.div(dc);
-  if (showNum)   b.line(`Order #${p.header.orderNumber}`);
-  if (showGuest) b.line(`Guest: ${p.header.guestName}`);
-  if (showTable && p.header.tableNumber) b.line(`Table: ${p.header.tableNumber}`);
-  b.div(dc);
-  for (const l of p.lines) {
-    const right = l.unitPrice != null ? `$${(l.unitPrice * l.quantity).toFixed(2)}` : "";
-    b.line(pad(`${l.quantity}x ${l.name}`, right));
-    if (l.modifiers?.length) for (const m of l.modifiers) b.line(`   + ${m}`);
-  }
-  b.div(dc);
-  if (p.subtotal != null) b.line(pad("Subtotal", `$${p.subtotal.toFixed(2)}`));
-  if (p.tax != null) b.line(pad("Tax", `$${p.tax.toFixed(2)}`));
-  if (p.tip != null) b.line(pad("Tip", `$${p.tip.toFixed(2)}`));
-  b.bold(true).line(pad("TOTAL", `$${p.total.toFixed(2)}`)).bold(false);
-  if (p.paymentMethod) b.line(`Paid: ${p.paymentMethod}`);
-  if (footer) {
-    b.line();
-    b.center();
-    wrap(footer).forEach((w) => b.line(w));
-    b.left();
+  const order = resolveOrder(tmpl, "customer_receipt");
+  for (const section of order) {
+    const style = resolveStyle(tmpl, "customer_receipt", section);
+    if (!style.visible) continue;
+    webReceiptSection(b, p, section, style, tmpl);
   }
   return b.build();
+}
+
+// ─── StarWebPRNT item label ───────────────────────────────────────────────────
+
+function webItemLabelSection(
+  b: WebPrntBuilder,
+  p: ItemLabelPayload,
+  section: SectionKey,
+  style: ResolvedStyle,
+  tmpl?: PrintTemplate,
+): void {
+  const dchar = tmpl?.dividerChar ?? "-";
+  b.align(style.align);
+  switch (section) {
+    case "orderNumber":
+      b.bold(style.bold).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
+      break;
+    case "guestName":
+      b.bold(style.bold).line(`Guest: ${p.guestName}`).bold(false);
+      break;
+    case "items":
+      b.left().div(dchar);
+      b.bold(true).double(true);
+      wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => b.line(w));
+      b.double(false).bold(false);
+      if (p.isFullBox) b.line("[FULL BOX]");
+      if (p.modifiers?.length) for (const m of p.modifiers) wrap(`+ ${m}`, 2).forEach((w) => b.line(w));
+      if (p.notes) {
+        b.div(dchar);
+        wrap(p.notes).forEach((w) => b.line(w));
+      }
+      b.div(dchar);
+      break;
+    case "timestamp":
+      b.bold(style.bold).line(fmtTime(new Date(p.placedAt))).bold(false);
+      break;
+    case "footer": {
+      const footer = tmpl?.footer;
+      if (footer) {
+        b.line();
+        b.align(style.align);
+        wrap(footer).forEach((w) => b.line(w));
+        b.left();
+      }
+      break;
+    }
+    default: break;
+  }
+  if (section !== "items" && section !== "footer") b.left();
 }
 
 function webPrntItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
-  const showNum   = tmpl?.showOrderNumber !== false;
-  const showGuest = tmpl?.showGuestName !== false;
-  const footer    = tmpl?.footer;
-  const dc = tmpl?.dividerChar ?? "-";
-
-  if (showNum)   b.bold(true).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
-  if (showGuest) b.line(`Guest: ${p.guestName}`);
-  b.div(dc);
-  b.bold(true).double(true);
-  wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => b.line(w));
-  b.double(false).bold(false);
-  if (p.isFullBox) b.line("[FULL BOX]");
-  if (p.modifiers?.length) for (const m of p.modifiers) wrap(`+ ${m}`, 2).forEach((w) => b.line(w));
-  if (p.notes) {
-    b.div(dc);
-    wrap(p.notes).forEach((w) => b.line(w));
-  }
-  b.div(dc);
-  b.line(fmtTime(new Date(p.placedAt)));
-  if (footer) {
-    b.line();
-    b.center();
-    wrap(footer).forEach((w) => b.line(w));
-    b.left();
+  const order = resolveOrder(tmpl, "item_label");
+  for (const section of order) {
+    const style = resolveStyle(tmpl, "item_label", section);
+    if (!style.visible) continue;
+    webItemLabelSection(b, p, section, style, tmpl);
   }
   return b.build();
 }
 
+// ─── StarWebPRNT plate label ──────────────────────────────────────────────────
+
+function webPlateLabelSection(
+  b: WebPrntBuilder,
+  p: PlateLabelPayload,
+  section: SectionKey,
+  style: ResolvedStyle,
+  tmpl?: PrintTemplate,
+): void {
+  const dchar = tmpl?.dividerChar ?? "-";
+  b.align(style.align);
+  switch (section) {
+    case "orderNumber":
+      b.bold(style.bold).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
+      break;
+    case "guestName":
+      b.bold(style.bold).line(`Guest: ${p.guestName}`).bold(false);
+      break;
+    case "items":
+      b.left().div(dchar);
+      b.bold(true).double(true).line(p.plateLabel).double(false).bold(false);
+      b.div(dchar);
+      for (const l of p.lines) {
+        b.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
+        if (l.modifiers?.length) for (const m of l.modifiers) b.line(`  + ${m}`);
+        if (l.notes) wrap(`* ${l.notes}`, 2).forEach((w) => b.line(w));
+      }
+      b.div(dchar);
+      break;
+    case "timestamp":
+      b.bold(style.bold).line(fmtTime(new Date(p.placedAt))).bold(false);
+      break;
+    case "footer": {
+      const footer = tmpl?.footer;
+      if (footer) {
+        b.line();
+        b.align(style.align);
+        wrap(footer).forEach((w) => b.line(w));
+        b.left();
+      }
+      break;
+    }
+    default: break;
+  }
+  if (section !== "items" && section !== "footer") b.left();
+}
+
 function webPrntPlateLabel(p: PlateLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
-  const showNum   = tmpl?.showOrderNumber !== false;
-  const showGuest = tmpl?.showGuestName !== false;
-  const footer    = tmpl?.footer;
-  const dc = tmpl?.dividerChar ?? "-";
-
-  if (showNum)   b.bold(true).double(true).line(`#${p.orderNumber}`).double(false).bold(false);
-  if (showGuest) b.line(`Guest: ${p.guestName}`);
-  b.div(dc);
-  b.bold(true).double(true).line(p.plateLabel).double(false).bold(false);
-  b.div(dc);
-  for (const l of p.lines) {
-    b.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
-    if (l.modifiers?.length) for (const m of l.modifiers) b.line(`  + ${m}`);
-    if (l.notes) wrap(`* ${l.notes}`, 2).forEach((w) => b.line(w));
-  }
-  b.div(dc);
-  b.line(fmtTime(new Date(p.placedAt)));
-  if (footer) {
-    b.line();
-    b.center();
-    wrap(footer).forEach((w) => b.line(w));
-    b.left();
+  const order = resolveOrder(tmpl, "plate_label");
+  for (const section of order) {
+    const style = resolveStyle(tmpl, "plate_label", section);
+    if (!style.visible) continue;
+    webPlateLabelSection(b, p, section, style, tmpl);
   }
   return b.build();
 }
@@ -535,3 +873,8 @@ export function buildWebPrntXml(
     case "test":             return webPrntTest(payload);
   }
 }
+
+// ─── Exported defaults (used by frontend designer) ───────────────────────────
+
+export { DEFAULT_ORDERS, DEFAULT_SECTION_STYLES };
+export type { TicketType, ResolvedStyle };

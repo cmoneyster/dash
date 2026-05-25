@@ -1905,19 +1905,239 @@ export const ListPrintersResponseItem = zod.object({
   lastError: zod.string().nullish(),
   printTemplate: zod
     .object({
-      businessName: zod.string().nullish(),
-      footer: zod.string().nullish(),
+      businessName: zod
+        .string()
+        .nullish()
+        .describe("Overrides the business name shown on receipts."),
+      footer: zod
+        .string()
+        .nullish()
+        .describe("Footer text printed at the bottom of each ticket."),
       dividerChar: zod
         .string()
         .nullish()
-        .describe('Single character used for divider lines (default \"-\")'),
-      showTimestamp: zod.boolean().nullish(),
-      showOrderNumber: zod.boolean().nullish(),
-      showGuestName: zod.boolean().nullish(),
-      showSource: zod.boolean().nullish(),
-      showTableNumber: zod.boolean().nullish(),
+        .describe('Single character used for divider lines (default \"-\").'),
+      kitchen_ticket: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      customer_receipt: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      item_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      plate_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
     })
-    .nullish(),
+    .nullish()
+    .describe(
+      "Per-printer receipt\/label template. Global fields apply to all ticket types; per-type fields override section order and styles.",
+    ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -1959,19 +2179,239 @@ export const UpdatePrinterBody = zod.object({
   enabled: zod.boolean().optional(),
   printTemplate: zod
     .object({
-      businessName: zod.string().nullish(),
-      footer: zod.string().nullish(),
+      businessName: zod
+        .string()
+        .nullish()
+        .describe("Overrides the business name shown on receipts."),
+      footer: zod
+        .string()
+        .nullish()
+        .describe("Footer text printed at the bottom of each ticket."),
       dividerChar: zod
         .string()
         .nullish()
-        .describe('Single character used for divider lines (default \"-\")'),
-      showTimestamp: zod.boolean().nullish(),
-      showOrderNumber: zod.boolean().nullish(),
-      showGuestName: zod.boolean().nullish(),
-      showSource: zod.boolean().nullish(),
-      showTableNumber: zod.boolean().nullish(),
+        .describe('Single character used for divider lines (default \"-\").'),
+      kitchen_ticket: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      customer_receipt: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      item_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      plate_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
     })
-    .nullish(),
+    .nullish()
+    .describe(
+      "Per-printer receipt\/label template. Global fields apply to all ticket types; per-type fields override section order and styles.",
+    ),
 });
 
 export const UpdatePrinterResponse = zod.object({
@@ -1999,19 +2439,239 @@ export const UpdatePrinterResponse = zod.object({
   lastError: zod.string().nullish(),
   printTemplate: zod
     .object({
-      businessName: zod.string().nullish(),
-      footer: zod.string().nullish(),
+      businessName: zod
+        .string()
+        .nullish()
+        .describe("Overrides the business name shown on receipts."),
+      footer: zod
+        .string()
+        .nullish()
+        .describe("Footer text printed at the bottom of each ticket."),
       dividerChar: zod
         .string()
         .nullish()
-        .describe('Single character used for divider lines (default \"-\")'),
-      showTimestamp: zod.boolean().nullish(),
-      showOrderNumber: zod.boolean().nullish(),
-      showGuestName: zod.boolean().nullish(),
-      showSource: zod.boolean().nullish(),
-      showTableNumber: zod.boolean().nullish(),
+        .describe('Single character used for divider lines (default \"-\").'),
+      kitchen_ticket: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      customer_receipt: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      item_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      plate_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
     })
-    .nullish(),
+    .nullish()
+    .describe(
+      "Per-printer receipt\/label template. Global fields apply to all ticket types; per-type fields override section order and styles.",
+    ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -2054,7 +2714,9 @@ export const TestPrintPrinterResponse = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod.enum(["lan_browser"]).nullish(),
+  deliveredVia: zod
+    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
+    .nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),
@@ -2090,19 +2752,239 @@ export const PreviewPrinterTemplateBody = zod.object({
   ]),
   template: zod
     .object({
-      businessName: zod.string().nullish(),
-      footer: zod.string().nullish(),
+      businessName: zod
+        .string()
+        .nullish()
+        .describe("Overrides the business name shown on receipts."),
+      footer: zod
+        .string()
+        .nullish()
+        .describe("Footer text printed at the bottom of each ticket."),
       dividerChar: zod
         .string()
         .nullish()
-        .describe('Single character used for divider lines (default \"-\")'),
-      showTimestamp: zod.boolean().nullish(),
-      showOrderNumber: zod.boolean().nullish(),
-      showGuestName: zod.boolean().nullish(),
-      showSource: zod.boolean().nullish(),
-      showTableNumber: zod.boolean().nullish(),
+        .describe('Single character used for divider lines (default \"-\").'),
+      kitchen_ticket: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      customer_receipt: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      item_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      plate_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section's text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
     })
-    .nullish(),
+    .nullish()
+    .describe(
+      "Per-printer receipt\/label template. Global fields apply to all ticket types; per-type fields override section order and styles.",
+    ),
 });
 
 export const PreviewPrinterTemplateResponse = zod.object({
@@ -2135,7 +3017,9 @@ export const ListPrintJobsResponseItem = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod.enum(["lan_browser"]).nullish(),
+  deliveredVia: zod
+    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
+    .nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),
@@ -2165,7 +3049,9 @@ export const RetryPrintJobResponse = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod.enum(["lan_browser"]).nullish(),
+  deliveredVia: zod
+    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
+    .nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),
@@ -2907,7 +3793,9 @@ export const ClaimPrintAgentJobResponse = zod.object({
   contentType: zod.string(),
   status: zod.enum(["queued", "delivered", "printed", "failed", "canceled"]),
   attempts: zod.number(),
-  deliveredVia: zod.enum(["lan_browser"]).nullish(),
+  deliveredVia: zod
+    .enum(["cloudprnt", "lan_fallback", "lan_browser"])
+    .nullish(),
   error: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   deliveredAt: zod.coerce.date().nullish(),
