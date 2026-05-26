@@ -418,7 +418,7 @@ function renderItemLabelSection(
     case "tableNumber":
       break;
     case "items":
-      t.left().div(dchar);
+      t.align(style.align).div(dchar);
       t.bold(style.bold).double(style.size === "double");
       wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => t.line(w));
       t.double(false).bold(false);
@@ -480,7 +480,7 @@ function renderPlateLabelSection(
       t.bold(style.bold).double(style.size === "double").line(`Guest: ${p.guestName}`).double(false).bold(false);
       break;
     case "items":
-      t.left().div(dchar);
+      t.align(style.align).div(dchar);
       t.bold(style.bold).double(style.size === "double").line(p.plateLabel).double(false).bold(false);
       t.div(dchar);
       for (const l of p.lines) {
@@ -795,7 +795,7 @@ function webItemLabelSection(
     case "tableNumber":
       break;
     case "items":
-      b.left().div(dchar);
+      b.align(style.align).div(dchar);
       b.bold(style.bold).double(style.size === "double");
       wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => b.line(w));
       b.double(false).bold(false);
@@ -857,7 +857,7 @@ function webPlateLabelSection(
       b.bold(style.bold).double(style.size === "double").line(`Guest: ${p.guestName}`).double(false).bold(false);
       break;
     case "items":
-      b.left().div(dchar);
+      b.align(style.align).div(dchar);
       b.bold(style.bold).double(style.size === "double").line(p.plateLabel).double(false).bold(false);
       b.div(dchar);
       for (const l of p.lines) {
