@@ -1001,6 +1001,8 @@ export interface PrintTemplate {
   logoUrl?: string | null;
   /** Where the logo appears relative to the business name or ticket title in the header section. */
   logoPosition?: PrintTemplateLogoPosition;
+  /** When true, sections are printed in reverse order (last-to-first) for printers that feed paper bottom-up. */
+  reverseOrder?: boolean | null;
   kitchen_ticket?: TicketLayout | null;
   customer_receipt?: TicketLayout | null;
   item_label?: TicketLayout | null;

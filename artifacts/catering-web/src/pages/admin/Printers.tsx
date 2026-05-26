@@ -323,6 +323,7 @@ function PrintTemplateDesignerModal({
     headerText:      existing?.headerText      ?? "",
     logoUrl:         existing?.logoUrl         ?? "",
     logoPosition:    existing?.logoPosition    ?? null,
+    reverseOrder:    existing?.reverseOrder    ?? false,
     kitchen_ticket:  existing?.kitchen_ticket  ?? undefined,
     customer_receipt: existing?.customer_receipt ?? undefined,
     item_label:      existing?.item_label      ?? undefined,
@@ -416,6 +417,17 @@ function PrintTemplateDesignerModal({
                 />
               </div>
 
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!tpl.reverseOrder}
+                  onChange={(e) => setTpl((p) => ({ ...p, reverseOrder: e.target.checked }))}
+                  className="rounded"
+                />
+                <span className="text-xs font-medium">Reverse print order</span>
+                <span className="text-[10px] text-muted-foreground">(for printers that feed bottom-up)</span>
+              </label>
 
               <div className="flex items-end gap-2">
                 <div>

@@ -42,6 +42,7 @@ export type PrintTemplate = {
   headerText?: string | null;
   logoUrl?: string | null;
   logoPosition?: "before_name" | "after_name" | null;
+  reverseOrder?: boolean | null;
   kitchen_ticket?: TicketLayout;
   customer_receipt?: TicketLayout;
   item_label?: TicketLayout;

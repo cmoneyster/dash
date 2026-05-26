@@ -1935,6 +1935,12 @@ export const ListPrintersResponseItem = zod.object({
         .describe(
           "Where the logo appears relative to the business name or ticket title in the header section.",
         ),
+      reverseOrder: zod
+        .boolean()
+        .nullish()
+        .describe(
+          "When true, sections are printed in reverse order (last-to-first) for printers that feed paper bottom-up.",
+        ),
       kitchen_ticket: zod
         .object({
           sectionOrder: zod
@@ -2275,6 +2281,12 @@ export const UpdatePrinterBody = zod.object({
         .describe(
           "Where the logo appears relative to the business name or ticket title in the header section.",
         ),
+      reverseOrder: zod
+        .boolean()
+        .nullish()
+        .describe(
+          "When true, sections are printed in reverse order (last-to-first) for printers that feed paper bottom-up.",
+        ),
       kitchen_ticket: zod
         .object({
           sectionOrder: zod
@@ -2600,6 +2612,12 @@ export const UpdatePrinterResponse = zod.object({
         .nullish()
         .describe(
           "Where the logo appears relative to the business name or ticket title in the header section.",
+        ),
+      reverseOrder: zod
+        .boolean()
+        .nullish()
+        .describe(
+          "When true, sections are printed in reverse order (last-to-first) for printers that feed paper bottom-up.",
         ),
       kitchen_ticket: zod
         .object({
@@ -2979,6 +2997,12 @@ export const PreviewPrinterTemplateBody = zod.object({
         .nullish()
         .describe(
           "Where the logo appears relative to the business name or ticket title in the header section.",
+        ),
+      reverseOrder: zod
+        .boolean()
+        .nullish()
+        .describe(
+          "When true, sections are printed in reverse order (last-to-first) for printers that feed paper bottom-up.",
         ),
       kitchen_ticket: zod
         .object({

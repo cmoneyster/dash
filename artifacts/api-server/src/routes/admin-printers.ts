@@ -24,6 +24,7 @@ const printTemplateSchema = z.object({
   headerText:      z.string().nullable().optional(),
   logoUrl:         z.string().nullable().optional(),
   logoPosition:    z.enum(["before_name", "after_name"]).nullable().optional(),
+  reverseOrder:    z.boolean().nullable().optional(),
   kitchen_ticket:  ticketLayoutSchema.nullable().optional(),
   customer_receipt: ticketLayoutSchema.nullable().optional(),
   item_label:      ticketLayoutSchema.nullable().optional(),

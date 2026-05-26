@@ -100,7 +100,8 @@ function getLayout(tmpl: PrintTemplate | undefined, key: TicketType): TicketLayo
 }
 
 function resolveOrder(tmpl: PrintTemplate | undefined, key: TicketType): SectionKey[] {
-  return getLayout(tmpl, key)?.sectionOrder ?? DEFAULT_ORDERS[key];
+  const order = getLayout(tmpl, key)?.sectionOrder ?? DEFAULT_ORDERS[key];
+  return tmpl?.reverseOrder ? [...order].reverse() : order;
 }
 
 function resolveStyle(tmpl: PrintTemplate | undefined, key: TicketType, section: SectionKey): ResolvedStyle {
