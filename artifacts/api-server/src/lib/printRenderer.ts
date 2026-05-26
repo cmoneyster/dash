@@ -87,6 +87,25 @@ const TICKET_SIZE_OVERRIDES: Partial<Record<TicketType, Partial<Record<SectionKe
   plate_label: { orderNumber: { size: 2, bold: true }, items: { size: 2, bold: true } },
 };
 
+// Per-ticket-type divider defaults – controls which sections have dividers shown
+// by default. Users can override any of these via the print template builder.
+const TICKET_DIVIDER_OVERRIDES: Partial<Record<TicketType, Partial<Record<SectionKey, Pick<ResolvedStyle, "dividerBefore" | "dividerAfter">>>>> = {
+  kitchen_ticket: {
+    header: { dividerBefore: false, dividerAfter: true },
+    items:  { dividerBefore: true,  dividerAfter: false },
+  },
+  customer_receipt: {
+    header: { dividerBefore: false, dividerAfter: true },
+    items:  { dividerBefore: true,  dividerAfter: true },
+  },
+  item_label: {
+    items: { dividerBefore: true, dividerAfter: true },
+  },
+  plate_label: {
+    items: { dividerBefore: true, dividerAfter: true },
+  },
+};
+
 export const DEFAULT_ORDERS: Record<TicketType, SectionKey[]> = {
   kitchen_ticket:   ["header", "orderNumber", "guestName", "tableNumber", "timestamp", "source", "items", "notes", "footer"],
   customer_receipt: ["header", "timestamp", "orderNumber", "guestName", "tableNumber", "items", "totals", "footer"],
@@ -105,8 +124,9 @@ function resolveOrder(tmpl: PrintTemplate | undefined, key: TicketType): Section
 
 function resolveStyle(tmpl: PrintTemplate | undefined, key: TicketType, section: SectionKey): ResolvedStyle {
   const globalDefault = DEFAULT_SECTION_STYLES[section] ?? DEFAULT_SECTION_STYLES.footer;
-  const ticketDefault = TICKET_SIZE_OVERRIDES[key]?.[section] ?? {};
-  const defaults: ResolvedStyle = { ...globalDefault, ...ticketDefault };
+  const ticketSizeDefault = TICKET_SIZE_OVERRIDES[key]?.[section] ?? {};
+  const ticketDivDefault  = TICKET_DIVIDER_OVERRIDES[key]?.[section] ?? {};
+  const defaults: ResolvedStyle = { ...globalDefault, ...ticketSizeDefault, ...ticketDivDefault };
   const override = getLayout(tmpl, key)?.sections?.[section] ?? {};
   return {
     visible:       override.visible       ?? defaults.visible,
@@ -257,7 +277,6 @@ function renderKitchenSection(
       if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") escLogo(t, tmpl, style.align);
       t.sizeN(style.size).bold(style.bold).line(title).sizeN(1).bold(false).left();
       if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") escLogo(t, tmpl, style.align);
-      t.div(dchar === "-" ? "=" : dchar);
       break;
     }
     case "orderNumber":
@@ -276,7 +295,6 @@ function renderKitchenSection(
       t.bold(style.bold).sizeN(style.size).line(`Source: ${p.header.source}`).sizeN(1).bold(false);
       break;
     case "items":
-      t.left().div(dchar);
       if (p.plates?.length) {
         for (const plate of p.plates) {
           t.bold(true).line(`-- ${plate.label} --`).bold(false);
@@ -344,7 +362,6 @@ function renderReceiptSection(
       if (bizName) t.bold(style.bold).sizeN(style.size).line(bizName).sizeN(1).bold(false);
       if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") escLogo(t, tmpl, style.align);
       if (!bizName && tmpl?.logoUrl) escLogo(t, tmpl, style.align);
-      t.left().div(dchar);
       break;
     }
     case "timestamp":
@@ -360,13 +377,11 @@ function renderReceiptSection(
       if (p.header.tableNumber) t.bold(style.bold).sizeN(style.size).line(`Table: ${p.header.tableNumber}`).sizeN(1).bold(false);
       break;
     case "items":
-      t.left().div(dchar);
       for (const l of p.lines) {
         const right = l.unitPrice != null ? `$${(l.unitPrice * l.quantity).toFixed(2)}` : "";
         t.line(pad(`${l.quantity}x ${l.name}`, right));
         if (l.modifiers?.length) for (const m of l.modifiers) t.line(`   + ${m}`);
       }
-      t.div(dchar);
       break;
     case "totals":
       t.left();
@@ -424,7 +439,6 @@ function renderItemLabelSection(
     case "tableNumber":
       break;
     case "items":
-      t.align(style.align).div(dchar);
       t.bold(style.bold).sizeN(style.size);
       wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => t.line(w));
       t.sizeN(1).bold(false);
@@ -434,7 +448,6 @@ function renderItemLabelSection(
         t.div(dchar);
         wrap(p.notes).forEach((w) => t.line(w));
       }
-      t.div(dchar);
       break;
     case "timestamp":
       t.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1).bold(false);
@@ -487,7 +500,6 @@ function renderPlateLabelSection(
       t.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1).bold(false);
       break;
     case "items":
-      t.align(style.align).div(dchar);
       t.bold(style.bold).sizeN(style.size).line(p.plateLabel).sizeN(1).bold(false);
       t.div(dchar);
       for (const l of p.lines) {
@@ -495,7 +507,6 @@ function renderPlateLabelSection(
         if (l.modifiers?.length) for (const m of l.modifiers) t.line(`  + ${m}`);
         if (l.notes) wrap(`* ${l.notes}`, 2).forEach((w) => t.line(w));
       }
-      t.div(dchar);
       break;
     case "timestamp":
       t.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1).bold(false);
@@ -639,7 +650,6 @@ function webKitchenSection(
       if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") webLogo(b, tmpl, style.align);
       b.sizeN(style.size).bold(style.bold).line(title).sizeN(1).bold(false).left();
       if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") webLogo(b, tmpl, style.align);
-      b.div(dchar === "-" ? "=" : dchar);
       break;
     }
     case "orderNumber":
@@ -658,7 +668,6 @@ function webKitchenSection(
       b.bold(style.bold).sizeN(style.size).line(`Source: ${p.header.source}`).sizeN(1).bold(false);
       break;
     case "items":
-      b.left().div(dchar);
       if (p.plates?.length) {
         for (const plate of p.plates) {
           b.bold(true).line(`-- ${plate.label} --`).bold(false);
@@ -726,7 +735,6 @@ function webReceiptSection(
       if (bizName) b.bold(style.bold).sizeN(style.size).line(bizName).sizeN(1).bold(false);
       if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") webLogo(b, tmpl, style.align);
       if (!bizName && tmpl?.logoUrl) webLogo(b, tmpl, style.align);
-      b.left().div(dchar);
       break;
     }
     case "timestamp":
@@ -742,13 +750,11 @@ function webReceiptSection(
       if (p.header.tableNumber) b.bold(style.bold).sizeN(style.size).line(`Table: ${p.header.tableNumber}`).sizeN(1).bold(false);
       break;
     case "items":
-      b.left().div(dchar);
       for (const l of p.lines) {
         const right = l.unitPrice != null ? `$${(l.unitPrice * l.quantity).toFixed(2)}` : "";
         b.line(pad(`${l.quantity}x ${l.name}`, right));
         if (l.modifiers?.length) for (const m of l.modifiers) b.line(`   + ${m}`);
       }
-      b.div(dchar);
       break;
     case "totals":
       b.left();
@@ -806,7 +812,6 @@ function webItemLabelSection(
     case "tableNumber":
       break;
     case "items":
-      b.align(style.align).div(dchar);
       b.bold(style.bold).sizeN(style.size);
       wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => b.line(w));
       b.sizeN(1).bold(false);
@@ -816,7 +821,6 @@ function webItemLabelSection(
         b.div(dchar);
         wrap(p.notes).forEach((w) => b.line(w));
       }
-      b.div(dchar);
       break;
     case "timestamp":
       b.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1).bold(false);
@@ -869,7 +873,6 @@ function webPlateLabelSection(
       b.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1).bold(false);
       break;
     case "items":
-      b.align(style.align).div(dchar);
       b.bold(style.bold).sizeN(style.size).line(p.plateLabel).sizeN(1).bold(false);
       b.div(dchar);
       for (const l of p.lines) {
@@ -877,7 +880,6 @@ function webPlateLabelSection(
         if (l.modifiers?.length) for (const m of l.modifiers) b.line(`  + ${m}`);
         if (l.notes) wrap(`* ${l.notes}`, 2).forEach((w) => b.line(w));
       }
-      b.div(dchar);
       break;
     case "timestamp":
       b.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1).bold(false);

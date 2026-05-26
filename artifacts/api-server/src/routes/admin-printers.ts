@@ -314,11 +314,11 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
 
     const { bytes } = renderJob(payload, template ?? undefined);
 
-    // Parse the ESC/POS byte stream and reconstruct alignment visually so
-    // center/right sections appear correctly in the text preview.
-    // Bold and double-size are ESC/POS-only and cannot be shown in plain text.
+    // Parse the ESC/POS byte stream and reconstruct alignment + size visually.
+    // Size is simulated by repeating lines vertically (N copies = N× height).
     const LINE_WIDTH = 48;
     let align: 0 | 1 | 2 = 0; // 0=left, 1=center, 2=right
+    let currentSize = 1;
     let col = "";
     const lines: string[] = [];
 
@@ -357,9 +357,16 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
           i += 2;
         }
       } else if (byte === 0x1d) {
-        i += 3; // GS ! n — text size (skip)
+        // GS ! n — text size (n encodes width×height multiplier 1–8)
+        if (bytes[i + 1] === 0x21 && i + 2 < bytes.length) {
+          const n = bytes[i + 2];
+          currentSize = (n & 0x0f) + 1; // height from low nibble
+        }
+        i += 3;
       } else if (byte === 0x0a) {
-        lines.push(applyAlign(col));
+        const rendered = applyAlign(col);
+        // Repeat the line currentSize times to simulate vertical scaling
+        for (let r = 0; r < currentSize; r++) lines.push(rendered);
         col = "";
         i++;
       } else if (byte >= 0x20 && byte <= 0x7e) {
