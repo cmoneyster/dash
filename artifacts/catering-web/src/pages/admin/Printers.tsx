@@ -290,6 +290,32 @@ function PrintTemplateDesignerModal({
 
   const existing = printer.printTemplate as PrintTemplate | null | undefined;
 
+  const [testPrintState, setTestPrintState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const handleTestPrint = async () => {
+    setTestPrintState("sending");
+    try {
+      const token = getAdminToken();
+      const res = await fetch(`/api/admin/printers/${printer.id}/test-print-template`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ ticketType, template: tpl }),
+      });
+      if (!res.ok) {
+        const d = await res.json() as { error?: string };
+        throw new Error(d.error ?? "Failed");
+      }
+      setTestPrintState("sent");
+      setTimeout(() => setTestPrintState("idle"), 3000);
+    } catch {
+      setTestPrintState("error");
+      setTimeout(() => setTestPrintState("idle"), 3000);
+    }
+  };
+
   const [tpl, setTpl] = useState<PrintTemplate>({
     businessName:    existing?.businessName    ?? "",
     footer:          existing?.footer          ?? "",
@@ -537,6 +563,29 @@ function PrintTemplateDesignerModal({
             >
               Close
             </button>
+            {printer.lanIp && (
+              <button
+                type="button"
+                onClick={handleTestPrint}
+                disabled={testPrintState === "sending"}
+                title="Print the current design (unsaved) to the physical printer"
+                className={`px-4 py-2 rounded-xl font-medium text-sm transition-all active:scale-95 disabled:opacity-60 inline-flex items-center gap-2 border ${
+                  testPrintState === "sent"
+                    ? "border-green-500 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30"
+                    : testPrintState === "error"
+                    ? "border-red-400 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30"
+                    : "border-border hover:bg-muted text-foreground"
+                }`}
+              >
+                {testPrintState === "sending"
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Printing…</>
+                  : testPrintState === "sent"
+                  ? <><Check className="w-4 h-4" /> Sent to printer</>
+                  : testPrintState === "error"
+                  ? <><X className="w-4 h-4" /> Print failed</>
+                  : <><PrinterIcon className="w-4 h-4" /> Test print</>}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleSave}

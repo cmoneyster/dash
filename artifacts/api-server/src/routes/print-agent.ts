@@ -117,9 +117,18 @@ router.get("/print-agent/jobs/:id/bytes", async (req, res) => {
       return;
     }
 
+    // A template_test job may embed a _templateOverride in the payload so the
+    // operator can proof a template before saving it to the printer record.
+    const rawPayload = job.payload as unknown as Record<string, unknown>;
+    const { _templateOverride, ...cleanPayload } = rawPayload;
+    const effectiveTemplate =
+      (_templateOverride && typeof _templateOverride === "object"
+        ? (_templateOverride as PrintTemplate)
+        : null) ?? (printer.printTemplate as PrintTemplate | undefined ?? undefined);
+
     const { bytes } = renderJob(
-      job.payload as unknown as RenderablePayload,
-      printer.printTemplate as PrintTemplate | undefined ?? undefined,
+      cleanPayload as unknown as RenderablePayload,
+      effectiveTemplate,
     );
 
     res.set("Content-Type", "application/octet-stream");

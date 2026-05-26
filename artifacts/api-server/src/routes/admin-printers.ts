@@ -324,6 +324,90 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
   }
 });
 
+/**
+ * POST /admin/printers/:id/test-print-template
+ *
+ * Enqueues a real print job using the supplied (unsaved) template so the
+ * operator can see a physical printout before committing the template.
+ */
+router.post("/admin/printers/:id/test-print-template", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, id));
+    if (!printer) { res.status(404).json({ error: "not found" }); return; }
+    if (!printer.lanIp) { res.status(400).json({ error: "No LAN IP configured for this printer" }); return; }
+
+    const b = req.body as Record<string, unknown>;
+    const ticketType = typeof b.ticketType === "string" ? b.ticketType : "customer_receipt";
+    const template = (b.template && typeof b.template === "object" ? b.template : null) as PrintTemplate | null;
+    const now = new Date().toISOString();
+
+    let payload: RenderablePayload;
+    if (ticketType === "kitchen_ticket") {
+      payload = {
+        type: "kitchen_ticket",
+        header: { orderNumber: "1042", guestName: "Jane Smith", source: "event_taker", placedAt: now, tableNumber: "12" },
+        lines: [
+          { name: "Orange Chicken", quantity: 2, modifiers: ["extra sauce"], notes: "well done" },
+          { name: "Spring Rolls", quantity: 5 },
+          { name: "Steamed Rice", quantity: 2 },
+        ],
+      };
+    } else if (ticketType === "item_label") {
+      payload = {
+        type: "item_label",
+        orderNumber: "1042",
+        guestName: "Jane Smith",
+        itemName: "Orange Chicken",
+        quantity: 2,
+        modifiers: ["extra sauce"],
+        notes: "well done",
+        placedAt: now,
+      };
+    } else if (ticketType === "plate_label") {
+      payload = {
+        type: "plate_label",
+        orderNumber: "1042",
+        guestName: "Jane Smith",
+        plateLabel: "Plate 1",
+        lines: [
+          { name: "Orange Chicken", quantity: 1 },
+          { name: "Steamed Rice", quantity: 1 },
+        ],
+        placedAt: now,
+      };
+    } else {
+      payload = {
+        type: "customer_receipt",
+        header: { orderNumber: "1042", guestName: "Jane Smith", source: "event_taker", placedAt: now, tableNumber: "12" },
+        lines: [
+          { name: "Orange Chicken", quantity: 2, unitPrice: 12.5 },
+          { name: "Spring Rolls", quantity: 5, unitPrice: 2.5 },
+          { name: "Steamed Rice", quantity: 2, unitPrice: 3.0 },
+        ],
+        subtotal: 43.5,
+        tax: 2.61,
+        total: 46.11,
+        businessName: "dash by Hollywood East Cafe",
+        footer: "Thank you for your order!",
+      };
+    }
+
+    // Embed the template override directly in the payload so the print agent
+    // uses this template instead of the printer's saved one when rendering.
+    const job = await enqueuePrintJob({
+      printerId: printer.id,
+      jobType: payload.type as import("@workspace/db/schema").PrintJobType,
+      payload: { ...payload, _templateOverride: template ?? null } as unknown as Record<string, unknown>,
+    });
+
+    res.json({ jobId: job.id, message: "Test job queued — printing now." });
+  } catch (err) {
+    req.log.error({ err }, "test-print-template failed");
+    res.status(500).json({ error: "Failed to enqueue test print" });
+  }
+});
+
 router.get("/admin/print-jobs", async (req, res) => {
   try {
     const printerId = req.query.printerId ? parseInt(String(req.query.printerId)) : null;
