@@ -534,9 +534,10 @@ function PrintTemplateDesignerModal({
             <div className="flex-1 overflow-y-auto p-5">
               <div className="bg-white dark:bg-slate-950 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 max-w-sm mx-auto shadow-inner">
                 {previewText !== null ? (
-                  <pre className="font-mono text-[11px] leading-[1.5] text-slate-900 dark:text-slate-100 whitespace-pre">
-                    {previewText || "(empty ticket)"}
-                  </pre>
+                  <div
+                    className="font-mono text-[11px] text-slate-900 dark:text-slate-100 overflow-hidden"
+                    dangerouslySetInnerHTML={{ __html: previewText || "<span style='display:block'>(empty ticket)</span>" }}
+                  />
                 ) : (
                   <div className="flex items-center justify-center py-8 text-muted-foreground">
                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -544,7 +545,7 @@ function PrintTemplateDesignerModal({
                 )}
               </div>
               <p className="text-center text-[11px] text-muted-foreground mt-3">
-                48-column preview · alignment shown · bold &amp; size visible on physical printout only
+                48-column preview · alignment, bold &amp; size shown proportionally
               </p>
             </div>
           </div>

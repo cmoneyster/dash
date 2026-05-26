@@ -69,9 +69,17 @@ router.post("/print-agent/jobs/:id/claim", async (req, res) => {
       return;
     }
 
+    // If a _templateOverride was embedded by test-print-template, use it
+    // so the template builder's "Test Print" sends the current (unsaved) template.
+    const payloadObj = job.payload as Record<string, unknown>;
+    const hasOverride = "_templateOverride" in payloadObj;
+    const effectiveTemplate: PrintTemplate | undefined = hasOverride
+      ? (payloadObj._templateOverride as PrintTemplate | null) ?? undefined
+      : (printer.printTemplate as PrintTemplate | null) ?? undefined;
+
     const webPrntXml = renderJobWebPrnt(
       job.payload as unknown as RenderablePayload,
-      printer.printTemplate as PrintTemplate | undefined ?? undefined,
+      effectiveTemplate,
     );
 
     res.json({

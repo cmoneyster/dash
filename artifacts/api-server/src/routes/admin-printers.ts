@@ -314,26 +314,15 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
 
     const { bytes } = renderJob(payload, template ?? undefined);
 
-    // Parse the ESC/POS byte stream and reconstruct alignment + size visually.
-    // Size is simulated by repeating lines vertically (N copies = N× height).
-    const LINE_WIDTH = 48;
-    let align: 0 | 1 | 2 = 0; // 0=left, 1=center, 2=right
+    // Parse the ESC/POS byte stream into per-line metadata for HTML preview.
+    // Each line tracks its size multiplier, bold state, and alignment so the
+    // frontend can render it with correct CSS font-size and text-align.
+    interface ParsedLine { text: string; size: number; bold: boolean; align: "left" | "center" | "right"; }
+    const parsedLines: ParsedLine[] = [];
+    let alignCss: "left" | "center" | "right" = "left";
+    let isBold = false;
     let currentSize = 1;
     let col = "";
-    const lines: string[] = [];
-
-    const applyAlign = (s: string): string => {
-      const t = s.trimEnd();
-      if (align === 1) {
-        const pad = Math.max(0, Math.floor((LINE_WIDTH - t.length) / 2));
-        return " ".repeat(pad) + t;
-      }
-      if (align === 2) {
-        const pad = Math.max(0, LINE_WIDTH - t.length);
-        return " ".repeat(pad) + t;
-      }
-      return t;
-    };
 
     let i = 0;
     while (i < bytes.length) {
@@ -343,10 +332,12 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
         if (next === 0x61 && i + 2 < bytes.length) {
           // ESC a n — set justification
           const n = bytes[i + 2];
-          align = n === 0x01 ? 1 : n === 0x02 ? 2 : 0;
+          alignCss = n === 0x01 ? "center" : n === 0x02 ? "right" : "left";
           i += 3;
         } else if (next === 0x45 && i + 2 < bytes.length) {
-          i += 3; // ESC E n — bold on/off (skip)
+          // ESC E n — bold on/off
+          isBold = bytes[i + 2] !== 0;
+          i += 3;
         } else if (next === 0x40) {
           i += 2; // ESC @ — init (skip)
         } else if (next === 0x64 && i + 2 < bytes.length) {
@@ -359,14 +350,11 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
       } else if (byte === 0x1d) {
         // GS ! n — text size (n encodes width×height multiplier 1–8)
         if (bytes[i + 1] === 0x21 && i + 2 < bytes.length) {
-          const n = bytes[i + 2];
-          currentSize = (n & 0x0f) + 1; // height from low nibble
+          currentSize = (bytes[i + 2] & 0x0f) + 1; // height from low nibble
         }
         i += 3;
       } else if (byte === 0x0a) {
-        const rendered = applyAlign(col);
-        // Repeat the line currentSize times to simulate vertical scaling
-        for (let r = 0; r < currentSize; r++) lines.push(rendered);
+        parsedLines.push({ text: col, size: currentSize, bold: isBold, align: alignCss });
         col = "";
         i++;
       } else if (byte >= 0x20 && byte <= 0x7e) {
@@ -376,8 +364,22 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
         i++;
       }
     }
-    if (col) lines.push(applyAlign(col));
-    const text = lines.join("\n").trimEnd();
+    if (col) parsedLines.push({ text: col, size: currentSize, bold: isBold, align: alignCss });
+
+    const escHtml = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    // Each line becomes a display:block <span> with inline CSS for size, weight, alignment.
+    const text = parsedLines
+      .map((line) => {
+        const content = escHtml(line.text) || "&nbsp;";
+        const style =
+          `display:block;font-size:${line.size}em;` +
+          `font-weight:${line.bold ? "bold" : "normal"};` +
+          `text-align:${line.align}`;
+        return `<span style="${style}">${content}</span>`;
+      })
+      .join("");
 
     res.json({ ticketType, text });
   } catch (err) {
