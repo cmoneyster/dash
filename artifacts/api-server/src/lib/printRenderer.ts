@@ -4,12 +4,16 @@ const ESC = 0x1b;
 const GS  = 0x1d;
 const LF  = 0x0a;
 
+// Star Line Mode (native StarPRNT) commands — NOT ESC/POS.
+// Star printers default to Line Mode; ESC/POS commands like GS! and ESC a
+// are NOT supported in Line Mode and produce garbage output.
 const INIT        = Buffer.from([ESC, 0x40]);
-const BOLD_ON     = Buffer.from([ESC, 0x45, 0x01]);
-const BOLD_OFF    = Buffer.from([ESC, 0x45, 0x00]);
-const ALIGN_CENTER = Buffer.from([ESC, 0x61, 0x01]);
-const ALIGN_LEFT   = Buffer.from([ESC, 0x61, 0x00]);
-const ALIGN_RIGHT  = Buffer.from([ESC, 0x61, 0x02]);
+const BOLD_ON     = Buffer.from([ESC, 0x45, 0x01]); // ESC E n — works in both modes
+const BOLD_OFF    = Buffer.from([ESC, 0x46]);        // ESC F   — Line Mode cancel (ESC E 0 would re-enable bold)
+// Alignment: Star Line Mode uses ESC GS a n (not ESC a n which feeds paper in Line Mode)
+const ALIGN_LEFT   = Buffer.from([ESC, GS, 0x61, 0x00]);
+const ALIGN_CENTER = Buffer.from([ESC, GS, 0x61, 0x01]);
+const ALIGN_RIGHT  = Buffer.from([ESC, GS, 0x61, 0x02]);
 const CUT          = Buffer.from([ESC, 0x64, 0x03, ESC, 0x6d]);
 
 const LINE_WIDTH = 48;
@@ -148,8 +152,10 @@ class TicketBuilder {
   line(s = "")    { this.text(s); this.chunks.push(Buffer.from([LF])); return this; }
   bold(on: boolean) { this.chunks.push(on ? BOLD_ON : BOLD_OFF); return this; }
   sizeN(n: number) {
-    const s = Math.max(0, Math.min(7, Math.round(n) - 1));
-    this.chunks.push(Buffer.from([GS, 0x21, (s << 4) | s]));
+    // Star Line Mode: ESC i n1 n2 — n1=height, n2=width (0=single, 1=double)
+    // GS ! (ESC/POS) is NOT supported in Star Line Mode and prints garbage.
+    const doubled = Math.round(n) >= 2 ? 1 : 0;
+    this.chunks.push(Buffer.from([ESC, 0x69, doubled, doubled]));
     return this;
   }
   align(a: SectionAlign) {

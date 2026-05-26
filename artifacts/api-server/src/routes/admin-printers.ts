@@ -329,29 +329,34 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
       const byte = bytes[i];
       if (byte === 0x1b) {
         const next = bytes[i + 1];
-        if (next === 0x61 && i + 2 < bytes.length) {
-          // ESC a n — set justification
-          const n = bytes[i + 2];
+        if (next === 0x1d && bytes[i + 2] === 0x61 && i + 3 < bytes.length) {
+          // ESC GS a n — Star Line Mode alignment (left/center/right)
+          const n = bytes[i + 3];
           alignCss = n === 0x01 ? "center" : n === 0x02 ? "right" : "left";
-          i += 3;
+          i += 4;
+        } else if (next === 0x69 && i + 3 < bytes.length) {
+          // ESC i n1 n2 — Star Line Mode double-high/wide (n1=height, n2=width)
+          currentSize = bytes[i + 2] >= 1 ? 2 : 1;
+          i += 4;
         } else if (next === 0x45 && i + 2 < bytes.length) {
-          // ESC E n — bold on/off
+          // ESC E n — bold on (n !== 0 enables emphasis)
           isBold = bytes[i + 2] !== 0;
           i += 3;
+        } else if (next === 0x46) {
+          // ESC F — Star Line Mode cancel emphasized (bold off)
+          isBold = false;
+          i += 2;
         } else if (next === 0x40) {
           i += 2; // ESC @ — init (skip)
         } else if (next === 0x64 && i + 2 < bytes.length) {
-          i += 3; // ESC d n — feed lines (skip)
+          i += 3; // ESC d n — feed/cut (skip)
         } else if (next === 0x6d) {
           i += 2; // ESC m — cut (skip)
         } else {
           i += 2;
         }
       } else if (byte === 0x1d) {
-        // GS ! n — text size (n encodes width×height multiplier 1–8)
-        if (bytes[i + 1] === 0x21 && i + 2 < bytes.length) {
-          currentSize = (bytes[i + 2] & 0x0f) + 1; // height from low nibble
-        }
+        // GS byte — skip 3 bytes (legacy; no longer emitted by TicketBuilder)
         i += 3;
       } else if (byte === 0x0a) {
         parsedLines.push({ text: col, size: currentSize, bold: isBold, align: alignCss });
