@@ -1,4 +1,5 @@
 import type { PrintTemplate, SectionKey, SectionAlign, TicketLayout } from "@workspace/db/schema";
+import { fetchLogoEscBytes } from "./logoRenderer";
 
 const ESC = 0x1b;
 const GS  = 0x1d;
@@ -222,9 +223,14 @@ export type { PrintTemplate };
 
 // ─── Logo helper (ESC/POS text path) ──────────────────────────────────────────
 
-function escLogo(t: TicketBuilder, tmpl: PrintTemplate | undefined, align: SectionAlign): void {
+async function escLogo(t: TicketBuilder, tmpl: PrintTemplate | undefined, align: SectionAlign): Promise<void> {
   if (!tmpl?.logoUrl) return;
-  t.align(align).line("[LOGO]");
+  const escBytes = await fetchLogoEscBytes(tmpl.logoUrl);
+  if (escBytes) {
+    t.align(align).raw(escBytes).line();
+  } else {
+    t.align(align).line("[LOGO]");
+  }
 }
 
 // ─── ESC/POS kitchen ticket ────────────────────────────────────────────────────
@@ -237,21 +243,21 @@ function renderKitchenLines(t: TicketBuilder, lines: OrderLine[]) {
   }
 }
 
-function renderKitchenSection(
+async function renderKitchenSection(
   t: TicketBuilder,
   p: KitchenTicketPayload,
   section: SectionKey,
   style: ResolvedStyle,
   tmpl?: PrintTemplate,
-): void {
+): Promise<void> {
   const dchar = tmpl?.dividerChar ?? "-";
   t.align(style.align);
   switch (section) {
     case "header": {
       const title = tmpl?.headerText ?? "KITCHEN";
-      if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") escLogo(t, tmpl, style.align);
+      if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") await escLogo(t, tmpl, style.align);
       t.double(style.size === "double").bold(style.bold).line(title).double(false).bold(false).left();
-      if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") escLogo(t, tmpl, style.align);
+      if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") await escLogo(t, tmpl, style.align);
       t.div(dchar === "-" ? "=" : dchar);
       break;
     }
@@ -306,14 +312,14 @@ function renderKitchenSection(
   if (section !== "items" && section !== "notes" && section !== "header" && section !== "footer") t.left();
 }
 
-function renderKitchenTicket(p: KitchenTicketPayload, tmpl?: PrintTemplate): Buffer {
+async function renderKitchenTicket(p: KitchenTicketPayload, tmpl?: PrintTemplate): Promise<Buffer> {
   const t = new TicketBuilder();
   const order = resolveOrder(tmpl, "kitchen_ticket");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
     const style = resolveStyle(tmpl, "kitchen_ticket", section);
     if (!style.visible) continue;
-    renderKitchenSection(t, p, section, style, tmpl);
+    await renderKitchenSection(t, p, section, style, tmpl);
     if (style.dividerAfter) t.left().div(dchar);
   }
   return t.cut();
@@ -321,23 +327,23 @@ function renderKitchenTicket(p: KitchenTicketPayload, tmpl?: PrintTemplate): Buf
 
 // ─── ESC/POS customer receipt ──────────────────────────────────────────────────
 
-function renderReceiptSection(
+async function renderReceiptSection(
   t: TicketBuilder,
   p: CustomerReceiptPayload,
   section: SectionKey,
   style: ResolvedStyle,
   tmpl?: PrintTemplate,
-): void {
+): Promise<void> {
   const dchar = tmpl?.dividerChar ?? "-";
   const bizName = tmpl?.businessName ?? p.businessName;
   const footer  = tmpl?.footer ?? p.footer;
   t.align(style.align);
   switch (section) {
     case "header": {
-      if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") escLogo(t, tmpl, style.align);
+      if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") await escLogo(t, tmpl, style.align);
       if (bizName) t.bold(style.bold).double(style.size === "double").line(bizName).double(false).bold(false);
-      if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") escLogo(t, tmpl, style.align);
-      if (!bizName && tmpl?.logoUrl) escLogo(t, tmpl, style.align);
+      if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") await escLogo(t, tmpl, style.align);
+      if (!bizName && tmpl?.logoUrl) await escLogo(t, tmpl, style.align);
       t.left().div(dchar);
       break;
     }
@@ -383,14 +389,14 @@ function renderReceiptSection(
   if (section !== "items" && section !== "totals" && section !== "header" && section !== "footer") t.left();
 }
 
-function renderCustomerReceipt(p: CustomerReceiptPayload, tmpl?: PrintTemplate): Buffer {
+async function renderCustomerReceipt(p: CustomerReceiptPayload, tmpl?: PrintTemplate): Promise<Buffer> {
   const t = new TicketBuilder();
   const order = resolveOrder(tmpl, "customer_receipt");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
     const style = resolveStyle(tmpl, "customer_receipt", section);
     if (!style.visible) continue;
-    renderReceiptSection(t, p, section, style, tmpl);
+    await renderReceiptSection(t, p, section, style, tmpl);
     if (style.dividerAfter) t.left().div(dchar);
   }
   return t.cut();
@@ -536,14 +542,14 @@ function renderTest(p: TestPayload): Buffer {
   return t.cut();
 }
 
-export function renderJob(
+export async function renderJob(
   payload: RenderablePayload,
   template?: PrintTemplate,
-): { bytes: Buffer; contentType: string } {
+): Promise<{ bytes: Buffer; contentType: string }> {
   let bytes: Buffer;
   switch (payload.type) {
-    case "kitchen_ticket":   bytes = renderKitchenTicket(payload, template); break;
-    case "customer_receipt": bytes = renderCustomerReceipt(payload, template); break;
+    case "kitchen_ticket":   bytes = await renderKitchenTicket(payload, template); break;
+    case "customer_receipt": bytes = await renderCustomerReceipt(payload, template); break;
     case "item_label":       bytes = renderItemLabel(payload, template); break;
     case "plate_label":      bytes = renderPlateLabel(payload, template); break;
     case "test":             bytes = renderTest(payload); break;

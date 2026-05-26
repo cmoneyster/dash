@@ -126,7 +126,7 @@ router.get("/print-agent/jobs/:id/bytes", async (req, res) => {
         ? (_templateOverride as PrintTemplate)
         : null) ?? (printer.printTemplate as PrintTemplate | undefined ?? undefined);
 
-    const { bytes } = renderJob(
+    const { bytes } = await renderJob(
       cleanPayload as unknown as RenderablePayload,
       effectiveTemplate,
     );

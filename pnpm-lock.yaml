@@ -178,9 +178,6 @@ importers:
       '@types/pdfkit':
         specifier: ^0.17.6
         version: 0.17.6
-      '@types/sharp':
-        specifier: ^0.32.0
-        version: 0.32.0
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -254,6 +251,9 @@ importers:
       '@types/nodemailer':
         specifier: ^7.0.11
         version: 7.0.11
+      '@types/sharp':
+        specifier: ^0.32.0
+        version: 0.32.0
       '@types/supertest':
         specifier: ^7.2.0
         version: 7.2.0
