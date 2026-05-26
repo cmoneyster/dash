@@ -310,7 +310,7 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
       };
     }
 
-    const { bytes } = await renderJob(payload, template ?? undefined);
+    const { bytes } = renderJob(payload, template ?? undefined);
 
     // Parse the ESC/POS byte stream and reconstruct alignment visually so
     // center/right sections appear correctly in the text preview.
@@ -530,7 +530,7 @@ router.get("/admin/print-jobs/:id/preview", async (req, res) => {
     }
     const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, job.printerId));
     const template = printer?.printTemplate ?? undefined;
-    const { bytes } = await renderJob(job.payload as unknown as RenderablePayload, template);
+    const { bytes } = renderJob(job.payload as unknown as RenderablePayload, template);
     const text = Buffer.from(
       bytes.filter((b: number) => b === 0x0a || (b >= 0x20 && b <= 0x7e)),
     )

@@ -416,31 +416,6 @@ function PrintTemplateDesignerModal({
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium mb-1">Logo URL <span className="text-muted-foreground font-normal">(WebPRNT printers)</span></label>
-                <input
-                  value={tpl.logoUrl ?? ""}
-                  onChange={(e) => setTpl((p) => ({ ...p, logoUrl: e.target.value || null }))}
-                  className="w-full px-3 py-1.5 border rounded-lg bg-background text-sm"
-                  placeholder="https://example.com/logo.png"
-                  type="url"
-                />
-                <p className="text-[10px] text-muted-foreground mt-0.5">Shown as [LOGO] in text preview; rendered as image on WebPRNT printers.</p>
-              </div>
-
-              {tpl.logoUrl && (
-                <div>
-                  <label className="block text-xs font-medium mb-1">Logo position</label>
-                  <select
-                    value={tpl.logoPosition ?? "before_name"}
-                    onChange={(e) => setTpl((p) => ({ ...p, logoPosition: e.target.value as "before_name" | "after_name" }))}
-                    className="w-full px-3 py-1.5 border rounded-lg bg-background text-sm"
-                  >
-                    <option value="before_name">Before name / title</option>
-                    <option value="after_name">After name / title</option>
-                  </select>
-                </div>
-              )}
 
               <div className="flex items-end gap-2">
                 <div>
