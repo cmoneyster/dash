@@ -529,9 +529,9 @@ function PrintTemplateDesignerModal({
             </div>
 
             <div className="flex-1 overflow-y-auto p-5">
-              <div className="bg-white dark:bg-slate-950 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 max-w-xs mx-auto shadow-inner">
+              <div className="bg-white dark:bg-slate-950 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 max-w-sm mx-auto shadow-inner">
                 {previewText !== null ? (
-                  <pre className="font-mono text-[11px] leading-[1.5] text-slate-900 dark:text-slate-100 whitespace-pre overflow-x-auto">
+                  <pre className="font-mono text-[11px] leading-[1.5] text-slate-900 dark:text-slate-100 whitespace-pre">
                     {previewText || "(empty ticket)"}
                   </pre>
                 ) : (
