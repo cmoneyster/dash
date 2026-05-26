@@ -311,11 +311,64 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
     }
 
     const { bytes } = renderJob(payload, template ?? undefined);
-    const text = Buffer.from(
-      bytes.filter((b: number) => b === 0x0a || (b >= 0x20 && b <= 0x7e)),
-    )
-      .toString("ascii")
-      .trimEnd();
+
+    // Parse the ESC/POS byte stream and reconstruct alignment visually so
+    // center/right sections appear correctly in the text preview.
+    // Bold and double-size are ESC/POS-only and cannot be shown in plain text.
+    const LINE_WIDTH = 48;
+    let align: 0 | 1 | 2 = 0; // 0=left, 1=center, 2=right
+    let col = "";
+    const lines: string[] = [];
+
+    const applyAlign = (s: string): string => {
+      const t = s.trimEnd();
+      if (align === 1) {
+        const pad = Math.max(0, Math.floor((LINE_WIDTH - t.length) / 2));
+        return " ".repeat(pad) + t;
+      }
+      if (align === 2) {
+        const pad = Math.max(0, LINE_WIDTH - t.length);
+        return " ".repeat(pad) + t;
+      }
+      return t;
+    };
+
+    let i = 0;
+    while (i < bytes.length) {
+      const byte = bytes[i];
+      if (byte === 0x1b) {
+        const next = bytes[i + 1];
+        if (next === 0x61 && i + 2 < bytes.length) {
+          // ESC a n — set justification
+          const n = bytes[i + 2];
+          align = n === 0x01 ? 1 : n === 0x02 ? 2 : 0;
+          i += 3;
+        } else if (next === 0x45 && i + 2 < bytes.length) {
+          i += 3; // ESC E n — bold on/off (skip)
+        } else if (next === 0x40) {
+          i += 2; // ESC @ — init (skip)
+        } else if (next === 0x64 && i + 2 < bytes.length) {
+          i += 3; // ESC d n — feed lines (skip)
+        } else if (next === 0x6d) {
+          i += 2; // ESC m — cut (skip)
+        } else {
+          i += 2;
+        }
+      } else if (byte === 0x1d) {
+        i += 3; // GS ! n — text size (skip)
+      } else if (byte === 0x0a) {
+        lines.push(applyAlign(col));
+        col = "";
+        i++;
+      } else if (byte >= 0x20 && byte <= 0x7e) {
+        col += String.fromCharCode(byte);
+        i++;
+      } else {
+        i++;
+      }
+    }
+    if (col) lines.push(applyAlign(col));
+    const text = lines.join("\n").trimEnd();
 
     res.json({ ticketType, text });
   } catch (err) {

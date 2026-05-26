@@ -541,7 +541,7 @@ function PrintTemplateDesignerModal({
                 )}
               </div>
               <p className="text-center text-[11px] text-muted-foreground mt-3">
-                48-column preview · ESC/POS control chars stripped
+                48-column preview · alignment shown · bold &amp; size visible on physical printout only
               </p>
             </div>
           </div>
