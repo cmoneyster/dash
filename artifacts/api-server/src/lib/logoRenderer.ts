@@ -40,19 +40,21 @@ export async function fetchLogoEscBytes(
     const buf = Buffer.from(await res.arrayBuffer());
 
     const { data, info } = await sharp(buf)
+      .flatten({ background: { r: 255, g: 255, b: 255 } }) // composite alpha onto white
       .resize(printWidthPx, null, { fit: "inside", withoutEnlargement: true })
       .grayscale()
       .threshold(128)
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    const { width, height } = info;
+    const { width, height, channels } = info;
     const bytesPerRow = Math.ceil(width / 8);
     const bitmap = Buffer.alloc(bytesPerRow * height, 0);
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        if (data[y * width + x] === 0) {
+        // Use channels stride in case sharp outputs >1 byte per pixel
+        if (data[(y * width + x) * channels] === 0) {
           bitmap[y * bytesPerRow + Math.floor(x / 8)] |= 1 << (7 - (x % 8));
         }
       }
