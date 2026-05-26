@@ -6,6 +6,7 @@ import { eventSettingsTable, eventOrdersTable, cateringInquiriesTable } from "@w
 import { eq, and, gte, lt, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { isEjoinConfigured } from "../lib/sms-ejoin";
+import { getSquareConfig, listTerminalDevices, SquareApiError } from "../lib/square";
 
 const router: IRouter = Router();
 
@@ -987,6 +988,28 @@ router.post("/admin/event-settings/venmo-qr", venmoUpload.single("image"), async
   } catch (err) {
     req.log.error({ err }, "Error uploading Venmo QR");
     res.status(500).json({ error: "Failed to upload Venmo QR" });
+  }
+});
+
+// ── Square Terminal device list ───────────────────────────────────────────────
+// Returns the list of Terminal devices registered to the Square account so the
+// admin can pick a device ID from a UI instead of finding the UUID manually.
+router.get("/admin/square/terminal-devices", async (req, res) => {
+  if (!getSquareConfig()) {
+    res.status(424).json({ error: "Square is not configured. Set SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID on the server." });
+    return;
+  }
+  try {
+    const devices = await listTerminalDevices();
+    res.json(devices);
+  } catch (err) {
+    if (err instanceof SquareApiError) {
+      req.log.warn({ err }, "Square API error listing terminal devices");
+      res.status(502).json({ error: `Square API error: ${err.userMessage}` });
+      return;
+    }
+    req.log.error({ err }, "Error listing terminal devices");
+    res.status(500).json({ error: "Failed to list Terminal devices" });
   }
 });
 

@@ -126,6 +126,7 @@ export * from "./sectionStyle";
 export * from "./sectionStyleAlign";
 export * from "./sendOpenaiMessageBody";
 export * from "./serviceStyleKey";
+export * from "./squareTerminalDevice";
 export * from "./suggestItemsBody";
 export * from "./suggestItemsResponse";
 export * from "./syncRecommendationsBody";

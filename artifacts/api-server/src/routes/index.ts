@@ -89,6 +89,7 @@ router.use("/admin/demo-menu", requireAdminAuth);
 router.use("/admin/printers", requireAdminAuth);
 router.use("/admin/print-jobs", requireAdminAuth);
 router.use("/admin/event-orders", requireAdminAuth);
+router.use("/admin/square", requireAdminAuth);
 router.use("/print-agent", requireAdminAuth);
 router.use(adminMenuRouter);
 router.use(adminMenuCsvRouter);

@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon, CalendarDays } from "lucide-react";
+import { Eye, EyeOff, Save, ExternalLink, Copy, Check, Loader2, ShoppingBag, ChefHat, Receipt, Users, CreditCard, Upload, X as XIcon, CalendarDays, ChevronDown, Monitor } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -89,6 +89,127 @@ function PasswordField({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+type TerminalDevice = { id: string; name: string; model: string };
+
+function TerminalDevicePicker({
+  headers,
+  onSelect,
+}: {
+  headers: Record<string, string>;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [devices, setDevices] = useState<TerminalDevice[] | null>(null);
+  const [fetchError, setFetchError] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  async function fetchDevices() {
+    setLoading(true);
+    setFetchError("");
+    setDevices(null);
+    try {
+      const res = await fetch(`${BASE}/api/admin/square/terminal-devices`, { headers });
+      const data = await res.json();
+      if (!res.ok) {
+        setFetchError(data?.error ?? "Failed to load devices");
+        return;
+      }
+      setDevices(data as TerminalDevice[]);
+    } catch {
+      setFetchError("Network error — could not reach the server");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleToggle() {
+    if (!open) {
+      setOpen(true);
+      fetchDevices();
+    } else {
+      setOpen(false);
+    }
+  }
+
+  function handleSelect(device: TerminalDevice) {
+    onSelect(device.id);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={handleToggle}
+        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-border rounded-xl bg-background hover:bg-secondary transition-colors whitespace-nowrap"
+      >
+        {loading ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5" />
+        )}
+        Browse devices
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 z-50 w-80 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
+          <div className="px-3 py-2 border-b border-border">
+            <p className="text-xs font-semibold text-muted-foreground">Square Terminal Devices</p>
+          </div>
+          {loading && (
+            <div className="flex items-center justify-center py-6 gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading…
+            </div>
+          )}
+          {!loading && fetchError && (
+            <div className="px-4 py-4 text-sm text-destructive">{fetchError}</div>
+          )}
+          {!loading && !fetchError && devices !== null && devices.length === 0 && (
+            <div className="px-4 py-4 text-sm text-muted-foreground">
+              No Terminal devices found on this Square account. Make sure at least one device is paired in the Square Dashboard.
+            </div>
+          )}
+          {!loading && !fetchError && devices && devices.length > 0 && (
+            <ul className="divide-y divide-border max-h-60 overflow-y-auto">
+              {devices.map(d => (
+                <li key={d.id}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(d)}
+                    className="w-full flex items-start gap-3 px-4 py-3 hover:bg-secondary text-left transition-colors"
+                  >
+                    <Monitor className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{d.name}</p>
+                      {d.model && (
+                        <p className="text-xs text-muted-foreground truncate">{d.model}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground font-mono truncate">{d.id}</p>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -480,14 +601,20 @@ export default function EventSettings() {
               </p>
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Terminal Device ID</label>
-                <input
-                  value={squareTerminalDeviceId}
-                  onChange={e => setSquareTerminalDeviceId(e.target.value)}
-                  placeholder="e.g. 9fa747a2-25ff-48ee-b078-04381f7c828f"
-                  className="w-full px-4 py-2 border border-border rounded-xl bg-background font-mono text-sm"
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    value={squareTerminalDeviceId}
+                    onChange={e => setSquareTerminalDeviceId(e.target.value)}
+                    placeholder="e.g. 9fa747a2-25ff-48ee-b078-04381f7c828f"
+                    className="flex-1 min-w-0 px-4 py-2 border border-border rounded-xl bg-background font-mono text-sm"
+                  />
+                  <TerminalDevicePicker
+                    headers={headers}
+                    onSelect={id => setSquareTerminalDeviceId(id)}
+                  />
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Find this in your Square dashboard under Devices → Terminal. Requires SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID to be set on the server.
+                  Use <strong>Browse devices</strong> to pick from your Square account, or paste the ID manually. Requires SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID to be set on the server.
                 </p>
               </div>
             </div>

@@ -1123,6 +1123,12 @@ router.post("/event-taker/terminal-checkout", verifyTakerPassword, async (req, r
         res.status(409).json({ error: "The terminal already has an active request. Complete or cancel it first." });
         return;
       }
+      // Surface the actual Square diagnostic detail (from errors[].detail/code)
+      // so admins can diagnose device mismatches, auth failures, etc. instead
+      // of seeing a generic 500. Log the transport message for traceability.
+      req.log.error({ err }, "[terminal] create checkout failed");
+      res.status(502).json({ error: `Square Terminal error: ${err.userMessage}` });
+      return;
     }
     req.log.error({ err }, "[terminal] create checkout failed");
     res.status(500).json({ error: "Failed to create Terminal checkout" });

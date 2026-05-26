@@ -57,10 +57,18 @@ type SquareError = { code?: string; detail?: string; field?: string; category?: 
 export class SquareApiError extends Error {
   status: number;
   errors: SquareError[];
+  // Human-readable diagnostic string built from Square's errors[].detail/code
+  // fields. Use this in user-facing API responses; use `message` only in logs
+  // (it carries the transport path/status wrapper for traceability).
+  userMessage: string;
   constructor(status: number, errors: SquareError[], message?: string) {
     super(message ?? (errors.map(e => `${e.code ?? "ERR"}: ${e.detail ?? ""}`).join("; ") || "Square API error"));
     this.status = status;
     this.errors = errors;
+    this.userMessage = errors
+      .map(e => e.detail?.trim() || e.code?.trim() || "")
+      .filter(Boolean)
+      .join("; ") || "Square API error";
   }
 }
 
@@ -712,6 +720,42 @@ export async function getTerminalCheckout(
     `/v2/terminal/checkouts/${encodeURIComponent(checkoutId)}`,
   );
   return { status: resp.checkout.status };
+}
+
+// ── List Terminal devices ─────────────────────────────────────────────────────
+//
+// Calls /v2/devices and filters to TERMINAL-type devices so the admin UI can
+// present a browsable picker instead of requiring manual UUID entry.
+
+export type TerminalDevice = {
+  id: string;
+  name: string;
+  model: string;
+};
+
+type DevicesListResp = {
+  devices?: Array<{
+    id?: string;
+    attributes?: {
+      type?: string;
+      name?: string;
+      model?: string;
+    };
+  }>;
+};
+
+export async function listTerminalDevices(): Promise<TerminalDevice[]> {
+  const cfg = getSquareConfig();
+  if (!cfg) throw new Error("Square is not configured");
+  const resp = await squareFetch<DevicesListResp>(cfg, "/v2/devices");
+  const devices = resp.devices ?? [];
+  return devices
+    .filter(d => d.attributes?.type === "TERMINAL" && d.id)
+    .map(d => ({
+      id: d.id!,
+      name: d.attributes?.name?.trim() || "Unnamed Terminal",
+      model: d.attributes?.model?.trim() || "",
+    }));
 }
 
 export async function cancelTerminalCheckout(checkoutId: string): Promise<void> {

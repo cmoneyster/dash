@@ -1094,6 +1094,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/PrintJob"
 
+  /admin/square/terminal-devices:
+    get:
+      operationId: listSquareTerminalDevices
+      tags: [admin]
+      summary: List Square Terminal devices registered to the account
+      responses:
+        "200":
+          description: List of Terminal devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SquareTerminalDevice"
+        "424":
+          description: Square is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Square API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/sales-reports:
     get:
       operationId: getSalesReport
@@ -1359,6 +1386,17 @@ paths:
 
 components:
   schemas:
+    SquareTerminalDevice:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        model:
+          type: string
+      required: [id, name, model]
+
     ClientPollsByFamily:
       type: array
       description: |

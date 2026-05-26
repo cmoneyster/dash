@@ -3537,6 +3537,18 @@ export const RetryPrintJobResponse = zod.object({
 });
 
 /**
+ * @summary List Square Terminal devices registered to the account
+ */
+export const ListSquareTerminalDevicesResponseItem = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  model: zod.string(),
+});
+export const ListSquareTerminalDevicesResponse = zod.array(
+  ListSquareTerminalDevicesResponseItem,
+);
+
+/**
  * @summary Generate a unified sales report covering event orders and/or paid catering inquiries
  */
 export const getSalesReportQuerySourceDefault = `staff`;

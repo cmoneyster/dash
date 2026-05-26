@@ -71,6 +71,7 @@ import type {
   ReorderRecommendationsBody,
   SalesReport,
   SendOpenaiMessageBody,
+  SquareTerminalDevice,
   SuggestItemsBody,
   SuggestItemsResponse,
   SyncRecommendationsBody,
@@ -4648,6 +4649,85 @@ export const useRetryPrintJob = <
 > => {
   return useMutation(getRetryPrintJobMutationOptions(options));
 };
+
+/**
+ * @summary List Square Terminal devices registered to the account
+ */
+export const getListSquareTerminalDevicesUrl = () => {
+  return `/api/admin/square/terminal-devices`;
+};
+
+export const listSquareTerminalDevices = async (
+  options?: RequestInit,
+): Promise<SquareTerminalDevice[]> => {
+  return customFetch<SquareTerminalDevice[]>(
+    getListSquareTerminalDevicesUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListSquareTerminalDevicesQueryKey = () => {
+  return [`/api/admin/square/terminal-devices`] as const;
+};
+
+export const getListSquareTerminalDevicesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSquareTerminalDevices>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSquareTerminalDevices>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListSquareTerminalDevicesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listSquareTerminalDevices>>
+  > = ({ signal }) => listSquareTerminalDevices({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSquareTerminalDevices>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSquareTerminalDevicesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSquareTerminalDevices>>
+>;
+export type ListSquareTerminalDevicesQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List Square Terminal devices registered to the account
+ */
+
+export function useListSquareTerminalDevices<
+  TData = Awaited<ReturnType<typeof listSquareTerminalDevices>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSquareTerminalDevices>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSquareTerminalDevicesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Generate a unified sales report covering event orders and/or paid catering inquiries
