@@ -128,7 +128,8 @@ type SectionStyleLocal = {
   visible?: boolean;
   bold?: boolean;
   align?: SectionAlign;
-  size?: "normal" | "double";
+  size?: number;
+  dividerBefore?: boolean;
   dividerAfter?: boolean;
 };
 type TicketType = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label";
@@ -209,11 +210,12 @@ function SectionRow({
   onDown: () => void;
   onChange: (patch: Partial<SectionStyleLocal>) => void;
 }) {
-  const visible      = style.visible !== false;
-  const isBold       = style.bold === true;
-  const align        = style.align ?? "left";
-  const isDouble     = style.size === "double";
-  const dividerAfter = style.dividerAfter === true;
+  const visible       = style.visible !== false;
+  const isBold        = style.bold === true;
+  const align         = style.align ?? "left";
+  const sizeNum       = style.size ?? 1;
+  const dividerBefore = style.dividerBefore === true;
+  const dividerAfter  = style.dividerAfter === true;
 
   const btnBase = "flex items-center justify-center rounded transition-colors";
   const iconSz  = "w-3 h-3";
@@ -259,15 +261,29 @@ function SectionRow({
       </div>
 
       <div className="flex items-center gap-1 pl-10 mt-0.5">
-        <button type="button" onClick={() => onChange({ size: isDouble ? "normal" : "double" })}
-          title={isDouble ? "Switch to normal size" : "Switch to double-height"}
-          className={`text-[10px] px-1.5 h-4 rounded font-mono font-bold transition-colors ${isDouble ? activeBtn : `border ${inactiveBtn}`}`}>
-          {isDouble ? "2x" : "1x"}
+        <button type="button"
+          onClick={() => onChange({ size: sizeNum <= 2 ? undefined : sizeNum - 1 })}
+          disabled={sizeNum <= 1}
+          title="Decrease text size"
+          className={`${btnBase} w-4 h-4 border ${inactiveBtn} text-[10px] font-mono disabled:opacity-30`}>−</button>
+        <span className="text-[10px] font-mono w-5 text-center select-none">{style.size ? `${style.size}x` : "1x"}</span>
+        <button type="button"
+          onClick={() => onChange({ size: Math.min(8, sizeNum + 1) })}
+          disabled={sizeNum >= 8}
+          title="Increase text size"
+          className={`${btnBase} w-4 h-4 border ${inactiveBtn} text-[10px] font-mono disabled:opacity-30`}>+</button>
+
+        <button type="button"
+          onClick={() => onChange({ dividerBefore: !dividerBefore })}
+          title={dividerBefore ? "Remove line before section" : "Add line before section"}
+          className={`text-[9px] px-1.5 h-4 rounded font-mono transition-colors ml-1 ${dividerBefore ? activeBtn : `border ${inactiveBtn}`}`}>
+          ↑─
         </button>
-        <button type="button" onClick={() => onChange({ dividerAfter: !dividerAfter })}
-          title={dividerAfter ? "Remove divider after" : "Add divider after section"}
-          className={`text-[10px] px-1.5 h-4 rounded font-mono transition-colors ${dividerAfter ? activeBtn : `border ${inactiveBtn}`}`}>
-          ——
+        <button type="button"
+          onClick={() => onChange({ dividerAfter: !dividerAfter })}
+          title={dividerAfter ? "Remove line after section" : "Add line after section"}
+          className={`text-[9px] px-1.5 h-4 rounded font-mono transition-colors ${dividerAfter ? activeBtn : `border ${inactiveBtn}`}`}>
+          ─↓
         </button>
       </div>
     </div>

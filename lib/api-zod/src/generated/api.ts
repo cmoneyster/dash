@@ -1880,6 +1880,14 @@ export const SendOpenaiMessageBody = zod.object({
 /**
  * @summary List all configured printers
  */
+export const listPrintersResponsePrintTemplateKitchenTicketSectionsSizeMax = 8;
+
+export const listPrintersResponsePrintTemplateCustomerReceiptSectionsSizeMax = 8;
+
+export const listPrintersResponsePrintTemplateItemLabelSectionsSizeMax = 8;
+
+export const listPrintersResponsePrintTemplatePlateLabelSectionsSizeMax = 8;
+
 export const ListPrintersResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
@@ -1984,10 +1992,20 @@ export const ListPrintersResponseItem = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      listPrintersResponsePrintTemplateKitchenTicketSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2050,10 +2068,20 @@ export const ListPrintersResponseItem = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      listPrintersResponsePrintTemplateCustomerReceiptSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2116,10 +2144,20 @@ export const ListPrintersResponseItem = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      listPrintersResponsePrintTemplateItemLabelSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2182,10 +2220,20 @@ export const ListPrintersResponseItem = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      listPrintersResponsePrintTemplatePlateLabelSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2237,6 +2285,14 @@ export const CreatePrinterBody = zod.object({
 export const UpdatePrinterParams = zod.object({
   id: zod.coerce.number(),
 });
+
+export const updatePrinterBodyPrintTemplateKitchenTicketSectionsSizeMax = 8;
+
+export const updatePrinterBodyPrintTemplateCustomerReceiptSectionsSizeMax = 8;
+
+export const updatePrinterBodyPrintTemplateItemLabelSectionsSizeMax = 8;
+
+export const updatePrinterBodyPrintTemplatePlateLabelSectionsSizeMax = 8;
 
 export const UpdatePrinterBody = zod.object({
   name: zod.string().optional(),
@@ -2330,10 +2386,20 @@ export const UpdatePrinterBody = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      updatePrinterBodyPrintTemplateKitchenTicketSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2396,10 +2462,20 @@ export const UpdatePrinterBody = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      updatePrinterBodyPrintTemplateCustomerReceiptSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2462,10 +2538,18 @@ export const UpdatePrinterBody = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(updatePrinterBodyPrintTemplateItemLabelSectionsSizeMax)
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2528,10 +2612,20 @@ export const UpdatePrinterBody = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      updatePrinterBodyPrintTemplatePlateLabelSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2557,6 +2651,14 @@ export const UpdatePrinterBody = zod.object({
       "Per-printer receipt\/label template. Global fields apply to all ticket types; per-type fields override section order and styles.",
     ),
 });
+
+export const updatePrinterResponsePrintTemplateKitchenTicketSectionsSizeMax = 8;
+
+export const updatePrinterResponsePrintTemplateCustomerReceiptSectionsSizeMax = 8;
+
+export const updatePrinterResponsePrintTemplateItemLabelSectionsSizeMax = 8;
+
+export const updatePrinterResponsePrintTemplatePlateLabelSectionsSizeMax = 8;
 
 export const UpdatePrinterResponse = zod.object({
   id: zod.number(),
@@ -2662,10 +2764,20 @@ export const UpdatePrinterResponse = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      updatePrinterResponsePrintTemplateKitchenTicketSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2728,10 +2840,20 @@ export const UpdatePrinterResponse = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      updatePrinterResponsePrintTemplateCustomerReceiptSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2794,10 +2916,20 @@ export const UpdatePrinterResponse = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      updatePrinterResponsePrintTemplateItemLabelSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2860,10 +2992,20 @@ export const UpdatePrinterResponse = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      updatePrinterResponsePrintTemplatePlateLabelSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -2959,6 +3101,14 @@ export const PreviewPrinterTemplateParams = zod.object({
   id: zod.coerce.number(),
 });
 
+export const previewPrinterTemplateBodyTemplateKitchenTicketSectionsSizeMax = 8;
+
+export const previewPrinterTemplateBodyTemplateCustomerReceiptSectionsSizeMax = 8;
+
+export const previewPrinterTemplateBodyTemplateItemLabelSectionsSizeMax = 8;
+
+export const previewPrinterTemplateBodyTemplatePlateLabelSectionsSizeMax = 8;
+
 export const PreviewPrinterTemplateBody = zod.object({
   ticketType: zod.enum([
     "kitchen_ticket",
@@ -3047,10 +3197,20 @@ export const PreviewPrinterTemplateBody = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      previewPrinterTemplateBodyTemplateKitchenTicketSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -3113,10 +3273,20 @@ export const PreviewPrinterTemplateBody = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      previewPrinterTemplateBodyTemplateCustomerReceiptSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -3179,10 +3349,20 @@ export const PreviewPrinterTemplateBody = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      previewPrinterTemplateBodyTemplateItemLabelSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()
@@ -3245,10 +3425,20 @@ export const PreviewPrinterTemplateBody = zod.object({
                     .nullish()
                     .describe("Text alignment for this section."),
                   size: zod
-                    .enum(["normal", "double"])
+                    .number()
+                    .min(1)
+                    .max(
+                      previewPrinterTemplateBodyTemplatePlateLabelSectionsSizeMax,
+                    )
                     .nullish()
                     .describe(
-                      "Text size for this section. normal is standard height; double is double-height ESC\/POS.",
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
                     ),
                   dividerAfter: zod
                     .boolean()

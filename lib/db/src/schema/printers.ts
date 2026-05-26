@@ -26,7 +26,8 @@ export type SectionStyle = {
   visible?: boolean;
   bold?: boolean;
   align?: SectionAlign;
-  size?: "normal" | "double";
+  size?: number;
+  dividerBefore?: boolean;
   dividerAfter?: boolean;
 };
 

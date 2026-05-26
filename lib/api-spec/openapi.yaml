@@ -3014,10 +3014,15 @@ components:
           enum: [left, center, right]
           description: Text alignment for this section.
         size:
-          type: string
+          type: integer
           nullable: true
-          enum: [normal, double]
-          description: Text size for this section. normal is standard height; double is double-height ESC/POS.
+          minimum: 1
+          maximum: 8
+          description: Text size multiplier (1=normal, 2=double-height/width, up to 8). Omit to use the section default.
+        dividerBefore:
+          type: boolean
+          nullable: true
+          description: When true, a divider line is printed immediately before this section.
         dividerAfter:
           type: boolean
           nullable: true

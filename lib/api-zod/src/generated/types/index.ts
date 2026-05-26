@@ -124,7 +124,6 @@ export * from "./salesReportVoidRowPaymentMethod";
 export * from "./salesReportVoids";
 export * from "./sectionStyle";
 export * from "./sectionStyleAlign";
-export * from "./sectionStyleSize";
 export * from "./sendOpenaiMessageBody";
 export * from "./serviceStyleKey";
 export * from "./suggestItemsBody";

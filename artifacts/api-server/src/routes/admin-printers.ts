@@ -8,7 +8,8 @@ const sectionStyleSchema = z.object({
   visible:      z.boolean().optional(),
   bold:         z.boolean().optional(),
   align:        z.enum(["left", "center", "right"]).optional(),
-  size:         z.enum(["normal", "double"]).optional(),
+  size:         z.number().int().min(1).max(8).optional(),
+  dividerBefore: z.boolean().optional(),
   dividerAfter: z.boolean().optional(),
 });
 
