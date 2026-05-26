@@ -301,7 +301,18 @@ function PrintTemplateDesignerModal({
 }) {
   const qc = useQueryClient();
   const update = useUpdatePrinter({
-    mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) },
+    mutation: {
+      onSuccess: (updated) => {
+        // Immediately write the returned printer into the list cache so the
+        // modal re-initialises from fresh data the instant the user reopens it,
+        // without having to wait for the background refetch to complete.
+        qc.setQueryData<Printer[]>(
+          getListPrintersQueryKey(),
+          (old) => old?.map((p) => p.id === updated.id ? updated : p) ?? [updated],
+        );
+        qc.invalidateQueries({ queryKey: getListPrintersQueryKey() });
+      },
+    },
   });
 
   const existing = printer.printTemplate as PrintTemplate | null | undefined;
