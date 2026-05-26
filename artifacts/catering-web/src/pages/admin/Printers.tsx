@@ -157,7 +157,8 @@ const SECTION_LABELS: Record<SectionKey, string> = {
 const DEFAULT_TICKET_SECTIONS: Record<TicketType, SectionKey[]> = {
   kitchen_ticket:   ["header", "orderNumber", "guestName", "tableNumber", "timestamp", "source", "items", "notes", "footer"],
   customer_receipt: ["header", "timestamp", "orderNumber", "guestName", "tableNumber", "items", "totals", "footer"],
-  item_label:       ["orderNumber", "guestName", "tableNumber", "items", "timestamp"],
+  // "header" prints businessName; "tableNumber" removed — item labels have no table number field.
+  item_label:       ["header", "orderNumber", "guestName", "items", "timestamp"],
   plate_label:      ["orderNumber", "guestName", "items", "timestamp"],
 };
 
@@ -268,9 +269,9 @@ function SectionRow({
           className={`${btnBase} w-4 h-4 border ${inactiveBtn} text-[10px] font-mono disabled:opacity-30`}>−</button>
         <span className="text-[10px] font-mono w-5 text-center select-none">{style.size ? `${style.size}x` : "1x"}</span>
         <button type="button"
-          onClick={() => onChange({ size: Math.min(8, sizeNum + 1) })}
-          disabled={sizeNum >= 8}
-          title="Increase text size"
+          onClick={() => onChange({ size: Math.min(2, sizeNum + 1) })}
+          disabled={sizeNum >= 2}
+          title="Increase text size (max 2x — printer hardware limit)"
           className={`${btnBase} w-4 h-4 border ${inactiveBtn} text-[10px] font-mono disabled:opacity-30`}>+</button>
 
         <button type="button"
@@ -425,7 +426,7 @@ function PrintTemplateDesignerModal({
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Global</p>
 
               <div>
-                <label className="block text-xs font-medium mb-1">Business name <span className="text-muted-foreground font-normal">(on receipts)</span></label>
+                <label className="block text-xs font-medium mb-1">Business name <span className="text-muted-foreground font-normal">(all ticket types)</span></label>
                 <input
                   value={tpl.businessName ?? ""}
                   onChange={(e) => setTpl((p) => ({ ...p, businessName: e.target.value }))}
@@ -444,6 +445,33 @@ function PrintTemplateDesignerModal({
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-medium mb-1">Logo URL <span className="text-muted-foreground font-normal">(optional — printer must support image printing)</span></label>
+                <input
+                  value={tpl.logoUrl ?? ""}
+                  onChange={(e) => setTpl((p) => ({ ...p, logoUrl: e.target.value || null }))}
+                  className="w-full px-3 py-1.5 border rounded-lg bg-background text-sm font-mono"
+                  placeholder="https://…/logo.png"
+                />
+                {tpl.logoUrl && (
+                  <div className="flex gap-2 mt-1.5">
+                    {(["before_name", "after_name"] as const).map((pos) => (
+                      <button
+                        key={pos}
+                        type="button"
+                        onClick={() => setTpl((p) => ({ ...p, logoPosition: pos }))}
+                        className={`flex-1 text-[10px] py-1 rounded border transition-colors ${
+                          (tpl.logoPosition ?? "before_name") === pos
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-muted-foreground border-border hover:border-foreground"
+                        }`}
+                      >
+                        {pos === "before_name" ? "Before name" : "After name"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input

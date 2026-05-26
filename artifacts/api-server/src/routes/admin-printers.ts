@@ -265,7 +265,7 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
     if (ticketType === "kitchen_ticket") {
       payload = {
         type: "kitchen_ticket",
-        header: { orderNumber: "1042", guestName: "Jane Smith", source: "event_taker", placedAt: now, tableNumber: "12" },
+        header: { orderNumber: "1042", guestName: "Jane Smith", source: "event_taker", placedAt: now, tableNumber: "12", notes: "No utensils please" },
         lines: [
           { name: "Orange Chicken", quantity: 2, modifiers: ["extra sauce"], notes: "well done" },
           { name: "Spring Rolls", quantity: 5 },
@@ -306,7 +306,9 @@ router.post("/admin/printers/:id/preview-template", async (req, res) => {
         ],
         subtotal: 43.5,
         tax: 2.61,
-        total: 46.11,
+        tip: 5.00,
+        total: 51.11,
+        paymentMethod: "cash",
         businessName: "dash by Hollywood East Cafe",
         footer: "Thank you for your order!",
       };
@@ -415,7 +417,7 @@ router.post("/admin/printers/:id/test-print-template", async (req, res) => {
     if (ticketType === "kitchen_ticket") {
       payload = {
         type: "kitchen_ticket",
-        header: { orderNumber: "1042", guestName: "Jane Smith", source: "event_taker", placedAt: now, tableNumber: "12" },
+        header: { orderNumber: "1042", guestName: "Jane Smith", source: "event_taker", placedAt: now, tableNumber: "12", notes: "No utensils please" },
         lines: [
           { name: "Orange Chicken", quantity: 2, modifiers: ["extra sauce"], notes: "well done" },
           { name: "Spring Rolls", quantity: 5 },
@@ -456,7 +458,9 @@ router.post("/admin/printers/:id/test-print-template", async (req, res) => {
         ],
         subtotal: 43.5,
         tax: 2.61,
-        total: 46.11,
+        tip: 5.00,
+        total: 51.11,
+        paymentMethod: "cash",
         businessName: "dash by Hollywood East Cafe",
         footer: "Thank you for your order!",
       };

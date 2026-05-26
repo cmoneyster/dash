@@ -113,7 +113,8 @@ const TICKET_DIVIDER_OVERRIDES: Partial<Record<TicketType, Partial<Record<Sectio
 export const DEFAULT_ORDERS: Record<TicketType, SectionKey[]> = {
   kitchen_ticket:   ["header", "orderNumber", "guestName", "tableNumber", "timestamp", "source", "items", "notes", "footer"],
   customer_receipt: ["header", "timestamp", "orderNumber", "guestName", "tableNumber", "items", "totals", "footer"],
-  item_label:       ["orderNumber", "guestName", "tableNumber", "items", "timestamp"],
+  // "header" prints businessName on item labels; "tableNumber" removed — ItemLabelPayload has no tableNumber field.
+  item_label:       ["header", "orderNumber", "guestName", "items", "timestamp"],
   plate_label:      ["orderNumber", "guestName", "items", "timestamp"],
 };
 
@@ -145,7 +146,10 @@ function resolveStyle(tmpl: PrintTemplate | undefined, key: TicketType, section:
 // ─── ESC/POS TicketBuilder ─────────────────────────────────────────────────────
 
 class TicketBuilder {
-  private chunks: Buffer[] = [INIT];
+  // Note: INIT (ESC @) is intentionally NOT prepended here.
+  // Star Line Mode does not recognise ESC @ as a reset command and instead
+  // prints the literal character "@" at the start of the job.
+  private chunks: Buffer[] = [];
 
   raw(b: Buffer)  { this.chunks.push(b); return this; }
   text(s: string) { this.chunks.push(Buffer.from(s, "utf-8")); return this; }
@@ -281,6 +285,7 @@ function renderKitchenSection(
     case "header": {
       const title = tmpl?.headerText ?? "KITCHEN";
       if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") escLogo(t, tmpl, style.align);
+      if (tmpl?.businessName) t.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).bold(false);
       t.sizeN(style.size).bold(style.bold).line(title).sizeN(1).bold(false).left();
       if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") escLogo(t, tmpl, style.align);
       break;
@@ -436,13 +441,14 @@ function renderItemLabelSection(
   const dchar = tmpl?.dividerChar ?? "-";
   t.align(style.align);
   switch (section) {
+    case "header":
+      if (tmpl?.businessName) t.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).bold(false).left();
+      break;
     case "orderNumber":
       t.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1).bold(false);
       break;
     case "guestName":
       t.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1).bold(false);
-      break;
-    case "tableNumber":
       break;
     case "items":
       t.bold(style.bold).sizeN(style.size);
@@ -654,6 +660,7 @@ function webKitchenSection(
     case "header": {
       const title = tmpl?.headerText ?? "KITCHEN";
       if (tmpl?.logoUrl && tmpl.logoPosition === "before_name") webLogo(b, tmpl, style.align);
+      if (tmpl?.businessName) b.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).bold(false);
       b.sizeN(style.size).bold(style.bold).line(title).sizeN(1).bold(false).left();
       if (tmpl?.logoUrl && tmpl.logoPosition !== "before_name") webLogo(b, tmpl, style.align);
       break;
@@ -809,13 +816,14 @@ function webItemLabelSection(
   const dchar = tmpl?.dividerChar ?? "-";
   b.align(style.align);
   switch (section) {
+    case "header":
+      if (tmpl?.businessName) b.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).bold(false).left();
+      break;
     case "orderNumber":
       b.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1).bold(false);
       break;
     case "guestName":
       b.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1).bold(false);
-      break;
-    case "tableNumber":
       break;
     case "items":
       b.bold(style.bold).sizeN(style.size);
