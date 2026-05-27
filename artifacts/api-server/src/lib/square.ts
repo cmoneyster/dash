@@ -4,10 +4,16 @@
 // the operator. OAuth would be needed for multi-tenant; for a single-merchant
 // catering app a PAT is the right call. Required env:
 //
-//   SQUARE_ACCESS_TOKEN          - access token from Square dashboard
+//   SQUARE_ACCESS_TOKEN          - access token for invoicing integration
 //   SQUARE_LOCATION_ID           - location id to bill from
 //   SQUARE_ENVIRONMENT           - "sandbox" | "production" (default: sandbox)
 //   SQUARE_WEBHOOK_SIGNATURE_KEY - signature key for webhook verification
+//
+// Terminal API uses separate credentials so the invoicing integration is
+// not disturbed:
+//
+//   SQUARE_TERMINAL_ACCESS_TOKEN - access token for Terminal API app
+//   SQUARE_TERMINAL_LOCATION_ID  - (optional) falls back to SQUARE_LOCATION_ID
 //
 // Money values: Square uses smallest currency units (cents). All converters
 // here use USD; revisit for multi-currency.
@@ -48,6 +54,27 @@ export function getSquareConfig(): SquareConfig | null {
 
 export function isSquareConfigured(): boolean {
   return getSquareConfig() !== null;
+}
+
+// Separate credentials for the Terminal API integration so the invoicing
+// app is not disturbed. Requires SQUARE_TERMINAL_ACCESS_TOKEN; location
+// falls back to SQUARE_LOCATION_ID if SQUARE_TERMINAL_LOCATION_ID is unset.
+export function getTerminalSquareConfig(): SquareConfig | null {
+  const accessToken = process.env.SQUARE_TERMINAL_ACCESS_TOKEN?.trim();
+  const locationId = (process.env.SQUARE_TERMINAL_LOCATION_ID?.trim())
+    || process.env.SQUARE_LOCATION_ID?.trim();
+  if (!accessToken || !locationId) return null;
+  const env = (process.env.SQUARE_ENVIRONMENT?.trim().toLowerCase() === "production")
+    ? "production"
+    : "sandbox";
+  const baseUrl = env === "production"
+    ? "https://connect.squareup.com"
+    : "https://connect.squareupsandbox.com";
+  return { accessToken, locationId, baseUrl, webhookSignatureKey: null };
+}
+
+export function isTerminalSquareConfigured(): boolean {
+  return getTerminalSquareConfig() !== null;
 }
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
@@ -690,8 +717,8 @@ export async function createTerminalCheckout(opts: {
   referenceId?: string;
   idempotencyKey: string;
 }): Promise<{ checkoutId: string }> {
-  const cfg = getSquareConfig();
-  if (!cfg) throw new Error("Square is not configured");
+  const cfg = getTerminalSquareConfig();
+  if (!cfg) throw new Error("Square Terminal is not configured — set SQUARE_TERMINAL_ACCESS_TOKEN");
   const resp = await squareFetch<TerminalCheckoutResp>(cfg, "/v2/terminals/checkouts", {
     method: "POST",
     body: {
@@ -713,8 +740,8 @@ export async function createTerminalCheckout(opts: {
 export async function getTerminalCheckout(
   checkoutId: string,
 ): Promise<{ status: TerminalCheckoutStatus }> {
-  const cfg = getSquareConfig();
-  if (!cfg) throw new Error("Square is not configured");
+  const cfg = getTerminalSquareConfig();
+  if (!cfg) throw new Error("Square Terminal is not configured — set SQUARE_TERMINAL_ACCESS_TOKEN");
   const resp = await squareFetch<TerminalCheckoutResp>(
     cfg,
     `/v2/terminals/checkouts/${encodeURIComponent(checkoutId)}`,
@@ -745,8 +772,8 @@ type DevicesListResp = {
 };
 
 export async function listTerminalDevices(): Promise<TerminalDevice[]> {
-  const cfg = getSquareConfig();
-  if (!cfg) throw new Error("Square is not configured");
+  const cfg = getTerminalSquareConfig();
+  if (!cfg) throw new Error("Square Terminal is not configured — set SQUARE_TERMINAL_ACCESS_TOKEN");
   const resp = await squareFetch<DevicesListResp>(cfg, "/v2/devices");
   const devices = resp.devices ?? [];
   return devices
@@ -759,8 +786,8 @@ export async function listTerminalDevices(): Promise<TerminalDevice[]> {
 }
 
 export async function cancelTerminalCheckout(checkoutId: string): Promise<void> {
-  const cfg = getSquareConfig();
-  if (!cfg) throw new Error("Square is not configured");
+  const cfg = getTerminalSquareConfig();
+  if (!cfg) throw new Error("Square Terminal is not configured — set SQUARE_TERMINAL_ACCESS_TOKEN");
   await squareFetch(cfg, `/v2/terminals/checkouts/${encodeURIComponent(checkoutId)}/cancel`, {
     method: "POST",
   });

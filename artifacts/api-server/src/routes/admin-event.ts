@@ -6,7 +6,7 @@ import { eventSettingsTable, eventOrdersTable, cateringInquiriesTable } from "@w
 import { eq, and, gte, lt, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { isEjoinConfigured } from "../lib/sms-ejoin";
-import { getSquareConfig, listTerminalDevices, SquareApiError } from "../lib/square";
+import { getTerminalSquareConfig, listTerminalDevices, SquareApiError } from "../lib/square";
 
 const router: IRouter = Router();
 
@@ -1004,8 +1004,8 @@ router.post("/admin/event-settings/venmo-qr", venmoUpload.single("image"), async
 // Returns the list of Terminal devices registered to the Square account so the
 // admin can pick a device ID from a UI instead of finding the UUID manually.
 router.get("/admin/square/terminal-devices", async (req, res) => {
-  if (!getSquareConfig()) {
-    res.status(424).json({ error: "Square is not configured. Set SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID on the server." });
+  if (!getTerminalSquareConfig()) {
+    res.status(424).json({ error: "Square Terminal is not configured. Set SQUARE_TERMINAL_ACCESS_TOKEN on the server." });
     return;
   }
   try {

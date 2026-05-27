@@ -7,7 +7,8 @@ import { getOrderingChannelStates } from "./event-ordering";
 import { detectAndMarkLowStockCrossings, fireLowStockAlertIfAny, DEFAULT_LOW_STOCK_THRESHOLD } from "../lib/lowStockAlerts";
 import { fanoutPrintForEventOrder } from "../lib/printFanout";
 import {
-  getSquareConfig,
+  getTerminalSquareConfig,
+  isTerminalSquareConfigured,
   createTerminalCheckout,
   getTerminalCheckout,
   cancelTerminalCheckout,
@@ -187,7 +188,7 @@ router.get("/event-taker/settings", async (req, res) => {
       // True when both Square is configured AND a Terminal device ID is set.
       // The frontend uses this to decide whether card taps auto-fire the
       // Terminal or fall back to the manual instruction screen.
-      terminalEnabled: !!(s?.squareTerminalDeviceId) && !!getSquareConfig(),
+      terminalEnabled: !!(s?.squareTerminalDeviceId) && isTerminalSquareConfigured(),
       orderingState: channels.taker.state,
       orderingPausedUntil: channels.taker.pausedUntil,
       orderingRemainingSec: channels.taker.remainingSec,
@@ -1112,8 +1113,8 @@ router.post("/event-taker/terminal-checkout", verifyTakerPassword, async (req, r
       res.status(424).json({ error: "No Square Terminal device configured. Set a Device ID in Admin → Event Settings." });
       return;
     }
-    if (!getSquareConfig()) {
-      res.status(424).json({ error: "Square is not configured on this server." });
+    if (!getTerminalSquareConfig()) {
+      res.status(424).json({ error: "Square Terminal is not configured. Set SQUARE_TERMINAL_ACCESS_TOKEN on the server." });
       return;
     }
 
@@ -1159,8 +1160,8 @@ router.post("/event-taker/terminal-checkout", verifyTakerPassword, async (req, r
 
 router.get("/event-taker/terminal-checkout/:checkoutId", verifyTakerPassword, async (req, res): Promise<void> => {
   try {
-    if (!getSquareConfig()) {
-      res.status(424).json({ error: "Square is not configured" });
+    if (!getTerminalSquareConfig()) {
+      res.status(424).json({ error: "Square Terminal is not configured" });
       return;
     }
     const checkoutId = String(req.params.checkoutId);
@@ -1178,8 +1179,8 @@ router.get("/event-taker/terminal-checkout/:checkoutId", verifyTakerPassword, as
 
 router.post("/event-taker/terminal-checkout/:checkoutId/cancel", verifyTakerPassword, async (req, res): Promise<void> => {
   try {
-    if (!getSquareConfig()) {
-      res.status(424).json({ error: "Square is not configured" });
+    if (!getTerminalSquareConfig()) {
+      res.status(424).json({ error: "Square Terminal is not configured" });
       return;
     }
     const checkoutId = String(req.params.checkoutId);
