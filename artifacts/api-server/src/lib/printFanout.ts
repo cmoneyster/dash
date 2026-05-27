@@ -53,8 +53,12 @@ const ALLOWED_KINDS_BY_SOURCE: Record<FanoutSource, ReadonlySet<JobKind>> = {
 export async function fanoutPrintForEventOrder(args: {
   order: EventOrderRow;
   source: FanoutSource;
+  /** When set, only enqueue jobs of this kind (used by manual per-kind reprint buttons). */
+  kindFilter?: "kitchen_ticket" | "customer_receipt";
+  /** When true, treat as a manual reprint — ignores auto_print_on_new_order toggle. */
+  manual?: boolean;
 }): Promise<number> {
-  const { order, source } = args;
+  const { order, source, kindFilter, manual = false } = args;
 
   if (source === "demo") {
     logger.warn(
@@ -68,7 +72,7 @@ export async function fanoutPrintForEventOrder(args: {
   // `auto_print_on_new_order` toggle — staff have already opted in by
   // pressing the button. Auto fan-out from order submission still
   // respects the toggle so quiet hours / event-only printers stay quiet.
-  const selectMode: "auto" | "manual" = source === "kitchen_send" ? "manual" : "auto";
+  const selectMode: "auto" | "manual" = (source === "kitchen_send" || manual) ? "manual" : "auto";
 
   // Per-surface allowed-kind matrix. A surface that isn't authorized
   // for a kind cannot enqueue it, even if a printer would accept it.
@@ -106,7 +110,7 @@ export async function fanoutPrintForEventOrder(args: {
 
   // ── Kitchen ticket ─────────────────────────────────────────────────────
   let enqueued = 0;
-  const kitchenPrinters = allowed.has("kitchen_ticket")
+  const kitchenPrinters = allowed.has("kitchen_ticket") && (!kindFilter || kindFilter === "kitchen_ticket")
     ? await selectPrintersFor("kitchen_ticket", selectMode)
     : [];
   if (kitchenPrinters.length > 0) {
@@ -135,7 +139,7 @@ export async function fanoutPrintForEventOrder(args: {
   }
 
   // ── Customer receipt (only when totals are present, i.e. staff orders) ─
-  const receiptPrinters = allowed.has("customer_receipt")
+  const receiptPrinters = allowed.has("customer_receipt") && (!kindFilter || kindFilter === "customer_receipt")
     ? await selectPrintersFor("customer_receipt", selectMode)
     : [];
   if (receiptPrinters.length > 0 && order.subtotal != null && order.total != null) {

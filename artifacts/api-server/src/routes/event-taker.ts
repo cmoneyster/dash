@@ -1050,6 +1050,36 @@ router.get("/event-taker/orders/recent-voids", verifyTakerPassword, async (req, 
 // cashier knows they must process a manual refund. Stock is intentionally
 // NOT restored — by the time the kitchen has the ticket, the line items
 // have been consumed and adding stock back would over-count availability.
+router.post("/event-taker/orders/:id/reprint", verifyTakerPassword, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid order id" });
+    return;
+  }
+  const kind = (req.body ?? {}).kind as string | undefined;
+  if (kind !== "kitchen_ticket" && kind !== "customer_receipt") {
+    res.status(400).json({ error: "kind must be kitchen_ticket or customer_receipt" });
+    return;
+  }
+  try {
+    const [order] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id));
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    const enqueued = await fanoutPrintForEventOrder({
+      order,
+      source: "event_taker",
+      kindFilter: kind,
+      manual: true,
+    });
+    res.json({ enqueued });
+  } catch (err) {
+    req.log.error({ err, orderId: id, kind }, "event-taker reprint failed");
+    res.status(500).json({ error: "Reprint failed" });
+  }
+});
+
 router.post("/event-taker/orders/:id/void", verifyTakerPassword, async (req, res) => {
   try {
     const id = parseInt(String(req.params.id), 10);

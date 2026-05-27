@@ -312,7 +312,6 @@ export default function EventTakerOrder() {
   useEffect(() => () => {
     if (stockWarnTimer.current) clearTimeout(stockWarnTimer.current);
   }, []);
-  const [printMode, setPrintMode] = useState<"receipt" | "kitchen">("receipt");
 
   // Server-backed printer settings modal (scoped to the Taker surface).
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
@@ -411,55 +410,37 @@ export default function EventTakerOrder() {
     }
   }
 
-  function runPrint(kind: "receipt" | "kitchen"): Promise<PrintStatus> {
-    const setStatus = kind === "kitchen" ? setKitchenStatus : setReceiptStatus;
-    setPrintMode(kind);
+  // Send a manual reprint request to the server fanout for the given kind.
+  // Updates the per-ticket status badge accordingly.
+  async function handlePrint(mode: "receipt" | "kitchen") {
+    if (!lastReceipt || !password) return;
+    const kind = mode === "receipt" ? "customer_receipt" : "kitchen_ticket";
+    const setStatus = mode === "kitchen" ? setKitchenStatus : setReceiptStatus;
     setStatus("printing");
-    return new Promise(resolve => {
-      // Wait for the DOM to swap to the right printable layer.
-      setTimeout(() => {
-        let beforeAt = 0;
-        let afterAt = 0;
-        let settled = false;
-        const onBefore = () => { beforeAt = Date.now(); };
-        const onAfter = () => { afterAt = Date.now(); finalize(); };
-        const finalize = () => {
-          if (settled) return;
-          settled = true;
-          window.removeEventListener("beforeprint", onBefore);
-          window.removeEventListener("afterprint", onAfter);
-          let result: PrintStatus;
-          if (!beforeAt) result = "blocked";
-          else if (afterAt && afterAt - beforeAt < 400) result = "canceled";
-          else result = "printed";
-          setStatus(result);
-          resolve(result);
-        };
-        window.addEventListener("beforeprint", onBefore);
-        window.addEventListener("afterprint", onAfter);
-        try {
-          window.print();
-        } catch {
-          // Some browsers throw if printing is unavailable.
-        }
-        // If afterprint hasn't fired within the deadline, decide based on
-        // whether beforeprint ever fired. Covers blocked dialogs and the
-        // rare case where afterprint never arrives despite a real print.
-        setTimeout(finalize, 5000);
-      }, 100);
-    });
+    try {
+      const res = await fetch(
+        `${BASE}/api/event-taker/orders/${encodeURIComponent(lastReceipt.id)}/reprint`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
+          body: JSON.stringify({ kind }),
+        },
+      );
+      if (!res.ok) {
+        setStatus("blocked");
+        return;
+      }
+      const data = await res.json() as { enqueued: number };
+      setStatus(data.enqueued > 0 ? "printed" : "blocked");
+    } catch {
+      setStatus("blocked");
+    }
   }
 
-  function handlePrint(mode: "receipt" | "kitchen") {
-    void runPrint(mode);
-  }
-
-  // Print kitchen ticket first, then receipt — used by auto-print and the manual button.
+  // Print kitchen ticket first, then receipt — used by auto-print.
   async function printBoth() {
-    await runPrint("kitchen");
-    // Small gap so the printable DOM swap settles before the next dialog.
-    await new Promise(r => setTimeout(r, 150));
-    await runPrint("receipt");
+    await handlePrint("kitchen");
+    await handlePrint("receipt");
   }
 
   // Reset per-ticket print status whenever a new confirmation comes up so
@@ -1036,7 +1017,7 @@ export default function EventTakerOrder() {
           {/* Customer receipt — visible on screen as preview, printed only in receipt mode */}
           <div
             id="receipt"
-            className={`font-mono text-sm bg-white dark:bg-card border border-dashed border-border rounded-xl p-4 print:border-0 print:p-0 ${printMode === "kitchen" ? "print:hidden" : ""}`}
+            className="font-mono text-sm bg-white dark:bg-card border border-dashed border-border rounded-xl p-4 print:border-0 print:p-0"
           >
             <div className="text-center mb-3">
               <p className="font-bold text-base">{settings?.eventName || "dash by Hollywood East Cafe"}</p>
@@ -1098,7 +1079,7 @@ export default function EventTakerOrder() {
           {/* Kitchen ticket — hidden on screen, only printed when in kitchen mode */}
           <div
             id="kitchen-ticket"
-            className={`hidden ${printMode === "kitchen" ? "print:block" : ""} font-mono text-base bg-white text-black print:border-0 print:p-0`}
+            className="hidden font-mono text-base bg-white text-black print:border-0 print:p-0"
           >
             <div className="text-center mb-3">
               <p className="font-bold text-lg uppercase tracking-wider">Kitchen Ticket</p>
@@ -1134,7 +1115,7 @@ export default function EventTakerOrder() {
                   label="Kitchen ticket"
                   icon={<ChefHat className="w-4 h-4" />}
                   status={kitchenStatus}
-                  onRetry={() => runPrint("kitchen")}
+                  onRetry={() => void handlePrint("kitchen")}
                 />
               )}
               {receiptStatus !== "idle" && (
@@ -1142,7 +1123,7 @@ export default function EventTakerOrder() {
                   label="Customer receipt"
                   icon={<Receipt className="w-4 h-4" />}
                   status={receiptStatus}
-                  onRetry={() => runPrint("receipt")}
+                  onRetry={() => void handlePrint("receipt")}
                 />
               )}
             </div>
@@ -1162,7 +1143,7 @@ export default function EventTakerOrder() {
               <ChefHat className="w-4 h-4" /> Print Kitchen
             </button>
             <button
-              onClick={() => { setConfirmation(null); setLastReceipt(null); setPrintMode("receipt"); }}
+              onClick={() => { setConfirmation(null); setLastReceipt(null); }}
               className="px-3 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 text-sm"
             >
               Next order
