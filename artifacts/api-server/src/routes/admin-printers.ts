@@ -5,17 +5,17 @@ import { printersTable, printJobsTable, type PrintTemplate } from "@workspace/db
 import { eq } from "drizzle-orm";
 
 const sectionStyleSchema = z.object({
-  visible:      z.boolean().optional(),
-  bold:         z.boolean().optional(),
-  align:        z.enum(["left", "center", "right"]).optional(),
-  size:         z.number().int().min(1).max(8).optional(),
-  dividerBefore: z.boolean().optional(),
-  dividerAfter: z.boolean().optional(),
+  visible:      z.boolean().nullable().optional(),
+  bold:         z.boolean().nullable().optional(),
+  align:        z.enum(["left", "center", "right"]).nullable().optional(),
+  size:         z.number().int().min(1).max(8).nullable().optional(),
+  dividerBefore: z.boolean().nullable().optional(),
+  dividerAfter: z.boolean().nullable().optional(),
 });
 
 const ticketLayoutSchema = z.object({
-  sectionOrder: z.array(z.string()).optional(),
-  sections:     z.record(z.string(), sectionStyleSchema).optional(),
+  sectionOrder: z.array(z.string()).nullable().optional(),
+  sections:     z.record(z.string(), sectionStyleSchema).nullable().optional(),
 });
 
 const printTemplateSchema = z.object({
@@ -108,6 +108,7 @@ router.patch("/admin/printers/:id", async (req, res) => {
       } else {
         const parsed = printTemplateSchema.safeParse(b.printTemplate);
         if (!parsed.success) {
+          req.log.warn({ issues: parsed.error.issues, raw: b.printTemplate }, "printTemplate validation failed");
           res.status(400).json({ error: "Invalid printTemplate", issues: parsed.error.issues });
           return;
         }
