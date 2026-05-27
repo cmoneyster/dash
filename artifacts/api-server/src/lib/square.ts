@@ -56,11 +56,13 @@ export function isSquareConfigured(): boolean {
   return getSquareConfig() !== null;
 }
 
-// Separate credentials for the Terminal API integration so the invoicing
-// app is not disturbed. Requires SQUARE_TERMINAL_ACCESS_TOKEN; location
-// falls back to SQUARE_LOCATION_ID if SQUARE_TERMINAL_LOCATION_ID is unset.
+// Credentials for the Terminal API. Uses SQUARE_TERMINAL_ACCESS_TOKEN when
+// set; falls back to SQUARE_ACCESS_TOKEN so a single token works for both
+// invoicing and terminal. Location falls back to SQUARE_LOCATION_ID when
+// SQUARE_TERMINAL_LOCATION_ID is unset.
 export function getTerminalSquareConfig(): SquareConfig | null {
-  const accessToken = process.env.SQUARE_TERMINAL_ACCESS_TOKEN?.trim();
+  const accessToken = (process.env.SQUARE_TERMINAL_ACCESS_TOKEN?.trim())
+    || process.env.SQUARE_ACCESS_TOKEN?.trim();
   const locationId = (process.env.SQUARE_TERMINAL_LOCATION_ID?.trim())
     || process.env.SQUARE_LOCATION_ID?.trim();
   if (!accessToken || !locationId) return null;
