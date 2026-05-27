@@ -692,7 +692,7 @@ export async function createTerminalCheckout(opts: {
 }): Promise<{ checkoutId: string }> {
   const cfg = getSquareConfig();
   if (!cfg) throw new Error("Square is not configured");
-  const resp = await squareFetch<TerminalCheckoutResp>(cfg, "/v2/terminal/checkouts", {
+  const resp = await squareFetch<TerminalCheckoutResp>(cfg, "/v2/terminals/checkouts", {
     method: "POST",
     body: {
       idempotency_key: opts.idempotencyKey,
@@ -717,7 +717,7 @@ export async function getTerminalCheckout(
   if (!cfg) throw new Error("Square is not configured");
   const resp = await squareFetch<TerminalCheckoutResp>(
     cfg,
-    `/v2/terminal/checkouts/${encodeURIComponent(checkoutId)}`,
+    `/v2/terminals/checkouts/${encodeURIComponent(checkoutId)}`,
   );
   return { status: resp.checkout.status };
 }
@@ -761,7 +761,7 @@ export async function listTerminalDevices(): Promise<TerminalDevice[]> {
 export async function cancelTerminalCheckout(checkoutId: string): Promise<void> {
   const cfg = getSquareConfig();
   if (!cfg) throw new Error("Square is not configured");
-  await squareFetch(cfg, `/v2/terminal/checkouts/${encodeURIComponent(checkoutId)}/cancel`, {
+  await squareFetch(cfg, `/v2/terminals/checkouts/${encodeURIComponent(checkoutId)}/cancel`, {
     method: "POST",
   });
 }
