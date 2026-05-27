@@ -1,1 +1,1 @@
-- [Star Line Mode vs ESC/POS](star-line-mode-escpos.md) — Star printers default to Line Mode; GS!, ESC a, ESC E 0 are all wrong — use ESC i, ESC GS a, ESC F instead
+- [Square Terminal device_id prefix](square-terminal-device-id.md) — /v2/devices returns `device:SERIAL` but Terminal Checkout API wants bare `SERIAL`

@@ -728,7 +728,9 @@ export async function createTerminalCheckout(opts: {
       checkout: {
         amount_money: { amount: opts.amountCents, currency: "USD" },
         device_options: {
-          device_id: opts.deviceId,
+          // Square Terminal Checkout API requires the bare serial (no "device:" prefix),
+          // even though /v2/devices returns the id with the prefix.
+          device_id: opts.deviceId.replace(/^device:/, ""),
           skip_receipt_screen: true,
         },
         payment_type: "CARD_PRESENT",
