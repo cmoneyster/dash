@@ -164,6 +164,21 @@ const DEFAULT_TICKET_SECTIONS: Record<TicketType, SectionKey[]> = {
 
 const EMPTY_TEMPLATE: PrintTemplate = { businessName: "", footer: "", dividerChar: "-" };
 
+// Mirrors server DEFAULT_SECTION_STYLES and TICKET_SIZE_OVERRIDES so the modal
+// can show the correct resolved size, not just the raw stored override.
+const DEFAULT_SECTION_SIZE_FE: Partial<Record<SectionKey, number>> = {
+  header: 2,
+};
+const TICKET_SIZE_OVERRIDES_FE: Partial<Record<TicketType, Partial<Record<SectionKey, number>>>> = {
+  customer_receipt: { header: 1 },
+  item_label:       { header: 1, orderNumber: 2, items: 2 },
+  plate_label:      { orderNumber: 2, items: 2 },
+};
+
+function getEffectiveDefaultSize(tt: TicketType, key: SectionKey): number {
+  return TICKET_SIZE_OVERRIDES_FE[tt]?.[key] ?? DEFAULT_SECTION_SIZE_FE[key] ?? 1;
+}
+
 function getOrder(tpl: PrintTemplate, tt: TicketType): SectionKey[] {
   const layout = tpl[tt as keyof PrintTemplate] as { sectionOrder?: string[] } | null | undefined;
   return (layout?.sectionOrder as SectionKey[] | undefined) ?? DEFAULT_TICKET_SECTIONS[tt];
@@ -200,11 +215,12 @@ function moveSection(tpl: PrintTemplate, tt: TicketType, key: SectionKey, dir: -
 // ─── Section row component ────────────────────────────────────────────────────
 
 function SectionRow({
-  sectionKey, style, isFirst, isLast,
+  sectionKey, style, defaultSize = 1, isFirst, isLast,
   onUp, onDown, onChange,
 }: {
   sectionKey: SectionKey;
   style: SectionStyleLocal;
+  defaultSize?: number;
   isFirst: boolean;
   isLast: boolean;
   onUp: () => void;
@@ -214,7 +230,7 @@ function SectionRow({
   const visible       = style.visible !== false;
   const isBold        = style.bold === true;
   const align         = style.align ?? "left";
-  const sizeNum       = style.size ?? 1;
+  const sizeNum       = style.size ?? defaultSize;
   const dividerBefore = style.dividerBefore === true;
   const dividerAfter  = style.dividerAfter === true;
 
@@ -263,11 +279,11 @@ function SectionRow({
 
       <div className="flex items-center gap-1 pl-10 mt-0.5">
         <button type="button"
-          onClick={() => onChange({ size: sizeNum <= 2 ? undefined : sizeNum - 1 })}
+          onClick={() => onChange({ size: sizeNum <= 1 ? undefined : sizeNum - 1 })}
           disabled={sizeNum <= 1}
           title="Decrease text size"
           className={`${btnBase} w-4 h-4 border ${inactiveBtn} text-[10px] font-mono disabled:opacity-30`}>−</button>
-        <span className="text-[10px] font-mono w-5 text-center select-none">{style.size ? `${style.size}x` : "1x"}</span>
+        <span className="text-[10px] font-mono w-5 text-center select-none">{sizeNum}x</span>
         <button type="button"
           onClick={() => onChange({ size: Math.min(2, sizeNum + 1) })}
           disabled={sizeNum >= 2}
@@ -319,6 +335,7 @@ function PrintTemplateDesignerModal({
   const existing = printer.printTemplate as PrintTemplate | null | undefined;
 
   const [testPrintState, setTestPrintState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleTestPrint = async () => {
     setTestPrintState("sending");
@@ -387,15 +404,20 @@ function PrintTemplateDesignerModal({
   }, [tpl, ticketType]);
 
   const handleSave = async () => {
+    setSaveError(null);
     const clean: PrintTemplate = {
       ...tpl,
       businessName: tpl.businessName?.trim() || null,
       footer: tpl.footer?.trim() || null,
       dividerChar: tpl.dividerChar?.slice(0, 1) || "-",
     };
-    await update.mutateAsync({ id: printer.id, data: { printTemplate: clean } });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      await update.mutateAsync({ id: printer.id, data: { printTemplate: clean } });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      setSaveError("Save failed — please try again.");
+    }
   };
 
   const sectionOrder = getOrder(tpl, ticketType);
@@ -539,6 +561,7 @@ function PrintTemplateDesignerModal({
                     key={key}
                     sectionKey={key}
                     style={getStyle(tpl, ticketType, key)}
+                    defaultSize={getEffectiveDefaultSize(ticketType, key)}
                     isFirst={idx === 0}
                     isLast={idx === sectionOrder.length - 1}
                     onUp={() => setTpl((p) => moveSection(p, ticketType, key, -1))}
@@ -599,6 +622,9 @@ function PrintTemplateDesignerModal({
             Reset all to defaults
           </button>
           <div className="flex items-center gap-2">
+            {saveError && (
+              <span className="text-xs text-red-600 dark:text-red-400">{saveError}</span>
+            )}
             <button
               type="button"
               onClick={onClose}

@@ -87,7 +87,10 @@ export const DEFAULT_SECTION_STYLES: Record<SectionKey, ResolvedStyle> = {
 };
 
 const TICKET_SIZE_OVERRIDES: Partial<Record<TicketType, Partial<Record<SectionKey, Pick<ResolvedStyle, "size" | "bold">>>>> = {
-  item_label:  { orderNumber: { size: 2, bold: true }, items: { size: 2, bold: true } },
+  // customer_receipt and item_label headers print the business name — keep at
+  // 1x so long names don't wrap on a 48-column printer (2x = only 24 chars/line).
+  customer_receipt: { header: { size: 1, bold: true } },
+  item_label:  { header: { size: 1, bold: true }, orderNumber: { size: 2, bold: true }, items: { size: 2, bold: true } },
   plate_label: { orderNumber: { size: 2, bold: true }, items: { size: 2, bold: true } },
 };
 
