@@ -730,6 +730,7 @@ export async function createTerminalCheckout(opts: {
           skip_receipt_screen: true,
         },
         payment_type: "CARD_PRESENT",
+        location_id: cfg.locationId,
         ...(opts.referenceId ? { reference_id: opts.referenceId } : {}),
       },
     },
