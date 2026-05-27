@@ -96,6 +96,12 @@ export const eventOrdersTable = pgTable("event_orders", {
   // Stored when the corresponding toggle (guestNotesEnabled / staffNotesEnabled)
   // is on in event settings. Printed on the kitchen ticket notes section.
   notes: text("notes"),
+  // Low-stock crossings detected when this order was created. Stored here so
+  // the SMS fires only after payment is confirmed (not at order creation), since
+  // Terminal charges can fail and stock gets restored on void. Cleared to null
+  // once the alert has been fired (at payment or override time).
+  pendingLowStockCrossings: jsonb("pending_low_stock_crossings")
+    .$type<Array<{ itemId: number; name: string; eventStock: number }>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

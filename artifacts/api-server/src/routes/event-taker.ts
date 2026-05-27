@@ -356,7 +356,7 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
     const taxEnabled = !!settings?.eventTakerTaxEnabled;
     const taxRate = settings?.eventTakerTaxRate != null ? parseFloat(settings.eventTakerTaxRate) : 0;
 
-    const { order, lowStockCrossings, lowStockSettings } = await db.transaction(async (tx) => {
+    const { order } = await db.transaction(async (tx) => {
       // Re-check the kitchen toggle inside the transaction to avoid a race
       // between the gate above and the row commit.
       const [s] = await tx.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1)).for("update");
@@ -450,6 +450,15 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
       // match what staff are looking at on screen. Throws status=400 on bad data.
       const cleanedPlateGroups = validateAndCleanPlateGroups(plateGroups, orderItems);
 
+      // Detect low-stock crossings before inserting so we can store them on
+      // the order row. Doing it inside the transaction keeps the atomic
+      // lowStockAlertSent flag flip, preventing duplicate alerts across
+      // concurrent orders. The SMS fires only after payment is confirmed (or
+      // override is invoked) — not here — so Terminal charges that later fail
+      // don't produce a phantom low-stock alert.
+      const threshold = s?.lowStockAlertThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
+      const crossings = await detectAndMarkLowStockCrossings(tx, stockChanges, threshold);
+
       const [created] = await tx
         .insert(eventOrdersTable)
         .values({
@@ -468,26 +477,18 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
           // Staff orders start unpaid — kitchen feed filters these out until
           // payment is confirmed or staff explicitly overrides.
           paymentStatus: "unpaid",
+          // Stored so the SMS fires at payment/override time, not now.
+          pendingLowStockCrossings: crossings.length > 0 ? crossings : null,
         })
         .returning();
 
-      // Atomically flag any items that just crossed the low-stock threshold
-      // so concurrent orders don't double-fire the SMS. SMS is sent after
-      // commit (rollback ⇒ no phantom alert).
-      const threshold = s?.lowStockAlertThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
-      const crossings = await detectAndMarkLowStockCrossings(tx, stockChanges, threshold);
-
-      return {
-        order: created,
-        lowStockCrossings: crossings,
-        lowStockSettings: { phones: s?.lowStockAlertPhones ?? [], eventName: s?.eventName ?? "", threshold },
-      };
+      return { order: created };
     });
 
     // Intentionally do NOT send the order confirmation SMS here — it fires
-    // once payment is recorded (or override is invoked). The low-stock alert
-    // does fire now, since the stock has actually been decremented.
-    fireLowStockAlertIfAny(req, lowStockCrossings, lowStockSettings);
+    // once payment is recorded (or override is invoked). The low-stock SMS
+    // likewise fires at payment/override time so it doesn't go out for
+    // Terminal charges that later fail.
 
     // NOTE: The print fan-out intentionally does NOT fire here.
     // For staff (POS) orders, the kitchen ticket must only print after payment
@@ -686,6 +687,8 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       changeDue: null,
       // Preserve paymentOverrideReason when transitioning override→paid so the
       // audit trail of why the order was fired unpaid stays on the row.
+      // Clear stored crossings — we fire the SMS below and don't want a retry.
+      pendingLowStockCrossings: null,
     };
 
     if (method === "cash") {
@@ -776,6 +779,23 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       });
     }
 
+    // Fire low-stock SMS now that payment is confirmed. The crossings were
+    // detected and the lowStockAlertSent flag was set atomically at order
+    // creation; we only deferred the SMS until here so that a Terminal charge
+    // that later fails (and whose stock gets restored on void) doesn't produce
+    // a phantom alert. For override→paid the SMS already fired at override
+    // time, so pendingLowStockCrossings will be null on existing here.
+    // Read from `existing` (pre-update snapshot) because the UPDATE set the
+    // column to null — updated.pendingLowStockCrossings is always null.
+    const pendingCrossings = existing.pendingLowStockCrossings;
+    if (pendingCrossings && pendingCrossings.length > 0) {
+      fireLowStockAlertIfAny(req, pendingCrossings, {
+        phones: settings?.lowStockAlertPhones ?? [],
+        eventName: settings?.eventName ?? "",
+        threshold: settings?.lowStockAlertThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD,
+      });
+    }
+
     // Surface wasOverride so the client can suppress kitchen-ticket
     // auto-print on override→paid transitions (kitchen already got the
     // ticket when the order was overridden).
@@ -830,6 +850,9 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
         paymentMethod: null,
         paymentRecordedAt: new Date(),
         paymentOverrideReason: reason?.trim() ? reason.trim().slice(0, 500) : null,
+        // Clear stored crossings — we fire the SMS below and don't want a retry
+        // if the order later transitions override→paid.
+        pendingLowStockCrossings: null,
       })
       .where(and(
         eq(eventOrdersTable.id, id),
@@ -849,8 +872,8 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
     }
     const updated = updatedRows[0];
 
+    const overrideSettings = await getSettings();
     if (updated.phoneNumber) {
-      const settings = await getSettings();
       const orderStatusUrl = statusUrlBase
         ? `${statusUrlBase}/event/order/${updated.id}`
         : `${req.protocol}://${req.get("host")}/event/order/${updated.id}`;
@@ -858,9 +881,22 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
         guestName: updated.guestName,
         orderId: updated.id,
         phoneNumber: updated.phoneNumber,
-        eventName: settings?.eventName ?? "",
+        eventName: overrideSettings?.eventName ?? "",
         orderStatusUrl,
       }).catch(() => {});
+    }
+
+    // Fire low-stock SMS now that the order is being sent to the kitchen.
+    // The order is confirmed even though payment comes later, so this is the
+    // right moment. Read from `existing` (pre-update snapshot) because the
+    // UPDATE set pendingLowStockCrossings to null — updated has null there.
+    const overrideCrossings = existing.pendingLowStockCrossings;
+    if (overrideCrossings && overrideCrossings.length > 0) {
+      fireLowStockAlertIfAny(req, overrideCrossings, {
+        phones: overrideSettings?.lowStockAlertPhones ?? [],
+        eventName: overrideSettings?.eventName ?? "",
+        threshold: overrideSettings?.lowStockAlertThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD,
+      });
     }
 
     // Fan-out to network printers now that the order is being sent to the
