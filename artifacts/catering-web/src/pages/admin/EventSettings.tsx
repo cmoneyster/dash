@@ -231,6 +231,8 @@ export default function EventSettings() {
   const [venmoUploading, setVenmoUploading] = useState(false);
   const [venmoUploadError, setVenmoUploadError] = useState("");
   const [squareTerminalDeviceId, setSquareTerminalDeviceId] = useState("");
+  const [guestNotesEnabled, setGuestNotesEnabled] = useState(false);
+  const [staffNotesEnabled, setStaffNotesEnabled] = useState(false);
   // ── On the Dash Experience pricing config ──
   // String-backed inputs so we can preserve admin keystrokes (decimals,
   // empty while typing, etc.). Validated and coerced to numbers on save.
@@ -279,6 +281,8 @@ export default function EventSettings() {
         setVenmoHandle(data.venmoHandle ?? "");
         setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
         setSquareTerminalDeviceId(data.squareTerminalDeviceId ?? "");
+        setGuestNotesEnabled(data.guestNotesEnabled ?? false);
+        setStaffNotesEnabled(data.staffNotesEnabled ?? false);
         if (data.otdSetupFee != null) setOtdSetupFee(String(data.otdSetupFee));
         if (data.otdFeeWaiverThreshold != null) setOtdFeeWaiverThreshold(String(data.otdFeeWaiverThreshold));
         if (data.otdIncludedHours != null) setOtdIncludedHours(String(data.otdIncludedHours));
@@ -330,6 +334,8 @@ export default function EventSettings() {
         venmoHandle: venmoHandle.trim() === "" ? null : venmoHandle.trim(),
         venmoQrImageUrl: venmoQrImageUrl ?? null,
         squareTerminalDeviceId: squareTerminalDeviceId.trim() === "" ? null : squareTerminalDeviceId.trim(),
+        guestNotesEnabled,
+        staffNotesEnabled,
         otdSetupFee: otdSetupFee.trim() === "" ? 0 : Number(otdSetupFee),
         otdFeeWaiverThreshold: otdFeeWaiverThreshold.trim() === "" ? 0 : Number(otdFeeWaiverThreshold),
         otdIncludedHours: otdIncludedHours.trim() === "" ? 0 : Number(otdIncludedHours),
@@ -378,6 +384,8 @@ export default function EventSettings() {
       setVenmoHandle(data.venmoHandle ?? "");
       setVenmoQrImageUrl(data.venmoQrImageUrl ?? null);
       setSquareTerminalDeviceId(data.squareTerminalDeviceId ?? "");
+      setGuestNotesEnabled(data.guestNotesEnabled ?? false);
+      setStaffNotesEnabled(data.staffNotesEnabled ?? false);
       setOrderPassword("");
       setKitchenPassword("");
       setEventTakerPassword("");
@@ -617,6 +625,39 @@ export default function EventSettings() {
                   Use <strong>Browse devices</strong> to pick from your Square account, or paste the ID manually. Requires SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID to be set on the server.
                 </p>
               </div>
+            </div>
+
+            <div className="border-t border-border pt-5 space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <span className="font-semibold text-foreground">Order Notes</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When enabled, a free-text notes field appears on the ordering screen. Notes are stored on the order and printed on the kitchen ticket.
+              </p>
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={staffNotesEnabled}
+                  onClick={() => setStaffNotesEnabled(v => !v)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none ${staffNotesEnabled ? "bg-indigo-600" : "bg-muted"}`}
+                >
+                  <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform ${staffNotesEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                </button>
+                <span className="text-sm font-medium">Show notes field on Staff Order Taker</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={guestNotesEnabled}
+                  onClick={() => setGuestNotesEnabled(v => !v)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none ${guestNotesEnabled ? "bg-indigo-600" : "bg-muted"}`}
+                >
+                  <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform ${guestNotesEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                </button>
+                <span className="text-sm font-medium">Show notes field on Guest Ordering page</span>
+              </label>
             </div>
 
             <div className="border-t border-border pt-5 space-y-4">

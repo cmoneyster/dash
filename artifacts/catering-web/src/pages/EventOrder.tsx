@@ -42,6 +42,8 @@ export default function EventOrder() {
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [guestName, setGuestName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [notes, setNotes] = useState("");
+  const [guestNotesEnabled, setGuestNotesEnabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedOrderId, setSubmittedOrderId] = useState<number | null>(null);
   const { data: categoriesData } = useCategories();
@@ -56,6 +58,7 @@ export default function EventOrder() {
         .then(r => r.json())
         .then(data => {
           setEventName(data.eventName ?? "");
+          setGuestNotesEnabled(data.guestNotesEnabled ?? false);
           if (data.orderingState) {
             setOrderingState({
               state: data.orderingState,
@@ -151,6 +154,7 @@ export default function EventOrder() {
         body: JSON.stringify({
           guestName: guestName.trim(),
           phoneNumber: phoneNumber.trim() || null,
+          notes: notes.trim() || null,
           items: orderItems,
           statusUrlBase,
         }),
@@ -417,6 +421,21 @@ export default function EventOrder() {
                 />
                 <p className="text-xs text-muted-foreground mt-1.5">We'll text you a confirmation and when your order is ready.</p>
               </div>
+              {guestNotesEnabled && (
+                <div>
+                  <label className="block text-sm font-semibold mb-1">
+                    Order Notes <span className="text-muted-foreground text-xs font-normal">(optional)</span>
+                  </label>
+                  <textarea
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    placeholder="e.g. No utensils, extra napkins…"
+                    rows={2}
+                    maxLength={500}
+                    className="w-full px-4 py-2.5 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none text-sm"
+                  />
+                </div>
+              )}
 
               {orderItems.length > 0 && (
                 <div className="border-t border-border pt-4 space-y-2">

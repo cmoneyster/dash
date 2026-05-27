@@ -79,6 +79,7 @@ interface TakerSettings {
   orderingPausedUntil?: string | null;
   orderingRemainingSec?: number | null;
   orderingPausedMessage?: string | null;
+  staffNotesEnabled?: boolean;
 }
 
 function formatTakerBannerTime(pausedUntil: string | null | undefined, now: number): string {
@@ -267,6 +268,7 @@ export default function EventTakerOrder() {
   const [menuError, setMenuError] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [guestName, setGuestName] = useState("");
+  const [orderNotes, setOrderNotes] = useState("");
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState<null | { id: string; total: number; phoneSent: boolean; wasOverride: boolean }>(null);
@@ -755,6 +757,7 @@ export default function EventTakerOrder() {
         body: JSON.stringify({
           guestName: guestName.trim(),
           phoneNumber: phone.trim() || null,
+          notes: orderNotes.trim() || null,
           items: cart.map(l => ({ itemId: l.itemId, quantity: l.quantity })),
           statusUrlBase: window.location.origin + BASE,
         }),
@@ -792,6 +795,7 @@ export default function EventTakerOrder() {
       setCart([]);
       setGuestName("");
       setPhone("");
+      setOrderNotes("");
       // Refresh menu (stock changed) and the pending queue.
       loadMenu(password);
       loadPending(password);
@@ -1561,6 +1565,16 @@ export default function EventTakerOrder() {
                 placeholder="Phone (optional — for SMS)"
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm"
               />
+              {settings?.staffNotesEnabled && (
+                <textarea
+                  value={orderNotes}
+                  onChange={e => setOrderNotes(e.target.value)}
+                  placeholder="Order notes (optional)"
+                  rows={2}
+                  maxLength={500}
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm resize-none"
+                />
+              )}
               {settings?.orderingState && settings.orderingState !== "accepting" && (
                 <div className={`rounded-xl border p-3 text-sm ${settings.orderingState === "paused" ? "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-200" : "bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/50 text-rose-900 dark:text-rose-200"}`}>
                   <p className="font-bold">

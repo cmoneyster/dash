@@ -92,6 +92,10 @@ export const eventOrdersTable = pgTable("event_orders", {
   // Sales Report. Only populated when the order is voided; null otherwise.
   voidedBy: text("voided_by"),
   refundRequired: boolean("refund_required").notNull().default(false),
+  // Free-text order notes entered by the guest or cashier (e.g. "No utensils").
+  // Stored when the corresponding toggle (guestNotesEnabled / staffNotesEnabled)
+  // is on in event settings. Printed on the kitchen ticket notes section.
+  notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

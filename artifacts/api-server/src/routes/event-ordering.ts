@@ -192,6 +192,7 @@ router.get("/event-ordering/settings", async (req, res) => {
       orderingPausedUntil: guest.pausedUntil,
       orderingRemainingSec: guest.remainingSec,
       orderingPausedMessage: guest.pausedMessage,
+      guestNotesEnabled: settings?.guestNotesEnabled ?? false,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching event settings");
@@ -343,7 +344,7 @@ router.get("/event-ordering/menu", async (req, res) => {
 
 router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
   try {
-    const { guestName, phoneNumber, items, statusUrlBase } = req.body;
+    const { guestName, phoneNumber, items, statusUrlBase, notes } = req.body;
     if (!guestName || !items?.length) {
       res.status(400).json({ error: "guestName and items are required" });
       return;
@@ -411,6 +412,7 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
           guestName,
           phoneNumber: phoneNumber?.trim() || null,
           items,
+          notes: typeof notes === "string" ? notes.trim().slice(0, 500) || null : null,
           status: "pending",
           eventSessionId: activeEventSessionId,
         })

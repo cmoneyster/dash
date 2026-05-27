@@ -25,6 +25,8 @@ router.get("/admin/event-settings", async (req, res) => {
       venmoHandle: settings?.venmoHandle ?? "",
       venmoQrImageUrl: settings?.venmoQrImageUrl ?? null,
       squareTerminalDeviceId: settings?.squareTerminalDeviceId ?? null,
+      guestNotesEnabled: settings?.guestNotesEnabled ?? false,
+      staffNotesEnabled: settings?.staffNotesEnabled ?? false,
       // Replaces the legacy `twilioConfigured` flag — used by the admin
       // shell to badge SMS-related links when the gateway is unreachable.
       ejoinConfigured: isEjoinConfigured(),
@@ -60,6 +62,7 @@ router.put("/admin/event-settings", async (req, res) => {
       eventTakerPassword, eventTakerTaxEnabled, eventTakerTaxRate,
       cateringTaxEnabled, cateringTaxRate,
       venmoHandle, venmoQrImageUrl, squareTerminalDeviceId,
+      guestNotesEnabled, staffNotesEnabled,
       otdSetupFee, otdFeeWaiverThreshold, otdIncludedHours,
       otdAdditionalHourRate, otdMaxAdditionalHours,
       dailyGuestCap, dailyDropOffSlots, dailyOnTheDashSlots,
@@ -76,6 +79,8 @@ router.put("/admin/event-settings", async (req, res) => {
       venmoHandle?: string | null;
       venmoQrImageUrl?: string | null;
       squareTerminalDeviceId?: string | null;
+      guestNotesEnabled?: boolean;
+      staffNotesEnabled?: boolean;
       otdSetupFee?: number | string | null;
       otdFeeWaiverThreshold?: number | string | null;
       otdIncludedHours?: number | string | null;
@@ -102,6 +107,8 @@ router.put("/admin/event-settings", async (req, res) => {
       venmoHandle: s.venmoHandle ?? "",
       venmoQrImageUrl: s.venmoQrImageUrl ?? null,
       squareTerminalDeviceId: s.squareTerminalDeviceId ?? null,
+      guestNotesEnabled: s.guestNotesEnabled ?? false,
+      staffNotesEnabled: s.staffNotesEnabled ?? false,
       ejoinConfigured: isEjoinConfigured(),
       otdSetupFee: s.otdSetupFee != null ? parseFloat(s.otdSetupFee) : 500,
       otdFeeWaiverThreshold: s.otdFeeWaiverThreshold != null ? parseFloat(s.otdFeeWaiverThreshold) : 2000,
@@ -206,6 +213,8 @@ router.put("/admin/event-settings", async (req, res) => {
           ? null
           : squareTerminalDeviceId.trim();
       }
+      if (guestNotesEnabled !== undefined) updates.guestNotesEnabled = !!guestNotesEnabled;
+      if (staffNotesEnabled !== undefined) updates.staffNotesEnabled = !!staffNotesEnabled;
       // OTD pricing config — only validate/update fields that were sent so
       // partial PUTs from older clients still work.
       if (otdSetupFee !== undefined) {

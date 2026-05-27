@@ -118,6 +118,7 @@ export async function fanoutPrintForEventOrder(args: {
         tableNumber,
         source: source === "event_taker" || source === "kitchen_send" ? "event_taker" : "event_ordering",
         placedAt,
+        notes: order.notes ?? null,
       },
       lines: order.items.map((it) => ({ name: it.name, quantity: it.quantity })),
     };

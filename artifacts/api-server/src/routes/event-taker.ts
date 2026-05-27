@@ -180,6 +180,7 @@ router.get("/event-taker/settings", async (req, res) => {
       eventName: s?.eventName ?? "",
       taxEnabled: s?.eventTakerTaxEnabled ?? false,
       taxRate: s?.eventTakerTaxRate != null ? parseFloat(s.eventTakerTaxRate) : null,
+      staffNotesEnabled: s?.staffNotesEnabled ?? false,
       hasPassword: !!resolved,
       venmoHandle: s?.venmoHandle ?? null,
       venmoQrImageUrl: s?.venmoQrImageUrl ?? null,
@@ -307,12 +308,13 @@ router.put("/event-taker/menu-order", verifyTakerPassword, async (req, res) => {
 
 router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
   try {
-    const { guestName, phoneNumber, items, statusUrlBase, plateGroups } = req.body as {
+    const { guestName, phoneNumber, items, statusUrlBase, plateGroups, notes } = req.body as {
       guestName?: string;
       phoneNumber?: string | null;
       items?: { itemId: number; quantity: number }[];
       statusUrlBase?: string;
       plateGroups?: unknown;
+      notes?: string | null;
     };
     if (!guestName?.trim() || !items?.length) {
       res.status(400).json({ error: "guestName and items are required" });
@@ -454,6 +456,7 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
           phoneNumber: phoneNumber?.trim() || null,
           items: orderItems,
           plateGroups: cleanedPlateGroups,
+          notes: typeof notes === "string" ? notes.trim().slice(0, 500) || null : null,
           status: "pending",
           eventSessionId: activeEventSessionId,
           orderSource: "staff",

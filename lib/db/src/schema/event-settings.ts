@@ -20,6 +20,11 @@ export const eventSettingsTable = pgTable("event_settings", {
   // Venmo display info shown on the POS payment screen
   venmoHandle: text("venmo_handle"),
   venmoQrImageUrl: text("venmo_qr_image_url"),
+  // Order notes toggles. When enabled, a free-text "notes" textarea appears
+  // on the respective ordering UI and the entered value is stored on the order
+  // row and printed on the kitchen ticket notes section.
+  guestNotesEnabled: boolean("guest_notes_enabled").notNull().default(false),
+  staffNotesEnabled: boolean("staff_notes_enabled").notNull().default(false),
   // Square Terminal device ID for the Staff Order Taker card-present flow.
   // When set (and Square is configured), tapping Credit Card auto-fires a
   // Terminal checkout to this device instead of showing a manual prompt.
