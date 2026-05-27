@@ -485,12 +485,12 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
     // does fire now, since the stock has actually been decremented.
     fireLowStockAlertIfAny(req, lowStockCrossings, lowStockSettings);
 
-    // Fire-and-forget fan-out to network printers. Failures are logged but
-    // never block order placement — staff can re-print from the kitchen UI.
-    fanoutPrintForEventOrder({ order, source: "event_taker" }).catch((err) => {
-      req.log.error({ err, orderId: order.id }, "print fan-out failed");
-    });
-
+    // NOTE: The print fan-out intentionally does NOT fire here.
+    // For staff (POS) orders, the kitchen ticket must only print after payment
+    // is confirmed or the cashier explicitly overrides. Printing at order
+    // creation caused tickets to appear for Terminal charges that later failed
+    // (or any payment that the cashier ultimately voids). The fan-out fires in
+    // PATCH /orders/:id/payment (unpaid→paid) and PATCH /orders/:id/override.
     res.status(201).json(serializeOrder(order));
   } catch (err: any) {
     if (err?.status === 409) {
@@ -761,6 +761,17 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       }).catch(() => {});
     }
 
+    // Fan-out to network printers on payment confirmation.
+    // Only fires for the unpaid→paid path (wasOverride === false) because
+    // the override route already fired the kitchen ticket at override time.
+    // For override→paid the receipt is handled by the manual print button
+    // on the confirmation screen, avoiding a double kitchen-ticket print.
+    if (!wasOverride) {
+      fanoutPrintForEventOrder({ order: updated, source: "event_taker" }).catch((err) => {
+        req.log.error({ err, orderId: updated.id }, "print fan-out failed (payment)");
+      });
+    }
+
     // Surface wasOverride so the client can suppress kitchen-ticket
     // auto-print on override→paid transitions (kitchen already got the
     // ticket when the order was overridden).
@@ -847,6 +858,14 @@ router.patch("/event-taker/orders/:id/override", verifyTakerPassword, async (req
         orderStatusUrl,
       }).catch(() => {});
     }
+
+    // Fan-out to network printers now that the order is being sent to the
+    // kitchen. This is the correct trigger point for override orders — the
+    // kitchen should only receive the ticket once the cashier has explicitly
+    // decided to send it, not at order creation time.
+    fanoutPrintForEventOrder({ order: updated, source: "event_taker" }).catch((err) => {
+      req.log.error({ err, orderId: updated.id }, "print fan-out failed (override)");
+    });
 
     res.json(serializeOrder(updated));
   } catch (err) {
