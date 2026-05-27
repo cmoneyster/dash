@@ -700,7 +700,7 @@ export async function createTerminalCheckout(opts: {
         amount_money: { amount: opts.amountCents, currency: "USD" },
         device_options: {
           device_id: opts.deviceId,
-          skip_receipt_screen: false,
+          skip_receipt_screen: true,
         },
         payment_type: "CARD_PRESENT",
         ...(opts.referenceId ? { reference_id: opts.referenceId } : {}),
