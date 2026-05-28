@@ -345,6 +345,7 @@ function renderKitchenSection(
 
 function renderKitchenTicket(p: KitchenTicketPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
+  t.left().line();
   const order = resolveOrder(tmpl, "kitchen_ticket");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
@@ -398,7 +399,6 @@ function renderReceiptSection(
       }
       break;
     case "totals":
-      t.left();
       if (p.subtotal != null) t.line(pad("Subtotal", `$${p.subtotal.toFixed(2)}`));
       if (p.tax != null) t.line(pad("Tax", `$${p.tax.toFixed(2)}`));
       if (p.tip != null) t.line(pad("Tip", `$${p.tip.toFixed(2)}`));
@@ -420,6 +420,7 @@ function renderReceiptSection(
 
 function renderCustomerReceipt(p: CustomerReceiptPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
+  t.left().line();
   const order = resolveOrder(tmpl, "customer_receipt");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
@@ -445,7 +446,7 @@ function renderItemLabelSection(
   t.align(style.align);
   switch (section) {
     case "header":
-      if (tmpl?.businessName) t.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).bold(false).left();
+      if (tmpl?.businessName) t.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).bold(false);
       break;
     case "orderNumber":
       t.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1).bold(false);
@@ -484,6 +485,7 @@ function renderItemLabelSection(
 
 function renderItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
+  t.left().line();
   const order = resolveOrder(tmpl, "item_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
@@ -543,6 +545,7 @@ function renderPlateLabelSection(
 
 function renderPlateLabel(p: PlateLabelPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
+  t.left().line();
   const order = resolveOrder(tmpl, "plate_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
@@ -773,7 +776,6 @@ function webReceiptSection(
       }
       break;
     case "totals":
-      b.left();
       if (p.subtotal != null) b.line(pad("Subtotal", `$${p.subtotal.toFixed(2)}`));
       if (p.tax != null) b.line(pad("Tax", `$${p.tax.toFixed(2)}`));
       if (p.tip != null) b.line(pad("Tip", `$${p.tip.toFixed(2)}`));
