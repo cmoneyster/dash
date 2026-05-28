@@ -174,7 +174,7 @@ export async function fanoutPrintForEventOrder(args: {
   // ── Item labels (per_unit / combined / per_box) ─────────────────────────
   // Plate labels piggyback on item-label printers + the same allowed-kind
   // gate, so we treat them as a single conceptual kind here.
-  const labelPrinters = allowed.has("item_label") || allowed.has("plate_label")
+  const labelPrinters = (allowed.has("item_label") || allowed.has("plate_label")) && !kindFilter
     ? await selectPrintersFor("item_label", selectMode)
     : [];
   if (labelPrinters.length > 0) {
