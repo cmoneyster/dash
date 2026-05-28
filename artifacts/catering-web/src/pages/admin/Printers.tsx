@@ -186,7 +186,15 @@ function getOrder(tpl: PrintTemplate, tt: TicketType): SectionKey[] {
 
 function getStyle(tpl: PrintTemplate, tt: TicketType, key: SectionKey): SectionStyleLocal {
   const layout = tpl[tt as keyof PrintTemplate] as { sections?: Record<string, SectionStyleLocal> } | null | undefined;
-  return (layout?.sections?.[key]) ?? {};
+  const raw = (layout?.sections?.[key]) ?? {};
+  // Sanitize `size`: stale DB data may contain string labels like "normal".
+  // Treat any non-finite-positive-integer as missing so the UI shows the
+  // effective default and doesn't send a bad value back to the server.
+  const rawSize = (raw as Record<string, unknown>).size;
+  const size = typeof rawSize === "number" && Number.isFinite(rawSize) && rawSize >= 1
+    ? rawSize as number
+    : undefined;
+  return { ...raw, size };
 }
 
 function patchLayout(tpl: PrintTemplate, tt: TicketType, patch: { sectionOrder?: string[]; sections?: Record<string, SectionStyleLocal> }): PrintTemplate {

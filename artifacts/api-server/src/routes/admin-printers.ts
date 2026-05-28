@@ -8,7 +8,13 @@ const sectionStyleSchema = z.object({
   visible:      z.boolean().nullable().optional(),
   bold:         z.boolean().nullable().optional(),
   align:        z.enum(["left", "center", "right"]).nullable().optional(),
-  size:         z.number().int().min(1).max(8).nullable().optional(),
+  size:         z.preprocess(
+    // Stale DB records may contain string labels like "normal" from before
+    // Zod validation was enforced. Coerce non-finite-positive-integer values
+    // to undefined so they're silently dropped rather than hard-rejected.
+    (v) => (typeof v === "number" && Number.isFinite(v) && v >= 1 ? v : undefined),
+    z.number().int().min(1).max(8).nullable().optional(),
+  ),
   dividerBefore: z.boolean().nullable().optional(),
   dividerAfter: z.boolean().nullable().optional(),
 });
