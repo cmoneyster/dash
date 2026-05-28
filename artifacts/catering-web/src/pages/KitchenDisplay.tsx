@@ -153,8 +153,6 @@ function unassignedItems(order: EventOrder): { itemId: number; name: string; qua
   return out;
 }
 
-type PrintJob = { order: EventOrder; mode: "receipt" | "kitchen" };
-
 const COMPLETED_STATUSES = new Set(["done", "picked_up"]);
 
 const STATUS_CONFIG = {
@@ -911,25 +909,25 @@ export default function KitchenDisplay() {
     }
   }
 
-  // ── Print receipts / kitchen tickets ─────────────────────────────
-  // Manual per-card "Print ticket / Print receipt" buttons stay as a
-  // browser-print backup; everything else flows through the print fan-out.
-  const [printJob, setPrintJob] = useState<PrintJob | null>(null);
+  // ── Server-side kitchen ticket reprint ───────────────────────────
+  const [ticketStatuses, setTicketStatuses] = useState<Record<number, "printing" | "ok" | "error">>({});
 
-  useEffect(() => {
-    if (!printJob) return;
-    const onAfter = () => setPrintJob(null);
-    window.addEventListener("afterprint", onAfter);
-    // Wait one tick so the print region renders before invoking print()
-    const t = setTimeout(() => window.print(), 80);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("afterprint", onAfter);
-    };
-  }, [printJob]);
-
-  function printOrder(order: EventOrder, mode: "receipt" | "kitchen") {
-    setPrintJob({ order, mode });
+  async function reprintTicket(orderId: number) {
+    if (!authedPassword) return;
+    setTicketStatuses(s => ({ ...s, [orderId]: "printing" }));
+    try {
+      const res = await fetch(`${BASE}/api/event-ordering/orders/${orderId}/reprint`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
+        body: JSON.stringify({ kind: "kitchen_ticket" }),
+      });
+      if (!res.ok) throw new Error("reprint failed");
+      setTicketStatuses(s => ({ ...s, [orderId]: "ok" }));
+    } catch {
+      setTicketStatuses(s => ({ ...s, [orderId]: "error" }));
+    } finally {
+      setTimeout(() => setTicketStatuses(s => { const n = { ...s }; delete n[orderId]; return n; }), 2000);
+    }
   }
 
   // Server-backed printer settings modal (scoped to the Kitchen surface).
@@ -1024,25 +1022,6 @@ export default function KitchenDisplay() {
 
   return (
     <div className="min-h-screen bg-[#111] text-white">
-
-      {/* Print stylesheet — only mounted while a print job is active so a manual
-          Cmd/Ctrl+P (with no job) prints the dashboard normally instead of blank. */}
-      {printJob && (
-        <>
-          <style>{`
-            @media print {
-              @page { size: 80mm auto; margin: 4mm; }
-              html, body { background: #fff !important; }
-              body * { visibility: hidden !important; }
-              #print-region, #print-region * { visibility: visible !important; opacity: 1 !important; }
-              #print-region { position: absolute !important; left: 0; top: 0; width: 100%; color: #000 !important; }
-            }
-          `}</style>
-          <div id="print-region" className="fixed left-0 top-0 w-full opacity-0 pointer-events-none">
-            <PrintableTicket order={printJob.order} mode={printJob.mode} eventName={eventName} />
-          </div>
-        </>
-      )}
 
       <PrinterSettingsModal
         open={printerModalOpen}
@@ -1408,7 +1387,8 @@ export default function KitchenDisplay() {
                           onToggleItem={(itemId) => patchItemFired(order.id, itemId)}
                           onAdvance={() => advanceStatus(order)}
                           onRevert={() => revertStatus(order)}
-                          onPrint={(mode) => printOrder(order, mode)}
+                          onPrint={() => reprintTicket(order.id)}
+                          ticketPrintStatus={ticketStatuses[order.id]}
                           onPrintLabels={() => setLabelsForOrder(order)}
                           onTogglePlateLine={(plateIdx, itemId, packed) => patchKitchenProgress(order, { plateIdx, itemId, packed })}
                           onTogglePlate={(plateIdx, allPacked) => patchKitchenProgress(order, { plateIdx, allPacked })}
@@ -1427,7 +1407,7 @@ export default function KitchenDisplay() {
                 <h3 className="text-white/40 text-sm font-semibold uppercase tracking-wider mb-3">Completed</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {doneOrders.map(order => (
-                    <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} onPrint={(mode) => printOrder(order, mode)} onPrintLabels={() => setLabelsForOrder(order)} onTogglePlateLine={() => {}} onTogglePlate={() => {}} />
+                    <OrderCard key={order.id} order={order} isNew={false} isUpdating={false} checkedItemIds={new Set()} onToggleItem={() => {}} onAdvance={() => {}} onRevert={() => {}} onPrint={() => reprintTicket(order.id)} ticketPrintStatus={ticketStatuses[order.id]} onPrintLabels={() => setLabelsForOrder(order)} onTogglePlateLine={() => {}} onTogglePlate={() => {}} />
                   ))}
                 </div>
               </div>
@@ -1439,7 +1419,7 @@ export default function KitchenDisplay() {
   );
 }
 
-function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance, onRevert, onPrint, onPrintLabels, onTogglePlateLine, onTogglePlate }: {
+function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onAdvance, onRevert, onPrint, ticketPrintStatus, onPrintLabels, onTogglePlateLine, onTogglePlate }: {
   order: EventOrder;
   isNew: boolean;
   isUpdating: boolean;
@@ -1447,7 +1427,8 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   onToggleItem: (itemId: number) => void;
   onAdvance: () => void;
   onRevert: () => void;
-  onPrint: (mode: "receipt" | "kitchen") => void;
+  onPrint: () => void;
+  ticketPrintStatus?: "printing" | "ok" | "error";
   onPrintLabels: () => void;
   onTogglePlateLine: (plateIdx: number | "unassigned", itemId: number, packed: boolean) => void;
   onTogglePlate: (plateIdx: number, allPacked: boolean) => void;
@@ -1872,11 +1853,13 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
       {/* Reprint actions — available for any status */}
       <div className="px-4 pb-3 grid grid-cols-2 gap-2 border-t border-white/5 pt-3">
         <button
-          onClick={() => onPrint("kitchen")}
-          className="flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors"
-          title="Print kitchen ticket (no prices)"
+          onClick={() => onPrint()}
+          disabled={ticketPrintStatus === "printing"}
+          className="flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Print kitchen ticket via network printer"
         >
-          <Printer size={12} /> Print ticket
+          {ticketPrintStatus === "printing" ? <Loader2 size={12} className="animate-spin" /> : ticketPrintStatus === "ok" ? <Check size={12} className="text-emerald-400" /> : ticketPrintStatus === "error" ? <X size={12} className="text-red-400" /> : <Printer size={12} />}
+          {ticketPrintStatus === "printing" ? "Printing…" : ticketPrintStatus === "ok" ? "Queued!" : ticketPrintStatus === "error" ? "Failed" : "Print ticket"}
         </button>
         <button
           onClick={() => onPrintLabels()}
@@ -2187,140 +2170,6 @@ function LowStockToastCard({
           <X className="w-4 h-4" />
         </button>
       </div>
-    </div>
-  );
-}
-
-function PrintableTicket({ order, mode, eventName }: { order: EventOrder; mode: "receipt" | "kitchen"; eventName: string }) {
-  const placedAt = new Date(order.createdAt).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  });
-  // Compute display totals with snapshot fallback for older orders.
-  const computedSubtotal = order.items.reduce((s, l) => s + (Number(l.price) || 0) * l.quantity, 0);
-  const subtotal = order.subtotal != null ? order.subtotal : computedSubtotal;
-  const taxRate = order.taxRate ?? 0;
-  const taxAmount = order.taxAmount ?? 0;
-  const total = order.total != null ? order.total : subtotal + taxAmount;
-  const totalQty = order.items.reduce((s, l) => s + l.quantity, 0);
-
-  if (mode === "kitchen") {
-    const hasPlating = !!(order.plateGroups && order.plateGroups.length > 0);
-    const names = nameByItemId(order);
-    const unassigned = hasPlating ? unassignedItems(order) : [];
-    return (
-      <div className="font-mono text-base bg-white text-black p-3">
-        <div className="text-center mb-3">
-          <p className="font-bold text-lg uppercase tracking-wider">Kitchen Ticket</p>
-          <p className="text-xs">{eventName || "dash by Hollywood East Cafe"}</p>
-          <p className="text-xs">{placedAt}</p>
-          <p className="text-base font-bold mt-1">Order #{order.id}</p>
-          {order.orderSource && (
-            <p className="text-xs uppercase tracking-wider mt-0.5">{order.orderSource} order</p>
-          )}
-          {order.orderSource === "staff" && order.paymentStatus !== "paid" && (
-            <p className="text-base font-extrabold uppercase tracking-widest mt-1 border-2 border-black px-2 py-0.5 inline-block">
-              ** UNPAID **
-            </p>
-          )}
-        </div>
-        <div className="border-t border-b border-dashed border-black py-2 mb-2">
-          <p className="font-bold text-lg">{order.guestName}</p>
-          {order.tableNumber && <p className="text-sm">{order.tableNumber}</p>}
-        </div>
-        {hasPlating && (
-          <p className="text-xs font-bold uppercase tracking-wider mb-1">Fire totals</p>
-        )}
-        <table className="w-full mb-2">
-          <tbody>
-            {order.items.map(l => (
-              <tr key={l.itemId}>
-                <td className="py-1 align-top w-10 font-bold text-xl">{l.quantity}×</td>
-                <td className="py-1 align-top font-semibold">
-                  {l.name}
-                  {l.internalNotes && (
-                    <div className="text-xs font-normal italic mt-0.5">↳ {l.internalNotes}</div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {hasPlating && (
-          <div className="border-t border-dashed border-black pt-2 mt-2 space-y-2">
-            <p className="text-xs font-bold uppercase tracking-wider">
-              Plating · {order.plateGroups!.length} plate{order.plateGroups!.length === 1 ? "" : "s"}
-            </p>
-            {order.plateGroups!.map((plate, idx) => (
-              <div key={idx} className="border border-black rounded-sm p-2">
-                <p className="font-bold uppercase tracking-wider text-sm mb-1">
-                  {plate.label || `Plate ${idx + 1}`}
-                </p>
-                <ul className="text-sm">
-                  {plate.items.map(ln => (
-                    <li key={ln.itemId}>
-                      <span className="font-bold">{ln.quantity}×</span>{" "}
-                      {names.get(ln.itemId) ?? `Item #${ln.itemId}`}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-            {unassigned.length > 0 && (
-              <div className="border border-dashed border-black rounded-sm p-2">
-                <p className="font-bold uppercase tracking-wider text-sm mb-1">Unassigned · pack however</p>
-                <ul className="text-sm">
-                  {unassigned.map(ln => (
-                    <li key={ln.itemId}>
-                      <span className="font-bold">{ln.quantity}×</span> {ln.name}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-        <p className="text-center text-xs border-t border-dashed border-black pt-2 mt-2">
-          {totalQty} item(s) total
-        </p>
-      </div>
-    );
-  }
-
-  // receipt
-  const ratePretty = (taxRate || 0).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
-  return (
-    <div className="font-mono text-sm bg-white text-black p-3">
-      <div className="text-center mb-3">
-        <p className="font-bold text-base">{eventName || "dash by Hollywood East Cafe"}</p>
-        <p className="text-xs">{placedAt}</p>
-        <p className="text-xs">Order #{order.id}</p>
-      </div>
-      <div className="border-t border-b border-dashed border-black py-2 mb-2 space-y-0.5">
-        <p>Customer: {order.guestName}</p>
-        {order.tableNumber && <p>Table: {order.tableNumber}</p>}
-        {order.phoneNumber && <p>Phone: {order.phoneNumber}</p>}
-      </div>
-      <table className="w-full text-xs mb-2">
-        <tbody>
-          {order.items.map(l => (
-            <tr key={l.itemId}>
-              <td className="py-0.5">{l.quantity}× {l.name}</td>
-              <td className="py-0.5 text-right">${((Number(l.price) || 0) * l.quantity).toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="border-t border-dashed border-black pt-2 space-y-0.5 text-xs">
-        <div className="flex justify-between"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
-        {taxRate > 0 && (
-          <div className="flex justify-between"><span>Tax ({ratePretty}%)</span><span>${taxAmount.toFixed(2)}</span></div>
-        )}
-        <div className="flex justify-between font-bold text-sm pt-1 border-t border-dashed border-black mt-1">
-          <span>TOTAL</span><span>${total.toFixed(2)}</span>
-        </div>
-      </div>
-      <p className="text-center text-xs mt-3">Thank you!</p>
     </div>
   );
 }

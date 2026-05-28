@@ -145,6 +145,40 @@ router.patch("/event-ordering/printers/:id", verifyKitchenPassword, async (req, 
  * to print labels for every item on the order ("Print all").
  */
 router.post(
+  "/event-ordering/orders/:id/reprint",
+  verifyKitchenPassword,
+  async (req, res): Promise<void> => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid order id" });
+      return;
+    }
+    const kind = (req.body as { kind?: unknown })?.kind;
+    if (kind !== "kitchen_ticket") {
+      res.status(400).json({ error: "kind must be kitchen_ticket" });
+      return;
+    }
+    try {
+      const [order] = await db.select().from(eventOrdersTable).where(eq(eventOrdersTable.id, id));
+      if (!order) {
+        res.status(404).json({ error: "Order not found" });
+        return;
+      }
+      const enqueued = await fanoutPrintForEventOrder({
+        order,
+        source: "kitchen_send",
+        kindFilter: "kitchen_ticket",
+        manual: true,
+      });
+      res.json({ enqueued });
+    } catch (err) {
+      req.log.error({ err, orderId: id }, "kitchen reprint failed");
+      res.status(500).json({ error: "Reprint failed" });
+    }
+  },
+);
+
+router.post(
   "/event-ordering/orders/:id/print-labels",
   verifyKitchenPassword,
   async (req, res): Promise<void> => {
