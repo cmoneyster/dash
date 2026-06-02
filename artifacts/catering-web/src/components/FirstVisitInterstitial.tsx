@@ -144,17 +144,12 @@ export function FirstVisitInterstitial() {
                 </div>
                 <div className="flex-1 min-w-0">
                   {tile.otdBadge && (
-                    <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400 mb-1.5">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400 mb-1.5">
                       <Flame className="w-3 h-3" />
                       On the Dash Experience
                     </span>
                   )}
-                  <p className="font-bold text-sm sm:text-base leading-snug">
-                    {tile.otdBadge && (
-                      <span className="sm:hidden text-orange-600 dark:text-orange-400">On the Dash — </span>
-                    )}
-                    {tile.title}
-                  </p>
+                  <p className="font-bold text-sm sm:text-base leading-snug">{tile.title}</p>
                   <p className="hidden sm:block text-sm text-muted-foreground leading-relaxed mt-2 flex-1">{tile.body}</p>
                   <span className="hidden sm:inline-block text-xs uppercase tracking-widest font-semibold text-primary mt-3">
                     Choose →
