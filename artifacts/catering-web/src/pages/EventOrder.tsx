@@ -51,6 +51,7 @@ export default function EventOrder() {
   type ChState = { state: "accepting" | "paused" | "closed"; pausedUntil: string | null; remainingSec: number | null; pausedMessage?: string | null };
   const [orderingState, setOrderingState] = useState<ChState | null>(null);
   const [tickNow, setTickNow] = useState(Date.now());
+  const [expandedDescs, setExpandedDescs] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     function load() {
@@ -363,7 +364,20 @@ export default function EventOrder() {
                               <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{stock} left</span>
                             )}
                           </div>
-                          {item.description && <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>}
+                          {item.description && (
+                            <>
+                              <p className={`text-xs text-muted-foreground ${expandedDescs.has(item.id) ? "" : "line-clamp-2"}`}>{item.description}</p>
+                              {item.description.length > 80 && (
+                                <button
+                                  type="button"
+                                  onClick={e => { e.stopPropagation(); setExpandedDescs(prev => { const next = new Set(prev); next.has(item.id) ? next.delete(item.id) : next.add(item.id); return next; }); }}
+                                  className="text-xs text-primary font-semibold mt-0.5 hover:underline"
+                                >
+                                  {expandedDescs.has(item.id) ? "Less" : "More"}
+                                </button>
+                              )}
+                            </>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <button

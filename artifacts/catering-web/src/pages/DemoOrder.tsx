@@ -66,6 +66,7 @@ export default function DemoOrder() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
+  const [expandedDescs, setExpandedDescs] = useState<Set<number>>(new Set());
   const { data: categoriesData } = useCategories();
 
   const categoriesRef = useRef<HTMLHeadingElement | null>(null);
@@ -205,7 +206,18 @@ export default function DemoOrder() {
                           <div className="flex-1 min-w-0">
                             <p className="font-bold text-sm">{item.name}</p>
                             {item.description && (
-                              <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
+                              <>
+                                <p className={`text-xs text-muted-foreground ${expandedDescs.has(item.id) ? "" : "line-clamp-2"}`}>{item.description}</p>
+                                {item.description.length > 80 && (
+                                  <button
+                                    type="button"
+                                    onClick={e => { e.stopPropagation(); setExpandedDescs(prev => { const next = new Set(prev); next.has(item.id) ? next.delete(item.id) : next.add(item.id); return next; }); }}
+                                    className="text-xs text-primary font-semibold mt-0.5 hover:underline"
+                                  >
+                                    {expandedDescs.has(item.id) ? "Less" : "More"}
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
