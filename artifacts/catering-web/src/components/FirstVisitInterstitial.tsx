@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Sparkles, Calendar, Utensils, MapPin, X } from "lucide-react";
+import { Sparkles, Calendar, MapPin, X, Flame } from "lucide-react";
 
 const STORAGE_KEY = "dash_landing_suppressed_until_v1";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -24,24 +24,27 @@ type Tile = {
   icon: React.ComponentType<{ className?: string }>;
   href: string;
   testId: string;
+  otdBadge?: true;
 };
 
 const TILES: Tile[] = [
   {
     id: "at-event",
-    title: "Currently at an event with the on the dash experience",
-    body: "Enter the password from your event sign and start ordering food.",
+    title: "I'm at the event right now",
+    body: "Enter the password from your event sign and start ordering food fresh from the trailer.",
     icon: MapPin,
     href: "/event",
     testId: "tile-at-event",
+    otdBadge: true,
   },
   {
     id: "demo",
-    title: "Demo the guest ordering page for guests at your event with the on the dash experience",
+    title: "Demo the guest ordering experience",
     body: "See exactly what your guests will see — place a sample order and get a real preview text.",
     icon: Sparkles,
     href: "/demo",
     testId: "tile-demo",
+    otdBadge: true,
   },
   {
     id: "planning",
@@ -140,7 +143,18 @@ export function FirstVisitInterstitial() {
                   <Icon className="w-4.5 h-4.5 sm:w-6 sm:h-6" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm sm:text-base leading-snug">{tile.title}</p>
+                  {tile.otdBadge && (
+                    <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400 mb-1.5">
+                      <Flame className="w-3 h-3" />
+                      On the Dash Experience
+                    </span>
+                  )}
+                  <p className="font-bold text-sm sm:text-base leading-snug">
+                    {tile.otdBadge && (
+                      <span className="sm:hidden text-orange-600 dark:text-orange-400">On the Dash — </span>
+                    )}
+                    {tile.title}
+                  </p>
                   <p className="hidden sm:block text-sm text-muted-foreground leading-relaxed mt-2 flex-1">{tile.body}</p>
                   <span className="hidden sm:inline-block text-xs uppercase tracking-widest font-semibold text-primary mt-3">
                     Choose →
