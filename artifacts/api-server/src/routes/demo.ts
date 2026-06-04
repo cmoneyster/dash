@@ -8,9 +8,17 @@ import { isEjoinConfigured, sendSmsViaEjoin } from "../lib/sms-ejoin";
 // build this from request headers (Host / X-Forwarded-Host) — those are
 // attacker-controlled and the demo SMS endpoint is unauthenticated, so a
 // caller could otherwise cause our SIM gateway to send branded texts that
-// link to an attacker domain. Falls back to the first REPLIT_DOMAINS entry
-// (the deployed app's hostname) so links still work in production.
+// link to an attacker domain.
+//
+// Resolution order:
+//   1. PUBLIC_BASE_URL  — canonical public domain (e.g. https://eatonthedash.com)
+//   2. PUBLIC_APP_URL   — legacy alias for the same concept
+//   3. First REPLIT_DOMAINS entry — the deployed app's hostname
+//   4. REPLIT_DEV_DOMAIN — dev tunnel fallback
+//   5. https://localhost
 function trustedPublicOrigin(): string {
+  const base = process.env.PUBLIC_BASE_URL?.trim();
+  if (base) return base.replace(/\/+$/, "");
   const explicit = process.env.PUBLIC_APP_URL?.trim();
   if (explicit) return explicit.replace(/\/+$/, "");
   const first = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();

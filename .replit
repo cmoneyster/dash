@@ -37,3 +37,6 @@ OWNER_PHONE = "+12405158960"
 
 [userenv.development]
 SMS_OUTBOUND_MODE = "shadow"
+
+[userenv.production]
+PUBLIC_BASE_URL = "https://eatonthedash.com"
