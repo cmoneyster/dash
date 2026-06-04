@@ -185,6 +185,39 @@ function SortableMenuRow({
   );
 }
 
+function computeLabelCount(policy: string, boxSizeRaw: string | number | null | undefined, qty: number): number {
+  if (qty <= 0) return 0;
+  if (policy === "combined") return 1;
+  if (policy === "per_box") {
+    const box = Math.max(1, Math.floor(Number(boxSizeRaw) || 1));
+    if (box <= 1) return qty;
+    return Math.ceil(qty / box);
+  }
+  return qty;
+}
+
+function LabelCountPreview({ policy, boxSize }: { policy: string; boxSize: string | number | null | undefined }) {
+  const [previewQty, setPreviewQty] = useState(3);
+  const count = computeLabelCount(policy, boxSize, previewQty);
+  return (
+    <div className="flex items-center gap-3 pt-1">
+      <span className="text-xs text-muted-foreground shrink-0">Preview: if qty</span>
+      <input
+        type="number"
+        min="1"
+        step="1"
+        value={previewQty}
+        onChange={(e) => setPreviewQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+        className="w-16 px-2 py-1 border rounded-lg text-xs text-center"
+      />
+      <span className="text-xs text-muted-foreground shrink-0">is ordered →</span>
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
+        {count} {count === 1 ? "label" : "labels"}
+      </span>
+    </div>
+  );
+}
+
 export default function MenuManager() {
   const queryClient = useQueryClient();
   const { data: items, isLoading } = useAdminListMenuItems();
@@ -1022,32 +1055,71 @@ export default function MenuManager() {
                     Controls how many physical labels print per quantity ordered. Plates from the staff order-taker always
                     get one plate-label regardless of this setting.
                   </p>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="flex-1">
-                      <label className="block text-xs font-medium mb-1">Label policy</label>
-                      <select
-                        {...register("labelPolicy")}
-                        className="w-full px-3 py-2 border rounded-xl text-sm bg-white dark:bg-slate-800 text-foreground"
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium">Label policy</label>
+                    {([
+                      {
+                        value: "per_unit",
+                        label: "Per unit",
+                        desc: "1 label for every unit ordered. Use this for individually packaged products — e.g. a \"3 Wing Box\" is one unit, so qty 4 prints 4 labels.",
+                      },
+                      {
+                        value: "combined",
+                        label: "Combined",
+                        desc: "1 label showing the total quantity, no matter how many are ordered. Use this for bulk items delivered together in one container.",
+                      },
+                      {
+                        value: "per_box",
+                        label: "Per box",
+                        desc: "1 label per pack of N units. Use this for loose items grouped into packs — e.g. 50 loose wings split into 6-packs prints ⌈50 ÷ 6⌉ = 9 labels.",
+                      },
+                    ] as const).map(({ value, label, desc }) => (
+                      <label
+                        key={value}
+                        className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                          watch("labelPolicy") === value
+                            ? "border-primary bg-primary/5 dark:bg-primary/10"
+                            : "border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"
+                        }`}
                       >
-                        <option value="per_unit">Per unit (1 label per qty)</option>
-                        <option value="combined">Combined (1 label total)</option>
-                        <option value="per_box">Per box of N</option>
-                      </select>
-                    </div>
-                    {watch("labelPolicy") === "per_box" && (
-                      <div className="w-full sm:w-32">
-                        <label className="block text-xs font-medium mb-1">Box size</label>
+                        <input
+                          type="radio"
+                          value={value}
+                          {...register("labelPolicy")}
+                          className="mt-0.5 accent-primary shrink-0"
+                        />
+                        <div>
+                          <span className="text-sm font-medium">{label}</span>
+                          <span className="text-xs text-muted-foreground block mt-0.5">{desc}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  {watch("labelPolicy") === "per_box" && (
+                    <div className="space-y-1.5">
+                      <div className="w-full sm:w-52">
+                        <label className="block text-xs font-medium mb-1">Box size (units per pack)</label>
                         <input
                           {...register("labelBoxSize")}
                           type="number"
-                          min="1"
+                          min="2"
                           step="1"
                           placeholder="e.g. 6"
                           className="w-full px-3 py-2 border rounded-xl text-sm"
                         />
                       </div>
-                    )}
-                  </div>
+                      <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 rounded-lg px-3 py-2">
+                        <strong>Tip:</strong> Use <em>Per box</em> only for loose items packed into containers. For pre-packaged single-unit products like a "3 Wing Box", choose <strong>Per unit</strong> instead — that item is already one package.
+                      </p>
+                    </div>
+                  )}
+
+                  <LabelCountPreview
+                    policy={watch("labelPolicy")}
+                    boxSize={watch("labelBoxSize")}
+                  />
                 </div>
 
                 <div className="space-y-3 p-4 bg-orange-50 dark:bg-orange-950/30 rounded-xl border border-orange-200 dark:border-orange-800/50">

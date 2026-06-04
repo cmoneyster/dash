@@ -13,7 +13,7 @@ import type {
   PlateLabelPayload,
   OrderLine,
 } from "./printRenderer";
-import { expandAllItemLabels, type LabelLineInput, type LabelPolicy } from "./labelExpand";
+import { expandItemLabels, expandAllItemLabels, type LabelLineInput, type LabelPolicy } from "./labelExpand";
 
 type EventOrderRow = typeof eventOrdersTable.$inferSelect;
 
@@ -207,6 +207,21 @@ export async function fanoutPrintForEventOrder(args: {
         })
         .filter((l) => l.quantity > 0);
 
+      for (const line of linesForLabels) {
+        const lineExpanded = expandItemLabels(line).length;
+        logger.info(
+          {
+            orderId: order.id,
+            printerId: printer.id,
+            itemId: line.itemId,
+            policy: line.labelPolicy,
+            boxSize: line.labelBoxSize,
+            qty: line.quantity,
+            expanded: lineExpanded,
+          },
+          "[print-fanout] item-label expansion"
+        );
+      }
       const expanded = expandAllItemLabels(linesForLabels);
       for (const lbl of expanded) {
         const payload: ItemLabelPayload = {
