@@ -1761,12 +1761,12 @@ function PaymentModal({
   const change = Number.isFinite(cashNum) ? Math.round((cashNum - total) * 100) / 100 : 0;
   const cashOk = Number.isFinite(cashNum) && cashNum >= total;
 
-  async function confirm(method: PaymentMethod) {
+  async function confirm(method: PaymentMethod, overrideCashReceived?: number) {
     setSubmitting(true);
     setError("");
     try {
       const body: Record<string, unknown> = { method, statusUrlBase: window.location.origin + BASE };
-      if (method === "cash") body.cashReceived = cashNum;
+      if (method === "cash") body.cashReceived = overrideCashReceived ?? cashNum;
       const res = await fetch(`${BASE}/api/event-taker/orders/${order.id}/payment`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
@@ -1951,12 +1951,19 @@ function PaymentModal({
             </button>
             <div className="grid gap-2.5 mt-4">
               <button
-                onClick={() => { setStep("cash"); setCashStr(total.toFixed(2)); setError(""); }}
-                className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors"
+                onClick={() => {
+                  if (total === 0) {
+                    confirm("cash", 0);
+                  } else {
+                    setStep("cash"); setCashStr(total.toFixed(2)); setError("");
+                  }
+                }}
+                disabled={submitting}
+                className="flex items-center gap-3 px-4 py-4 border border-border rounded-2xl hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors disabled:opacity-50"
               >
-                <DollarSign className="w-6 h-6 text-emerald-600" />
+                {submitting ? <Loader2 className="w-6 h-6 text-emerald-600 animate-spin" /> : <DollarSign className="w-6 h-6 text-emerald-600" />}
                 <span className="font-bold text-lg">Cash</span>
-                <span className="ml-auto text-xs text-muted-foreground">Calculate change</span>
+                <span className="ml-auto text-xs text-muted-foreground">{total === 0 ? "Complete now" : "Calculate change"}</span>
               </button>
               <button
                 onClick={() => {
@@ -2083,20 +2090,13 @@ function PaymentModal({
             </div>
             <div>
               <label className="block text-sm font-semibold mb-1.5">Cash received</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg text-muted-foreground">$</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  inputMode="decimal"
-                  value={cashStr}
-                  onChange={e => setCashStr(e.target.value)}
-                  autoFocus
-                  className="w-full pl-8 pr-4 py-3 text-2xl font-bold border border-border rounded-xl bg-background focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                />
+              {/* Amount display */}
+              <div className="flex items-center gap-1 px-4 py-3 border border-border rounded-xl bg-background mb-3 min-h-[3.5rem]">
+                <span className="text-2xl font-bold text-muted-foreground">$</span>
+                <span className="text-2xl font-bold flex-1 tabular-nums">{cashStr || "0"}</span>
               </div>
-              <div className="flex flex-wrap gap-2 mt-2">
+              {/* Quick-cash presets */}
+              <div className="flex flex-wrap gap-2 mb-3">
                 {quickCash.map(v => (
                   <button
                     key={v}
@@ -2105,6 +2105,32 @@ function PaymentModal({
                     className="px-3 py-1.5 text-sm font-semibold border border-border rounded-lg hover:bg-secondary"
                   >
                     ${v.toFixed(2)}
+                  </button>
+                ))}
+              </div>
+              {/* Custom numpad */}
+              <div className="grid grid-cols-3 gap-2">
+                {(["1","2","3","4","5","6","7","8","9",".","0","⌫"] as const).map(key => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      if (key === "⌫") {
+                        setCashStr(s => s.slice(0, -1));
+                      } else if (key === ".") {
+                        setCashStr(s => (s.includes(".") ? s : s + "."));
+                      } else {
+                        setCashStr(s => {
+                          const dotIdx = s.indexOf(".");
+                          if (dotIdx !== -1 && s.length - dotIdx > 2) return s;
+                          if (s === "0") return key;
+                          return s + key;
+                        });
+                      }
+                    }}
+                    className="py-4 text-xl font-bold border border-border rounded-xl hover:bg-secondary active:scale-95 transition-all select-none"
+                  >
+                    {key}
                   </button>
                 ))}
               </div>
