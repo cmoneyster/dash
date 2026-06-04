@@ -154,7 +154,7 @@ export default function Menu() {
       )}
       <div className="bg-secondary/30 py-16 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="font-display font-bold text-5xl mb-4">Curated Offerings</h1>
+          <h1 className="font-display font-bold text-3xl sm:text-5xl mb-4">Curated Offerings</h1>
           <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
             Discover our seasonal selections, crafted with passion and precision. Build your perfect event menu or add favorites to your wishlist.
           </p>

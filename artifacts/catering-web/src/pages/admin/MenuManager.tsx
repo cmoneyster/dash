@@ -510,7 +510,7 @@ export default function MenuManager() {
     <AdminLayout>
       <div className="flex justify-between items-end mb-8">
         <div>
-          <h1 className="font-display font-bold text-4xl mb-2">Menu Manager</h1>
+          <h1 className="font-display font-bold text-2xl sm:text-4xl mb-2">Menu Manager</h1>
           <p className="text-muted-foreground">Add, edit, or remove items from your catering menu.</p>
         </div>
         <div className="flex gap-2">

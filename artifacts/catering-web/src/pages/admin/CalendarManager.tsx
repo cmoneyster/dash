@@ -286,7 +286,7 @@ export default function CalendarManager() {
   return (
     <AdminLayout>
       <div className="mb-8">
-        <h1 className="font-display font-bold text-4xl mb-2">Availability Calendar</h1>
+        <h1 className="font-display font-bold text-2xl sm:text-4xl mb-2">Availability Calendar</h1>
         <p className="text-muted-foreground">Click a date to manage full-day blocks or time-range restrictions.</p>
       </div>
 

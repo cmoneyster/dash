@@ -254,7 +254,7 @@ export default function ImageLibrary() {
     <AdminLayout>
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       <div ref={el => { if (el && !initialized) handleLoad(); }} className="mb-8">
-        <h1 className="font-display font-bold text-4xl mb-2">Image Library</h1>
+        <h1 className="font-display font-bold text-2xl sm:text-4xl mb-2">Image Library</h1>
         <p className="text-muted-foreground">Upload photos for your menu items. All images are auto-cropped to 4:3 (800×600).</p>
       </div>
 

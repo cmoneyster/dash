@@ -13,7 +13,7 @@ export default function Confirmation() {
             <CheckCircle className="w-12 h-12 text-primary" />
           </div>
           
-          <h1 className="font-display font-bold text-4xl mb-4">Request Received!</h1>
+          <h1 className="font-display font-bold text-2xl sm:text-4xl mb-4">Request Received!</h1>
           <p className="text-muted-foreground text-lg mb-8">
             Thank you for choosing dash by Hollywood East Cafe. Our event planning team will review your inquiry and reach out within 24 hours to discuss the details.
           </p>

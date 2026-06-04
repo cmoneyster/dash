@@ -410,7 +410,7 @@ export default function Cart() {
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
         <div className="flex items-center justify-between gap-4 mb-10">
-          <h1 className="font-display font-bold text-4xl">Review Your Order</h1>
+          <h1 className="font-display font-bold text-2xl sm:text-4xl">Review Your Order</h1>
           {!isEmpty && !isLoading && (
             clearConfirm ? (
               <div className="flex items-center gap-2 shrink-0">

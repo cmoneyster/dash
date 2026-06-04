@@ -261,7 +261,7 @@ export default function SalesReports() {
     <AdminLayout>
       <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display font-bold text-4xl mb-2 flex items-center gap-3">
+          <h1 className="font-display font-bold text-2xl sm:text-4xl mb-2 flex items-center gap-3">
             <BarChart3 className="w-8 h-8 text-indigo-600" />
             Sales Reports
           </h1>

@@ -146,7 +146,7 @@ export default function UpcomingCaterings() {
   return (
     <AdminLayout>
       <div className="mb-8">
-        <h1 className="font-display font-bold text-4xl mb-2">Upcoming Caterings</h1>
+        <h1 className="font-display font-bold text-2xl sm:text-4xl mb-2">Upcoming Caterings</h1>
         <p className="text-muted-foreground">Confirmed catering bookings. Hover a date for details.</p>
       </div>
 

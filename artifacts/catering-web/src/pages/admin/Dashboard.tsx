@@ -37,7 +37,7 @@ export default function AdminDashboard() {
   return (
     <AdminLayout>
       <div className="mb-10">
-        <h1 className="font-display font-bold text-4xl mb-2">Overview</h1>
+        <h1 className="font-display font-bold text-2xl sm:text-4xl mb-2">Overview</h1>
         <p className="text-muted-foreground">Welcome back. Here's what's happening today.</p>
       </div>
 

@@ -26,7 +26,7 @@ export default function OrderManager() {
   return (
     <AdminLayout>
       <div className="mb-8">
-        <h1 className="font-display font-bold text-4xl mb-2">Orders</h1>
+        <h1 className="font-display font-bold text-2xl sm:text-4xl mb-2">Orders</h1>
         <p className="text-muted-foreground">Manage incoming event orders and update their status.</p>
       </div>
 

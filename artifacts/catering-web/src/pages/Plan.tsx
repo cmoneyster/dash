@@ -1031,7 +1031,7 @@ export default function Plan() {
             <Heart className="w-6 h-6 fill-current" />
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="font-display font-bold text-4xl leading-tight truncate">
+            <h1 className="font-display font-bold text-2xl sm:text-4xl leading-tight truncate">
               {planName || "Your Event Plan"}
             </h1>
             {planName && (

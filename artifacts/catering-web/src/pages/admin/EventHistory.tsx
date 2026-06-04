@@ -495,7 +495,7 @@ export default function EventHistory() {
 
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-display font-bold text-4xl mb-2">Event Log</h1>
+          <h1 className="font-display font-bold text-2xl sm:text-4xl mb-2">Event Log</h1>
           <p className="text-muted-foreground">Track orders by event session. Create a session before each event to keep records organized.</p>
         </div>
         <button

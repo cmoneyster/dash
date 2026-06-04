@@ -114,7 +114,7 @@ export default function IdleActivity() {
     <AdminLayout>
       <div className="mb-8 flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-display font-bold text-4xl mb-2">Idle Activity</h1>
+          <h1 className="font-display font-bold text-2xl sm:text-4xl mb-2">Idle Activity</h1>
           <p className="text-muted-foreground max-w-2xl">
             Background traffic counters for the API server. Useful for confirming the
             SIM gateway and Instagram pollers are still cycling and for spotting
