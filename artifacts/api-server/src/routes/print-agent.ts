@@ -24,7 +24,12 @@ const router = Router();
  */
 router.get("/print-agent/queued", async (req, res) => {
   try {
-    const jobs = await getQueuedJobsForLanAgent();
+    const printerIdParam = req.query.printerId;
+    const printerId =
+      printerIdParam != null && !isNaN(parseInt(String(printerIdParam), 10))
+        ? parseInt(String(printerIdParam), 10)
+        : undefined;
+    const jobs = await getQueuedJobsForLanAgent(printerId);
     res.json(
       jobs.map((j) => ({
         id: j.id,

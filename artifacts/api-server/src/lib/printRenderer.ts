@@ -485,7 +485,7 @@ function renderItemLabelSection(
 
 function renderItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
-  t.left().line();
+  t.bold(false).sizeN(1).left().line();
   const order = resolveOrder(tmpl, "item_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
@@ -545,7 +545,7 @@ function renderPlateLabelSection(
 
 function renderPlateLabel(p: PlateLabelPayload, tmpl?: PrintTemplate): Buffer {
   const t = new TicketBuilder();
-  t.left().line();
+  t.bold(false).sizeN(1).left().line();
   const order = resolveOrder(tmpl, "plate_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
@@ -618,6 +618,7 @@ class WebPrntBuilder {
   }
   center() { this.cmds.push(`<Alignment Method="Center"/>`); return this; }
   left()   { this.cmds.push(`<Alignment Method="Left"/>`);   return this; }
+  initialize() { this.cmds.unshift(`<Initialize/>`); return this; }
   div(c = "-") { return this.line(divider(c)); }
   image(src: string, width = 200) {
     this.cmds.push(`<Image Source="${xmlEsc(src)}" Width="${width}"/>`);
@@ -861,6 +862,7 @@ function webItemLabelSection(
 
 function webPrntItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
+  b.initialize();
   const order = resolveOrder(tmpl, "item_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
@@ -920,6 +922,7 @@ function webPlateLabelSection(
 
 function webPrntPlateLabel(p: PlateLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
+  b.initialize();
   const order = resolveOrder(tmpl, "plate_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
