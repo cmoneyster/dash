@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import sharp from "sharp";
 import { db } from "@workspace/db";
-import { eventSettingsTable, eventOrdersTable, cateringInquiriesTable } from "@workspace/db/schema";
+import { eventSettingsTable, eventOrdersTable, cateringInquiriesTable, eventSessionsTable } from "@workspace/db/schema";
 import { eq, and, gte, lt, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { isEjoinConfigured } from "../lib/sms-ejoin";
@@ -689,16 +689,17 @@ router.get("/admin/sales-reports", async (req, res) => {
     const scope = (["events", "catering", "all"] as const).includes(rawScope as "events" | "catering" | "all")
       ? rawScope as "events" | "catering" | "all"
       : "events";
+    const rawSessionId = typeof req.query.sessionId === "string" ? req.query.sessionId : null;
+    const sessionId = rawSessionId ? parseInt(rawSessionId) : null;
 
     const fromStart = new Date(from); fromStart.setHours(0, 0, 0, 0);
     const toEnd = new Date(to); toEnd.setHours(0, 0, 0, 0); toEnd.setDate(toEnd.getDate() + 1);
 
     let eventOrders: typeof eventOrdersTable.$inferSelect[] = [];
     if (scope !== "catering") {
-      const conditions = [
-        gte(eventOrdersTable.createdAt, fromStart),
-        lt(eventOrdersTable.createdAt, toEnd),
-      ];
+      const conditions = sessionId
+        ? [eq(eventOrdersTable.eventSessionId, sessionId)]
+        : [gte(eventOrdersTable.createdAt, fromStart), lt(eventOrdersTable.createdAt, toEnd)];
       if (source === "guest" || source === "staff") {
         conditions.push(eq(eventOrdersTable.orderSource, source));
       }
@@ -740,6 +741,7 @@ router.get("/admin/sales-reports", async (req, res) => {
       source,
       scope,
       status: statusFilter,
+      sessionId: sessionId ?? null,
       totals: unifiedTotals,
       bySource: {
         guest: buildReport(guestOrders),
@@ -774,16 +776,17 @@ router.get("/admin/sales-reports.csv", async (req, res) => {
     const scope = (["events", "catering", "all"] as const).includes(rawScope as "events" | "catering" | "all")
       ? rawScope as "events" | "catering" | "all"
       : "events";
+    const rawSessionIdCsv = typeof req.query.sessionId === "string" ? req.query.sessionId : null;
+    const sessionIdCsv = rawSessionIdCsv ? parseInt(rawSessionIdCsv) : null;
 
     const fromStart = new Date(from); fromStart.setHours(0, 0, 0, 0);
     const toEnd = new Date(to); toEnd.setHours(0, 0, 0, 0); toEnd.setDate(toEnd.getDate() + 1);
 
     let orders: typeof eventOrdersTable.$inferSelect[] = [];
     if (scope !== "catering") {
-      const conditions = [
-        gte(eventOrdersTable.createdAt, fromStart),
-        lt(eventOrdersTable.createdAt, toEnd),
-      ];
+      const conditions = sessionIdCsv
+        ? [eq(eventOrdersTable.eventSessionId, sessionIdCsv)]
+        : [gte(eventOrdersTable.createdAt, fromStart), lt(eventOrdersTable.createdAt, toEnd)];
       if (source === "guest" || source === "staff") {
         conditions.push(eq(eventOrdersTable.orderSource, source));
       }

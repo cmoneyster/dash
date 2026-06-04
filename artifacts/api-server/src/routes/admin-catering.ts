@@ -7,6 +7,8 @@ import {
   planItemsTable,
   menuItemsTable,
   eventSettingsTable,
+  eventOrdersTable,
+  eventSessionsTable,
 } from "@workspace/db/schema";
 import type {
   CateringInquiry,
@@ -313,6 +315,111 @@ router.get("/admin/catering/:id", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "Error fetching catering inquiry");
     res.status(500).json({ error: "Failed to fetch inquiry" });
+  }
+});
+
+// ── Create from event orders (post-event billing) ────────────────────────────
+// Aggregates selected event orders into a new catering inquiry so the owner
+// can send a Square invoice for post-event billing. Items are grouped by
+// (name × order-quantity): "3 Chicken Wings" appearing in 4 orders becomes
+// one line — name "3 Chicken Wings", quantity 4, unitPrice from the order.
+// Does NOT fire the SMS new-inquiry alert (admin-created, no customer alert).
+
+router.post("/admin/catering/from-event-orders", async (req, res): Promise<void> => {
+  try {
+    const { orderIds, clientName, clientEmail, clientPhone, eventDate, notes } = req.body as {
+      orderIds: number[];
+      clientName: string;
+      clientEmail?: string;
+      clientPhone?: string;
+      eventDate?: string;
+      notes?: string;
+    };
+
+    if (!clientName?.trim()) {
+      res.status(400).json({ error: "Client name is required" });
+      return;
+    }
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      res.status(400).json({ error: "At least one order must be selected" });
+      return;
+    }
+
+    const orders = await db
+      .select()
+      .from(eventOrdersTable)
+      .where(inArray(eventOrdersTable.id, orderIds));
+
+    if (orders.length === 0) {
+      res.status(400).json({ error: "No valid orders found" });
+      return;
+    }
+
+    // Group items by (item.name × item.quantity) — the per-order portion size
+    // becomes the line item name, count of occurrences becomes the quantity.
+    const agg = new Map<string, { displayName: string; count: number; unitPrice: number }>();
+    for (const order of orders) {
+      const items = (order.items ?? []) as Array<{ name: string; quantity: number; price: number }>;
+      for (const item of items) {
+        const key = `${item.quantity}\x00${item.name}`;
+        const displayName = `${item.quantity} ${item.name}`;
+        const existing = agg.get(key);
+        if (existing) {
+          existing.count++;
+        } else {
+          agg.set(key, { displayName, count: 1, unitPrice: Number(item.price) || 0 });
+        }
+      }
+    }
+
+    const lineItems: QuoteLineItem[] = [...agg.values()].map(entry => ({
+      id: randomUUID(),
+      menuItemId: null,
+      name: entry.displayName,
+      quantity: entry.count,
+      unitPrice: entry.unitPrice,
+      priceMode: "manual" as const,
+    }));
+
+    // Build provenance string for menuNotes.
+    const sessionIds = [...new Set(orders.map(o => o.eventSessionId).filter(Boolean))] as number[];
+    let provenanceLine = "Generated from event orders";
+    if (sessionIds.length === 1) {
+      const [session] = await db
+        .select()
+        .from(eventSessionsTable)
+        .where(eq(eventSessionsTable.id, sessionIds[0]));
+      if (session) provenanceLine = `Generated from session: ${session.name}`;
+    }
+    const orderIdList = orders.map(o => `#${o.id}`).join(", ");
+    const provenance = `${provenanceLine} · Orders ${orderIdList}`;
+    const combinedNotes = notes?.trim()
+      ? `${provenance}\n\n${notes.trim()}`
+      : provenance;
+
+    const insertVals: Record<string, unknown> = {
+      clientName: clientName.trim(),
+      clientEmail: clientEmail?.trim() || null,
+      clientPhone: clientPhone?.trim() || null,
+      eventDate: eventDate?.trim() || null,
+      menuNotes: combinedNotes,
+      status: "inquiry",
+      source: "event_session",
+      lineItems,
+      fees: [],
+      discounts: [],
+    };
+    applyTotalsToUpdates(insertVals);
+
+    const [inquiry] = await db
+      .insert(cateringInquiriesTable)
+      .values(insertVals as typeof cateringInquiriesTable.$inferInsert)
+      .returning();
+
+    res.status(201).json(inquiry);
+  } catch (err) {
+    req.log.error({ err }, "Error creating post-event catering inquiry");
+    res.status(500).json({ error: "Failed to create inquiry" });
   }
 });
 

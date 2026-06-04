@@ -4,7 +4,7 @@ import { getAdminToken } from "@/components/AdminGuard";
 import {
   Loader2, Download, BarChart3, Users, ShoppingBag, DollarSign,
   Receipt, Package, ChevronDown, ChevronRight, Wallet, Timer,
-  Ban, AlertCircle,
+  Ban, AlertCircle, FileText, X, CheckSquare,
 } from "lucide-react";
 import type {
   SalesReport,
@@ -23,6 +23,8 @@ import type {
 } from "@workspace/api-client-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+type SessionSummary = { id: number; name: string; date: string | null; status: string; orderCount: number; totalRevenue: number; };
 
 type SourceFilter = "all" | "guest" | "staff";
 type ScopeFilter = SalesReportScope;
@@ -107,6 +109,17 @@ export default function SalesReports() {
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  // Session filter
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+
+  // Post-event inquiry creation
+  const [checkedOrderIds, setCheckedOrderIds] = useState<Set<number>>(new Set());
+  const [showInquiryModal, setShowInquiryModal] = useState(false);
+  const [inquiryForm, setInquiryForm] = useState({ clientName: "", clientEmail: "", clientPhone: "", eventDate: "", notes: "" });
+  const [inquiryLoading, setInquiryLoading] = useState(false);
+  const [inquiryError, setInquiryError] = useState("");
+
   const token = getAdminToken();
 
   function applyPreset(p: Preset) {
@@ -115,11 +128,21 @@ export default function SalesReports() {
     if (r) { setFrom(r.from); setTo(r.to); }
   }
 
+  // Load event sessions for session filter dropdown
+  useEffect(() => {
+    fetch(`${BASE}/api/admin/event-sessions`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => setSessions(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [token]);
+
   async function loadReport() {
     setLoading(true);
     setError("");
+    setCheckedOrderIds(new Set());
     try {
       const params = new URLSearchParams({ from, to, source, status, scope });
+      if (selectedSessionId != null) params.set("sessionId", String(selectedSessionId));
       const res = await fetch(`${BASE}/api/admin/sales-reports?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -132,10 +155,11 @@ export default function SalesReports() {
     }
   }
 
-  useEffect(() => { loadReport(); /* eslint-disable-next-line */ }, [from, to, source, status, scope]);
+  useEffect(() => { loadReport(); /* eslint-disable-next-line */ }, [from, to, source, status, scope, selectedSessionId]);
 
   async function downloadCsv(type: "orders" | "items" | "voids") {
     const params = new URLSearchParams({ from, to, source, status, type, scope });
+    if (selectedSessionId != null) params.set("sessionId", String(selectedSessionId));
     const res = await fetch(`${BASE}/api/admin/sales-reports.csv?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -157,6 +181,45 @@ export default function SalesReports() {
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
+  }
+
+  function toggleChecked(id: number) {
+    setCheckedOrderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleCreateInquiry(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inquiryForm.clientName.trim()) { setInquiryError("Client name is required"); return; }
+    setInquiryLoading(true);
+    setInquiryError("");
+    try {
+      const res = await fetch(`${BASE}/api/admin/catering/from-event-orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          orderIds: [...checkedOrderIds],
+          clientName: inquiryForm.clientName.trim(),
+          clientEmail: inquiryForm.clientEmail.trim() || undefined,
+          clientPhone: inquiryForm.clientPhone.trim() || undefined,
+          eventDate: inquiryForm.eventDate || undefined,
+          notes: inquiryForm.notes.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? "Request failed");
+      }
+      const inquiry = await res.json() as { id: number };
+      window.location.href = `${BASE}/admin/catering?inquiry=${inquiry.id}`;
+    } catch (err) {
+      setInquiryError(err instanceof Error ? err.message : "Failed to create inquiry");
+    } finally {
+      setInquiryLoading(false);
+    }
   }
 
   // Combined order list comes from the backend byType.allOrders (sorted by createdAt desc).
@@ -192,8 +255,34 @@ export default function SalesReports() {
       </div>
 
       <div className="bg-card border border-border rounded-2xl p-5 mb-6 shadow-sm space-y-3">
-        {/* Date presets */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Session filter — when a session is selected it overrides the date range */}
+        {sessions.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-1">Session:</span>
+            <button
+              onClick={() => setSelectedSessionId(null)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                selectedSessionId == null ? "bg-indigo-600 text-white" : "bg-secondary text-foreground hover:bg-secondary/70"
+              }`}
+            >All Dates</button>
+            {sessions.map(s => (
+              <button
+                key={s.id}
+                onClick={() => setSelectedSessionId(s.id === selectedSessionId ? null : s.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  selectedSessionId === s.id ? "bg-indigo-600 text-white" : "bg-secondary text-foreground hover:bg-secondary/70"
+                }`}
+              >
+                {s.name}
+                {s.date && <span className="ml-1 opacity-70">· {s.date}</span>}
+                <span className="ml-1 opacity-60">({s.orderCount})</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Date presets — dimmed when a session is selected (session overrides date range on backend) */}
+        <div className={`flex flex-wrap items-center gap-2 ${selectedSessionId != null ? "opacity-40 pointer-events-none" : ""}`}>
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-1">Range:</span>
           {([
             ["today", "Today"],
@@ -220,11 +309,11 @@ export default function SalesReports() {
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
-          <div>
+          <div className={selectedSessionId != null ? "opacity-40 pointer-events-none" : ""}>
             <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">From</label>
             <input type="date" value={from} onChange={e => { setFrom(e.target.value); setPreset("custom"); }} className="px-3 py-2 border border-border rounded-lg bg-background" />
           </div>
-          <div>
+          <div className={selectedSessionId != null ? "opacity-40 pointer-events-none" : ""}>
             <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">To</label>
             <input type="date" value={to} onChange={e => { setTo(e.target.value); setPreset("custom"); }} className="px-3 py-2 border border-border rounded-lg bg-background" />
           </div>
@@ -351,9 +440,19 @@ export default function SalesReports() {
             <div className="px-5 py-4 border-b border-border bg-secondary/30 flex items-center justify-between">
               <div>
                 <h2 className="font-display font-bold text-lg">Orders</h2>
-                <p className="text-xs text-muted-foreground">Click a row to expand line items.</p>
+                <p className="text-xs text-muted-foreground">
+                  Click a row to expand line items.
+                  {scope !== "catering" && " Check event orders to create a post-event billing inquiry."}
+                </p>
               </div>
-              <span className="text-xs text-muted-foreground">{allOrders.length} orders</span>
+              <div className="flex items-center gap-3">
+                {checkedOrderIds.size > 0 && (
+                  <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                    {checkedOrderIds.size} selected
+                  </span>
+                )}
+                <span className="text-xs text-muted-foreground">{allOrders.length} orders</span>
+              </div>
             </div>
             {allOrders.length === 0 ? (
               <div className="px-5 py-12 text-center text-muted-foreground text-sm">No orders in this range.</div>
@@ -362,6 +461,7 @@ export default function SalesReports() {
                 <table className="w-full text-sm">
                   <thead className="border-b border-border bg-secondary/20">
                     <tr className="text-left text-xs text-muted-foreground uppercase tracking-wider">
+                      {scope !== "catering" && <th className="px-3 py-2.5 w-10"></th>}
                       <th className="px-3 py-2.5 w-8"></th>
                       <th className="px-3 py-2.5 font-semibold">Order #</th>
                       <th className="px-3 py-2.5 font-semibold">When</th>
@@ -380,8 +480,11 @@ export default function SalesReports() {
                       const rowKey = isCatering ? `c-${o.id}` : `e-${o.id}`;
                       const isOpen = expanded.has(rowKey);
                       const isVoided = !isCatering && (o as ReportOrder).voided;
+                      const isChecked = !isCatering && checkedOrderIds.has(o.id);
                       const rowClass = isVoided
                         ? "border-b border-border/50 cursor-pointer bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-50/60 dark:hover:bg-rose-950/30 text-muted-foreground"
+                        : isChecked
+                        ? "border-b border-border/50 cursor-pointer bg-indigo-50/50 dark:bg-indigo-950/20"
                         : "border-b border-border/50 hover:bg-secondary/30 cursor-pointer";
                       return (
                         <Fragment key={rowKey}>
@@ -390,6 +493,21 @@ export default function SalesReports() {
                             onClick={() => toggleExpanded(rowKey)}
                             data-testid={isVoided ? `voided-row-${o.id}` : undefined}
                           >
+                            {scope !== "catering" && (
+                              <td
+                                className="px-3 py-2.5 text-muted-foreground"
+                                onClick={e => { e.stopPropagation(); if (!isCatering) toggleChecked(o.id); }}
+                              >
+                                {!isCatering && (
+                                  <input
+                                    type="checkbox"
+                                    readOnly
+                                    checked={isChecked}
+                                    className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                                  />
+                                )}
+                              </td>
+                            )}
                             <td className="px-3 py-2.5 text-muted-foreground">
                               {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                             </td>
@@ -453,7 +571,7 @@ export default function SalesReports() {
                           </tr>
                           {isOpen && (
                             <tr key={`${rowKey}-d`} className="border-b border-border/50 bg-secondary/20">
-                              <td colSpan={10} className="px-12 py-3">
+                              <td colSpan={scope !== "catering" ? 11 : 10} className="px-12 py-3">
                                 {!isCatering && ((o as ReportOrder).readyAt || (o as ReportOrder).pickedUpAt) && (
                                   <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
                                     {(o as ReportOrder).readyAt && (
@@ -569,6 +687,133 @@ export default function SalesReports() {
 
       {!report && loading && (
         <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      )}
+
+      {/* Sticky action bar — shown when event orders are checked */}
+      {checkedOrderIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-indigo-600 text-white shadow-2xl">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 opacity-80" />
+              <span className="font-semibold">{checkedOrderIds.size} order{checkedOrderIds.size !== 1 ? "s" : ""} selected</span>
+              <span className="text-indigo-200 text-sm hidden sm:inline">— create a post-event billing inquiry from these orders</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCheckedOrderIds(new Set())}
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-indigo-500/60 hover:bg-indigo-500/80 transition"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => { setInquiryError(""); setShowInquiryModal(true); }}
+                className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-white text-indigo-700 hover:bg-indigo-50 transition flex items-center gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                Create Post-Event Inquiry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create post-event inquiry modal */}
+      {showInquiryModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setShowInquiryModal(false)}>
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="font-display font-bold text-xl">Create Post-Event Inquiry</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {checkedOrderIds.size} order{checkedOrderIds.size !== 1 ? "s" : ""} · items will be grouped into inquiry line items
+                </p>
+              </div>
+              <button onClick={() => setShowInquiryModal(false)} className="p-2 rounded-lg hover:bg-secondary/60 transition">
+                <X className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateInquiry} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Client Name <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  value={inquiryForm.clientName}
+                  onChange={e => setInquiryForm(f => ({ ...f, clientName: e.target.value }))}
+                  placeholder="e.g. Hollywood Venue"
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={inquiryForm.clientEmail}
+                    onChange={e => setInquiryForm(f => ({ ...f, clientEmail: e.target.value }))}
+                    placeholder="client@example.com"
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    value={inquiryForm.clientPhone}
+                    onChange={e => setInquiryForm(f => ({ ...f, clientPhone: e.target.value }))}
+                    placeholder="(555) 000-0000"
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Event Date</label>
+                <input
+                  type="date"
+                  value={inquiryForm.eventDate}
+                  onChange={e => setInquiryForm(f => ({ ...f, eventDate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Notes</label>
+                <textarea
+                  rows={3}
+                  value={inquiryForm.notes}
+                  onChange={e => setInquiryForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Optional notes for the client or internal reference…"
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm resize-none"
+                />
+              </div>
+
+              {inquiryError && (
+                <p className="text-sm text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {inquiryError}
+                </p>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowInquiryModal(false)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold bg-secondary hover:bg-secondary/70 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={inquiryLoading}
+                  className="px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 transition"
+                >
+                  {inquiryLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                  Create Inquiry
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </AdminLayout>
   );
