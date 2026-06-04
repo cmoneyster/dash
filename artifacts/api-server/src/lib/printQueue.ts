@@ -145,7 +145,33 @@ export async function getQueuedJobsForLanAgent(printerId?: number): Promise<(Pri
       AND p.lan_ip IS NOT NULL
       ${printerFilter}
     ORDER BY pj.created_at ASC
-    LIMIT 10
+    LIMIT 50
+  `);
+  const rows = (result as unknown as { rows?: Row[] }).rows ?? (result as unknown as Row[]);
+  return Array.isArray(rows) ? rows : [];
+}
+
+/**
+ * Return the distinct set of LAN printers that currently have at least one
+ * queued job. No LIMIT is applied — this is the authoritative discovery
+ * query used by the browser print agent so that no printer is ever skipped
+ * when the queue depth exceeds a fixed cap.
+ *
+ * Returns one row per printer (the oldest queued job's metadata), ordered
+ * by the earliest queued job so printers with the most urgent work come first.
+ */
+export async function getActiveLanPrinterIds(): Promise<{ printerId: number; lanIp: string }[]> {
+  type Row = { printerId: number; lanIp: string };
+  const result = await db.execute<Row>(sql`
+    SELECT DISTINCT ON (pj.printer_id)
+      pj.printer_id AS "printerId",
+      p.lan_ip      AS "lanIp"
+    FROM print_jobs pj
+    JOIN printers p ON p.id = pj.printer_id
+    WHERE pj.status = 'queued'
+      AND p.enabled = true
+      AND p.lan_ip IS NOT NULL
+    ORDER BY pj.printer_id, pj.created_at ASC
   `);
   const rows = (result as unknown as { rows?: Row[] }).rows ?? (result as unknown as Row[]);
   return Array.isArray(rows) ? rows : [];

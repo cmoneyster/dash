@@ -45,6 +45,11 @@ type QueuedJob = {
   lanIp: string;
 };
 
+type ActivePrinter = {
+  printerId: number;
+  lanIp: string;
+};
+
 type ClaimResponse = {
   webPrntXml: string;
   lanIp: string;
@@ -159,35 +164,28 @@ export function usePrintAgent(options: { enabled?: boolean } = {}) {
 
     setState((s) => ({ ...s, status: "polling" }));
 
-    // Discover which printers have queued jobs without fetching all jobs at once.
-    // Using the unfiltered endpoint returns one entry per job so we can group by
-    // printerId — the server already caps the result at 10 rows.
-    let jobs: QueuedJob[] = [];
+    // Discover which printers have queued jobs. The active-printers endpoint
+    // returns one entry per distinct printer (no row cap) so no printer is ever
+    // silently skipped when the queue depth is high.
+    let activePrinters: ActivePrinter[] = [];
     try {
-      const res = await fetch(`${BASE}/api/print-agent/queued`, {
+      const res = await fetch(`${BASE}/api/print-agent/active-printers`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(`queue poll ${res.status}`);
-      jobs = await res.json();
+      if (!res.ok) throw new Error(`active-printers poll ${res.status}`);
+      activePrinters = await res.json();
     } catch {
       if (mountedRef.current) setState((s) => ({ ...s, status: "idle" }));
       return;
     }
 
-    if (jobs.length === 0) {
+    if (activePrinters.length === 0) {
       if (mountedRef.current) setState((s) => ({ ...s, status: "idle" }));
       return;
     }
 
-    // Collect unique printer IDs in the order they appear (oldest job first).
-    const seenPrinters = new Set<number>();
-    const printerIds: number[] = [];
-    for (const job of jobs) {
-      if (!seenPrinters.has(job.printerId)) {
-        seenPrinters.add(job.printerId);
-        printerIds.push(job.printerId);
-      }
-    }
+    // Collect printer IDs in discovery order (server returns oldest-job-first).
+    const printerIds = activePrinters.map((p) => p.printerId);
 
     // Process each printer serially: drain all its queued jobs before moving
     // to the next printer. This prevents two tabs from sending overlapping

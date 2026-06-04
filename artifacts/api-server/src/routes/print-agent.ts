@@ -4,6 +4,7 @@ import { printersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import {
   getQueuedJobsForLanAgent,
+  getActiveLanPrinterIds,
   claimJobForAgent,
   markJobPrinted,
   markJobFailed,
@@ -17,10 +18,30 @@ import { heartbeatStore } from "../lib/printAgentHeartbeat";
 const router = Router();
 
 /**
+ * GET /api/print-agent/active-printers
+ *
+ * Returns the distinct set of LAN printers that currently have at least one
+ * queued job. No row cap is applied so the browser agent always discovers
+ * every printer with work regardless of total queue depth.
+ *
+ * Response: Array of { printerId: number; lanIp: string }
+ */
+router.get("/print-agent/active-printers", async (req, res) => {
+  try {
+    const printers = await getActiveLanPrinterIds();
+    res.json(printers);
+  } catch (err) {
+    req.log.error({ err }, "print-agent: failed to fetch active printers");
+    res.status(500).json({ error: "Failed to fetch active printers" });
+  }
+});
+
+/**
  * GET /api/print-agent/queued
  *
  * Returns queued jobs eligible for browser-based WebPRNT delivery.
  * Only lan_browser printers with a LAN IP configured are included.
+ * Requires a `printerId` query param to scope results to one printer.
  */
 router.get("/print-agent/queued", async (req, res) => {
   try {
