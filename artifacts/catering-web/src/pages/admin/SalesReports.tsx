@@ -229,6 +229,21 @@ export default function SalesReports() {
     [report],
   );
 
+  // IDs of all non-catering orders currently in the report — used for Select All.
+  const selectableOrderIds = useMemo(
+    () => allOrders.filter(o => !isCateringOrder(o)).map(o => o.id),
+    [allOrders],
+  );
+  const allSelected = selectableOrderIds.length > 0 && selectableOrderIds.every(id => checkedOrderIds.has(id));
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setCheckedOrderIds(new Set());
+    } else {
+      setCheckedOrderIds(new Set(selectableOrderIds));
+    }
+  }
+
   const [itemSort, setItemSort] = useState<{ col: "name" | "quantity" | "revenue"; dir: "asc" | "desc" }>({ col: "revenue", dir: "desc" });
   // Backend merges items across event+catering in totals.items based on scope.
   const sortedItems = useMemo(() => {
@@ -446,9 +461,23 @@ export default function SalesReports() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
+                {scope !== "catering" && selectableOrderIds.length > 0 && (
+                  <button
+                    onClick={toggleSelectAll}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-secondary hover:bg-secondary/70 transition flex items-center gap-1.5"
+                  >
+                    <input
+                      type="checkbox"
+                      readOnly
+                      checked={allSelected}
+                      className="w-3.5 h-3.5 accent-indigo-600 pointer-events-none"
+                    />
+                    {allSelected ? "Deselect All" : "Select All"}
+                  </button>
+                )}
                 {checkedOrderIds.size > 0 && (
                   <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
-                    {checkedOrderIds.size} selected
+                    {checkedOrderIds.size} of {selectableOrderIds.length} selected
                   </span>
                 )}
                 <span className="text-xs text-muted-foreground">{allOrders.length} orders</span>
