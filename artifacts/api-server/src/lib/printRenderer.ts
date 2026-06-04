@@ -232,6 +232,8 @@ export type ItemLabelPayload = {
   notes?: string | null;
   placedAt: string;
   isFullBox?: boolean;
+  labelIndex?: number;
+  labelTotal?: number;
 };
 
 export type PlateLabelPayload = {
@@ -494,6 +496,9 @@ function renderItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): Buffer {
     if (style.dividerBefore) t.left().div(dchar);
     renderItemLabelSection(t, p, section, style, tmpl);
     if (style.dividerAfter) t.left().div(dchar);
+  }
+  if (p.labelIndex !== undefined && p.labelTotal !== undefined) {
+    t.align("right").bold(true).sizeN(1).line(`BOX ${p.labelIndex} of ${p.labelTotal}`).bold(false).left();
   }
   return t.cut();
 }

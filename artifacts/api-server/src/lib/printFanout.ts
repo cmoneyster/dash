@@ -223,7 +223,8 @@ export async function fanoutPrintForEventOrder(args: {
         );
       }
       const expanded = expandAllItemLabels(linesForLabels);
-      for (const lbl of expanded) {
+      for (let i = 0; i < expanded.length; i++) {
+        const lbl = expanded[i];
         const payload: ItemLabelPayload = {
           type: "item_label",
           orderNumber,
@@ -234,6 +235,8 @@ export async function fanoutPrintForEventOrder(args: {
           modifiers: lbl.modifiers,
           isFullBox: lbl.isFullBox,
           placedAt,
+          labelIndex: i + 1,
+          labelTotal: expanded.length,
         };
         await enqueuePrintJob({
           printerId: printer.id,
@@ -402,7 +405,8 @@ export async function fanoutItemLabelsForEventOrderId(args: {
       .filter((l) => l.quantity > 0);
 
     const expanded = expandAllItemLabels(linesForLabels);
-    for (const lbl of expanded) {
+    for (let i = 0; i < expanded.length; i++) {
+      const lbl = expanded[i];
       const payload: ItemLabelPayload = {
         type: "item_label",
         orderNumber,
@@ -413,6 +417,8 @@ export async function fanoutItemLabelsForEventOrderId(args: {
         modifiers: lbl.modifiers,
         isFullBox: lbl.isFullBox,
         placedAt,
+        labelIndex: i + 1,
+        labelTotal: expanded.length,
       };
       await enqueuePrintJob({
         printerId: printer.id,
