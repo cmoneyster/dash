@@ -28,14 +28,14 @@ export type FanoutSource =
  * its allowed kinds — even if a printer is configured to accept a kind
  * that isn't on this list. Admin/manual paths use `kitchen_send`.
  *
- * Staff Order Taker:    kitchen ticket + customer receipt
+ * Staff Order Taker:    kitchen ticket + customer receipt + item/plate labels
  * Guest Event Ordering: kitchen ticket + item/plate labels
  * Kitchen (manual):     kitchen ticket + item/plate labels
  * Demo:                 nothing (hard-blocked above)
  */
 type JobKind = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label";
 const ALLOWED_KINDS_BY_SOURCE: Record<FanoutSource, ReadonlySet<JobKind>> = {
-  event_taker: new Set<JobKind>(["kitchen_ticket", "customer_receipt"]),
+  event_taker: new Set<JobKind>(["kitchen_ticket", "customer_receipt", "item_label", "plate_label"]),
   event_order: new Set<JobKind>(["kitchen_ticket", "item_label", "plate_label"]),
   kitchen_send: new Set<JobKind>(["kitchen_ticket", "item_label", "plate_label"]),
   demo: new Set<JobKind>(),

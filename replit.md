@@ -52,7 +52,7 @@ This application is a full-stack catering business website that offers online or
 - **SMS Gateway for Reliability:** Implements a sophisticated SMS gateway integration with session caching and dual-environment safety (`SMS_OUTBOUND_MODE`) to handle physical SIM interactions reliably across development and production, mitigating issues like rate-limiting and duplicate sends.
 - **CloudPRNT for Printing:** Utilizes Star CloudPRNT for network printing, enabling printers to poll the server over HTTPS, eliminating the need for complex network configurations.
 - **Per-Surface Printer Policy:** Admin (`/admin/printers`) is the canonical source of truth for all printer settings. A server-side `ALLOWED_KINDS_BY_SOURCE` matrix in `printFanout.ts` enforces which job kinds each surface may enqueue — no surface can exceed its authorized kinds even if a printer is configured to accept them:
-  - `event_taker` (Staff Order Taker): `kitchen_ticket`, `customer_receipt`
+  - `event_taker` (Staff Order Taker): `kitchen_ticket`, `customer_receipt`, `item_label`, `plate_label`
   - `event_order` (Guest Ordering): `kitchen_ticket`, `item_label`, `plate_label`
   - `kitchen_send` (Kitchen Display manual reprints): `kitchen_ticket`, `item_label`, `plate_label`
   - `demo`: nothing (hard-blocked)
