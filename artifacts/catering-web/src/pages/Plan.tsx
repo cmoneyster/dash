@@ -1084,13 +1084,65 @@ export default function Plan() {
         {isLoading ? (
           <div className="h-64 flex items-center justify-center text-muted-foreground">Loading…</div>
         ) : !plan?.items.length ? (
-          <div className="text-center py-24 bg-card rounded-3xl border border-border border-dashed">
+          <div className="text-center py-16 bg-card rounded-3xl border border-border border-dashed px-6">
             <Heart className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
             <h3 className="font-display font-bold text-2xl mb-2">No items saved yet</h3>
             <p className="text-muted-foreground mb-6">Browse our menu and tap ♡ to add items to your event plan. Once you've added a few things, the planner calculators will help you work out the right quantities for your party.</p>
             <Link href="/menu" className="px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-xl inline-block">
               Browse Menu
             </Link>
+
+            {/* ── Calculator teaser ── */}
+            <div className="mt-10 relative select-none pointer-events-none" aria-hidden="true">
+              <div className="absolute inset-0 z-10 flex flex-col items-end justify-end pb-3 bg-gradient-to-t from-card via-card/70 to-transparent rounded-2xl">
+                <span className="w-full text-xs font-semibold text-muted-foreground tracking-wide uppercase">Unlocks after you add items</span>
+              </div>
+              <div className="opacity-30 blur-[1px] space-y-3 max-h-32 sm:max-h-none overflow-hidden">
+                {/* Ghost Guests strip */}
+                <div className="flex items-center gap-4 px-5 py-3 bg-background border border-border rounded-2xl">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground shrink-0">
+                    <Users className="w-4 h-4" />
+                    <span>Guests</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-1 justify-center">
+                    <div className="w-8 h-8 rounded-full border border-border bg-card flex items-center justify-center text-base font-bold">−</div>
+                    <div className="w-20 text-center font-bold text-xl rounded-xl border border-border bg-card py-1 px-2">50</div>
+                    <div className="w-8 h-8 rounded-full border border-border bg-card flex items-center justify-center text-base font-bold">+</div>
+                  </div>
+                </div>
+                {/* Ghost planner row */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1 bg-background border border-border rounded-2xl overflow-hidden">
+                    <div className="flex items-center justify-between px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <Calculator className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-display font-bold text-sm">Small Bites Planner</p>
+                          <p className="text-xs text-muted-foreground">Savory &amp; sweet pcs / person</p>
+                        </div>
+                      </div>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                  <div className="flex-1 bg-background border border-border rounded-2xl overflow-hidden">
+                    <div className="flex items-center justify-between px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <Utensils className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-display font-bold text-sm">Entrée Planner</p>
+                          <p className="text-xs text-muted-foreground">Portions &amp; serving sizes</p>
+                        </div>
+                      </div>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-6">
