@@ -18,13 +18,14 @@ router.get("/instagram/wall", async (req, res) => {
     const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     const enabled = !!settings?.instagramWallEnabled;
     const handle = settings?.instagramHandle ?? "";
+    const hashtags: string[] = settings?.instagramHashtags ?? [];
     const maxItems = settings?.instagramWallMaxItems ?? 12;
     const placement = {
       home: !!settings?.instagramWallShowOnHome,
       gallery: !!settings?.instagramWallShowOnGallery,
     };
     if (!enabled) {
-      res.json({ enabled, placement, handle, items: [] });
+      res.json({ enabled, placement, handle, hashtags, items: [] });
       return;
     }
     const rows = await db
@@ -48,7 +49,7 @@ router.get("/instagram/wall", async (req, res) => {
       postedAt: r.postedAt ? r.postedAt.toISOString() : null,
     }));
     res.setHeader("Cache-Control", "public, max-age=60");
-    res.json({ enabled, placement, handle, items });
+    res.json({ enabled, placement, handle, hashtags, items });
   } catch (err: any) {
     req.log.error({ err }, "instagram: public wall fetch failed");
     res.status(500).json({ error: "Failed to load Instagram wall" });
