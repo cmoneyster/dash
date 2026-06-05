@@ -11,7 +11,7 @@ import { TAX_DISCLOSURE, TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import {
   Trash2, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
   Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck, Calendar, Send, ShieldCheck,
-  Phone, RefreshCw,
+  Phone, RefreshCw, Flame,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation, useSearch } from "wouter";
@@ -991,7 +991,11 @@ export default function Plan() {
         {serviceMode === "on_the_dash" && (
           <div className="mb-6 p-4 rounded-xl border border-orange-200 dark:border-orange-800/50 bg-orange-50/60 dark:bg-orange-950/30 space-y-2">
             <div className="flex justify-between items-baseline text-sm">
-              <span className="font-semibold text-orange-900 dark:text-orange-200">On-site setup fee</span>
+              <span className="font-semibold text-orange-900 dark:text-orange-200 flex items-center gap-1">
+                <Flame className="w-3.5 h-3.5 shrink-0" />
+                <span>On the Dash</span>
+                <span className="font-normal"> on-site setup fee</span>
+              </span>
               {isWaiverApplied ? (
                 <span className="flex items-baseline gap-2">
                   <span className="text-muted-foreground line-through text-xs">{formatCurrency(otdConfig.setupFee)}</span>
@@ -1653,7 +1657,7 @@ export default function Plan() {
                       </div>
                       {serviceMode === "on_the_dash" && (
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">On-site setup fee</span>
+                          <span className="text-muted-foreground">On the Dash on-site setup fee</span>
                           {isWaiverApplied ? (
                             <span className="flex items-baseline gap-1.5">
                               <span className="text-muted-foreground line-through text-xs">{formatCurrency(otdConfig.setupFee)}</span>

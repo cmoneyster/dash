@@ -62,7 +62,7 @@ export const OTD_SETUP_FEE_ID = "otd-setup-fee";
 
 // Stable, customer-facing label for the row. Surfaces in the PDF, the
 // admin Quote Builder fees list, and the public quote payload.
-export const OTD_SETUP_FEE_LABEL = "On the Dash — on-site setup fee";
+export const OTD_SETUP_FEE_LABEL = "On the Dash on-site setup fee";
 
 // Minimal shape of a fee/discount row used by both api-server and
 // catering-web. Mirrors `QuoteAdjustment` from `@workspace/db/schema` but

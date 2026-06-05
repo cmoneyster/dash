@@ -759,7 +759,11 @@ export default function Cart() {
                     {serviceMode === "on_the_dash" && (
                       <div className="mt-3 p-4 rounded-xl border border-orange-200 bg-orange-50/50 space-y-2">
                         <div className="flex justify-between items-baseline text-sm">
-                          <span className="font-semibold text-orange-900">On-site setup fee</span>
+                          <span className="font-semibold text-orange-900 flex items-center gap-1">
+                            <Flame className="w-3.5 h-3.5 shrink-0" />
+                            <span>On the Dash</span>
+                            <span className="font-normal"> on-site setup fee</span>
+                          </span>
                           {isWaiverApplied ? (
                             <span className="flex items-baseline gap-2">
                               <span className="text-muted-foreground line-through text-xs">{formatCurrency(otdConfig.setupFee)}</span>
@@ -843,7 +847,7 @@ export default function Cart() {
                       </div>
                       {serviceMode === "on_the_dash" && (
                         <div className="flex justify-between items-center text-sm text-muted-foreground">
-                          <span>On the Dash setup fee</span>
+                          <span>On the Dash on-site setup fee</span>
                           <span>{otdSetupFee === 0 ? "Waived" : formatCurrency(otdSetupFee)}</span>
                         </div>
                       )}
