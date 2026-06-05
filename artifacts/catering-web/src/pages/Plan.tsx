@@ -1087,7 +1087,7 @@ export default function Plan() {
           <div className="text-center py-24 bg-card rounded-3xl border border-border border-dashed">
             <Heart className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
             <h3 className="font-display font-bold text-2xl mb-2">No items saved yet</h3>
-            <p className="text-muted-foreground mb-6">Browse our menu and click the heart icon to save items for later.</p>
+            <p className="text-muted-foreground mb-6">Browse our menu and tap ♡ to add items to your event plan — once you've added a few things, the planner calculators will help you work out the right quantities for your party.</p>
             <Link href="/menu" className="px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-xl inline-block">
               Browse Menu
             </Link>

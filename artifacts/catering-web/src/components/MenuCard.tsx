@@ -51,7 +51,7 @@ export function MenuCard({ item, onAddToPlan, onTogglePlan, isInPlan, serviceMod
             </div>
           )}
           <div className="absolute top-4 left-4 flex flex-col gap-2">
-            <span className="px-3 py-1 bg-white/90 backdrop-blur-sm text-xs font-bold uppercase tracking-wider rounded-full shadow-sm">
+            <span className="px-3 py-1 bg-white/90 backdrop-blur-sm text-xs font-bold uppercase tracking-wider rounded-full shadow-sm text-gray-900">
               {item.category}
             </span>
             {!item.available && (
