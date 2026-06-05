@@ -1,10 +1,11 @@
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
-import { CheckCircle, Instagram } from "lucide-react";
-import { useInstagramHandle } from "@/lib/instagram";
+import { CheckCircle, Instagram, Camera } from "lucide-react";
+import { useInstagramHandle, useInstagramHashtags } from "@/lib/instagram";
 
 export default function Confirmation() {
   const igHandle = useInstagramHandle();
+  const hashtags = useInstagramHashtags();
 
   return (
     <Layout>
@@ -48,6 +49,31 @@ export default function Confirmation() {
                 <Instagram className="w-4 h-4" />
                 Follow @{igHandle}
               </a>
+            </div>
+          )}
+
+          {hashtags.length > 0 && (
+            <div className="bg-card rounded-3xl border border-border p-8 text-center">
+              <div className="w-12 h-12 bg-violet-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Camera className="w-6 h-6 text-violet-500" />
+              </div>
+              <h2 className="font-display font-bold text-lg mb-2">Share your event photos!</h2>
+              <p className="text-sm text-muted-foreground mb-5">
+                Snap a photo at your event and tag us — we'd love to feature it on our wall!
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {hashtags.map((tag) => (
+                  <a
+                    key={tag}
+                    href={`https://instagram.com/explore/tags/${tag.replace(/^#/, "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 font-semibold text-sm hover:bg-violet-500/20 transition-colors"
+                  >
+                    #{tag.replace(/^#/, "")}
+                  </a>
+                ))}
+              </div>
             </div>
           )}
         </div>
