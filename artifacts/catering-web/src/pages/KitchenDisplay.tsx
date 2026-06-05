@@ -3,6 +3,7 @@ import { ChefHat, Lock, RefreshCw, Bell, Phone, Check, Undo2, Package, Infinity,
 import { getAdminToken } from "@/components/AdminGuard";
 import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
 import { ItemLabelsModal } from "@/components/ItemLabelsModal";
+import { KitchenTimerWidget } from "@/components/KitchenTimerWidget";
 
 const SESSION_KEY = "event_auth_password";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1182,6 +1183,7 @@ export default function KitchenDisplay() {
             >
               {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
+            <KitchenTimerWidget />
             <button
               type="button"
               onClick={() => setPrinterModalOpen(true)}
