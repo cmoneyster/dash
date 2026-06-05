@@ -178,6 +178,14 @@ export function KitchenTimerWidget() {
     return () => clearInterval(id);
   }, []);
 
+  // ── Repeat alarm every 3.5 s while any timer is still alarming ────────
+  const hasAlarming = timers.some(t => t.alarming);
+  useEffect(() => {
+    if (!hasAlarming) return;
+    const id = setInterval(playTimerAlarm, 3500);
+    return () => clearInterval(id);
+  }, [hasAlarming]);
+
   // ── Close launcher on outside click ────────────────────────────────────
   useEffect(() => {
     if (!showLauncher) return;
