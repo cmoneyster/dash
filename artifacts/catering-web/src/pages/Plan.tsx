@@ -1093,7 +1093,7 @@ export default function Plan() {
             </Link>
 
             {/* ── Calculator teaser ── */}
-            <div className="mt-10 relative select-none pointer-events-none" aria-hidden="true">
+            <div className="mt-10 relative select-none pointer-events-none animate-fade-slide-up" aria-hidden="true">
               <div className="absolute inset-0 z-10 flex flex-col items-end justify-end pb-3 bg-gradient-to-t from-card via-card/70 to-transparent rounded-2xl">
                 <span className="w-full text-xs font-semibold text-muted-foreground tracking-wide uppercase">Unlocks after you add items</span>
               </div>
