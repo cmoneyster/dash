@@ -355,19 +355,17 @@ router.post("/admin/catering/from-event-orders", async (req, res): Promise<void>
       return;
     }
 
-    // Group items by (item.name × item.quantity) — the per-order portion size
-    // becomes the line item name, count of occurrences becomes the quantity.
+    // Group items by item.name, summing all units across every order.
     const agg = new Map<string, { displayName: string; count: number; unitPrice: number }>();
     for (const order of orders) {
       const items = (order.items ?? []) as Array<{ name: string; quantity: number; price: number }>;
       for (const item of items) {
-        const key = `${item.quantity}\x00${item.name}`;
-        const displayName = `${item.quantity} ${item.name}`;
+        const key = item.name;
         const existing = agg.get(key);
         if (existing) {
-          existing.count++;
+          existing.count += item.quantity;
         } else {
-          agg.set(key, { displayName, count: 1, unitPrice: Number(item.price) || 0 });
+          agg.set(key, { displayName: item.name, count: item.quantity, unitPrice: Number(item.price) || 0 });
         }
       }
     }
