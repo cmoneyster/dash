@@ -100,7 +100,7 @@ function StatusBar({ need, have, label, unit = "pcs" }: { need: number; have: nu
       <p className="text-xs text-muted-foreground">
         {met
           ? `You're covered${over ? " and then some" : ""}!`
-          : `Need ${need - have} more ${unit === "srv" ? "serving" : "piece"}${need - have !== 1 ? "s" : ""}`}
+          : `Suggest ${need - have} more ${unit === "srv" ? "serving" : "piece"}${need - have !== 1 ? "s" : ""}`}
       </p>
     </div>
   );
