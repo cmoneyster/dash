@@ -867,7 +867,6 @@ function webItemLabelSection(
 
 function webPrntItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
-  b.initialize();
   const order = resolveOrder(tmpl, "item_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
@@ -927,7 +926,6 @@ function webPlateLabelSection(
 
 function webPrntPlateLabel(p: PlateLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
-  b.initialize();
   const order = resolveOrder(tmpl, "plate_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
