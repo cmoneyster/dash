@@ -1,10 +1,11 @@
 import { Link, useRoute } from "wouter";
-import { ShoppingBag, MapPin } from "lucide-react";
+import { ShoppingBag, MapPin, Instagram } from "lucide-react";
 import { ChatWidget } from "./ChatWidget";
 import { ThemeToggle } from "./ThemeToggle";
 import { useGetPlan, getGetPlanQueryKey } from "@workspace/api-client-react";
 import { getSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { useInstagramHandle } from "@/lib/instagram";
 
 const LOGO_URL = `${import.meta.env.BASE_URL}images/dash-logo.png`;
 
@@ -34,6 +35,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 
   const planItemsCount = plan?.items?.length ?? 0;
+  const igHandle = useInstagramHandle();
 
   return (
     <div className="min-h-screen flex flex-col relative">
@@ -62,6 +64,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-4">
+            {igHandle && (
+              <a
+                href={`https://instagram.com/${igHandle}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden md:flex items-center text-foreground/60 hover:text-primary transition-colors"
+                aria-label={`Follow us on Instagram @${igHandle}`}
+              >
+                <Instagram className="w-5 h-5" />
+              </a>
+            )}
             <ThemeToggle />
             <Link
               href="/plan"
@@ -112,8 +125,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <h4 className="font-semibold text-lg mb-6">Contact</h4>
             <ul className="space-y-4 text-background/60 text-sm">
               <li>dash@HollywoodEastCafe.com</li>
-
               <li>Olney, Maryland</li>
+              {igHandle && (
+                <li>
+                  <a
+                    href={`https://instagram.com/${igHandle}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 hover:text-background transition-colors"
+                  >
+                    <Instagram className="w-4 h-4" />
+                    @{igHandle}
+                  </a>
+                </li>
+              )}
             </ul>
           </div>
         </div>

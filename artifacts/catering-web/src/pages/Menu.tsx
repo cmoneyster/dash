@@ -4,7 +4,7 @@ import { Layout } from "@/components/Layout";
 import { MenuCard, MenuCardCompact } from "@/components/MenuCard";
 import { PackageDetail } from "@/components/PackageDetail";
 import { fetchPublicPackages, type PublicMenuPackage } from "@/lib/menuPackages";
-import { Users, Package as PackageIcon, Flame } from "lucide-react";
+import { Users, Package as PackageIcon, Flame, Instagram } from "lucide-react";
 import { 
   useListMenuItems,
   useAddToPlan, 
@@ -19,6 +19,7 @@ import { useCategories } from "@/lib/categories";
 import { ServiceModeBanner } from "@/components/ServiceModeBanner";
 import { loadServiceMode, saveServiceMode, type ServiceMode } from "@/lib/serviceMode";
 import { useLocation, useSearch } from "wouter";
+import { useInstagramHandle } from "@/lib/instagram";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -124,6 +125,7 @@ export default function Menu() {
     }
   };
 
+  const igHandle = useInstagramHandle();
   const { data: categoryData } = useCategories();
   const PACKAGES_FILTER = "__packages__";
   const categories = [
@@ -284,6 +286,28 @@ export default function Menu() {
           );
         })()}
       </div>
+
+      {igHandle && (
+        <div className="border-t border-border mt-4 py-10 bg-secondary/20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="text-center sm:text-left">
+              <p className="font-semibold text-foreground text-lg">Hungry for more inspiration?</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Follow us on Instagram for behind-the-scenes, seasonal specials, and event highlights.
+              </p>
+            </div>
+            <a
+              href={`https://instagram.com/${igHandle}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-border bg-card font-semibold text-sm hover:border-primary hover:text-primary transition-colors"
+            >
+              <Instagram className="w-4 h-4" />
+              Follow @{igHandle}
+            </a>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
