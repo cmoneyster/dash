@@ -159,8 +159,33 @@
   animation: fade-slide-up 400ms ease-out 350ms both;
 }
 
+.animate-fade-slide-up-0 {
+  animation: fade-slide-up 350ms ease-out 0ms both;
+}
+
+.animate-fade-slide-up-1 {
+  animation: fade-slide-up 300ms ease-out 60ms both;
+}
+
+.animate-fade-slide-up-2 {
+  animation: fade-slide-up 300ms ease-out 130ms both;
+}
+
+.animate-fade-slide-up-3 {
+  animation: fade-slide-up 300ms ease-out 200ms both;
+}
+
+.animate-fade-slide-up-4 {
+  animation: fade-slide-up 300ms ease-out 260ms both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-slide-up {
+  .animate-fade-slide-up,
+  .animate-fade-slide-up-0,
+  .animate-fade-slide-up-1,
+  .animate-fade-slide-up-2,
+  .animate-fade-slide-up-3,
+  .animate-fade-slide-up-4 {
     animation: none;
   }
 }

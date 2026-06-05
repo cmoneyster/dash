@@ -1084,11 +1084,11 @@ export default function Plan() {
         {isLoading ? (
           <div className="h-64 flex items-center justify-center text-muted-foreground">Loading…</div>
         ) : !plan?.items.length ? (
-          <div className="text-center py-16 bg-card rounded-3xl border border-border border-dashed px-6">
-            <Heart className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
-            <h3 className="font-display font-bold text-2xl mb-2">No items saved yet</h3>
-            <p className="text-muted-foreground mb-6">Browse our menu and tap ♡ to add items to your event plan. Once you've added a few things, the planner calculators will help you work out the right quantities for your party.</p>
-            <Link href="/menu" className="px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-xl inline-block">
+          <div className="text-center py-16 bg-card rounded-3xl border border-border border-dashed px-6 animate-fade-slide-up-0">
+            <Heart className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4 animate-fade-slide-up-1" />
+            <h3 className="font-display font-bold text-2xl mb-2 animate-fade-slide-up-2">No items saved yet</h3>
+            <p className="text-muted-foreground mb-6 animate-fade-slide-up-3">Browse our menu and tap ♡ to add items to your event plan. Once you've added a few things, the planner calculators will help you work out the right quantities for your party.</p>
+            <Link href="/menu" className="px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-xl inline-block animate-fade-slide-up-4">
               Browse Menu
             </Link>
 
