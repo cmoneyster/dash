@@ -262,10 +262,12 @@ function ArrangeEmptySlot({ slotIndex }: { slotIndex: number }) {
 
 function ComboPickerModal({
   item,
+  stockByItemId,
   onConfirm,
   onClose,
 }: {
   item: MenuItem;
+  stockByItemId: Map<number, number | null>;
   onConfirm: (selections: ComboSelection[]) => void;
   onClose: () => void;
 }) {
@@ -282,6 +284,8 @@ function ComboPickerModal({
       const newQty = curQty + delta;
       if (newQty < 0) return prev;
       if (delta > 0 && slotTotal >= slotMaxQty) return prev;
+      const stock = stockByItemId.get(menuItemId) ?? null;
+      if (delta > 0 && stock !== null && newQty > stock) return prev;
       return { ...prev, [slotId]: { ...slotQtys, [menuItemId]: newQty } };
     });
   };
@@ -343,9 +347,28 @@ function ComboPickerModal({
                 <div className="space-y-2">
                   {slot.options.map(opt => {
                     const qty = getQty(slot.slotId, opt.menuItemId);
+                    const stock = stockByItemId.get(opt.menuItemId) ?? null;
+                    const soldOut = stock !== null && stock <= 0;
+                    const lowStock = stock !== null && stock > 0 && stock <= 5;
+                    const atItemMax = stock !== null && qty >= stock;
+                    const plusDisabled = atMax || soldOut || atItemMax;
                     return (
-                      <div key={opt.menuItemId} className="flex items-center justify-between">
-                        <span className="text-sm flex-1 mr-3">{opt.name}</span>
+                      <div key={opt.menuItemId} className={`flex items-center justify-between gap-3 ${soldOut ? "opacity-50" : ""}`}>
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-sm ${soldOut ? "line-through text-muted-foreground" : ""}`}>{opt.name}</span>
+                          {soldOut && (
+                            <span className="ml-2 text-xs font-semibold text-red-600 dark:text-red-400">Sold out</span>
+                          )}
+                          {!soldOut && stock !== null && (
+                            <span className={`ml-2 text-[11px] font-semibold px-1.5 py-0.5 rounded-full ${
+                              lowStock
+                                ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
+                                : "bg-secondary text-muted-foreground"
+                            }`}>
+                              {stock} left
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
@@ -359,7 +382,7 @@ function ComboPickerModal({
                           <button
                             type="button"
                             onClick={() => changeSlotQty(slot.slotId, opt.menuItemId, 1, slot.maxQty)}
-                            disabled={atMax}
+                            disabled={plusDisabled}
                             className="w-8 h-8 rounded-lg bg-secondary hover:bg-secondary/70 flex items-center justify-center disabled:opacity-30 transition-opacity"
                           >
                             <Plus className="w-3.5 h-3.5" />
@@ -1345,6 +1368,7 @@ export default function EventTakerOrder() {
       {comboPicker && (
         <ComboPickerModal
           item={comboPicker.item}
+          stockByItemId={new Map((menu ?? []).map(m => [m.id, m.eventStock] as const))}
           onConfirm={sels => addComboToCart(comboPicker.item, sels)}
           onClose={() => setComboPicker(null)}
         />
