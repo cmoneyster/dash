@@ -415,7 +415,8 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
       // Track newly-decremented stock per item so we can run one batched
       // low-stock crossing check after all updates land.
       const stockChanges: Array<{ itemId: number; name: string; newStock: number }> = [];
-      for (const item of items as OrderItem[]) {
+      type OrderItemWithCombos = OrderItem & { comboSelections?: Array<{ menuItemId: number; quantity: number }> };
+      for (const item of items as OrderItemWithCombos[]) {
         const [row] = await tx
           .select({ id: menuItemsTable.id, name: menuItemsTable.name, eventStock: menuItemsTable.eventStock })
           .from(menuItemsTable)
@@ -434,6 +435,40 @@ router.post("/event-ordering/orders", verifyOrderPassword, async (req, res) => {
             .set({ eventStock: sql`event_stock - ${item.quantity}` })
             .where(eq(menuItemsTable.id, item.itemId));
           stockChanges.push({ itemId: row.id, name: row.name, newStock: row.eventStock - item.quantity });
+        }
+      }
+
+      // ── Component stock deduction for combo items ──────────────────────
+      // Aggregate component quantities across all combo lines. A component
+      // may appear in multiple combos or multiple slots; accumulate totals.
+      // Each selection quantity is multiplied by the combo line quantity.
+      // Items without stock tracking (eventStock === null) are silently skipped.
+      const componentQtyByItemId = new Map<number, number>();
+      for (const item of items as OrderItemWithCombos[]) {
+        if (Array.isArray(item.comboSelections) && item.comboSelections.length > 0) {
+          for (const sel of item.comboSelections) {
+            componentQtyByItemId.set(
+              sel.menuItemId,
+              (componentQtyByItemId.get(sel.menuItemId) ?? 0) + sel.quantity * item.quantity,
+            );
+          }
+        }
+      }
+      if (componentQtyByItemId.size > 0) {
+        const componentIds = Array.from(componentQtyByItemId.keys());
+        const componentRows = await tx
+          .select({ id: menuItemsTable.id, name: menuItemsTable.name, eventStock: menuItemsTable.eventStock })
+          .from(menuItemsTable)
+          .where(inArray(menuItemsTable.id, componentIds))
+          .for("update");
+        for (const compRow of componentRows) {
+          const qtyNeeded = componentQtyByItemId.get(compRow.id)!;
+          if (compRow.eventStock === null) continue; // no stock tracking — skip silently
+          await tx
+            .update(menuItemsTable)
+            .set({ eventStock: sql`event_stock - ${qtyNeeded}` })
+            .where(eq(menuItemsTable.id, compRow.id));
+          stockChanges.push({ itemId: compRow.id, name: compRow.name, newStock: compRow.eventStock - qtyNeeded });
         }
       }
 

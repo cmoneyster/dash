@@ -588,6 +588,38 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
         });
       }
 
+      // ── Component stock deduction for combo items ─────────────────────
+      // Aggregate component quantities across all combo lines. A component
+      // may appear in multiple combos or multiple slots; accumulate totals.
+      // Each selection quantity is multiplied by the combo line quantity
+      // (e.g. 2× Lunch Combo with 1× Beef each → Beef drops by 2).
+      const componentQtyByItemId = new Map<number, number>();
+      for (const comboInput of comboLineInputs) {
+        for (const sel of comboInput.comboSelections) {
+          componentQtyByItemId.set(
+            sel.menuItemId,
+            (componentQtyByItemId.get(sel.menuItemId) ?? 0) + sel.quantity * comboInput.quantity,
+          );
+        }
+      }
+      if (componentQtyByItemId.size > 0) {
+        const componentIds = Array.from(componentQtyByItemId.keys());
+        const componentRows = await tx
+          .select({ id: menuItemsTable.id, name: menuItemsTable.name, eventStock: menuItemsTable.eventStock })
+          .from(menuItemsTable)
+          .where(inArray(menuItemsTable.id, componentIds))
+          .for("update");
+        for (const compRow of componentRows) {
+          const qtyNeeded = componentQtyByItemId.get(compRow.id)!;
+          if (compRow.eventStock === null) continue; // no stock tracking — skip silently
+          await tx
+            .update(menuItemsTable)
+            .set({ eventStock: sql`event_stock - ${qtyNeeded}` })
+            .where(eq(menuItemsTable.id, compRow.id));
+          stockChanges.push({ itemId: compRow.id, name: compRow.name, newStock: compRow.eventStock - qtyNeeded });
+        }
+      }
+
       subtotal = round2(subtotal);
       const taxAmount = taxEnabled && taxRate > 0 ? round2(subtotal * (taxRate / 100)) : 0;
       const total = round2(subtotal + taxAmount);
@@ -1089,7 +1121,7 @@ router.delete("/event-taker/orders/:id", verifyTakerPassword, async (req, res) =
       }
 
       // Restore stock for items that have a stock cap.
-      const items = (existing.items ?? []) as { itemId: number; quantity: number }[];
+      const items = (existing.items ?? []) as { itemId: number; quantity: number; comboSelections?: Array<{ menuItemId: number; quantity: number }> }[];
       const itemIds = items.map(i => i.itemId);
       // Threshold for re-arming the low-stock SMS once stock climbs back up.
       const [s] = await tx.select({ t: eventSettingsTable.lowStockAlertThreshold }).from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
@@ -1117,6 +1149,45 @@ router.delete("/event-taker/orders/:id", verifyTakerPassword, async (req, res) =
                 .set({ lowStockAlertSent: false })
                 .where(eq(menuItemsTable.id, line.itemId));
             }
+          }
+        }
+      }
+
+      // Restore component stock for any combo items in the cancelled order.
+      // Reconstruct the component quantities from the stored comboSelections
+      // snapshot, mirroring the deduction logic in the order-creation path.
+      const componentRestoreMap = new Map<number, number>();
+      for (const line of items) {
+        if (Array.isArray(line.comboSelections) && line.comboSelections.length > 0) {
+          for (const sel of line.comboSelections) {
+            componentRestoreMap.set(
+              sel.menuItemId,
+              (componentRestoreMap.get(sel.menuItemId) ?? 0) + sel.quantity * line.quantity,
+            );
+          }
+        }
+      }
+      if (componentRestoreMap.size > 0) {
+        const compIds = Array.from(componentRestoreMap.keys());
+        const compRows = await tx
+          .select({ id: menuItemsTable.id, eventStock: menuItemsTable.eventStock })
+          .from(menuItemsTable)
+          .where(inArray(menuItemsTable.id, compIds))
+          .for("update");
+        const compStockMap = new Map(compRows.map(r => [r.id, r.eventStock]));
+        for (const [compItemId, qtyToRestore] of componentRestoreMap) {
+          const prev = compStockMap.get(compItemId);
+          if (prev === null || prev === undefined) continue; // no stock tracking — skip
+          await tx
+            .update(menuItemsTable)
+            .set({ eventStock: sql`event_stock + ${qtyToRestore}` })
+            .where(eq(menuItemsTable.id, compItemId));
+          const restored = prev + qtyToRestore;
+          if (restored > threshold) {
+            await tx
+              .update(menuItemsTable)
+              .set({ lowStockAlertSent: false })
+              .where(eq(menuItemsTable.id, compItemId));
           }
         }
       }
