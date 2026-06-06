@@ -486,6 +486,8 @@ export default function EventTakerOrder() {
 
   // Server-backed printer settings modal (scoped to the Taker surface).
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
+  // null = not yet fetched, true/false = whether any printer has opensCashDrawer enabled.
+  const [hasCashDrawer, setHasCashDrawer] = useState<boolean | null>(null);
   const [comboPicker, setComboPicker] = useState<{ item: MenuItem } | null>(null);
 
   // Arrange-mode state. slotLayout mirrors the server's takerMenuOrder:
@@ -626,6 +628,21 @@ export default function EventTakerOrder() {
   // print fan-out (printFanout.ts), gated by per-printer
   // auto_print_on_new_order toggles plus the per-surface allowed-kinds
   // matrix. The Taker no longer triggers a browser print on confirmation.
+
+  // Fetch printer list to detect whether any printer has the cash drawer enabled.
+  // Re-runs whenever the password changes (login/logout). We only need opensCashDrawer
+  // so a single fetch on login is enough; the modal handles per-session changes.
+  useEffect(() => {
+    if (!password) { setHasCashDrawer(null); return; }
+    fetch(`${BASE}/api/event-taker/printers`, {
+      headers: { Authorization: `Bearer ${password}` },
+    })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((rows: { opensCashDrawer?: boolean }[]) => {
+        setHasCashDrawer(rows.some(p => p.opensCashDrawer === true));
+      })
+      .catch(() => { setHasCashDrawer(false); });
+  }, [password]);
 
   // Public settings — re-polled so the kitchen pause/stop state stays current.
   useEffect(() => {
@@ -1486,8 +1503,12 @@ export default function EventTakerOrder() {
                   toast.error("Failed to open cash drawer");
                 }
               }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-secondary text-muted-foreground border-transparent hover:text-foreground transition-colors"
-              title="Open cash drawer"
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-secondary border-transparent transition-colors ${
+                hasCashDrawer === false
+                  ? "text-muted-foreground/40 cursor-default"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title={hasCashDrawer === false ? "No cash drawer configured" : "Open cash drawer"}
             >
               <DollarSign className="w-4 h-4" />
               <span className="hidden sm:inline">Open Drawer</span>
