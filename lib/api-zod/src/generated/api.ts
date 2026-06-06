@@ -101,6 +101,35 @@ export const ListMenuItemsResponseItem = zod.object({
     .nullish()
     .describe("Internal kitchen\/staff notes not shown to customers."),
   createdAt: zod.coerce.date(),
+  isCombo: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this item is a combo that requires slot selection before ordering.",
+    ),
+  comboSlots: zod
+    .array(
+      zod.object({
+        slotId: zod.string(),
+        slotName: zod.string(),
+        minQty: zod.number(),
+        maxQty: zod.number(),
+        options: zod.array(
+          zod.object({
+            menuItemId: zod.number(),
+            name: zod.string(),
+          }),
+        ),
+      }),
+    )
+    .nullish()
+    .describe("Ordered slot definitions for combo items."),
+  comboComponentLabels: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether to also print individual component labels for each combo component.",
+    ),
 });
 export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
 
@@ -190,6 +219,35 @@ export const GetMenuItemResponse = zod.object({
     .nullish()
     .describe("Internal kitchen\/staff notes not shown to customers."),
   createdAt: zod.coerce.date(),
+  isCombo: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this item is a combo that requires slot selection before ordering.",
+    ),
+  comboSlots: zod
+    .array(
+      zod.object({
+        slotId: zod.string(),
+        slotName: zod.string(),
+        minQty: zod.number(),
+        maxQty: zod.number(),
+        options: zod.array(
+          zod.object({
+            menuItemId: zod.number(),
+            name: zod.string(),
+          }),
+        ),
+      }),
+    )
+    .nullish()
+    .describe("Ordered slot definitions for combo items."),
+  comboComponentLabels: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether to also print individual component labels for each combo component.",
+    ),
 });
 
 /**
@@ -274,6 +332,35 @@ export const AdminListMenuItemsResponseItem = zod.object({
     .nullish()
     .describe("Internal kitchen\/staff notes not shown to customers."),
   createdAt: zod.coerce.date(),
+  isCombo: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this item is a combo that requires slot selection before ordering.",
+    ),
+  comboSlots: zod
+    .array(
+      zod.object({
+        slotId: zod.string(),
+        slotName: zod.string(),
+        minQty: zod.number(),
+        maxQty: zod.number(),
+        options: zod.array(
+          zod.object({
+            menuItemId: zod.number(),
+            name: zod.string(),
+          }),
+        ),
+      }),
+    )
+    .nullish()
+    .describe("Ordered slot definitions for combo items."),
+  comboComponentLabels: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether to also print individual component labels for each combo component.",
+    ),
 });
 export const AdminListMenuItemsResponse = zod.array(
   AdminListMenuItemsResponseItem,
@@ -305,6 +392,24 @@ export const CreateMenuItemBody = zod.object({
   otdEligible: zod.boolean().optional(),
   labelPolicy: zod.enum(["per_unit", "combined", "per_box"]).optional(),
   labelBoxSize: zod.number().nullish(),
+  isCombo: zod.boolean().optional(),
+  comboSlots: zod
+    .array(
+      zod.object({
+        slotId: zod.string(),
+        slotName: zod.string(),
+        minQty: zod.number(),
+        maxQty: zod.number(),
+        options: zod.array(
+          zod.object({
+            menuItemId: zod.number(),
+            name: zod.string(),
+          }),
+        ),
+      }),
+    )
+    .nullish(),
+  comboComponentLabels: zod.boolean().optional(),
 });
 
 /**
@@ -337,6 +442,24 @@ export const UpdateMenuItemBody = zod.object({
   otdEligible: zod.boolean().optional(),
   labelPolicy: zod.enum(["per_unit", "combined", "per_box"]).optional(),
   labelBoxSize: zod.number().nullish(),
+  isCombo: zod.boolean().optional(),
+  comboSlots: zod
+    .array(
+      zod.object({
+        slotId: zod.string(),
+        slotName: zod.string(),
+        minQty: zod.number(),
+        maxQty: zod.number(),
+        options: zod.array(
+          zod.object({
+            menuItemId: zod.number(),
+            name: zod.string(),
+          }),
+        ),
+      }),
+    )
+    .nullish(),
+  comboComponentLabels: zod.boolean().optional(),
 });
 
 export const updateMenuItemResponseMinimumOrderQtyDefault = 1;
@@ -418,6 +541,35 @@ export const UpdateMenuItemResponse = zod.object({
     .nullish()
     .describe("Internal kitchen\/staff notes not shown to customers."),
   createdAt: zod.coerce.date(),
+  isCombo: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this item is a combo that requires slot selection before ordering.",
+    ),
+  comboSlots: zod
+    .array(
+      zod.object({
+        slotId: zod.string(),
+        slotName: zod.string(),
+        minQty: zod.number(),
+        maxQty: zod.number(),
+        options: zod.array(
+          zod.object({
+            menuItemId: zod.number(),
+            name: zod.string(),
+          }),
+        ),
+      }),
+    )
+    .nullish()
+    .describe("Ordered slot definitions for combo items."),
+  comboComponentLabels: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether to also print individual component labels for each combo component.",
+    ),
 });
 
 /**
@@ -794,6 +946,35 @@ export const GetCartResponse = zod.object({
           .nullish()
           .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
+        isCombo: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is a combo that requires slot selection before ordering.",
+          ),
+        comboSlots: zod
+          .array(
+            zod.object({
+              slotId: zod.string(),
+              slotName: zod.string(),
+              minQty: zod.number(),
+              maxQty: zod.number(),
+              options: zod.array(
+                zod.object({
+                  menuItemId: zod.number(),
+                  name: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .nullish()
+          .describe("Ordered slot definitions for combo items."),
+        comboComponentLabels: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to also print individual component labels for each combo component.",
+          ),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -903,6 +1084,35 @@ export const AddToCartResponse = zod.object({
           .nullish()
           .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
+        isCombo: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is a combo that requires slot selection before ordering.",
+          ),
+        comboSlots: zod
+          .array(
+            zod.object({
+              slotId: zod.string(),
+              slotName: zod.string(),
+              minQty: zod.number(),
+              maxQty: zod.number(),
+              options: zod.array(
+                zod.object({
+                  menuItemId: zod.number(),
+                  name: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .nullish()
+          .describe("Ordered slot definitions for combo items."),
+        comboComponentLabels: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to also print individual component labels for each combo component.",
+          ),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -1014,6 +1224,35 @@ export const UpdateCartItemResponse = zod.object({
           .nullish()
           .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
+        isCombo: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is a combo that requires slot selection before ordering.",
+          ),
+        comboSlots: zod
+          .array(
+            zod.object({
+              slotId: zod.string(),
+              slotName: zod.string(),
+              minQty: zod.number(),
+              maxQty: zod.number(),
+              options: zod.array(
+                zod.object({
+                  menuItemId: zod.number(),
+                  name: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .nullish()
+          .describe("Ordered slot definitions for combo items."),
+        comboComponentLabels: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to also print individual component labels for each combo component.",
+          ),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -1120,6 +1359,35 @@ export const RemoveFromCartResponse = zod.object({
           .nullish()
           .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
+        isCombo: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is a combo that requires slot selection before ordering.",
+          ),
+        comboSlots: zod
+          .array(
+            zod.object({
+              slotId: zod.string(),
+              slotName: zod.string(),
+              minQty: zod.number(),
+              maxQty: zod.number(),
+              options: zod.array(
+                zod.object({
+                  menuItemId: zod.number(),
+                  name: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .nullish()
+          .describe("Ordered slot definitions for combo items."),
+        comboComponentLabels: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to also print individual component labels for each combo component.",
+          ),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -1224,6 +1492,35 @@ export const GetPlanResponse = zod.object({
           .nullish()
           .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
+        isCombo: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is a combo that requires slot selection before ordering.",
+          ),
+        comboSlots: zod
+          .array(
+            zod.object({
+              slotId: zod.string(),
+              slotName: zod.string(),
+              minQty: zod.number(),
+              maxQty: zod.number(),
+              options: zod.array(
+                zod.object({
+                  menuItemId: zod.number(),
+                  name: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .nullish()
+          .describe("Ordered slot definitions for combo items."),
+        comboComponentLabels: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to also print individual component labels for each combo component.",
+          ),
       }),
     }),
   ),
@@ -1324,6 +1621,35 @@ export const AddToPlanResponse = zod.object({
           .nullish()
           .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
+        isCombo: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is a combo that requires slot selection before ordering.",
+          ),
+        comboSlots: zod
+          .array(
+            zod.object({
+              slotId: zod.string(),
+              slotName: zod.string(),
+              minQty: zod.number(),
+              maxQty: zod.number(),
+              options: zod.array(
+                zod.object({
+                  menuItemId: zod.number(),
+                  name: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .nullish()
+          .describe("Ordered slot definitions for combo items."),
+        comboComponentLabels: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to also print individual component labels for each combo component.",
+          ),
       }),
     }),
   ),
@@ -1425,6 +1751,35 @@ export const RemoveFromPlanResponse = zod.object({
           .nullish()
           .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
+        isCombo: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is a combo that requires slot selection before ordering.",
+          ),
+        comboSlots: zod
+          .array(
+            zod.object({
+              slotId: zod.string(),
+              slotName: zod.string(),
+              minQty: zod.number(),
+              maxQty: zod.number(),
+              options: zod.array(
+                zod.object({
+                  menuItemId: zod.number(),
+                  name: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .nullish()
+          .describe("Ordered slot definitions for combo items."),
+        comboComponentLabels: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to also print individual component labels for each combo component.",
+          ),
       }),
     }),
   ),
@@ -1670,6 +2025,35 @@ export const SuggestMenuItemsResponse = zod.object({
           .nullish()
           .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
+        isCombo: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is a combo that requires slot selection before ordering.",
+          ),
+        comboSlots: zod
+          .array(
+            zod.object({
+              slotId: zod.string(),
+              slotName: zod.string(),
+              minQty: zod.number(),
+              maxQty: zod.number(),
+              options: zod.array(
+                zod.object({
+                  menuItemId: zod.number(),
+                  name: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .nullish()
+          .describe("Ordered slot definitions for combo items."),
+        comboComponentLabels: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to also print individual component labels for each combo component.",
+          ),
       }),
       recommendedQuantity: zod.number(),
       reason: zod.string(),
@@ -3064,6 +3448,7 @@ export const TestPrintPrinterResponse = zod.object({
     "kitchen_ticket",
     "customer_receipt",
     "item_label",
+    "combo_label",
     "plate_label",
     "test",
   ]),
@@ -3487,6 +3872,7 @@ export const ListPrintJobsResponseItem = zod.object({
     "kitchen_ticket",
     "customer_receipt",
     "item_label",
+    "combo_label",
     "plate_label",
     "test",
   ]),
@@ -3519,6 +3905,7 @@ export const RetryPrintJobResponse = zod.object({
     "kitchen_ticket",
     "customer_receipt",
     "item_label",
+    "combo_label",
     "plate_label",
     "test",
   ]),
@@ -4231,6 +4618,35 @@ export const GetEventTakerMenuResponse = zod
           .nullish()
           .describe("Internal kitchen\/staff notes not shown to customers."),
         createdAt: zod.coerce.date(),
+        isCombo: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this item is a combo that requires slot selection before ordering.",
+          ),
+        comboSlots: zod
+          .array(
+            zod.object({
+              slotId: zod.string(),
+              slotName: zod.string(),
+              minQty: zod.number(),
+              maxQty: zod.number(),
+              options: zod.array(
+                zod.object({
+                  menuItemId: zod.number(),
+                  name: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .nullish()
+          .describe("Ordered slot definitions for combo items."),
+        comboComponentLabels: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to also print individual component labels for each combo component.",
+          ),
       }),
     ),
     layout: zod
@@ -4242,6 +4658,41 @@ export const GetEventTakerMenuResponse = zod
   .describe(
     "Response from GET \/event-taker\/menu — the filtered, ordered menu items and the raw slot-layout array used by the arrange-mode grid.",
   );
+
+/**
+ * @summary Submit an event order from the Staff Order Taker POS
+ */
+
+export const CreateTakerOrderBody = zod
+  .object({
+    guestName: zod.string(),
+    phoneNumber: zod.string().nullish(),
+    items: zod.array(
+      zod
+        .object({
+          itemId: zod.number(),
+          quantity: zod.number().min(1),
+          comboSelections: zod
+            .array(
+              zod.object({
+                slotId: zod.string(),
+                slotName: zod.string(),
+                menuItemId: zod.number(),
+                name: zod.string(),
+                quantity: zod.number(),
+              }),
+            )
+            .nullish()
+            .describe(
+              "Required when the menu item is a combo — one entry per selected slot component.",
+            ),
+        })
+        .describe("One line item in a taker order submission."),
+    ),
+    notes: zod.string().nullish(),
+    statusUrlBase: zod.string().nullish(),
+  })
+  .describe("Request body for POST \/event-taker\/orders.");
 
 /**
  * @summary List queued print jobs for the LAN/router agent
@@ -4275,6 +4726,7 @@ export const ClaimPrintAgentJobResponse = zod.object({
     "kitchen_ticket",
     "customer_receipt",
     "item_label",
+    "combo_label",
     "plate_label",
     "test",
   ]),

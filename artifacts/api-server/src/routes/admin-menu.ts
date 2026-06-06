@@ -94,6 +94,9 @@ router.post("/admin/menu", async (req, res) => {
       otdEligible,
       labelPolicy,
       labelBoxSize,
+      isCombo,
+      comboSlots,
+      comboComponentLabels,
     } = req.body;
     // New items always land at the bottom of their category.
     const sortOrder = await nextSortOrderForCategory(db, String(category ?? "").trim());
@@ -138,6 +141,9 @@ router.post("/admin/menu", async (req, res) => {
       otdEligible: otdEligible ?? false,
       labelPolicy: labelPolicy === "combined" || labelPolicy === "per_box" ? labelPolicy : "per_unit",
       labelBoxSize: labelBoxSize != null && labelBoxSize !== "" ? parseInt(String(labelBoxSize)) : null,
+      isCombo: isCombo === true || isCombo === "true",
+      comboSlots: Array.isArray(comboSlots) ? comboSlots : null,
+      comboComponentLabels: comboComponentLabels === true || comboComponentLabels === "true",
     }).returning();
     await ensureCategoryExists(category);
     res.status(201).json(formatItem(item));
@@ -167,6 +173,9 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
       otdEligible,
       labelPolicy,
       labelBoxSize,
+      isCombo,
+      comboSlots,
+      comboComponentLabels,
     } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined)             updates.name = name;
@@ -208,6 +217,9 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
     if (otdEligible !== undefined)      updates.otdEligible = otdEligible === true || otdEligible === "true";
     if (labelPolicy !== undefined)      updates.labelPolicy = labelPolicy === "combined" || labelPolicy === "per_box" ? labelPolicy : "per_unit";
     if (labelBoxSize !== undefined)     updates.labelBoxSize = labelBoxSize === null || labelBoxSize === "" ? null : parseInt(String(labelBoxSize));
+    if (isCombo !== undefined)          updates.isCombo = isCombo === true || isCombo === "true";
+    if (comboSlots !== undefined)       updates.comboSlots = Array.isArray(comboSlots) ? comboSlots : null;
+    if (comboComponentLabels !== undefined) updates.comboComponentLabels = comboComponentLabels === true || comboComponentLabels === "true";
 
     // If the category is being changed to a different value, drop the
     // item at the bottom of the destination category so it doesn't

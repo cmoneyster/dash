@@ -1,6 +1,19 @@
-import { pgTable, serial, text, numeric, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, numeric, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+export type ComboSlotOption = {
+  menuItemId: number;
+  name: string;
+};
+
+export type ComboSlot = {
+  slotId: string;
+  slotName: string;
+  minQty: number;
+  maxQty: number;
+  options: ComboSlotOption[];
+};
 
 export const menuItemsTable = pgTable("menu_items", {
   id: serial("id").primaryKey(),
@@ -69,6 +82,17 @@ export const menuItemsTable = pgTable("menu_items", {
   // inserted at the end of their category (MAX(sortOrder)+10). Used by
   // both the admin Menu Manager and the public /menu listing.
   sortOrder: integer("sort_order").notNull().default(0),
+  // ── Combo item configuration ─────────────────────────────────────────────
+  // When is_combo is true, this item acts as a combo — staff must select
+  // components from each defined slot before adding the item to the order.
+  // combo_slots is an ordered array of ComboSlot objects, each with a name,
+  // min/max quantity rule, and a list of eligible menu-item options.
+  // combo_component_labels controls whether individual labels are also
+  // printed for each selected component (the combo itself always gets one
+  // label driven by the combo item's own labelPolicy/labelBoxSize).
+  isCombo: boolean("is_combo").notNull().default(false),
+  comboSlots: jsonb("combo_slots").$type<ComboSlot[]>(),
+  comboComponentLabels: boolean("combo_component_labels").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

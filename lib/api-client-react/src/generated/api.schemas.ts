@@ -288,6 +288,27 @@ export interface ErrorResponse {
   error: string;
 }
 
+export interface ComboSlotOption {
+  menuItemId: number;
+  name: string;
+}
+
+export interface ComboSlot {
+  slotId: string;
+  slotName: string;
+  minQty: number;
+  maxQty: number;
+  options: ComboSlotOption[];
+}
+
+export interface ComboSelection {
+  slotId: string;
+  slotName: string;
+  menuItemId: number;
+  name: string;
+  quantity: number;
+}
+
 /**
  * How many physical item labels to print per quantity ordered.
  */
@@ -343,6 +364,12 @@ export interface MenuItem {
   /** Internal kitchen/staff notes not shown to customers. */
   internalNotes?: string | null;
   createdAt: string;
+  /** Whether this item is a combo that requires slot selection before ordering. */
+  isCombo?: boolean;
+  /** Ordered slot definitions for combo items. */
+  comboSlots?: ComboSlot[] | null;
+  /** Whether to also print individual component labels for each combo component. */
+  comboComponentLabels?: boolean;
 }
 
 /**
@@ -386,6 +413,9 @@ export interface CreateMenuItemBody {
   otdEligible?: boolean;
   labelPolicy?: CreateMenuItemBodyLabelPolicy;
   labelBoxSize?: number | null;
+  isCombo?: boolean;
+  comboSlots?: ComboSlot[] | null;
+  comboComponentLabels?: boolean;
 }
 
 export type UpdateMenuItemBodyLabelPolicy =
@@ -420,6 +450,9 @@ export interface UpdateMenuItemBody {
   otdEligible?: boolean;
   labelPolicy?: UpdateMenuItemBodyLabelPolicy;
   labelBoxSize?: number | null;
+  isCombo?: boolean;
+  comboSlots?: ComboSlot[] | null;
+  comboComponentLabels?: boolean;
 }
 
 export type RecommendedItemSource =
@@ -1101,6 +1134,57 @@ export interface TestLanResult {
   message: string;
 }
 
+/**
+ * One line item in a taker order submission.
+ */
+export interface CreateTakerOrderItem {
+  itemId: number;
+  /** @minimum 1 */
+  quantity: number;
+  /** Required when the menu item is a combo — one entry per selected slot component. */
+  comboSelections?: ComboSelection[] | null;
+}
+
+/**
+ * Request body for POST /event-taker/orders.
+ */
+export interface CreateTakerOrderBody {
+  guestName: string;
+  phoneNumber?: string | null;
+  items: CreateTakerOrderItem[];
+  notes?: string | null;
+  statusUrlBase?: string | null;
+}
+
+/**
+ * A snapshotted line item from an event order submitted via the Staff Order Taker POS.
+ */
+export interface TakerOrderItem {
+  itemId: number;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  /** Snapshot of the combo item name at time of order. */
+  comboName?: string | null;
+  /** Snapshot of the combo slot selections at time of order. */
+  comboSelections?: ComboSelection[] | null;
+}
+
+/**
+ * Response from POST /event-taker/orders — the created event order.
+ */
+export interface TakerOrderResponse {
+  id: number;
+  guestName: string;
+  status: string;
+  subtotal: number;
+  tax?: number | null;
+  total: number;
+  items: TakerOrderItem[];
+  createdAt: string;
+}
+
 export type PrintJobJobType =
   (typeof PrintJobJobType)[keyof typeof PrintJobJobType];
 
@@ -1108,6 +1192,7 @@ export const PrintJobJobType = {
   kitchen_ticket: "kitchen_ticket",
   customer_receipt: "customer_receipt",
   item_label: "item_label",
+  combo_label: "combo_label",
   plate_label: "plate_label",
   test: "test",
 } as const;

@@ -236,6 +236,8 @@ router.get("/event-taker/menu", verifyTakerPassword, async (req, res) => {
         imageUrl: menuItemsTable.imageUrl,
         eventStock: menuItemsTable.eventStock,
         internalNotes: menuItemsTable.internalNotes,
+        isCombo: menuItemsTable.isCombo,
+        comboSlots: menuItemsTable.comboSlots,
       })
       .from(menuItemsTable)
       .where(eq(menuItemsTable.eventTakerVisible, true))
@@ -252,6 +254,8 @@ router.get("/event-taker/menu", verifyTakerPassword, async (req, res) => {
           price: base,
           eventTakerPrice: taker,
           effectivePrice: taker,
+          isCombo: item.isCombo ?? false,
+          comboSlots: item.comboSlots ?? null,
         };
       });
 
@@ -312,7 +316,11 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
     const { guestName, phoneNumber, items, statusUrlBase, plateGroups, notes } = req.body as {
       guestName?: string;
       phoneNumber?: string | null;
-      items?: { itemId: number; quantity: number }[];
+      items?: {
+        itemId: number;
+        quantity: number;
+        comboSelections?: Array<{ slotId: string; slotName: string; menuItemId: number; name: string; quantity: number }>;
+      }[];
       statusUrlBase?: string;
       plateGroups?: unknown;
       notes?: string | null;
@@ -337,7 +345,15 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
     }
 
     // Validate quantities and aggregate duplicate item lines up-front.
+    // Items submitted with comboSelections are kept as individual combo lines
+    // so their slot selections are preserved; regular items aggregate by itemId.
+    type ComboLineInput = {
+      itemId: number;
+      quantity: number;
+      comboSelections: Array<{ slotId: string; slotName: string; menuItemId: number; name: string; quantity: number }>;
+    };
     const aggregated = new Map<number, number>();
+    const comboLineInputs: ComboLineInput[] = [];
     for (const i of items) {
       const id = Number(i?.itemId);
       const q = Number(i?.quantity);
@@ -349,7 +365,25 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
         res.status(400).json({ error: "Quantity must be a positive integer" });
         return;
       }
-      aggregated.set(id, (aggregated.get(id) ?? 0) + q);
+      if (Array.isArray(i.comboSelections) && i.comboSelections.length > 0) {
+        // Validate each selection quantity is a positive integer up-front.
+        for (const sel of i.comboSelections) {
+          if (!Number.isInteger(sel.quantity) || sel.quantity <= 0) {
+            res.status(400).json({ error: "Each combo selection quantity must be a positive integer" });
+            return;
+          }
+        }
+        comboLineInputs.push({ itemId: id, quantity: q, comboSelections: i.comboSelections });
+      } else {
+        aggregated.set(id, (aggregated.get(id) ?? 0) + q);
+      }
+    }
+
+    // Pre-aggregate total combo quantity per itemId so stock checks cover all
+    // combo lines for the same item and cannot be defeated by splitting lines.
+    const comboTotalQtyByItemId = new Map<number, number>();
+    for (const c of comboLineInputs) {
+      comboTotalQtyByItemId.set(c.itemId, (comboTotalQtyByItemId.get(c.itemId) ?? 0) + c.quantity);
     }
 
     const settings = await getSettings();
@@ -379,11 +413,17 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
           : "Order taking is currently stopped."),
           { status: 423, channelState: liveTaker });
       }
-      const itemIds = Array.from(aggregated.keys());
+      // Collect all unique item IDs across regular + combo lines.
+      const allItemIds = Array.from(
+        new Set([
+          ...Array.from(aggregated.keys()),
+          ...comboLineInputs.map(c => c.itemId),
+        ])
+      );
       const rows = await tx
         .select()
         .from(menuItemsTable)
-        .where(inArray(menuItemsTable.id, itemIds))
+        .where(inArray(menuItemsTable.id, allItemIds))
         .for("update");
       const byId = new Map(rows.map(r => [r.id, r]));
 
@@ -394,6 +434,8 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
         price: number;
         unitPrice: number;
         lineTotal: number;
+        comboName?: string;
+        comboSelections?: Array<{ slotId: string; slotName: string; menuItemId: number; name: string; quantity: number }>;
       }[] = [];
       let subtotal = 0;
       // Track post-decrement stock per item so we can run one batched
@@ -402,10 +444,19 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
 
       const round2 = (n: number) => Math.round(n * 100) / 100;
 
+      // ── Regular (non-combo) items ─────────────────────────────────────
       for (const [itemId, qty] of aggregated) {
         const row = byId.get(itemId);
         if (!row) throw Object.assign(new Error(`Item ${itemId} not found`), { status: 404 });
         if (!row.eventTakerVisible) throw Object.assign(new Error(`Item "${row.name}" is not available on the order taker`), { status: 400 });
+        // Combo items submitted without comboSelections land here — block them so
+        // required slot min/max rules cannot be bypassed by omitting selections.
+        if (row.isCombo) {
+          throw Object.assign(
+            new Error(`"${row.name}" is a combo item — combo slot selections are required`),
+            { status: 400 }
+          );
+        }
         // Strict: an item without an event_taker_price cannot be sold on the POS.
         if (row.eventTakerPrice == null) {
           throw Object.assign(
@@ -437,6 +488,103 @@ router.post("/event-taker/orders", verifyTakerPassword, async (req, res) => {
           price: unitPrice,
           unitPrice,
           lineTotal,
+        });
+      }
+
+      // ── Combo items ───────────────────────────────────────────────────
+      // Track which itemIds have had their stock checked+decremented so we do it
+      // exactly once per item even if it appears across multiple combo lines.
+      const comboStockCheckedIds = new Set<number>();
+      for (const comboInput of comboLineInputs) {
+        const row = byId.get(comboInput.itemId);
+        if (!row) throw Object.assign(new Error(`Item ${comboInput.itemId} not found`), { status: 404 });
+        if (!row.eventTakerVisible) throw Object.assign(new Error(`Item "${row.name}" is not available on the order taker`), { status: 400 });
+        if (row.eventTakerPrice == null) {
+          throw Object.assign(
+            new Error(`Item "${row.name}" has no Order Taker price set`),
+            { status: 400 }
+          );
+        }
+        // Reject non-combo items that were submitted with comboSelections —
+        // they must not bypass regular aggregation/validation logic.
+        if (!row.isCombo) {
+          throw Object.assign(
+            new Error(`Item "${row.name}" is not a combo item — do not submit comboSelections for it`),
+            { status: 400 }
+          );
+        }
+        // Validate combo slot selections against the item's comboSlots definition.
+        if (Array.isArray(row.comboSlots) && row.comboSlots.length > 0) {
+          type SlotDef = { slotId: string; slotName: string; minQty: number; maxQty: number; options: Array<{ menuItemId: number }> };
+          const slotDefs = row.comboSlots as SlotDef[];
+          const validSlotIds = new Set(slotDefs.map(s => s.slotId));
+          // Reject any submitted slotId that isn't in the item's configuration.
+          for (const sel of comboInput.comboSelections) {
+            if (!validSlotIds.has(sel.slotId)) {
+              throw Object.assign(
+                new Error(`Unknown slot "${sel.slotId}" is not defined for "${row.name}"`),
+                { status: 400 }
+              );
+            }
+          }
+          for (const slot of slotDefs) {
+            const slotSelections = comboInput.comboSelections.filter(s => s.slotId === slot.slotId);
+            const slotTotal = slotSelections.reduce((sum, s) => sum + s.quantity, 0);
+            if (slotTotal < slot.minQty) {
+              throw Object.assign(
+                new Error(`Slot "${slot.slotName}" requires at least ${slot.minQty} item(s) — got ${slotTotal}`),
+                { status: 400 }
+              );
+            }
+            if (slotTotal > slot.maxQty) {
+              throw Object.assign(
+                new Error(`Slot "${slot.slotName}" allows at most ${slot.maxQty} item(s) — got ${slotTotal}`),
+                { status: 400 }
+              );
+            }
+            // Validate that all selected menuItemIds are in the slot's options list.
+            const validOptionIds = new Set(slot.options.map((o: { menuItemId: number }) => o.menuItemId));
+            for (const sel of slotSelections) {
+              if (!validOptionIds.has(sel.menuItemId)) {
+                throw Object.assign(
+                  new Error(`Item "${sel.name}" is not a valid option for slot "${slot.slotName}"`),
+                  { status: 400 }
+                );
+              }
+            }
+          }
+        }
+        // Stock check + decrement: use the pre-aggregated total across all combo
+        // lines for this item so that splitting one item across multiple lines
+        // cannot bypass stock enforcement.
+        if (row.eventStock !== null && !comboStockCheckedIds.has(row.id)) {
+          comboStockCheckedIds.add(row.id);
+          const totalNeeded = comboTotalQtyByItemId.get(row.id)!;
+          if (row.eventStock < totalNeeded) {
+            throw Object.assign(
+              new Error(`Only ${row.eventStock} of "${row.name}" remaining`),
+              { status: 409, remaining: row.eventStock, itemId: row.id }
+            );
+          }
+          await tx
+            .update(menuItemsTable)
+            .set({ eventStock: sql`event_stock - ${totalNeeded}` })
+            .where(eq(menuItemsTable.id, row.id));
+          stockChanges.push({ itemId: row.id, name: row.name, newStock: row.eventStock - totalNeeded });
+        }
+        const qty = comboInput.quantity;
+        const unitPrice = parseFloat(row.eventTakerPrice);
+        const lineTotal = round2(unitPrice * qty);
+        subtotal += lineTotal;
+        orderItems.push({
+          itemId: row.id,
+          name: row.name,
+          quantity: qty,
+          price: unitPrice,
+          unitPrice,
+          lineTotal,
+          comboName: row.name,
+          comboSelections: comboInput.comboSelections,
         });
       }
 

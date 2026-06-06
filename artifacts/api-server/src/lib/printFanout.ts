@@ -1,5 +1,6 @@
 import { db } from "@workspace/db";
 import { menuItemsTable, eventOrdersTable } from "@workspace/db/schema";
+import type { EventOrderItem } from "@workspace/db/schema";
 import { inArray, eq } from "drizzle-orm";
 import { logger } from "./logger";
 import {
@@ -10,6 +11,7 @@ import type {
   KitchenTicketPayload,
   CustomerReceiptPayload,
   ItemLabelPayload,
+  ComboLabelPayload,
   PlateLabelPayload,
   OrderLine,
 } from "./printRenderer";
@@ -81,31 +83,71 @@ export async function fanoutPrintForEventOrder(args: {
   const itemIds = (order.items ?? []).map((i) => i.itemId);
   if (itemIds.length === 0) return 0;
 
-  // Pull label policy + display info for the items in this order.
+  // Pull label policy + display info + combo flags for the items in this order.
   const menuRows = await db
     .select({
       id: menuItemsTable.id,
       labelPolicy: menuItemsTable.labelPolicy,
       labelBoxSize: menuItemsTable.labelBoxSize,
+      isCombo: menuItemsTable.isCombo,
+      comboComponentLabels: menuItemsTable.comboComponentLabels,
     })
     .from(menuItemsTable)
     .where(inArray(menuItemsTable.id, itemIds));
-  const policyById = new Map<number, { policy: LabelPolicy; boxSize: number | null }>();
+
+  type MenuPolicy = {
+    policy: LabelPolicy;
+    boxSize: number | null;
+    isCombo: boolean;
+    comboComponentLabels: boolean;
+  };
+  const policyById = new Map<number, MenuPolicy>();
   for (const r of menuRows) {
     policyById.set(r.id, {
       policy: (r.labelPolicy as LabelPolicy) ?? "per_unit",
       boxSize: r.labelBoxSize ?? null,
+      isCombo: r.isCombo ?? false,
+      comboComponentLabels: r.comboComponentLabels ?? false,
     });
+  }
+
+  // Collect component item IDs from combo selections so we can fetch their
+  // label policies for component label fan-out.
+  const componentItemIds = new Set<number>();
+  for (const it of order.items as EventOrderItem[]) {
+    if (it.comboSelections) {
+      for (const sel of it.comboSelections) {
+        componentItemIds.add(sel.menuItemId);
+      }
+    }
+  }
+  const componentPolicyById = new Map<number, { policy: LabelPolicy; boxSize: number | null }>();
+  if (componentItemIds.size > 0) {
+    const compRows = await db
+      .select({
+        id: menuItemsTable.id,
+        labelPolicy: menuItemsTable.labelPolicy,
+        labelBoxSize: menuItemsTable.labelBoxSize,
+      })
+      .from(menuItemsTable)
+      .where(inArray(menuItemsTable.id, Array.from(componentItemIds)));
+    for (const r of compRows) {
+      componentPolicyById.set(r.id, {
+        policy: (r.labelPolicy as LabelPolicy) ?? "per_unit",
+        boxSize: r.labelBoxSize ?? null,
+      });
+    }
   }
 
   const placedAt = (order.createdAt ?? new Date()).toISOString();
   const orderNumber = String(order.id);
   const guestName = order.guestName;
   const tableNumber = order.tableNumber ?? null;
-  const orderLines: OrderLine[] = order.items.map((it) => ({
+  const orderLines: OrderLine[] = (order.items as EventOrderItem[]).map((it) => ({
     name: it.name,
     quantity: it.quantity,
     unitPrice: it.price,
+    comboSelections: it.comboSelections,
   }));
 
   // ── Kitchen ticket ─────────────────────────────────────────────────────
@@ -124,7 +166,11 @@ export async function fanoutPrintForEventOrder(args: {
         placedAt,
         notes: order.notes ?? null,
       },
-      lines: order.items.map((it) => ({ name: it.name, quantity: it.quantity })),
+      lines: (order.items as EventOrderItem[]).map((it) => ({
+        name: it.name,
+        quantity: it.quantity,
+        comboSelections: it.comboSelections,
+      })),
     };
     for (const p of kitchenPrinters) {
       await enqueuePrintJob({
@@ -171,7 +217,7 @@ export async function fanoutPrintForEventOrder(args: {
     }
   }
 
-  // ── Item labels (per_unit / combined / per_box) ─────────────────────────
+  // ── Item labels / combo labels (per_unit / combined / per_box) ──────────
   // Plate labels piggyback on item-label printers + the same allowed-kind
   // gate, so we treat them as a single conceptual kind here.
   const labelPrinters = (allowed.has("item_label") || allowed.has("plate_label")) && !kindFilter
@@ -189,72 +235,180 @@ export async function fanoutPrintForEventOrder(args: {
     }
 
     for (const printer of labelPrinters) {
-      // Build the line set, optionally subtracting plate-attached units.
-      const linesForLabels: LabelLineInput[] = order.items
-        .map((it) => {
-          const policy = policyById.get(it.itemId);
+      // Split items into regular vs. combo for separate handling.
+      const regularLines: LabelLineInput[] = [];
+      const comboItems: EventOrderItem[] = [];
+
+      for (const it of order.items as EventOrderItem[]) {
+        const policy = policyById.get(it.itemId);
+        const isComboItem = policy?.isCombo ?? false;
+
+        if (isComboItem) {
+          comboItems.push(it);
+        } else {
+          // Regular item — existing per-unit / combined / per_box expansion.
           const plateQty = plateQtyByItem.get(it.itemId) ?? 0;
           const qty = printer.suppressItemLabelsForPlateLines
             ? Math.max(0, it.quantity - plateQty)
             : it.quantity;
-          return {
-            itemId: it.itemId,
-            itemName: it.name,
-            quantity: qty,
-            labelPolicy: policy?.policy ?? "per_unit",
-            labelBoxSize: policy?.boxSize ?? null,
+          if (qty > 0) {
+            regularLines.push({
+              itemId: it.itemId,
+              itemName: it.name,
+              quantity: qty,
+              labelPolicy: policy?.policy ?? "per_unit",
+              labelBoxSize: policy?.boxSize ?? null,
+            });
+          }
+        }
+      }
+
+      // ── Regular item labels ─────────────────────────────────────────
+      if (regularLines.length > 0) {
+        for (const line of regularLines) {
+          const lineExpanded = expandItemLabels(line).length;
+          logger.info(
+            {
+              orderId: order.id,
+              printerId: printer.id,
+              itemId: line.itemId,
+              policy: line.labelPolicy,
+              boxSize: line.labelBoxSize,
+              qty: line.quantity,
+              expanded: lineExpanded,
+            },
+            "[print-fanout] item-label expansion"
+          );
+        }
+        const expanded = expandAllItemLabels(regularLines);
+        for (let i = 0; i < expanded.length; i++) {
+          const lbl = expanded[i];
+          const payload: ItemLabelPayload = {
+            type: "item_label",
+            orderNumber,
+            guestName,
+            itemName: lbl.itemName,
+            quantity: lbl.quantity,
+            notes: lbl.notes ?? null,
+            modifiers: lbl.modifiers,
+            isFullBox: lbl.isFullBox,
+            placedAt,
+            labelIndex: i + 1,
+            labelTotal: expanded.length,
           };
-        })
-        .filter((l) => l.quantity > 0);
-
-      for (const line of linesForLabels) {
-        const lineExpanded = expandItemLabels(line).length;
-        logger.info(
-          {
-            orderId: order.id,
+          await enqueuePrintJob({
             printerId: printer.id,
-            itemId: line.itemId,
-            policy: line.labelPolicy,
-            boxSize: line.labelBoxSize,
-            qty: line.quantity,
-            expanded: lineExpanded,
-          },
-          "[print-fanout] item-label expansion"
-        );
-      }
-      const expanded = expandAllItemLabels(linesForLabels);
-      for (let i = 0; i < expanded.length; i++) {
-        const lbl = expanded[i];
-        const payload: ItemLabelPayload = {
-          type: "item_label",
-          orderNumber,
-          guestName,
-          itemName: lbl.itemName,
-          quantity: lbl.quantity,
-          notes: lbl.notes ?? null,
-          modifiers: lbl.modifiers,
-          isFullBox: lbl.isFullBox,
-          placedAt,
-          labelIndex: i + 1,
-          labelTotal: expanded.length,
-        };
-        await enqueuePrintJob({
-          printerId: printer.id,
-          jobType: "item_label",
-          payload: payload as unknown as Record<string, unknown>,
-          orderSource: "event_order",
-          orderId: order.id,
-        });
-        enqueued++;
+            jobType: "item_label",
+            payload: payload as unknown as Record<string, unknown>,
+            orderSource: "event_order",
+            orderId: order.id,
+          });
+          enqueued++;
+        }
       }
 
-      // One plate-label per configured plate.
+      // ── Combo labels ────────────────────────────────────────────────
+      for (const it of comboItems) {
+        const policy = policyById.get(it.itemId);
+        const comboName = it.comboName ?? it.name;
+        const selections = it.comboSelections ?? [];
+
+        // Expand combo labels using the combo item's own labelPolicy/labelBoxSize.
+        const comboLine: LabelLineInput = {
+          itemId: it.itemId,
+          itemName: comboName,
+          quantity: it.quantity,
+          labelPolicy: policy?.policy ?? "per_unit",
+          labelBoxSize: policy?.boxSize ?? null,
+        };
+        const comboExpanded = expandItemLabels(comboLine);
+
+        for (let i = 0; i < comboExpanded.length; i++) {
+          const lbl = comboExpanded[i];
+          const payload: ComboLabelPayload = {
+            type: "combo_label",
+            orderNumber,
+            guestName,
+            comboName,
+            comboSelections: selections,
+            placedAt,
+            labelIndex: i + 1,
+            labelTotal: comboExpanded.length,
+          };
+          await enqueuePrintJob({
+            printerId: printer.id,
+            jobType: "item_label",
+            payload: payload as unknown as Record<string, unknown>,
+            orderSource: "event_order",
+            orderId: order.id,
+          });
+          enqueued++;
+        }
+
+        // ── Per-component labels (if enabled) ───────────────────────
+        if ((policy?.comboComponentLabels ?? false) && selections.length > 0) {
+          // Collapse same-menuItemId picks within the selections so we
+          // expand labels per unique component, scaled by combo qty.
+          const byComponentId = new Map<number, { name: string; totalQty: number }>();
+          for (const sel of selections) {
+            const existing = byComponentId.get(sel.menuItemId);
+            if (existing) {
+              existing.totalQty += sel.quantity * it.quantity;
+            } else {
+              byComponentId.set(sel.menuItemId, {
+                name: sel.name,
+                totalQty: sel.quantity * it.quantity,
+              });
+            }
+          }
+
+          for (const [compItemId, { name, totalQty }] of byComponentId) {
+            const compPolicy = componentPolicyById.get(compItemId);
+            const compLine: LabelLineInput = {
+              itemId: compItemId,
+              itemName: name,
+              quantity: totalQty,
+              labelPolicy: compPolicy?.policy ?? "per_unit",
+              labelBoxSize: compPolicy?.boxSize ?? null,
+            };
+            const compExpanded = expandItemLabels(compLine);
+
+            for (let i = 0; i < compExpanded.length; i++) {
+              const lbl = compExpanded[i];
+              const payload: ItemLabelPayload = {
+                type: "item_label",
+                orderNumber,
+                guestName,
+                itemName: lbl.itemName,
+                quantity: lbl.quantity,
+                notes: lbl.notes ?? null,
+                modifiers: lbl.modifiers,
+                isFullBox: lbl.isFullBox,
+                placedAt,
+                labelIndex: i + 1,
+                labelTotal: compExpanded.length,
+                partOfCombo: comboName,
+              };
+              await enqueuePrintJob({
+                printerId: printer.id,
+                jobType: "item_label",
+                payload: payload as unknown as Record<string, unknown>,
+                orderSource: "event_order",
+                orderId: order.id,
+              });
+              enqueued++;
+            }
+          }
+        }
+      }
+
+      // ── Plate labels ────────────────────────────────────────────────
       const plates = order.plateGroups ?? [];
       for (let i = 0; i < plates.length; i++) {
         const plate = plates[i];
         const lines = plate.items
           .map((pi) => {
-            const oi = order.items.find((x) => x.itemId === pi.itemId);
+            const oi = (order.items as EventOrderItem[]).find((x) => x.itemId === pi.itemId);
             return oi ? { name: oi.name, quantity: pi.quantity } : null;
           })
           .filter((l): l is { name: string; quantity: number } => l != null);
@@ -336,24 +490,48 @@ export async function fanoutItemLabelsForEventOrderId(args: {
   const allowed = ALLOWED_KINDS_BY_SOURCE.kitchen_send;
   if (!allowed.has("item_label")) return 0;
 
-  const itemIds = (order.items ?? []).map((i) => i.itemId);
+  const itemIds = (order.items ?? []).map((i: EventOrderItem) => i.itemId);
   if (itemIds.length === 0) return 0;
 
-  // Resolve label policy for the items we might print.
+  // Resolve label policy + combo flags for the items we might print.
   const menuRows = await db
     .select({
       id: menuItemsTable.id,
       labelPolicy: menuItemsTable.labelPolicy,
       labelBoxSize: menuItemsTable.labelBoxSize,
+      isCombo: menuItemsTable.isCombo,
+      comboComponentLabels: menuItemsTable.comboComponentLabels,
     })
     .from(menuItemsTable)
     .where(inArray(menuItemsTable.id, itemIds));
-  const policyById = new Map<number, { policy: LabelPolicy; boxSize: number | null }>();
+
+  type MenuPolicy = { policy: LabelPolicy; boxSize: number | null; isCombo: boolean; comboComponentLabels: boolean };
+  const policyById = new Map<number, MenuPolicy>();
   for (const r of menuRows) {
     policyById.set(r.id, {
       policy: (r.labelPolicy as LabelPolicy) ?? "per_unit",
       boxSize: r.labelBoxSize ?? null,
+      isCombo: r.isCombo ?? false,
+      comboComponentLabels: r.comboComponentLabels ?? false,
     });
+  }
+
+  // Collect component IDs for combo items.
+  const componentItemIds = new Set<number>();
+  for (const it of order.items as EventOrderItem[]) {
+    if (it.comboSelections) {
+      for (const sel of it.comboSelections) componentItemIds.add(sel.menuItemId);
+    }
+  }
+  const componentPolicyById = new Map<number, { policy: LabelPolicy; boxSize: number | null }>();
+  if (componentItemIds.size > 0) {
+    const compRows = await db
+      .select({ id: menuItemsTable.id, labelPolicy: menuItemsTable.labelPolicy, labelBoxSize: menuItemsTable.labelBoxSize })
+      .from(menuItemsTable)
+      .where(inArray(menuItemsTable.id, Array.from(componentItemIds)));
+    for (const r of compRows) {
+      componentPolicyById.set(r.id, { policy: (r.labelPolicy as LabelPolicy) ?? "per_unit", boxSize: r.labelBoxSize ?? null });
+    }
   }
 
   // Manual mode = ignore auto_print_on_new_order.
@@ -366,13 +544,10 @@ export async function fanoutItemLabelsForEventOrderId(args: {
 
   // Build the candidate item set, optionally narrowed to one item.
   const candidateItems = itemId != null
-    ? (order.items ?? []).filter((it) => it.itemId === itemId)
-    : (order.items ?? []);
+    ? (order.items as EventOrderItem[]).filter((it) => it.itemId === itemId)
+    : (order.items as EventOrderItem[]);
   if (candidateItems.length === 0) {
-    logger.warn(
-      { orderId, itemId },
-      "[print-fanout] item-labels: itemId not on order — nothing enqueued"
-    );
+    logger.warn({ orderId, itemId }, "[print-fanout] item-labels: itemId not on order — nothing enqueued");
     return 0;
   }
 
@@ -387,47 +562,130 @@ export async function fanoutItemLabelsForEventOrderId(args: {
 
   let enqueued = 0;
   for (const printer of labelPrinters) {
-    const linesForLabels: LabelLineInput[] = candidateItems
-      .map((it) => {
-        const policy = policyById.get(it.itemId);
+    for (const it of candidateItems) {
+      const policy = policyById.get(it.itemId);
+      const isComboItem = policy?.isCombo ?? false;
+
+      if (isComboItem) {
+        // Combo: enqueue combo label + optional component labels.
+        const comboName = it.comboName ?? it.name;
+        const selections = it.comboSelections ?? [];
+        const comboLine: LabelLineInput = {
+          itemId: it.itemId,
+          itemName: comboName,
+          quantity: it.quantity,
+          labelPolicy: policy?.policy ?? "per_unit",
+          labelBoxSize: policy?.boxSize ?? null,
+        };
+        const comboExpanded = expandItemLabels(comboLine);
+        for (let i = 0; i < comboExpanded.length; i++) {
+          const lbl = comboExpanded[i];
+          const payload: ComboLabelPayload = {
+            type: "combo_label",
+            orderNumber,
+            guestName,
+            comboName,
+            comboSelections: selections,
+            placedAt,
+            labelIndex: i + 1,
+            labelTotal: comboExpanded.length,
+          };
+          await enqueuePrintJob({
+            printerId: printer.id,
+            jobType: "item_label",
+            payload: payload as unknown as Record<string, unknown>,
+            orderSource: "event_order",
+            orderId: order.id,
+          });
+          enqueued++;
+        }
+
+        if ((policy?.comboComponentLabels ?? false) && selections.length > 0) {
+          const byComponentId = new Map<number, { name: string; totalQty: number }>();
+          for (const sel of selections) {
+            const existing = byComponentId.get(sel.menuItemId);
+            if (existing) existing.totalQty += sel.quantity * it.quantity;
+            else byComponentId.set(sel.menuItemId, { name: sel.name, totalQty: sel.quantity * it.quantity });
+          }
+          for (const [compItemId, { name, totalQty }] of byComponentId) {
+            const compPolicy = componentPolicyById.get(compItemId);
+            const compLine: LabelLineInput = {
+              itemId: compItemId,
+              itemName: name,
+              quantity: totalQty,
+              labelPolicy: compPolicy?.policy ?? "per_unit",
+              labelBoxSize: compPolicy?.boxSize ?? null,
+            };
+            const compExpanded = expandItemLabels(compLine);
+            for (let i = 0; i < compExpanded.length; i++) {
+              const lbl = compExpanded[i];
+              const payload: ItemLabelPayload = {
+                type: "item_label",
+                orderNumber,
+                guestName,
+                itemName: lbl.itemName,
+                quantity: lbl.quantity,
+                notes: lbl.notes ?? null,
+                modifiers: lbl.modifiers,
+                isFullBox: lbl.isFullBox,
+                placedAt,
+                labelIndex: i + 1,
+                labelTotal: compExpanded.length,
+                partOfCombo: comboName,
+              };
+              await enqueuePrintJob({
+                printerId: printer.id,
+                jobType: "item_label",
+                payload: payload as unknown as Record<string, unknown>,
+                orderSource: "event_order",
+                orderId: order.id,
+              });
+              enqueued++;
+            }
+          }
+        }
+      } else {
+        // Regular item.
         const plateQty = plateQtyByItem.get(it.itemId) ?? 0;
         const qty = printer.suppressItemLabelsForPlateLines
           ? Math.max(0, it.quantity - plateQty)
           : it.quantity;
-        return {
+        if (qty <= 0) continue;
+
+        const linesForLabels: LabelLineInput[] = [{
           itemId: it.itemId,
           itemName: it.name,
           quantity: qty,
           labelPolicy: policy?.policy ?? "per_unit",
           labelBoxSize: policy?.boxSize ?? null,
-        };
-      })
-      .filter((l) => l.quantity > 0);
+        }];
 
-    const expanded = expandAllItemLabels(linesForLabels);
-    for (let i = 0; i < expanded.length; i++) {
-      const lbl = expanded[i];
-      const payload: ItemLabelPayload = {
-        type: "item_label",
-        orderNumber,
-        guestName,
-        itemName: lbl.itemName,
-        quantity: lbl.quantity,
-        notes: lbl.notes ?? null,
-        modifiers: lbl.modifiers,
-        isFullBox: lbl.isFullBox,
-        placedAt,
-        labelIndex: i + 1,
-        labelTotal: expanded.length,
-      };
-      await enqueuePrintJob({
-        printerId: printer.id,
-        jobType: "item_label",
-        payload: payload as unknown as Record<string, unknown>,
-        orderSource: "event_order",
-        orderId: order.id,
-      });
-      enqueued++;
+        const expanded = expandAllItemLabels(linesForLabels);
+        for (let i = 0; i < expanded.length; i++) {
+          const lbl = expanded[i];
+          const payload: ItemLabelPayload = {
+            type: "item_label",
+            orderNumber,
+            guestName,
+            itemName: lbl.itemName,
+            quantity: lbl.quantity,
+            notes: lbl.notes ?? null,
+            modifiers: lbl.modifiers,
+            isFullBox: lbl.isFullBox,
+            placedAt,
+            labelIndex: i + 1,
+            labelTotal: expanded.length,
+          };
+          await enqueuePrintJob({
+            printerId: printer.id,
+            jobType: "item_label",
+            payload: payload as unknown as Record<string, unknown>,
+            orderSource: "event_order",
+            orderId: order.id,
+          });
+          enqueued++;
+        }
+      }
     }
   }
 

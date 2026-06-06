@@ -37,6 +37,7 @@ import type {
   CreateOpenaiConversationBody,
   CreateOrderBody,
   CreatePrinterBody,
+  CreateTakerOrderBody,
   DayLoadResponse,
   ErrorResponse,
   FailPrintAgentJob200,
@@ -77,6 +78,7 @@ import type {
   SyncRecommendationsBody,
   SyncRecommendationsResponse,
   TakerMenuResponse,
+  TakerOrderResponse,
   TestLanPrinter502,
   TestLanResult,
   TestPrintBody,
@@ -4897,6 +4899,92 @@ export function useGetEventTakerMenu<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Submit an event order from the Staff Order Taker POS
+ */
+export const getCreateTakerOrderUrl = () => {
+  return `/api/event-taker/orders`;
+};
+
+export const createTakerOrder = async (
+  createTakerOrderBody: CreateTakerOrderBody,
+  options?: RequestInit,
+): Promise<TakerOrderResponse> => {
+  return customFetch<TakerOrderResponse>(getCreateTakerOrderUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createTakerOrderBody),
+  });
+};
+
+export const getCreateTakerOrderMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createTakerOrder>>,
+    TError,
+    { data: BodyType<CreateTakerOrderBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createTakerOrder>>,
+  TError,
+  { data: BodyType<CreateTakerOrderBody> },
+  TContext
+> => {
+  const mutationKey = ["createTakerOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createTakerOrder>>,
+    { data: BodyType<CreateTakerOrderBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createTakerOrder(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateTakerOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createTakerOrder>>
+>;
+export type CreateTakerOrderMutationBody = BodyType<CreateTakerOrderBody>;
+export type CreateTakerOrderMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Submit an event order from the Staff Order Taker POS
+ */
+export const useCreateTakerOrder = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createTakerOrder>>,
+    TError,
+    { data: BodyType<CreateTakerOrderBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createTakerOrder>>,
+  TError,
+  { data: BodyType<CreateTakerOrderBody> },
+  TContext
+> => {
+  return useMutation(getCreateTakerOrderMutationOptions(options));
+};
 
 /**
  * @summary List queued print jobs for the LAN/router agent

@@ -1185,6 +1185,49 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /event-taker/orders:
+    post:
+      operationId: createTakerOrder
+      tags: [event-taker]
+      summary: Submit an event order from the Staff Order Taker POS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTakerOrderBody"
+      responses:
+        "201":
+          description: Created event order with snapshotted items and combo selections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TakerOrderResponse"
+        "400":
+          description: Validation error (missing guest name, invalid quantities, combo slot violations)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Insufficient stock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          description: Order taking paused or closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # Print agent endpoints (browser + router shell agent)
   /print-agent/queued:
     get:
@@ -1871,6 +1914,59 @@ components:
       required:
         - error
 
+    ComboSlotOption:
+      type: object
+      properties:
+        menuItemId:
+          type: integer
+        name:
+          type: string
+      required:
+        - menuItemId
+        - name
+
+    ComboSlot:
+      type: object
+      properties:
+        slotId:
+          type: string
+        slotName:
+          type: string
+        minQty:
+          type: integer
+        maxQty:
+          type: integer
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComboSlotOption"
+      required:
+        - slotId
+        - slotName
+        - minQty
+        - maxQty
+        - options
+
+    ComboSelection:
+      type: object
+      properties:
+        slotId:
+          type: string
+        slotName:
+          type: string
+        menuItemId:
+          type: integer
+        name:
+          type: string
+        quantity:
+          type: integer
+      required:
+        - slotId
+        - slotName
+        - menuItemId
+        - name
+        - quantity
+
     MenuItem:
       type: object
       properties:
@@ -1958,6 +2054,18 @@ components:
         createdAt:
           type: string
           format: date-time
+        isCombo:
+          type: boolean
+          description: Whether this item is a combo that requires slot selection before ordering.
+        comboSlots:
+          type: array
+          nullable: true
+          description: Ordered slot definitions for combo items.
+          items:
+            $ref: "#/components/schemas/ComboSlot"
+        comboComponentLabels:
+          type: boolean
+          description: Whether to also print individual component labels for each combo component.
       required:
         - id
         - name
@@ -2048,6 +2156,15 @@ components:
         labelBoxSize:
           type: integer
           nullable: true
+        isCombo:
+          type: boolean
+        comboSlots:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/ComboSlot"
+        comboComponentLabels:
+          type: boolean
       required:
         - name
         - description
@@ -2117,6 +2234,15 @@ components:
         labelBoxSize:
           type: integer
           nullable: true
+        isCombo:
+          type: boolean
+        comboSlots:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/ComboSlot"
+        comboComponentLabels:
+          type: boolean
 
     RecommendedItem:
       type: object
@@ -3180,6 +3306,112 @@ components:
         - lanIp
         - message
 
+    CreateTakerOrderBody:
+      type: object
+      description: Request body for POST /event-taker/orders.
+      properties:
+        guestName:
+          type: string
+        phoneNumber:
+          type: string
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateTakerOrderItem"
+        notes:
+          type: string
+          nullable: true
+        statusUrlBase:
+          type: string
+          nullable: true
+      required:
+        - guestName
+        - items
+
+    CreateTakerOrderItem:
+      type: object
+      description: One line item in a taker order submission.
+      properties:
+        itemId:
+          type: integer
+        quantity:
+          type: integer
+          minimum: 1
+        comboSelections:
+          type: array
+          nullable: true
+          description: Required when the menu item is a combo — one entry per selected slot component.
+          items:
+            $ref: "#/components/schemas/ComboSelection"
+      required:
+        - itemId
+        - quantity
+
+    TakerOrderItem:
+      type: object
+      description: A snapshotted line item from an event order submitted via the Staff Order Taker POS.
+      properties:
+        itemId:
+          type: integer
+        name:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+        lineTotal:
+          type: number
+        comboName:
+          type: string
+          nullable: true
+          description: Snapshot of the combo item name at time of order.
+        comboSelections:
+          type: array
+          nullable: true
+          description: Snapshot of the combo slot selections at time of order.
+          items:
+            $ref: "#/components/schemas/ComboSelection"
+      required:
+        - itemId
+        - name
+        - quantity
+        - unitPrice
+        - lineTotal
+
+    TakerOrderResponse:
+      type: object
+      description: Response from POST /event-taker/orders — the created event order.
+      properties:
+        id:
+          type: integer
+        guestName:
+          type: string
+        status:
+          type: string
+        subtotal:
+          type: number
+        tax:
+          type: number
+          nullable: true
+        total:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TakerOrderItem"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - guestName
+        - status
+        - subtotal
+        - total
+        - items
+        - createdAt
+
     PrintJob:
       type: object
       properties:
@@ -3189,7 +3421,7 @@ components:
           type: integer
         jobType:
           type: string
-          enum: [kitchen_ticket, customer_receipt, item_label, plate_label, test]
+          enum: [kitchen_ticket, customer_receipt, item_label, combo_label, plate_label, test]
         orderSource:
           type: string
           nullable: true

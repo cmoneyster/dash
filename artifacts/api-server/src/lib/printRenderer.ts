@@ -1,4 +1,5 @@
 import type { PrintTemplate, SectionKey, SectionAlign, TicketLayout } from "@workspace/db/schema";
+import type { ComboSelection } from "@workspace/db/schema";
 
 const ESC = 0x1b;
 const GS  = 0x1d;
@@ -62,7 +63,7 @@ function fmtTime(d: Date): string {
 
 // ─── Section resolution ────────────────────────────────────────────────────────
 
-type TicketType = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label";
+type TicketType = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label" | "combo_label";
 
 type ResolvedStyle = {
   visible: boolean;
@@ -92,6 +93,7 @@ const TICKET_SIZE_OVERRIDES: Partial<Record<TicketType, Partial<Record<SectionKe
   customer_receipt: { header: { size: 1, bold: true } },
   item_label:  { header: { size: 1, bold: true }, orderNumber: { size: 2, bold: true }, items: { size: 2, bold: true } },
   plate_label: { orderNumber: { size: 2, bold: true }, items: { size: 2, bold: true } },
+  combo_label: { header: { size: 1, bold: true }, orderNumber: { size: 2, bold: true }, items: { size: 2, bold: true } },
 };
 
 // Per-ticket-type divider defaults – controls which sections have dividers shown
@@ -111,6 +113,9 @@ const TICKET_DIVIDER_OVERRIDES: Partial<Record<TicketType, Partial<Record<Sectio
   plate_label: {
     items: { dividerBefore: true, dividerAfter: true },
   },
+  combo_label: {
+    items: { dividerBefore: true, dividerAfter: true },
+  },
 };
 
 export const DEFAULT_ORDERS: Record<TicketType, SectionKey[]> = {
@@ -119,10 +124,13 @@ export const DEFAULT_ORDERS: Record<TicketType, SectionKey[]> = {
   // "header" prints businessName on item labels; "tableNumber" removed — ItemLabelPayload has no tableNumber field.
   item_label:       ["header", "orderNumber", "guestName", "items", "timestamp"],
   plate_label:      ["orderNumber", "guestName", "items", "timestamp"],
+  combo_label:      ["header", "orderNumber", "guestName", "items", "timestamp"],
 };
 
 function getLayout(tmpl: PrintTemplate | undefined, key: TicketType): TicketLayout | undefined {
-  return tmpl?.[key] as TicketLayout | undefined;
+  // combo_label re-uses item_label template layout when one exists
+  const lookupKey = key === "combo_label" ? "item_label" : key;
+  return tmpl?.[lookupKey as keyof PrintTemplate] as TicketLayout | undefined;
 }
 
 function resolveOrder(tmpl: PrintTemplate | undefined, key: TicketType): SectionKey[] {
@@ -200,6 +208,8 @@ export type OrderLine = {
   unitPrice?: number;
   modifiers?: string[];
   notes?: string | null;
+  // Populated for combo items — the selected components to print indented
+  comboSelections?: ComboSelection[];
 };
 
 export type KitchenTicketPayload = {
@@ -234,6 +244,20 @@ export type ItemLabelPayload = {
   isFullBox?: boolean;
   labelIndex?: number;
   labelTotal?: number;
+  // When this label is a component of a combo, carries the combo name so
+  // kitchen staff can group items belonging to the same combo together.
+  partOfCombo?: string;
+};
+
+export type ComboLabelPayload = {
+  type: "combo_label";
+  orderNumber: string | number;
+  guestName: string;
+  comboName: string;
+  comboSelections: ComboSelection[];
+  placedAt: string;
+  labelIndex?: number;
+  labelTotal?: number;
 };
 
 export type PlateLabelPayload = {
@@ -255,6 +279,7 @@ export type RenderablePayload =
   | KitchenTicketPayload
   | CustomerReceiptPayload
   | ItemLabelPayload
+  | ComboLabelPayload
   | PlateLabelPayload
   | TestPayload;
 
@@ -267,6 +292,29 @@ function escLogo(t: TicketBuilder, tmpl: PrintTemplate | undefined, align: Secti
   t.align(align).line("[LOGO]");
 }
 
+// ─── Combo selection collapse helper ─────────────────────────────────────────
+// Collapses repeated picks of the same menuItemId within a combo's selections
+// into a single line with the summed quantity, multiplied by the combo order qty.
+
+function collapseComboSelections(
+  selections: ComboSelection[],
+  comboQty: number,
+): { name: string; qty: number }[] {
+  const byId = new Map<number, { name: string; qty: number }>();
+  for (const s of selections) {
+    const existing = byId.get(s.menuItemId);
+    if (existing) {
+      existing.qty += s.quantity;
+    } else {
+      byId.set(s.menuItemId, { name: s.name, qty: s.quantity });
+    }
+  }
+  return Array.from(byId.values()).map(({ name, qty }) => ({
+    name,
+    qty: qty * comboQty,
+  }));
+}
+
 // ─── ESC/POS kitchen ticket ────────────────────────────────────────────────────
 
 function renderKitchenLines(t: TicketBuilder, lines: OrderLine[]) {
@@ -274,6 +322,13 @@ function renderKitchenLines(t: TicketBuilder, lines: OrderLine[]) {
     t.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
     if (l.modifiers?.length) for (const m of l.modifiers) wrap(`+ ${m}`, 4).forEach((w) => t.line(w));
     if (l.notes) wrap(`* ${l.notes}`, 4).forEach((w) => t.line(w));
+    // Combo components: collapse same-item picks and print indented beneath the combo line.
+    if (l.comboSelections?.length) {
+      const collapsed = collapseComboSelections(l.comboSelections, l.quantity);
+      for (const { name, qty } of collapsed) {
+        t.line(`  - ${qty}x ${name}`);
+      }
+    }
   }
 }
 
@@ -462,6 +517,7 @@ function renderItemLabelSection(
       t.sizeN(1).bold(false);
       if (p.isFullBox) t.line("[FULL BOX]");
       if (p.modifiers?.length) for (const m of p.modifiers) wrap(`+ ${m}`, 2).forEach((w) => t.line(w));
+      if (p.partOfCombo) t.line(`Part of: ${p.partOfCombo}`);
       if (p.notes) {
         t.div(dchar);
         wrap(p.notes).forEach((w) => t.line(w));
@@ -499,6 +555,76 @@ function renderItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): Buffer {
   }
   if (p.labelIndex !== undefined && p.labelTotal !== undefined) {
     t.align("right").bold(true).sizeN(1).line(`BOX ${p.labelIndex} of ${p.labelTotal}`).bold(false).left();
+  }
+  return t.cut();
+}
+
+// ─── ESC/POS combo label ───────────────────────────────────────────────────────
+
+function renderComboLabelSection(
+  t: TicketBuilder,
+  p: ComboLabelPayload,
+  section: SectionKey,
+  style: ResolvedStyle,
+  tmpl?: PrintTemplate,
+): void {
+  const dchar = tmpl?.dividerChar ?? "-";
+  t.align(style.align);
+  switch (section) {
+    case "header":
+      if (tmpl?.businessName) t.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).bold(false);
+      break;
+    case "orderNumber":
+      t.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1).bold(false);
+      break;
+    case "guestName":
+      t.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1).bold(false);
+      break;
+    case "items": {
+      // Combo name — large and bold
+      t.bold(style.bold).sizeN(style.size);
+      wrap(p.comboName).forEach((w) => t.line(w));
+      t.sizeN(1).bold(false);
+      t.div(dchar);
+      // Collapsed component lines
+      const collapsed = collapseComboSelections(p.comboSelections, 1);
+      for (const { name, qty } of collapsed) {
+        t.line(`  ${qty}x ${name}`);
+      }
+      break;
+    }
+    case "timestamp":
+      t.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1).bold(false);
+      break;
+    case "footer": {
+      const footer = tmpl?.footer;
+      if (footer) {
+        t.line();
+        t.align(style.align);
+        wrap(footer).forEach((w) => t.line(w));
+        t.left();
+      }
+      break;
+    }
+    default: break;
+  }
+  if (section !== "items" && section !== "footer") t.left();
+}
+
+function renderComboLabel(p: ComboLabelPayload, tmpl?: PrintTemplate): Buffer {
+  const t = new TicketBuilder();
+  t.bold(false).sizeN(1).left().line();
+  const order = resolveOrder(tmpl, "combo_label");
+  const dchar = tmpl?.dividerChar ?? "-";
+  for (const section of order) {
+    const style = resolveStyle(tmpl, "combo_label", section);
+    if (!style.visible) continue;
+    if (style.dividerBefore) t.left().div(dchar);
+    renderComboLabelSection(t, p, section, style, tmpl);
+    if (style.dividerAfter) t.left().div(dchar);
+  }
+  if (p.labelIndex !== undefined && p.labelTotal !== undefined) {
+    t.align("right").bold(true).sizeN(1).line(`${p.labelIndex} of ${p.labelTotal}`).bold(false).left();
   }
   return t.cut();
 }
@@ -588,6 +714,7 @@ export function renderJob(
     case "kitchen_ticket":   bytes = renderKitchenTicket(payload, template); break;
     case "customer_receipt": bytes = renderCustomerReceipt(payload, template); break;
     case "item_label":       bytes = renderItemLabel(payload, template); break;
+    case "combo_label":      bytes = renderComboLabel(payload, template); break;
     case "plate_label":      bytes = renderPlateLabel(payload, template); break;
     case "test":             bytes = renderTest(payload); break;
   }
@@ -656,6 +783,13 @@ function webKitchenLines(b: WebPrntBuilder, lines: OrderLine[]) {
     b.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
     if (l.modifiers?.length) for (const m of l.modifiers) wrap(`+ ${m}`, 4).forEach((w) => b.line(w));
     if (l.notes) wrap(`* ${l.notes}`, 4).forEach((w) => b.line(w));
+    // Combo components: collapse same-item picks and print indented beneath the combo line.
+    if (l.comboSelections?.length) {
+      const collapsed = collapseComboSelections(l.comboSelections, l.quantity);
+      for (const { name, qty } of collapsed) {
+        b.line(`  - ${qty}x ${name}`);
+      }
+    }
   }
 }
 
@@ -842,6 +976,7 @@ function webItemLabelSection(
       b.sizeN(1).bold(false);
       if (p.isFullBox) b.line("[FULL BOX]");
       if (p.modifiers?.length) for (const m of p.modifiers) wrap(`+ ${m}`, 2).forEach((w) => b.line(w));
+      if (p.partOfCombo) b.line(`Part of: ${p.partOfCombo}`);
       if (p.notes) {
         b.div(dchar);
         wrap(p.notes).forEach((w) => b.line(w));
@@ -874,6 +1009,70 @@ function webPrntItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): string {
     if (!style.visible) continue;
     if (style.dividerBefore) b.left().div(dchar);
     webItemLabelSection(b, p, section, style, tmpl);
+    if (style.dividerAfter) b.left().div(dchar);
+  }
+  return b.build();
+}
+
+// ─── StarWebPRNT combo label ───────────────────────────────────────────────────
+
+function webComboLabelSection(
+  b: WebPrntBuilder,
+  p: ComboLabelPayload,
+  section: SectionKey,
+  style: ResolvedStyle,
+  tmpl?: PrintTemplate,
+): void {
+  const dchar = tmpl?.dividerChar ?? "-";
+  b.align(style.align);
+  switch (section) {
+    case "header":
+      if (tmpl?.businessName) b.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).bold(false).left();
+      break;
+    case "orderNumber":
+      b.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1).bold(false);
+      break;
+    case "guestName":
+      b.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1).bold(false);
+      break;
+    case "items": {
+      b.bold(style.bold).sizeN(style.size);
+      wrap(p.comboName).forEach((w) => b.line(w));
+      b.sizeN(1).bold(false);
+      b.div(dchar);
+      const collapsed = collapseComboSelections(p.comboSelections, 1);
+      for (const { name, qty } of collapsed) {
+        b.line(`  ${qty}x ${name}`);
+      }
+      break;
+    }
+    case "timestamp":
+      b.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1).bold(false);
+      break;
+    case "footer": {
+      const footer = tmpl?.footer;
+      if (footer) {
+        b.line();
+        b.align(style.align);
+        wrap(footer).forEach((w) => b.line(w));
+        b.left();
+      }
+      break;
+    }
+    default: break;
+  }
+  if (section !== "items" && section !== "footer") b.left();
+}
+
+function webPrntComboLabel(p: ComboLabelPayload, tmpl?: PrintTemplate): string {
+  const b = new WebPrntBuilder();
+  const order = resolveOrder(tmpl, "combo_label");
+  const dchar = tmpl?.dividerChar ?? "-";
+  for (const section of order) {
+    const style = resolveStyle(tmpl, "combo_label", section);
+    if (!style.visible) continue;
+    if (style.dividerBefore) b.left().div(dchar);
+    webComboLabelSection(b, p, section, style, tmpl);
     if (style.dividerAfter) b.left().div(dchar);
   }
   return b.build();
@@ -966,6 +1165,7 @@ export function renderJobWebPrnt(
     case "kitchen_ticket":   return webPrntKitchenTicket(payload, template);
     case "customer_receipt": return webPrntCustomerReceipt(payload, template);
     case "item_label":       return webPrntItemLabel(payload, template);
+    case "combo_label":      return webPrntComboLabel(payload, template);
     case "plate_label":      return webPrntPlateLabel(payload, template);
     case "test":             return webPrntTest(payload);
   }

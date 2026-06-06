@@ -5,6 +5,7 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { ComboSlot } from "./comboSlot";
 import type { UpdateMenuItemBodyLabelPolicy } from "./updateMenuItemBodyLabelPolicy";
 
 export interface UpdateMenuItemBody {
@@ -30,4 +31,7 @@ export interface UpdateMenuItemBody {
   otdEligible?: boolean;
   labelPolicy?: UpdateMenuItemBodyLabelPolicy;
   labelBoxSize?: number | null;
+  isCombo?: boolean;
+  comboSlots?: ComboSlot[] | null;
+  comboComponentLabels?: boolean;
 }

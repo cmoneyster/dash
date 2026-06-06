@@ -1,11 +1,23 @@
 import { sql } from "drizzle-orm";
 import { pgTable, serial, text, jsonb, timestamp, integer, numeric, boolean } from "drizzle-orm/pg-core";
 
+export type ComboSelection = {
+  slotId: string;
+  slotName: string;
+  menuItemId: number;
+  name: string;
+  quantity: number;
+};
+
 export type EventOrderItem = {
   itemId: number;
   name: string;
   quantity: number;
   price: number;
+  // Populated when the item is a combo — carries the full slot selection
+  // snapshot so the kitchen ticket and labels can render component lines.
+  comboName?: string;
+  comboSelections?: ComboSelection[];
 };
 
 // Optional staff-set plating layout. Each plate carries whole-number

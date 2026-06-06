@@ -13,6 +13,7 @@ export const PrintJobJobType = {
   kitchen_ticket: "kitchen_ticket",
   customer_receipt: "customer_receipt",
   item_label: "item_label",
+  combo_label: "combo_label",
   plate_label: "plate_label",
   test: "test",
 } as const;

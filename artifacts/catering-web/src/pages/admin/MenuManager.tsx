@@ -10,7 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon, Upload, GripVertical, Search, Sparkles } from "lucide-react";
+import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon, Upload, GripVertical, Search, Sparkles, ChevronUp, ChevronDown } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { getAdminToken } from "@/components/AdminGuard";
 import { useAdminCategories, ADMIN_CATEGORIES_QUERY_KEY } from "@/lib/categories";
@@ -222,8 +222,12 @@ export default function MenuManager() {
   const queryClient = useQueryClient();
   const { data: items, isLoading } = useAdminListMenuItems();
 
+  type ComboSlotOption = { menuItemId: number; name: string };
+  type ComboSlot = { slotId: string; slotName: string; minQty: number; maxQty: number; options: ComboSlotOption[] };
+
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [comboSlots, setComboSlots] = useState<ComboSlot[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isCsvDialogOpen, setIsCsvDialogOpen] = useState(false);
   const [applyResult, setApplyResult] = useState<{
@@ -435,7 +439,10 @@ export default function MenuManager() {
       size4Label: "",       size4Servings: "",  size4Price: "",
       size5Label: "",       size5Servings: "",  size5Price: "",
       internalNotes: "",
+      isCombo: false,
+      comboComponentLabels: false,
     });
+    setComboSlots([]);
     setPreviewUrl("");
     setIsNewCategory(false);
     setIsDialogOpen(true);
@@ -454,7 +461,10 @@ export default function MenuManager() {
       pricingTemplate: item.pricingTemplate ?? "per_unit",
       labelPolicy: item.labelPolicy ?? "per_unit",
       labelBoxSize: item.labelBoxSize ?? "",
+      isCombo: item.isCombo ?? false,
+      comboComponentLabels: item.comboComponentLabels ?? false,
     });
+    setComboSlots(Array.isArray(item.comboSlots) ? item.comboSlots : []);
     setPreviewUrl(item.imageUrl ?? "");
     setIsNewCategory(false);
     setIsDialogOpen(true);
@@ -493,6 +503,9 @@ export default function MenuManager() {
       size5Label: parseSizeLabel(data.size5Label),
       size5Servings: parseSizeServings(data.size5Servings),
       size5Price: parseSizePrice(data.size5Price),
+      isCombo: !!data.isCombo,
+      comboSlots: data.isCombo && comboSlots.length > 0 ? comboSlots : null,
+      comboComponentLabels: !!data.comboComponentLabels,
     };
     if (editingItem) {
       updateMut.mutate({ id: editingItem.id, data: payload });
@@ -1120,6 +1133,140 @@ export default function MenuManager() {
                     policy={watch("labelPolicy")}
                     boxSize={watch("labelBoxSize")}
                   />
+                </div>
+
+                <div className="space-y-3 p-4 bg-violet-50 dark:bg-violet-950/30 rounded-xl border border-violet-200 dark:border-violet-800/50">
+                  <label className="block text-sm font-semibold text-violet-900 dark:text-violet-200">Combo Item</label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input {...register("isCombo")} type="checkbox" className="w-4 h-4 mt-0.5 accent-violet-600" />
+                    <span className="text-sm">
+                      <span className="font-medium text-violet-900 dark:text-violet-200">This item is a combo</span>
+                      <span className="text-violet-800/80 dark:text-violet-300/80 block text-xs mt-0.5">
+                        Staff Order Taker will open a slot-selection modal before adding this item to an order.
+                      </span>
+                    </span>
+                  </label>
+                  {watch("isCombo") && (
+                    <div className="space-y-3">
+                      {comboSlots.map((slot, si) => (
+                        <div key={slot.slotId} className="p-3 bg-white dark:bg-violet-950/50 rounded-xl border border-violet-200 dark:border-violet-700/60 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={slot.slotName}
+                              onChange={e => setComboSlots(prev => prev.map((s, i) => i === si ? { ...s, slotName: e.target.value } : s))}
+                              placeholder="Slot name (e.g. Sides, Protein)"
+                              className="flex-1 px-3 py-1.5 border rounded-lg text-sm"
+                            />
+                            <button
+                              type="button"
+                              disabled={si === 0}
+                              onClick={() => setComboSlots(prev => {
+                                const next = [...prev];
+                                [next[si - 1], next[si]] = [next[si], next[si - 1]];
+                                return next;
+                              })}
+                              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors disabled:opacity-30"
+                              title="Move slot up"
+                            >
+                              <ChevronUp className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={si === comboSlots.length - 1}
+                              onClick={() => setComboSlots(prev => {
+                                const next = [...prev];
+                                [next[si], next[si + 1]] = [next[si + 1], next[si]];
+                                return next;
+                              })}
+                              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors disabled:opacity-30"
+                              title="Move slot down"
+                            >
+                              <ChevronDown className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setComboSlots(prev => prev.filter((_, i) => i !== si))}
+                              className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                              title="Remove slot"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm">
+                            <label className="flex items-center gap-1.5">
+                              <span className="text-xs text-muted-foreground">Min qty</span>
+                              <input
+                                type="number" min="0" value={slot.minQty}
+                                onChange={e => setComboSlots(prev => prev.map((s, i) => i === si ? { ...s, minQty: Math.max(0, parseInt(e.target.value, 10) || 0) } : s))}
+                                className="w-16 px-2 py-1 border rounded-lg text-xs text-center"
+                              />
+                            </label>
+                            <label className="flex items-center gap-1.5">
+                              <span className="text-xs text-muted-foreground">Max qty</span>
+                              <input
+                                type="number" min="1" value={slot.maxQty}
+                                onChange={e => setComboSlots(prev => prev.map((s, i) => i === si ? { ...s, maxQty: Math.max(1, parseInt(e.target.value, 10) || 1) } : s))}
+                                className="w-16 px-2 py-1 border rounded-lg text-xs text-center"
+                              />
+                            </label>
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground">Options (pick from menu items)</p>
+                            {slot.options.map((opt, oi) => (
+                              <div key={oi} className="flex items-center gap-2">
+                                <select
+                                  value={opt.menuItemId || ""}
+                                  onChange={e => {
+                                    const id = parseInt(e.target.value, 10);
+                                    const name = (items as any[])?.find((it: any) => it.id === id)?.name ?? "";
+                                    setComboSlots(prev => prev.map((s, i) => i === si ? {
+                                      ...s, options: s.options.map((o, j) => j === oi ? { menuItemId: id, name } : o)
+                                    } : s));
+                                  }}
+                                  className="flex-1 px-2 py-1.5 border rounded-lg text-sm bg-background"
+                                >
+                                  <option value="">Select item…</option>
+                                  {(items as any[])?.map((it: any) => (
+                                    <option key={it.id} value={it.id}>{it.name}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => setComboSlots(prev => prev.map((s, i) => i === si ? { ...s, options: s.options.filter((_, j) => j !== oi) } : s))}
+                                  className="p-1 text-muted-foreground hover:text-destructive rounded"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => setComboSlots(prev => prev.map((s, i) => i === si ? { ...s, options: [...s.options, { menuItemId: 0, name: "" }] } : s))}
+                              className="text-xs text-violet-600 dark:text-violet-400 hover:text-violet-700 font-medium flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" /> Add option
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setComboSlots(prev => [...prev, { slotId: crypto.randomUUID(), slotName: "", minQty: 1, maxQty: 1, options: [] }])}
+                        className="w-full py-2 border-2 border-dashed border-violet-300 dark:border-violet-700 text-violet-600 dark:text-violet-400 text-sm font-medium rounded-xl hover:bg-violet-50 dark:hover:bg-violet-950/20 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <Plus className="w-4 h-4" /> Add Slot
+                      </button>
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input {...register("comboComponentLabels")} type="checkbox" className="w-4 h-4 mt-0.5 accent-violet-600" />
+                        <span className="text-sm">
+                          <span className="font-medium text-violet-900 dark:text-violet-200">Print individual component labels</span>
+                          <span className="text-violet-800/80 dark:text-violet-300/80 block text-xs mt-0.5">
+                            Also print a separate item label for each selected component in addition to the combo label.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-3 p-4 bg-orange-50 dark:bg-orange-950/30 rounded-xl border border-orange-200 dark:border-orange-800/50">

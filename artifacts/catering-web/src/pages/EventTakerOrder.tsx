@@ -46,6 +46,10 @@ function setStoredEmployee(v: string | null) {
   } catch {}
 }
 
+interface ComboSlotOption { menuItemId: number; name: string; }
+interface ComboSlot { slotId: string; slotName: string; minQty: number; maxQty: number; options: ComboSlotOption[]; }
+interface ComboSelection { slotId: string; slotName: string; menuItemId: number; name: string; quantity: number; }
+
 interface MenuItem {
   id: number;
   name: string;
@@ -59,6 +63,8 @@ interface MenuItem {
   imageUrl?: string | null;
   eventStock: number | null;
   internalNotes?: string | null;
+  isCombo: boolean;
+  comboSlots: ComboSlot[] | null;
 }
 
 interface CartLine {
@@ -66,6 +72,9 @@ interface CartLine {
   name: string;
   unitPrice: number;
   quantity: number;
+  comboSelections?: ComboSelection[];
+  comboName?: string;
+  comboKey?: string;
 }
 
 interface TakerSettings {
@@ -251,6 +260,145 @@ function ArrangeEmptySlot({ slotIndex }: { slotIndex: number }) {
   );
 }
 
+function ComboPickerModal({
+  item,
+  onConfirm,
+  onClose,
+}: {
+  item: MenuItem;
+  onConfirm: (selections: ComboSelection[]) => void;
+  onClose: () => void;
+}) {
+  const [qtys, setQtys] = useState<Record<string, Record<number, number>>>({});
+  const slots = item.comboSlots ?? [];
+
+  const getQty = (slotId: string, menuItemId: number) => qtys[slotId]?.[menuItemId] ?? 0;
+
+  const changeSlotQty = (slotId: string, menuItemId: number, delta: number, slotMaxQty: number) => {
+    setQtys(prev => {
+      const slotQtys = { ...(prev[slotId] ?? {}) };
+      const slotTotal = Object.values(slotQtys).reduce((s, v) => s + v, 0);
+      const curQty = slotQtys[menuItemId] ?? 0;
+      const newQty = curQty + delta;
+      if (newQty < 0) return prev;
+      if (delta > 0 && slotTotal >= slotMaxQty) return prev;
+      return { ...prev, [slotId]: { ...slotQtys, [menuItemId]: newQty } };
+    });
+  };
+
+  const isValid = slots.every(slot => {
+    const total = Object.values(qtys[slot.slotId] ?? {}).reduce((s, v) => s + v, 0);
+    return total >= slot.minQty && total <= slot.maxQty;
+  });
+
+  const handleConfirm = () => {
+    const selections: ComboSelection[] = [];
+    for (const slot of slots) {
+      for (const opt of slot.options) {
+        const qty = getQty(slot.slotId, opt.menuItemId);
+        if (qty > 0) {
+          selections.push({ slotId: slot.slotId, slotName: slot.slotName, menuItemId: opt.menuItemId, name: opt.name, quantity: qty });
+        }
+      }
+    }
+    onConfirm(selections);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/20 backdrop-blur-sm">
+      <div className="bg-card w-full max-w-md rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-secondary/30 shrink-0">
+          <div>
+            <h2 className="font-bold text-xl leading-tight">{item.name}</h2>
+            <p className="text-sm text-muted-foreground">${item.effectivePrice.toFixed(2)} — make your selections</p>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 hover:bg-secondary rounded-full">
+            <XIcon className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-5 space-y-4 flex-1">
+          {slots.map(slot => {
+            const slotTotal = Object.values(qtys[slot.slotId] ?? {}).reduce((s, v) => s + v, 0);
+            const atMax = slotTotal >= slot.maxQty;
+            const isSlotValid = slotTotal >= slot.minQty && slotTotal <= slot.maxQty;
+            return (
+              <div
+                key={slot.slotId}
+                className={`p-4 rounded-2xl border transition-colors ${
+                  isSlotValid
+                    ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20"
+                    : "border-border bg-secondary/20"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <p className="font-semibold text-sm">{slot.slotName}</p>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    isSlotValid
+                      ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400"
+                      : "bg-secondary text-muted-foreground"
+                  }`}>
+                    {slotTotal}/{slot.maxQty}{slot.minQty !== slot.maxQty ? ` (min ${slot.minQty})` : ""}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {slot.options.map(opt => {
+                    const qty = getQty(slot.slotId, opt.menuItemId);
+                    return (
+                      <div key={opt.menuItemId} className="flex items-center justify-between">
+                        <span className="text-sm flex-1 mr-3">{opt.name}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => changeSlotQty(slot.slotId, opt.menuItemId, -1, slot.maxQty)}
+                            disabled={qty <= 0}
+                            className="w-8 h-8 rounded-lg bg-secondary hover:bg-secondary/70 flex items-center justify-center disabled:opacity-30 transition-opacity"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="w-6 text-center font-semibold text-sm tabular-nums">{qty}</span>
+                          <button
+                            type="button"
+                            onClick={() => changeSlotQty(slot.slotId, opt.menuItemId, 1, slot.maxQty)}
+                            disabled={atMax}
+                            className="w-8 h-8 rounded-lg bg-secondary hover:bg-secondary/70 flex items-center justify-center disabled:opacity-30 transition-opacity"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="px-5 pb-5 pt-3 border-t border-border shrink-0">
+          <button
+            type="button"
+            disabled={!isValid}
+            onClick={handleConfirm}
+            className="w-full py-3.5 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-base"
+          >
+            Add to Order — ${item.effectivePrice.toFixed(2)}
+          </button>
+          {!isValid && (
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              {slots.filter(s => {
+                const t = Object.values(qtys[s.slotId] ?? {}).reduce((a, v) => a + v, 0);
+                return t < s.minQty;
+              }).map(s => s.slotName).join(", ")} {slots.filter(s => {
+                const t = Object.values(qtys[s.slotId] ?? {}).reduce((a, v) => a + v, 0);
+                return t < s.minQty;
+              }).length === 1 ? "needs" : "need"} a selection
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EventTakerOrder() {
   const [password, setPassword] = useState<string | null>(getStoredPassword());
   const [pwInput, setPwInput] = useState("");
@@ -315,6 +463,7 @@ export default function EventTakerOrder() {
 
   // Server-backed printer settings modal (scoped to the Taker surface).
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
+  const [comboPicker, setComboPicker] = useState<{ item: MenuItem } | null>(null);
 
   // Arrange-mode state. slotLayout mirrors the server's takerMenuOrder:
   // null entries are intentional empty cells. buildArrangeGrid() pads it
@@ -595,38 +744,64 @@ export default function EventTakerOrder() {
       flashStockWarning(`${item.name} is sold out.`);
       return;
     }
-    const currentQty = cart.find(l => l.itemId === item.id)?.quantity ?? 0;
+    // Combo items open the slot-selection modal instead of adding directly.
+    if (item.isCombo && item.comboSlots && item.comboSlots.length > 0) {
+      setComboPicker({ item });
+      return;
+    }
+    const currentQty = cart.filter(l => l.itemId === item.id && !l.comboKey).reduce((s, l) => s + l.quantity, 0);
     if (item.eventStock !== null && currentQty + 1 > item.eventStock) {
       flashStockWarning(`Only ${item.eventStock} of ${item.name} left — already in cart.`);
       return;
     }
     setCart(prev => {
-      const existing = prev.find(l => l.itemId === item.id);
+      const existing = prev.find(l => l.itemId === item.id && !l.comboKey);
       if (existing) {
-        return prev.map(l => l.itemId === item.id ? { ...l, quantity: l.quantity + 1 } : l);
+        return prev.map(l => (l.itemId === item.id && !l.comboKey) ? { ...l, quantity: l.quantity + 1 } : l);
       }
       return [...prev, { itemId: item.id, name: item.name, unitPrice: item.effectivePrice, quantity: 1 }];
     });
   }
 
-  function changeQty(itemId: number, delta: number) {
+  function addComboToCart(item: MenuItem, comboSelections: ComboSelection[]) {
+    setComboPicker(null);
+    const comboKey = `${item.id}-${Date.now()}`;
+    setCart(prev => [...prev, {
+      itemId: item.id,
+      name: item.name,
+      unitPrice: item.effectivePrice,
+      quantity: 1,
+      comboSelections,
+      comboName: item.name,
+      comboKey,
+    }]);
+  }
+
+  function changeQty(itemId: number, delta: number, comboKey?: string) {
     if (delta > 0 && menu) {
       // Block increments past the remaining event stock so staff don't
       // overshoot a limited item; -1 / removal stays unrestricted.
       const item = menu.find(m => m.id === itemId);
-      const currentQty = cart.find(l => l.itemId === itemId)?.quantity ?? 0;
+      const currentQty = comboKey
+        ? (cart.find(l => l.comboKey === comboKey)?.quantity ?? 0)
+        : cart.filter(l => l.itemId === itemId && !l.comboKey).reduce((s, l) => s + l.quantity, 0);
       if (item?.eventStock !== null && item?.eventStock !== undefined && currentQty + delta > item.eventStock) {
         flashStockWarning(`Only ${item.eventStock} of ${item.name} left.`);
         return;
       }
     }
     setCart(prev => prev
-      .map(l => l.itemId === itemId ? { ...l, quantity: l.quantity + delta } : l)
+      .map(l => {
+        const matches = comboKey ? l.comboKey === comboKey : (l.itemId === itemId && !l.comboKey);
+        return matches ? { ...l, quantity: l.quantity + delta } : l;
+      })
       .filter(l => l.quantity > 0));
   }
 
-  function removeLine(itemId: number) {
-    setCart(prev => prev.filter(l => l.itemId !== itemId));
+  function removeLine(itemId: number, comboKey?: string) {
+    setCart(prev => comboKey
+      ? prev.filter(l => l.comboKey !== comboKey)
+      : prev.filter(l => !(l.itemId === itemId && !l.comboKey)));
   }
 
   const subtotal = useMemo(
@@ -739,7 +914,11 @@ export default function EventTakerOrder() {
           guestName: guestName.trim(),
           phoneNumber: phone.trim() || null,
           notes: orderNotes.trim() || null,
-          items: cart.map(l => ({ itemId: l.itemId, quantity: l.quantity })),
+          items: cart.map(l => ({
+            itemId: l.itemId,
+            quantity: l.quantity,
+            ...(l.comboSelections ? { comboSelections: l.comboSelections } : {}),
+          })),
           statusUrlBase: window.location.origin + BASE,
         }),
       });
@@ -1163,6 +1342,13 @@ export default function EventTakerOrder() {
         surface="taker"
         authToken={password}
       />
+      {comboPicker && (
+        <ComboPickerModal
+          item={comboPicker.item}
+          onConfirm={sels => addComboToCart(comboPicker.item, sels)}
+          onClose={() => setComboPicker(null)}
+        />
+      )}
       <header className="bg-card border-b border-border sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -1364,8 +1550,8 @@ export default function EventTakerOrder() {
                   // staff get the same amber-warning at-a-glance signal when
                   // an item is close to running out.
                   const lowStock = stock !== null && stock > 0 && stock <= 5;
-                  const inCart = cart.find(l => l.itemId === item.id);
-                  const cartQty = inCart?.quantity ?? 0;
+                  const inCart = cart.some(l => l.itemId === item.id);
+                  const cartQty = cart.filter(l => l.itemId === item.id).reduce((s, l) => s + l.quantity, 0);
                   // True once the cart already holds every remaining unit —
                   // taps and the +/- "+" should stop adding (server would 409
                   // otherwise, but blocking client-side gives instant feedback).
@@ -1392,6 +1578,9 @@ export default function EventTakerOrder() {
                       )}
                       <div className="p-3">
                         <p className="font-semibold text-sm leading-tight">{item.name}</p>
+                        {item.isCombo && (
+                          <span className="inline-block text-[9px] font-bold uppercase tracking-wider bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded-full mt-0.5">Combo</span>
+                        )}
                         <div className="flex items-end justify-between mt-1.5 gap-2">
                           <span className="font-bold text-base text-indigo-600">${item.effectivePrice.toFixed(2)}</span>
                           {stock !== null && (
@@ -1422,7 +1611,8 @@ export default function EventTakerOrder() {
                           <span className="bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full">Sold out</span>
                         </div>
                       )}
-                      {inCart && !outOfStock && (
+                      {/* Pill +/- overlay for non-combo items only */}
+                      {inCart && !outOfStock && !item.isCombo && (
                         <div
                           className="absolute top-2 right-2 flex items-center gap-1 bg-indigo-600 text-white rounded-full pl-1 pr-1 py-0.5 shadow-md"
                           onClick={e => e.stopPropagation()}
@@ -1435,7 +1625,7 @@ export default function EventTakerOrder() {
                           >
                             <Minus className="w-3 h-3" />
                           </span>
-                          <span className="text-xs font-bold min-w-[16px] text-center">{inCart.quantity}</span>
+                          <span className="text-xs font-bold min-w-[16px] text-center">{cartQty}</span>
                           <span
                             role="button"
                             tabIndex={0}
@@ -1456,9 +1646,15 @@ export default function EventTakerOrder() {
                           </span>
                         </div>
                       )}
-                      {inCart && (
+                      {/* For combo items in cart: show count badge only */}
+                      {inCart && !outOfStock && item.isCombo && (
+                        <div className="absolute top-2 right-2 bg-indigo-600 text-white rounded-full px-2 py-0.5 text-xs font-bold shadow-md pointer-events-none">
+                          ×{cartQty}
+                        </div>
+                      )}
+                      {inCart && !item.isCombo && (
                         <div className="px-3 pb-2 -mt-1 text-[11px] text-indigo-700 font-semibold">
-                          Line: ${(inCart.unitPrice * inCart.quantity).toFixed(2)}
+                          Line: ${(item.effectivePrice * cartQty).toFixed(2)}
                         </div>
                       )}
                     </button>
@@ -1496,26 +1692,33 @@ export default function EventTakerOrder() {
               const stock = menu?.find(m => m.id === line.itemId)?.eventStock ?? null;
               const atMax = stock !== null && line.quantity >= stock;
               return (
-                <div key={line.itemId} className="flex items-center gap-2 py-2 border-b border-border/40 last:border-0">
+                <div key={line.comboKey ?? String(line.itemId)} className="flex items-center gap-2 py-2 border-b border-border/40 last:border-0">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">{line.name}</p>
-                    <p className="text-xs text-muted-foreground">${line.unitPrice.toFixed(2)} × {line.quantity} = ${(line.unitPrice * line.quantity).toFixed(2)}</p>
+                    <p className="text-sm font-semibold truncate">{line.name}{line.comboKey && <span className="ml-1 text-[10px] font-normal bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-full">combo</span>}</p>
+                    {line.comboSelections && line.comboSelections.length > 0 && (
+                      <div className="mt-0.5 space-y-0.5">
+                        {line.comboSelections.map((sel, i) => (
+                          <p key={i} className="text-[11px] text-muted-foreground pl-1.5 border-l-2 border-indigo-200 dark:border-indigo-800">{sel.name} ×{sel.quantity}</p>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">${line.unitPrice.toFixed(2)} × {line.quantity} = ${(line.unitPrice * line.quantity).toFixed(2)}</p>
                     {atMax && (
                       <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold mt-0.5">All {stock} remaining in cart</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => changeQty(line.itemId, -1)} className="w-7 h-7 rounded-md bg-secondary hover:bg-secondary/70 flex items-center justify-center"><Minus className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => changeQty(line.itemId, -1, line.comboKey)} className="w-7 h-7 rounded-md bg-secondary hover:bg-secondary/70 flex items-center justify-center"><Minus className="w-3.5 h-3.5" /></button>
                     <span className="w-6 text-center font-semibold text-sm">{line.quantity}</span>
                     <button
-                      onClick={() => changeQty(line.itemId, 1)}
+                      onClick={() => changeQty(line.itemId, 1, line.comboKey)}
                       disabled={atMax}
                       title={atMax ? `Only ${stock} left in stock` : undefined}
                       className="w-7 h-7 rounded-md bg-secondary hover:bg-secondary/70 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-secondary"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => removeLine(line.itemId)} className="w-7 h-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center ml-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => removeLine(line.itemId, line.comboKey)} className="w-7 h-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center ml-1"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 </div>
               );

@@ -5,6 +5,7 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { ComboSlot } from "./comboSlot";
 import type { MenuItemLabelPolicy } from "./menuItemLabelPolicy";
 
 export interface MenuItem {
@@ -50,4 +51,10 @@ export interface MenuItem {
   /** Internal kitchen/staff notes not shown to customers. */
   internalNotes?: string | null;
   createdAt: Date;
+  /** Whether this item is a combo that requires slot selection before ordering. */
+  isCombo?: boolean;
+  /** Ordered slot definitions for combo items. */
+  comboSlots?: ComboSlot[] | null;
+  /** Whether to also print individual component labels for each combo component. */
+  comboComponentLabels?: boolean;
 }
