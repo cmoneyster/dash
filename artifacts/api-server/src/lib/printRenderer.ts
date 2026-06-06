@@ -10,7 +10,7 @@ const LF  = 0x0a;
 // are NOT supported in Line Mode and produce garbage output.
 const INIT        = Buffer.from([ESC, 0x40]);
 const BOLD_ON     = Buffer.from([ESC, 0x45, 0x01]); // ESC E n — works in both modes
-const BOLD_OFF    = Buffer.from([ESC, 0x46]);        // ESC F   — Line Mode cancel (ESC E 0 would re-enable bold)
+const BOLD_OFF    = Buffer.from([ESC, 0x45, 0x00]); // ESC E 0 — works in both modes (ESC F only works in Star Line Mode; ESC E 0 is the correct ESC/POS cancel and is accepted in Line Mode too)
 // Alignment: Star Line Mode uses ESC GS a n (not ESC a n which feeds paper in Line Mode)
 const ALIGN_LEFT   = Buffer.from([ESC, GS, 0x61, 0x00]);
 const ALIGN_CENTER = Buffer.from([ESC, GS, 0x61, 0x01]);
