@@ -355,6 +355,8 @@ export interface MenuItem {
   eventStock?: number | null;
   /** Whether this item can be cooked fresh on-site as part of the "On the Dash Experience" food trailer service. Drop-off-only items default to false. */
   otdEligible?: boolean;
+  /** When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true. */
+  labelPrintingEnabled?: boolean;
   /** How many physical item labels to print per quantity ordered. */
   labelPolicy?: MenuItemLabelPolicy;
   /** Box pack size for the per_box label policy. Order qty 14 with box 6 → 3 labels (6, 6, 2). */
@@ -411,6 +413,8 @@ export interface CreateMenuItemBody {
   eventTakerPrice?: number | null;
   eventStock?: number | null;
   otdEligible?: boolean;
+  /** When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true. */
+  labelPrintingEnabled?: boolean;
   labelPolicy?: CreateMenuItemBodyLabelPolicy;
   labelBoxSize?: number | null;
   isCombo?: boolean;
@@ -448,6 +452,8 @@ export interface UpdateMenuItemBody {
   eventTakerPrice?: number | null;
   eventStock?: number | null;
   otdEligible?: boolean;
+  /** When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true. */
+  labelPrintingEnabled?: boolean;
   labelPolicy?: UpdateMenuItemBodyLabelPolicy;
   labelBoxSize?: number | null;
   isCombo?: boolean;

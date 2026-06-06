@@ -92,6 +92,7 @@ router.post("/admin/menu", async (req, res) => {
       size5Label, size5Servings, size5Price,
       internalNotes,
       otdEligible,
+      labelPrintingEnabled,
       labelPolicy,
       labelBoxSize,
       isCombo,
@@ -139,6 +140,7 @@ router.post("/admin/menu", async (req, res) => {
       size5Price: size5Price != null ? String(size5Price) : null,
       internalNotes: internalNotes ? String(internalNotes).trim() || null : null,
       otdEligible: otdEligible ?? false,
+      labelPrintingEnabled: labelPrintingEnabled === false || labelPrintingEnabled === "false" ? false : true,
       labelPolicy: labelPolicy === "combined" || labelPolicy === "per_box" ? labelPolicy : "per_unit",
       labelBoxSize: labelBoxSize != null && labelBoxSize !== "" ? parseInt(String(labelBoxSize)) : null,
       isCombo: isCombo === true || isCombo === "true",
@@ -171,6 +173,7 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
       size5Label, size5Servings, size5Price,
       internalNotes,
       otdEligible,
+      labelPrintingEnabled,
       labelPolicy,
       labelBoxSize,
       isCombo,
@@ -214,7 +217,8 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
     if (size5Servings !== undefined)    updates.size5Servings = size5Servings != null ? parseInt(String(size5Servings)) : null;
     if (size5Price !== undefined)       updates.size5Price = size5Price === null ? null : String(size5Price);
     if (internalNotes !== undefined)    updates.internalNotes = internalNotes ? String(internalNotes).trim() || null : null;
-    if (otdEligible !== undefined)      updates.otdEligible = otdEligible === true || otdEligible === "true";
+    if (otdEligible !== undefined)           updates.otdEligible = otdEligible === true || otdEligible === "true";
+    if (labelPrintingEnabled !== undefined)  updates.labelPrintingEnabled = labelPrintingEnabled === false || labelPrintingEnabled === "false" ? false : true;
     if (labelPolicy !== undefined)      updates.labelPolicy = labelPolicy === "combined" || labelPolicy === "per_box" ? labelPolicy : "per_unit";
     if (labelBoxSize !== undefined)     updates.labelBoxSize = labelBoxSize === null || labelBoxSize === "" ? null : parseInt(String(labelBoxSize));
     if (isCombo !== undefined)          updates.isCombo = isCombo === true || isCombo === "true";

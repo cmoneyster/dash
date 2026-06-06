@@ -430,6 +430,7 @@ export default function MenuManager() {
     reset({
       available: true, servingSize: 1, unit: "tray", price: 0, imageUrl: "", minimumOrderQty: 1,
       otdEligible: false,
+      labelPrintingEnabled: true,
       labelPolicy: "per_unit",
       labelBoxSize: "",
       pricingTemplate: "per_unit",
@@ -459,6 +460,7 @@ export default function MenuManager() {
       size4Label: item.size4Label ?? "",       size4Servings: item.size4Servings ?? "",  size4Price: item.size4Price ?? "",
       size5Label: item.size5Label ?? "",       size5Servings: item.size5Servings ?? "",  size5Price: item.size5Price ?? "",
       pricingTemplate: item.pricingTemplate ?? "per_unit",
+      labelPrintingEnabled: item.labelPrintingEnabled ?? true,
       labelPolicy: item.labelPolicy ?? "per_unit",
       labelBoxSize: item.labelBoxSize ?? "",
       isCombo: item.isCombo ?? false,
@@ -1069,7 +1071,32 @@ export default function MenuManager() {
                     get one plate-label regardless of this setting.
                   </p>
 
-                  <div className="space-y-2">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div className="relative">
+                      <input
+                        {...register("labelPrintingEnabled")}
+                        type="checkbox"
+                        className="sr-only"
+                      />
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={!!watch("labelPrintingEnabled")}
+                        onClick={() => setValue("labelPrintingEnabled", !watch("labelPrintingEnabled"), { shouldDirty: true })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40 ${watch("labelPrintingEnabled") ? "bg-emerald-500" : "bg-muted"}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${watch("labelPrintingEnabled") ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium">Print labels for this item</span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        When off, no labels are printed regardless of policy — applies to auto fan-out and manual reprints.
+                      </span>
+                    </div>
+                  </label>
+
+                  <div className={`space-y-2 transition-opacity ${watch("labelPrintingEnabled") ? "" : "opacity-40 pointer-events-none"}`}>
                     <label className="block text-xs font-medium">Label policy</label>
                     {([
                       {
@@ -1108,31 +1135,31 @@ export default function MenuManager() {
                         </div>
                       </label>
                     ))}
-                  </div>
 
-                  {watch("labelPolicy") === "per_box" && (
-                    <div className="space-y-1.5">
-                      <div className="w-full sm:w-52">
-                        <label className="block text-xs font-medium mb-1">Box size (units per pack)</label>
-                        <input
-                          {...register("labelBoxSize")}
-                          type="number"
-                          min="2"
-                          step="1"
-                          placeholder="e.g. 6"
-                          className="w-full px-3 py-2 border rounded-xl text-sm"
-                        />
+                    {watch("labelPolicy") === "per_box" && (
+                      <div className="space-y-1.5">
+                        <div className="w-full sm:w-52">
+                          <label className="block text-xs font-medium mb-1">Box size (units per pack)</label>
+                          <input
+                            {...register("labelBoxSize")}
+                            type="number"
+                            min="2"
+                            step="1"
+                            placeholder="e.g. 6"
+                            className="w-full px-3 py-2 border rounded-xl text-sm"
+                          />
+                        </div>
+                        <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 rounded-lg px-3 py-2">
+                          <strong>Tip:</strong> Use <em>Per box</em> only for loose items packed into containers. For pre-packaged single-unit products like a "3 Wing Box", choose <strong>Per unit</strong> instead — that item is already one package.
+                        </p>
                       </div>
-                      <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 rounded-lg px-3 py-2">
-                        <strong>Tip:</strong> Use <em>Per box</em> only for loose items packed into containers. For pre-packaged single-unit products like a "3 Wing Box", choose <strong>Per unit</strong> instead — that item is already one package.
-                      </p>
-                    </div>
-                  )}
+                    )}
 
-                  <LabelCountPreview
-                    policy={watch("labelPolicy")}
-                    boxSize={watch("labelBoxSize")}
-                  />
+                    <LabelCountPreview
+                      policy={watch("labelPolicy")}
+                      boxSize={watch("labelBoxSize")}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-3 p-4 bg-violet-50 dark:bg-violet-950/30 rounded-xl border border-violet-200 dark:border-violet-800/50">

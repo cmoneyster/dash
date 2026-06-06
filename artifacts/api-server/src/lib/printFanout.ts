@@ -87,6 +87,7 @@ export async function fanoutPrintForEventOrder(args: {
   const menuRows = await db
     .select({
       id: menuItemsTable.id,
+      labelPrintingEnabled: menuItemsTable.labelPrintingEnabled,
       labelPolicy: menuItemsTable.labelPolicy,
       labelBoxSize: menuItemsTable.labelBoxSize,
       isCombo: menuItemsTable.isCombo,
@@ -96,6 +97,7 @@ export async function fanoutPrintForEventOrder(args: {
     .where(inArray(menuItemsTable.id, itemIds));
 
   type MenuPolicy = {
+    labelPrintingEnabled: boolean;
     policy: LabelPolicy;
     boxSize: number | null;
     isCombo: boolean;
@@ -104,6 +106,7 @@ export async function fanoutPrintForEventOrder(args: {
   const policyById = new Map<number, MenuPolicy>();
   for (const r of menuRows) {
     policyById.set(r.id, {
+      labelPrintingEnabled: r.labelPrintingEnabled ?? true,
       policy: (r.labelPolicy as LabelPolicy) ?? "per_unit",
       boxSize: r.labelBoxSize ?? null,
       isCombo: r.isCombo ?? false,
@@ -241,6 +244,10 @@ export async function fanoutPrintForEventOrder(args: {
 
       for (const it of order.items as EventOrderItem[]) {
         const policy = policyById.get(it.itemId);
+
+        // Skip entirely if label printing is disabled for this item.
+        if ((policy?.labelPrintingEnabled ?? true) === false) continue;
+
         const isComboItem = policy?.isCombo ?? false;
 
         if (isComboItem) {
@@ -497,6 +504,7 @@ export async function fanoutItemLabelsForEventOrderId(args: {
   const menuRows = await db
     .select({
       id: menuItemsTable.id,
+      labelPrintingEnabled: menuItemsTable.labelPrintingEnabled,
       labelPolicy: menuItemsTable.labelPolicy,
       labelBoxSize: menuItemsTable.labelBoxSize,
       isCombo: menuItemsTable.isCombo,
@@ -505,10 +513,11 @@ export async function fanoutItemLabelsForEventOrderId(args: {
     .from(menuItemsTable)
     .where(inArray(menuItemsTable.id, itemIds));
 
-  type MenuPolicy = { policy: LabelPolicy; boxSize: number | null; isCombo: boolean; comboComponentLabels: boolean };
+  type MenuPolicy = { labelPrintingEnabled: boolean; policy: LabelPolicy; boxSize: number | null; isCombo: boolean; comboComponentLabels: boolean };
   const policyById = new Map<number, MenuPolicy>();
   for (const r of menuRows) {
     policyById.set(r.id, {
+      labelPrintingEnabled: r.labelPrintingEnabled ?? true,
       policy: (r.labelPolicy as LabelPolicy) ?? "per_unit",
       boxSize: r.labelBoxSize ?? null,
       isCombo: r.isCombo ?? false,
@@ -564,6 +573,16 @@ export async function fanoutItemLabelsForEventOrderId(args: {
   for (const printer of labelPrinters) {
     for (const it of candidateItems) {
       const policy = policyById.get(it.itemId);
+
+      // Skip entirely if label printing is disabled for this item.
+      if ((policy?.labelPrintingEnabled ?? true) === false) {
+        logger.info(
+          { orderId, itemId: it.itemId },
+          "[print-fanout] item-labels: labelPrintingEnabled=false — skipped"
+        );
+        continue;
+      }
+
       const isComboItem = policy?.isCombo ?? false;
 
       if (isComboItem) {

@@ -2035,6 +2035,9 @@ components:
         otdEligible:
           type: boolean
           description: Whether this item can be cooked fresh on-site as part of the "On the Dash Experience" food trailer service. Drop-off-only items default to false.
+        labelPrintingEnabled:
+          type: boolean
+          description: When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.
         labelPolicy:
           type: string
           enum: [per_unit, combined, per_box]
@@ -2150,6 +2153,9 @@ components:
           nullable: true
         otdEligible:
           type: boolean
+        labelPrintingEnabled:
+          type: boolean
+          description: When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.
         labelPolicy:
           type: string
           enum: [per_unit, combined, per_box]
@@ -2228,6 +2234,9 @@ components:
           nullable: true
         otdEligible:
           type: boolean
+        labelPrintingEnabled:
+          type: boolean
+          description: When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.
         labelPolicy:
           type: string
           enum: [per_unit, combined, per_box]

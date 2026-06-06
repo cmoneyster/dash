@@ -80,6 +80,12 @@ export const ListMenuItemsResponseItem = zod.object({
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
+  labelPrintingEnabled: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
+    ),
   labelPolicy: zod
     .enum(["per_unit", "combined", "per_box"])
     .optional()
@@ -198,6 +204,12 @@ export const GetMenuItemResponse = zod.object({
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
+  labelPrintingEnabled: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
+    ),
   labelPolicy: zod
     .enum(["per_unit", "combined", "per_box"])
     .optional()
@@ -311,6 +323,12 @@ export const AdminListMenuItemsResponseItem = zod.object({
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
     ),
+  labelPrintingEnabled: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
+    ),
   labelPolicy: zod
     .enum(["per_unit", "combined", "per_box"])
     .optional()
@@ -390,6 +408,12 @@ export const CreateMenuItemBody = zod.object({
   eventTakerPrice: zod.number().nullish(),
   eventStock: zod.number().nullish(),
   otdEligible: zod.boolean().optional(),
+  labelPrintingEnabled: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
+    ),
   labelPolicy: zod.enum(["per_unit", "combined", "per_box"]).optional(),
   labelBoxSize: zod.number().nullish(),
   isCombo: zod.boolean().optional(),
@@ -440,6 +464,12 @@ export const UpdateMenuItemBody = zod.object({
   eventTakerPrice: zod.number().nullish(),
   eventStock: zod.number().nullish(),
   otdEligible: zod.boolean().optional(),
+  labelPrintingEnabled: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
+    ),
   labelPolicy: zod.enum(["per_unit", "combined", "per_box"]).optional(),
   labelBoxSize: zod.number().nullish(),
   isCombo: zod.boolean().optional(),
@@ -519,6 +549,12 @@ export const UpdateMenuItemResponse = zod.object({
     .optional()
     .describe(
       'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+    ),
+  labelPrintingEnabled: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
     ),
   labelPolicy: zod
     .enum(["per_unit", "combined", "per_box"])
@@ -923,6 +959,12 @@ export const GetCartResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
+        labelPrintingEnabled: zod
+          .boolean()
+          .optional()
+          .describe(
+            "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
+          ),
         labelPolicy: zod
           .enum(["per_unit", "combined", "per_box"])
           .optional()
@@ -1060,6 +1102,12 @@ export const AddToCartResponse = zod.object({
           .optional()
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
+        labelPrintingEnabled: zod
+          .boolean()
+          .optional()
+          .describe(
+            "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
           ),
         labelPolicy: zod
           .enum(["per_unit", "combined", "per_box"])
@@ -1201,6 +1249,12 @@ export const UpdateCartItemResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
+        labelPrintingEnabled: zod
+          .boolean()
+          .optional()
+          .describe(
+            "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
+          ),
         labelPolicy: zod
           .enum(["per_unit", "combined", "per_box"])
           .optional()
@@ -1336,6 +1390,12 @@ export const RemoveFromCartResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
+        labelPrintingEnabled: zod
+          .boolean()
+          .optional()
+          .describe(
+            "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
+          ),
         labelPolicy: zod
           .enum(["per_unit", "combined", "per_box"])
           .optional()
@@ -1469,6 +1529,12 @@ export const GetPlanResponse = zod.object({
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
           ),
+        labelPrintingEnabled: zod
+          .boolean()
+          .optional()
+          .describe(
+            "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
+          ),
         labelPolicy: zod
           .enum(["per_unit", "combined", "per_box"])
           .optional()
@@ -1597,6 +1663,12 @@ export const AddToPlanResponse = zod.object({
           .optional()
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
+        labelPrintingEnabled: zod
+          .boolean()
+          .optional()
+          .describe(
+            "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
           ),
         labelPolicy: zod
           .enum(["per_unit", "combined", "per_box"])
@@ -1727,6 +1799,12 @@ export const RemoveFromPlanResponse = zod.object({
           .optional()
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
+        labelPrintingEnabled: zod
+          .boolean()
+          .optional()
+          .describe(
+            "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
           ),
         labelPolicy: zod
           .enum(["per_unit", "combined", "per_box"])
@@ -2001,6 +2079,12 @@ export const SuggestMenuItemsResponse = zod.object({
           .optional()
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
+        labelPrintingEnabled: zod
+          .boolean()
+          .optional()
+          .describe(
+            "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
           ),
         labelPolicy: zod
           .enum(["per_unit", "combined", "per_box"])
@@ -4594,6 +4678,12 @@ export const GetEventTakerMenuResponse = zod
           .optional()
           .describe(
             'Whether this item can be cooked fresh on-site as part of the \"On the Dash Experience\" food trailer service. Drop-off-only items default to false.',
+          ),
+        labelPrintingEnabled: zod
+          .boolean()
+          .optional()
+          .describe(
+            "When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true.",
           ),
         labelPolicy: zod
           .enum(["per_unit", "combined", "per_box"])

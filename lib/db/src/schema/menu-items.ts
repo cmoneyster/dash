@@ -65,6 +65,9 @@ export const menuItemsTable = pgTable("menu_items", {
   //   "per_box"   → 1 label per box of N (label_box_size); leftover gets its
   //                 own label (e.g. box of 6, qty 14 → 6,6,2)
   // See artifacts/api-server/src/lib/labelExpand.ts for the expansion.
+  // When labelPrintingEnabled is false, no labels are enqueued regardless of
+  // policy or box size — applies to both auto fan-out and manual reprints.
+  labelPrintingEnabled: boolean("label_printing_enabled").notNull().default(true),
   labelPolicy: text("label_policy").notNull().default("per_unit"),
   labelBoxSize: integer("label_box_size"),
   // ── On the Dash Experience eligibility ────────────────────────────────────

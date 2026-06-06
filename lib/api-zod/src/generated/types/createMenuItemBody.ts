@@ -29,6 +29,8 @@ export interface CreateMenuItemBody {
   eventTakerPrice?: number | null;
   eventStock?: number | null;
   otdEligible?: boolean;
+  /** When false, no item labels are enqueued for this item regardless of label policy or box size. Defaults to true. */
+  labelPrintingEnabled?: boolean;
   labelPolicy?: CreateMenuItemBodyLabelPolicy;
   labelBoxSize?: number | null;
   isCombo?: boolean;
