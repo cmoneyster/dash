@@ -978,10 +978,10 @@ router.patch("/event-ordering/orders/:id/fired", verifyKitchenPassword, async (r
       res.status(400).json({ error: "Invalid order id" });
       return;
     }
-    const body = (req.body ?? {}) as { itemId?: unknown; fired?: unknown };
-    const itemId = Number(body.itemId);
-    if (!Number.isInteger(itemId)) {
-      res.status(400).json({ error: "itemId must be an integer" });
+    const body = (req.body ?? {}) as { itemIndex?: unknown; fired?: unknown };
+    const itemIndex = Number(body.itemIndex);
+    if (!Number.isInteger(itemIndex) || itemIndex < 0) {
+      res.status(400).json({ error: "itemIndex must be a non-negative integer" });
       return;
     }
     if (typeof body.fired !== "boolean") {
@@ -1004,21 +1004,20 @@ router.patch("/event-ordering/orders/:id/fired", verifyKitchenPassword, async (r
         throw Object.assign(new Error(`Order is ${row.status}; fire totals are locked`), { status: 409 });
       }
       const items = (row.items as EventOrderItem[]) ?? [];
-      const validIds = new Set(items.map(i => i.itemId));
-      if (!validIds.has(itemId)) {
-        throw Object.assign(new Error("Item not on this order"), { status: 400 });
+      if (itemIndex >= items.length) {
+        throw Object.assign(new Error("itemIndex out of range"), { status: 400 });
       }
       const current = new Set((row.firedItemIds as number[] | null) ?? []);
-      if (fired) current.add(itemId); else current.delete(itemId);
-      // Only keep itemIds that still exist on the cart so a later cart
-      // edit can't leave dangling ids in the set.
-      const next = [...current].filter(x => validIds.has(x));
+      if (fired) current.add(itemIndex); else current.delete(itemIndex);
+      // Only keep indices still in range so a later cart edit can't
+      // leave dangling entries in the set.
+      const next = [...current].filter(x => x >= 0 && x < items.length);
 
       const updates: Record<string, unknown> = { firedItemIds: next };
       // Auto-advance pending → preparing when every cart line is fired.
       // Plated orders advance to ready exclusively via /kitchen-progress,
       // so we never auto-advance preparing → ready here.
-      if (row.status === "pending" && next.length === validIds.size && validIds.size > 0) {
+      if (row.status === "pending" && next.length === items.length && items.length > 0) {
         updates.status = "preparing";
       }
       const [out] = await tx

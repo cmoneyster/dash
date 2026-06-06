@@ -945,23 +945,23 @@ export default function KitchenDisplay() {
   // is fired (so two cooks tapping in parallel can't double-advance). On
   // network failure we roll back to the pre-tap snapshot so the UI always
   // reflects the server's state.
-  async function patchItemFired(orderId: number, itemId: number) {
+  async function patchItemFired(orderId: number, itemIndex: number) {
     if (!authedPassword) return;
     const snapshot = orders.find(o => o.id === orderId);
     if (!snapshot) return;
-    const wasFired = (snapshot.firedItemIds ?? []).includes(itemId);
+    const wasFired = (snapshot.firedItemIds ?? []).includes(itemIndex);
     const fired = !wasFired;
     setOrders(prev => prev.map(o => {
       if (o.id !== orderId) return o;
       const set = new Set(o.firedItemIds ?? []);
-      if (fired) set.add(itemId); else set.delete(itemId);
+      if (fired) set.add(itemIndex); else set.delete(itemIndex);
       return { ...o, firedItemIds: [...set] };
     }));
     try {
       const res = await fetch(`${BASE}/api/event-ordering/orders/${orderId}/fired`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authedPassword}` },
-        body: JSON.stringify({ itemId, fired }),
+        body: JSON.stringify({ itemIndex, fired }),
       });
       if (!res.ok) {
         setOrders(prev => prev.map(o => o.id === orderId ? snapshot : o));
@@ -1446,7 +1446,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
   const isPending = order.status === "pending";
   const isPreparing = order.status === "preparing";
   const isTrackable = isPending || isPreparing;
-  const checkedCount = order.items.filter(i => checkedItemIds.has(i.itemId)).length;
+  const checkedCount = order.items.filter((_, idx) => checkedItemIds.has(idx)).length;
   const allChecked = checkedCount === order.items.length;
   const nextLabel = nextLabelFor(order);
   const hasPlating = !!(order.plateGroups && order.plateGroups.length > 0);
@@ -1534,13 +1534,13 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
             </button>
           )
         )}
-        {!fireCollapsed && order.items.map(item => {
-          const isChecked = checkedItemIds.has(item.itemId);
+        {!fireCollapsed && order.items.map((item, idx) => {
+          const isChecked = checkedItemIds.has(idx);
           const hasNotes = Boolean(item.internalNotes);
           const notesOpen = expandedNotes.has(item.itemId);
           if (isTrackable) {
             return (
-              <div key={item.itemId}>
+              <div key={idx}>
                 <div className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 transition-all ${
                   isChecked
                     ? "bg-emerald-500/15 border border-emerald-500/30"
@@ -1548,7 +1548,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
                 }`}>
                   <button
                     type="button"
-                    onClick={() => onToggleItem(item.itemId)}
+                    onClick={() => onToggleItem(idx)}
                     className="flex-1 text-left active:scale-[0.98]"
                   >
                     <span className={`text-sm font-medium transition-all ${isChecked ? "text-emerald-400 line-through decoration-emerald-500/60" : "text-white/80"}`}>
@@ -1591,7 +1591,7 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
             );
           }
           return (
-            <div key={item.itemId}>
+            <div key={idx}>
               <div className="flex items-start gap-2 px-1">
                 <div className="flex-1 min-w-0">
                   <span className="text-sm text-white/80">{item.quantity}× {item.name}</span>
@@ -2053,11 +2053,11 @@ function VoidAlertCard({
                 Stop preparing
               </p>
               <ul className="space-y-1">
-                {voided.items.map(item => {
-                  const wasFired = firedSet.has(item.itemId);
+                {voided.items.map((item, idx) => {
+                  const wasFired = firedSet.has(idx);
                   return (
                     <li
-                      key={item.itemId}
+                      key={idx}
                       className={`flex items-center justify-between gap-3 rounded-lg px-3 py-1.5 text-sm ${
                         wasFired
                           ? "bg-amber-500/20 border border-amber-400/40 text-amber-100"
