@@ -24,6 +24,8 @@ export interface Printer {
   /** lan_browser = browser agent delivers via StarWebPRNT. */
   printMode: PrinterPrintMode;
   suppressItemLabelsForPlateLines: boolean;
+  /** When true, a cash_drawer job is enqueued to this printer on cash payment confirmation and via the manual Open Drawer button. Requires a LAN IP. */
+  opensCashDrawer: boolean;
   enabled: boolean;
   status: PrinterStatus;
   lastPolledAt?: Date | null;

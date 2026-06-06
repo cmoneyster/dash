@@ -275,12 +275,17 @@ export type TestPayload = {
   message?: string;
 };
 
+export type CashDrawerPayload = {
+  type: "cash_drawer";
+};
+
 export type RenderablePayload =
   | KitchenTicketPayload
   | CustomerReceiptPayload
   | ItemLabelPayload
   | ComboLabelPayload
   | PlateLabelPayload
+  | CashDrawerPayload
   | TestPayload;
 
 export type { PrintTemplate };
@@ -689,6 +694,12 @@ function renderPlateLabel(p: PlateLabelPayload, tmpl?: PrintTemplate): Buffer {
   return t.cut();
 }
 
+function renderCashDrawerOpen(): Buffer {
+  // ESC p pin onTime offTime — opens cash drawer on pin 2 (0x00) with
+  // a 200 ms pulse (0x19 = 25 × 8 ms = 200 ms, 0xFA = 250 × 2 ms off).
+  return Buffer.from([ESC, 0x70, 0x00, 0x19, 0xfa]);
+}
+
 function renderTest(p: TestPayload): Buffer {
   const t = new TicketBuilder();
   t.center().bold(true).sizeN(2).line("TEST PRINT").sizeN(1).bold(false).left();
@@ -716,6 +727,7 @@ export function renderJob(
     case "item_label":       bytes = renderItemLabel(payload, template); break;
     case "combo_label":      bytes = renderComboLabel(payload, template); break;
     case "plate_label":      bytes = renderPlateLabel(payload, template); break;
+    case "cash_drawer":      bytes = renderCashDrawerOpen(); break;
     case "test":             bytes = renderTest(payload); break;
   }
   return { bytes, contentType: "application/vnd.star.starprntcore" };
@@ -1155,6 +1167,19 @@ function webPrntTest(p: TestPayload): string {
   return b.build();
 }
 
+// ─── StarWebPRNT cash drawer ───────────────────────────────────────────────────
+
+function webPrntCashDrawer(): string {
+  return (
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<StarWebPRNT:Request Version="1.00" xmlns:StarWebPRNT="http://www.star-m.jp/StarWebPRNT/V1.00/">` +
+    `<PrintData><Printer>` +
+    `<PeripheralDevice type="CashDrawer" no="1" openTime="200"/>` +
+    `</Printer></PrintData>` +
+    `</StarWebPRNT:Request>`
+  );
+}
+
 // ─── Public WebPRNT render dispatcher ─────────────────────────────────────────
 
 export function renderJobWebPrnt(
@@ -1167,6 +1192,7 @@ export function renderJobWebPrnt(
     case "item_label":       return webPrntItemLabel(payload, template);
     case "combo_label":      return webPrntComboLabel(payload, template);
     case "plate_label":      return webPrntPlateLabel(payload, template);
+    case "cash_drawer":      return webPrntCashDrawer();
     case "test":             return webPrntTest(payload);
   }
 }

@@ -16,5 +16,6 @@ export interface CreatePrinterBody {
   printsItemLabels?: boolean;
   autoPrintOnNewOrder?: boolean;
   suppressItemLabelsForPlateLines?: boolean;
+  opensCashDrawer?: boolean;
   enabled?: boolean;
 }

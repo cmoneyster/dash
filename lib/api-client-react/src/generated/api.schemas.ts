@@ -1063,6 +1063,8 @@ export interface Printer {
   /** lan_browser = browser agent delivers via StarWebPRNT. */
   printMode: PrinterPrintMode;
   suppressItemLabelsForPlateLines: boolean;
+  /** When true, a cash_drawer job is enqueued to this printer on cash payment confirmation and via the manual Open Drawer button. Requires a LAN IP. */
+  opensCashDrawer: boolean;
   enabled: boolean;
   status: PrinterStatus;
   lastPolledAt?: string | null;
@@ -1082,6 +1084,7 @@ export interface CreatePrinterBody {
   printsItemLabels?: boolean;
   autoPrintOnNewOrder?: boolean;
   suppressItemLabelsForPlateLines?: boolean;
+  opensCashDrawer?: boolean;
   enabled?: boolean;
 }
 
@@ -1095,6 +1098,7 @@ export interface UpdatePrinterBody {
   printsItemLabels?: boolean;
   autoPrintOnNewOrder?: boolean;
   suppressItemLabelsForPlateLines?: boolean;
+  opensCashDrawer?: boolean;
   enabled?: boolean;
   printTemplate?: PrintTemplate | null;
 }
@@ -1346,6 +1350,11 @@ export const GetSalesReportStatus = {
   all: "all",
   completed: "completed",
 } as const;
+
+export type OpenCashDrawer200 = {
+  ok: boolean;
+  jobsEnqueued: number;
+};
 
 export type ListQueuedPrintAgentJobs200Item = {
   id: number;

@@ -8,6 +8,7 @@ export const printJobTypeValues = [
   "customer_receipt",
   "item_label",
   "plate_label",
+  "cash_drawer",
   "test",
 ] as const;
 export type PrintJobType = (typeof printJobTypeValues)[number];

@@ -5,7 +5,7 @@ import { eq, sql, inArray, and, desc, isNull } from "drizzle-orm";
 import { sendOrderConfirmation } from "../lib/sms";
 import { getOrderingChannelStates } from "./event-ordering";
 import { detectAndMarkLowStockCrossings, fireLowStockAlertIfAny, DEFAULT_LOW_STOCK_THRESHOLD } from "../lib/lowStockAlerts";
-import { fanoutPrintForEventOrder } from "../lib/printFanout";
+import { fanoutPrintForEventOrder, fanoutCashDrawerOpen } from "../lib/printFanout";
 import {
   getTerminalSquareConfig,
   isTerminalSquareConfigured,
@@ -959,6 +959,13 @@ router.patch("/event-taker/orders/:id/payment", verifyTakerPassword, async (req,
       });
     }
 
+    // Open the cash drawer on cash payments.
+    if (method === "cash") {
+      fanoutCashDrawerOpen().catch((err) => {
+        req.log.error({ err, orderId: updated.id }, "cash drawer fan-out failed");
+      });
+    }
+
     // Fire low-stock SMS now that payment is confirmed. The crossings were
     // detected and the lowStockAlertSent flag was set atomically at order
     // creation; we only deferred the SMS until here so that a Terminal charge
@@ -1459,6 +1466,19 @@ router.get("/event-taker/terminal-checkout/:checkoutId", verifyTakerPassword, as
     }
     req.log.error({ err }, "[terminal] get checkout failed");
     res.status(500).json({ error: "Failed to fetch Terminal checkout status" });
+  }
+});
+
+// Manually open the cash drawer from the POS without an active order.
+// Enqueues a cash_drawer job for every printer with opens_cash_drawer enabled.
+// Requires taker password. Returns { ok: true, jobsEnqueued: N }.
+router.post("/event-taker/open-cash-drawer", verifyTakerPassword, async (req, res) => {
+  try {
+    const jobsEnqueued = await fanoutCashDrawerOpen();
+    res.json({ ok: true, jobsEnqueued });
+  } catch (err) {
+    req.log.error({ err }, "open cash drawer failed");
+    res.status(500).json({ error: "Failed to open cash drawer" });
   }
 });
 

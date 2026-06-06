@@ -17,6 +17,7 @@ export interface UpdatePrinterBody {
   printsItemLabels?: boolean;
   autoPrintOnNewOrder?: boolean;
   suppressItemLabelsForPlateLines?: boolean;
+  opensCashDrawer?: boolean;
   enabled?: boolean;
   printTemplate?: PrintTemplate | null;
 }

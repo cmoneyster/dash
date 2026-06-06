@@ -55,6 +55,7 @@ import type {
   ListPrintJobsParams,
   ListQueuedPrintAgentJobs200Item,
   MenuItem,
+  OpenCashDrawer200,
   OpenaiConversation,
   OpenaiConversationWithMessages,
   OpenaiError,
@@ -4824,6 +4825,88 @@ export function useGetSalesReport<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Enqueues a cash_drawer job for every enabled printer that has "Opens cash drawer" toggled on and a LAN IP. Silently does nothing if no such printer is configured. Requires taker password.
+ * @summary Manually open the cash drawer on all configured printers
+ */
+export const getOpenCashDrawerUrl = () => {
+  return `/api/event-taker/open-cash-drawer`;
+};
+
+export const openCashDrawer = async (
+  options?: RequestInit,
+): Promise<OpenCashDrawer200> => {
+  return customFetch<OpenCashDrawer200>(getOpenCashDrawerUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getOpenCashDrawerMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof openCashDrawer>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof openCashDrawer>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["openCashDrawer"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof openCashDrawer>>,
+    void
+  > = () => {
+    return openCashDrawer(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type OpenCashDrawerMutationResult = NonNullable<
+  Awaited<ReturnType<typeof openCashDrawer>>
+>;
+
+export type OpenCashDrawerMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Manually open the cash drawer on all configured printers
+ */
+export const useOpenCashDrawer = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof openCashDrawer>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof openCashDrawer>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getOpenCashDrawerMutationOptions(options));
+};
 
 /**
  * @summary Get the staff event order taker menu with slot layout

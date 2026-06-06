@@ -2375,6 +2375,11 @@ export const ListPrintersResponseItem = zod.object({
     .enum(["lan_browser"])
     .describe("lan_browser = browser agent delivers via StarWebPRNT."),
   suppressItemLabelsForPlateLines: zod.boolean(),
+  opensCashDrawer: zod
+    .boolean()
+    .describe(
+      "When true, a cash_drawer job is enqueued to this printer on cash payment confirmation and via the manual Open Drawer button. Requires a LAN IP.",
+    ),
   enabled: zod.boolean(),
   status: zod.enum(["online", "offline", "error", "disabled"]),
   lastPolledAt: zod.coerce.date().nullish(),
@@ -2744,6 +2749,7 @@ export const CreatePrinterBody = zod.object({
   printsItemLabels: zod.boolean().optional(),
   autoPrintOnNewOrder: zod.boolean().optional(),
   suppressItemLabelsForPlateLines: zod.boolean().optional(),
+  opensCashDrawer: zod.boolean().optional(),
   enabled: zod.boolean().optional(),
 });
 
@@ -2772,6 +2778,7 @@ export const UpdatePrinterBody = zod.object({
   printsItemLabels: zod.boolean().optional(),
   autoPrintOnNewOrder: zod.boolean().optional(),
   suppressItemLabelsForPlateLines: zod.boolean().optional(),
+  opensCashDrawer: zod.boolean().optional(),
   enabled: zod.boolean().optional(),
   printTemplate: zod
     .object({
@@ -3147,6 +3154,11 @@ export const UpdatePrinterResponse = zod.object({
     .enum(["lan_browser"])
     .describe("lan_browser = browser agent delivers via StarWebPRNT."),
   suppressItemLabelsForPlateLines: zod.boolean(),
+  opensCashDrawer: zod
+    .boolean()
+    .describe(
+      "When true, a cash_drawer job is enqueued to this printer on cash payment confirmation and via the manual Open Drawer button. Requires a LAN IP.",
+    ),
   enabled: zod.boolean(),
   status: zod.enum(["online", "offline", "error", "disabled"]),
   lastPolledAt: zod.coerce.date().nullish(),
@@ -4613,6 +4625,15 @@ export const GetSalesReportResponse = zod.object({
     .describe(
       'Explicit per-type breakdowns plus a combined order list. Use allOrders to render a unified chronological table — items are tagged with type=\"event\" or type=\"catering\" for row-level branching.\n',
     ),
+});
+
+/**
+ * Enqueues a cash_drawer job for every enabled printer that has "Opens cash drawer" toggled on and a LAN IP. Silently does nothing if no such printer is configured. Requires taker password.
+ * @summary Manually open the cash drawer on all configured printers
+ */
+export const OpenCashDrawerResponse = zod.object({
+  ok: zod.boolean(),
+  jobsEnqueued: zod.number(),
 });
 
 /**

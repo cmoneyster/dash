@@ -1,7 +1,7 @@
 import { db } from "@workspace/db";
-import { menuItemsTable, eventOrdersTable } from "@workspace/db/schema";
+import { menuItemsTable, eventOrdersTable, printersTable } from "@workspace/db/schema";
 import type { EventOrderItem } from "@workspace/db/schema";
-import { inArray, eq } from "drizzle-orm";
+import { inArray, eq, and, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
 import {
   enqueuePrintJob,
@@ -35,9 +35,9 @@ export type FanoutSource =
  * Kitchen (manual):     kitchen ticket + item/plate labels
  * Demo:                 nothing (hard-blocked above)
  */
-type JobKind = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label";
+type JobKind = "kitchen_ticket" | "customer_receipt" | "item_label" | "plate_label" | "cash_drawer";
 const ALLOWED_KINDS_BY_SOURCE: Record<FanoutSource, ReadonlySet<JobKind>> = {
-  event_taker: new Set<JobKind>(["kitchen_ticket", "customer_receipt", "item_label", "plate_label"]),
+  event_taker: new Set<JobKind>(["kitchen_ticket", "customer_receipt", "item_label", "plate_label", "cash_drawer"]),
   event_order: new Set<JobKind>(["kitchen_ticket", "item_label", "plate_label"]),
   kitchen_send: new Set<JobKind>(["kitchen_ticket", "item_label", "plate_label"]),
   demo: new Set<JobKind>(),
@@ -440,6 +440,44 @@ export async function fanoutPrintForEventOrder(args: {
     { orderId: order.id, source, enqueued },
     "[print-fanout] enqueued jobs for event order"
   );
+  return enqueued;
+}
+
+/**
+ * Select all enabled printers that have `opens_cash_drawer` enabled and a LAN IP.
+ * The drawer is only openable via the browser WebPRNT path (LAN IP required).
+ */
+async function selectCashDrawerPrinters() {
+  const rows = await db.select().from(printersTable).where(
+    and(
+      eq(printersTable.enabled, true),
+      eq(printersTable.opensCashDrawer, true),
+      isNotNull(printersTable.lanIp),
+    ),
+  );
+  return rows.filter((p) => p.lanIp != null);
+}
+
+/**
+ * Enqueue a cash_drawer job for every printer that has `opens_cash_drawer`
+ * enabled and a LAN IP. Returns the number of jobs enqueued (0 if none configured).
+ */
+export async function fanoutCashDrawerOpen(): Promise<number> {
+  const printers = await selectCashDrawerPrinters();
+  if (printers.length === 0) return 0;
+
+  let enqueued = 0;
+  const payload: Record<string, unknown> = { type: "cash_drawer" };
+  for (const p of printers) {
+    await enqueuePrintJob({
+      printerId: p.id,
+      jobType: "cash_drawer",
+      payload,
+    });
+    enqueued++;
+  }
+
+  logger.info({ enqueued }, "[print-fanout] cash drawer open enqueued");
   return enqueued;
 }
 

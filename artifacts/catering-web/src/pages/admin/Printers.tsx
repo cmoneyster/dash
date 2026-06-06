@@ -713,6 +713,7 @@ function PrinterDialog({
       printsItemLabels: false,
       autoPrintOnNewOrder: true,
       suppressItemLabelsForPlateLines: true,
+      opensCashDrawer: false,
       enabled: true,
     },
   });
@@ -730,6 +731,7 @@ function PrinterDialog({
       printsItemLabels: !!values.printsItemLabels,
       autoPrintOnNewOrder: !!values.autoPrintOnNewOrder,
       suppressItemLabelsForPlateLines: !!values.suppressItemLabelsForPlateLines,
+      opensCashDrawer: !!values.opensCashDrawer,
       enabled: !!values.enabled,
     };
     if (initial) {
@@ -809,6 +811,17 @@ function PrinterDialog({
             </label>
           </div>
 
+          {initial?.lanIp && (
+            <div className="space-y-2 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-800">
+              <p className="text-sm font-semibold">Cash drawer</p>
+              <label className="flex items-center gap-2 text-sm">
+                <input {...register("opensCashDrawer")} type="checkbox" className="w-4 h-4" />
+                Opens cash drawer on cash payment and manual button
+              </label>
+              <p className="text-xs text-muted-foreground">Requires a LAN IP — uses the browser WebPRNT path.</p>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 active:scale-95 transition-all">Cancel</button>
             <button type="submit" disabled={create.isPending || update.isPending} className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 active:scale-95 transition-all disabled:opacity-60 inline-flex items-center gap-2">
@@ -855,6 +868,7 @@ function PrinterCard({ p }: { p: Printer }) {
   if (p.printsKitchenTicket) outputs.push("Kitchen");
   if (p.printsCustomerReceipt) outputs.push("Receipts");
   if (p.printsItemLabels) outputs.push("Item labels");
+  const opensCashDrawer = p.opensCashDrawer === true;
 
   const hasTemplate = !!(p.printTemplate as PrintTemplate | null | undefined);
 
@@ -910,6 +924,7 @@ function PrinterCard({ p }: { p: Printer }) {
           ? <span className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">No output toggles enabled</span>
           : outputs.map((o) => <span key={o} className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">{o}</span>)}
         {p.autoPrintOnNewOrder && <span className="text-xs bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-300 px-2 py-0.5 rounded-full">Auto-print</span>}
+        {opensCashDrawer && <span className="text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-full">Cash drawer</span>}
         <span className="text-xs bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 px-2 py-0.5 rounded-full">LAN browser</span>
       </div>
 

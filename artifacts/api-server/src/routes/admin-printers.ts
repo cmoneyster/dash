@@ -86,6 +86,7 @@ router.post("/admin/printers", async (req, res) => {
         printsItemLabels: !!b.printsItemLabels,
         autoPrintOnNewOrder: b.autoPrintOnNewOrder !== false,
         suppressItemLabelsForPlateLines: b.suppressItemLabelsForPlateLines !== false,
+        opensCashDrawer: !!b.opensCashDrawer,
         enabled: b.enabled !== false,
       })
       .returning();
@@ -127,6 +128,7 @@ router.patch("/admin/printers/:id", async (req, res) => {
       "printsItemLabels",
       "autoPrintOnNewOrder",
       "suppressItemLabelsForPlateLines",
+      "opensCashDrawer",
       "enabled",
     ] as const) {
       if (b[k] !== undefined) updates[k] = !!b[k];

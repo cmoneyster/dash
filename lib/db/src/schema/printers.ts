@@ -62,6 +62,7 @@ export const printersTable = pgTable("printers", {
   printsItemLabels: boolean("prints_item_labels").notNull().default(false),
   autoPrintOnNewOrder: boolean("auto_print_on_new_order").notNull().default(true),
   suppressItemLabelsForPlateLines: boolean("suppress_item_labels_for_plate_lines").notNull().default(true),
+  opensCashDrawer: boolean("opens_cash_drawer").notNull().default(false),
   enabled: boolean("enabled").notNull().default(true),
   status: text("status").notNull().default("offline"),
   lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),

@@ -1470,6 +1470,30 @@ export default function EventTakerOrder() {
             )}
             <button
               type="button"
+              onClick={async () => {
+                if (!password) return;
+                try {
+                  const res = await fetch(`${BASE}/api/event-taker/open-cash-drawer`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${password}` },
+                  });
+                  const data = await res.json() as { ok?: boolean; jobsEnqueued?: number; error?: string };
+                  if (!res.ok) throw new Error(data.error ?? "Failed");
+                  if ((data.jobsEnqueued ?? 0) > 0) {
+                    toast.success("Cash drawer opened");
+                  }
+                } catch {
+                  toast.error("Failed to open cash drawer");
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-secondary text-muted-foreground border-transparent hover:text-foreground transition-colors"
+              title="Open cash drawer"
+            >
+              <DollarSign className="w-4 h-4" />
+              <span className="hidden sm:inline">Open Drawer</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setPrinterModalOpen(true)}
               className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
               title="Printer settings (synced with admin)"

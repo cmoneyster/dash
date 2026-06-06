@@ -85,6 +85,7 @@ export * from "./openaiConversation";
 export * from "./openaiConversationWithMessages";
 export * from "./openaiError";
 export * from "./openaiMessage";
+export * from "./openCashDrawer200";
 export * from "./order";
 export * from "./orderItem";
 export * from "./orderStatus";

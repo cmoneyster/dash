@@ -1166,6 +1166,32 @@ paths:
           description: Unauthorized
 
   # Event Taker endpoints
+  /event-taker/open-cash-drawer:
+    post:
+      operationId: openCashDrawer
+      tags: [event-taker]
+      summary: Manually open the cash drawer on all configured printers
+      description: Enqueues a cash_drawer job for every enabled printer that has "Opens cash drawer" toggled on and a LAN IP. Silently does nothing if no such printer is configured. Requires taker password.
+      responses:
+        "200":
+          description: Result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  jobsEnqueued:
+                    type: integer
+                required: [ok, jobsEnqueued]
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /event-taker/menu:
     get:
       operationId: getEventTakerMenu
@@ -3076,6 +3102,9 @@ components:
           description: lan_browser = browser agent delivers via StarWebPRNT.
         suppressItemLabelsForPlateLines:
           type: boolean
+        opensCashDrawer:
+          type: boolean
+          description: When true, a cash_drawer job is enqueued to this printer on cash payment confirmation and via the manual Open Drawer button. Requires a LAN IP.
         enabled:
           type: boolean
         status:
@@ -3107,6 +3136,7 @@ components:
         - autoPrintOnNewOrder
         - printMode
         - suppressItemLabelsForPlateLines
+        - opensCashDrawer
         - enabled
         - status
         - createdAt
@@ -3135,6 +3165,8 @@ components:
           type: boolean
         suppressItemLabelsForPlateLines:
           type: boolean
+        opensCashDrawer:
+          type: boolean
         enabled:
           type: boolean
       required:
@@ -3162,6 +3194,8 @@ components:
         autoPrintOnNewOrder:
           type: boolean
         suppressItemLabelsForPlateLines:
+          type: boolean
+        opensCashDrawer:
           type: boolean
         enabled:
           type: boolean
