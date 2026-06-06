@@ -300,8 +300,7 @@ export async function fanoutPrintForEventOrder(args: {
             modifiers: lbl.modifiers,
             isFullBox: lbl.isFullBox,
             placedAt,
-            labelIndex: i + 1,
-            labelTotal: expanded.length,
+            ...(expanded.length > 1 ? { labelIndex: i + 1, labelTotal: expanded.length } : {}),
           };
           await enqueuePrintJob({
             printerId: printer.id,
@@ -339,8 +338,7 @@ export async function fanoutPrintForEventOrder(args: {
             comboName,
             comboSelections: selections,
             placedAt,
-            labelIndex: i + 1,
-            labelTotal: comboExpanded.length,
+            ...(comboExpanded.length > 1 ? { labelIndex: i + 1, labelTotal: comboExpanded.length } : {}),
           };
           await enqueuePrintJob({
             printerId: printer.id,
@@ -392,8 +390,7 @@ export async function fanoutPrintForEventOrder(args: {
                 modifiers: lbl.modifiers,
                 isFullBox: lbl.isFullBox,
                 placedAt,
-                labelIndex: i + 1,
-                labelTotal: compExpanded.length,
+                ...(compExpanded.length > 1 ? { labelIndex: i + 1, labelTotal: compExpanded.length } : {}),
                 partOfCombo: comboName,
               };
               await enqueuePrintJob({
@@ -606,8 +603,7 @@ export async function fanoutItemLabelsForEventOrderId(args: {
             comboName,
             comboSelections: selections,
             placedAt,
-            labelIndex: i + 1,
-            labelTotal: comboExpanded.length,
+            ...(comboExpanded.length > 1 ? { labelIndex: i + 1, labelTotal: comboExpanded.length } : {}),
           };
           await enqueuePrintJob({
             printerId: printer.id,
@@ -648,8 +644,7 @@ export async function fanoutItemLabelsForEventOrderId(args: {
                 modifiers: lbl.modifiers,
                 isFullBox: lbl.isFullBox,
                 placedAt,
-                labelIndex: i + 1,
-                labelTotal: compExpanded.length,
+                ...(compExpanded.length > 1 ? { labelIndex: i + 1, labelTotal: compExpanded.length } : {}),
                 partOfCombo: comboName,
               };
               await enqueuePrintJob({
@@ -692,8 +687,7 @@ export async function fanoutItemLabelsForEventOrderId(args: {
             modifiers: lbl.modifiers,
             isFullBox: lbl.isFullBox,
             placedAt,
-            labelIndex: i + 1,
-            labelTotal: expanded.length,
+            ...(expanded.length > 1 ? { labelIndex: i + 1, labelTotal: expanded.length } : {}),
           };
           await enqueuePrintJob({
             printerId: printer.id,
