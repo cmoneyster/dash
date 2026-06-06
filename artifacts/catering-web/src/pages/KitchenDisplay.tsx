@@ -33,7 +33,8 @@ function saveLowStockSeen(s: Set<number>) {
   localStorage.setItem(LOW_STOCK_LS_KEY, JSON.stringify([...s]));
 }
 
-type OrderItem = { itemId: number; name: string; quantity: number; price: number; internalNotes?: string | null };
+type ComboSelection = { slotId: string; slotName: string; menuItemId: number; name: string; quantity: number };
+type OrderItem = { itemId: number; name: string; quantity: number; price: number; internalNotes?: string | null; comboName?: string | null; comboSelections?: ComboSelection[] | null };
 type StockItem = {
   id: number;
   name: string;
@@ -1553,6 +1554,15 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
                     <span className={`text-sm font-medium transition-all ${isChecked ? "text-emerald-400 line-through decoration-emerald-500/60" : "text-white/80"}`}>
                       {item.quantity}× {item.name}
                     </span>
+                    {item.comboSelections && item.comboSelections.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {item.comboSelections.map((sel, i) => (
+                          <p key={i} className={`text-[11px] pl-2 border-l-2 ${isChecked ? "text-emerald-400/60 border-emerald-500/30" : "text-white/45 border-white/20"}`}>
+                            {sel.slotName}: {sel.name}{sel.quantity > 1 ? ` ×${sel.quantity * item.quantity}` : item.quantity > 1 ? ` ×${item.quantity}` : ""}
+                          </p>
+                        ))}
+                      </div>
+                    )}
                   </button>
                   <div className="flex items-center gap-1.5 shrink-0 ml-3">
                     {hasNotes && (
@@ -1582,13 +1592,24 @@ function OrderCard({ order, isNew, isUpdating, checkedItemIds, onToggleItem, onA
           }
           return (
             <div key={item.itemId}>
-              <div className="flex items-center gap-2 px-1">
-                <span className="text-sm text-white/80">{item.quantity}× {item.name}</span>
+              <div className="flex items-start gap-2 px-1">
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm text-white/80">{item.quantity}× {item.name}</span>
+                  {item.comboSelections && item.comboSelections.length > 0 && (
+                    <div className="mt-0.5 space-y-0.5">
+                      {item.comboSelections.map((sel, i) => (
+                        <p key={i} className="text-[11px] text-white/45 pl-2 border-l-2 border-white/20">
+                          {sel.slotName}: {sel.name}{sel.quantity > 1 ? ` ×${sel.quantity * item.quantity}` : item.quantity > 1 ? ` ×${item.quantity}` : ""}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {hasNotes && (
                   <button
                     type="button"
                     onClick={() => toggleNote(item.itemId)}
-                    className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors shrink-0 ${notesOpen ? "bg-amber-500/30 text-amber-400" : "bg-white/10 text-white/30 hover:text-amber-400"}`}
+                    className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors shrink-0 mt-0.5 ${notesOpen ? "bg-amber-500/30 text-amber-400" : "bg-white/10 text-white/30 hover:text-amber-400"}`}
                     title="Kitchen note"
                   >
                     <Info className="w-3 h-3" />

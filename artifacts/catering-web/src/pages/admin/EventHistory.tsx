@@ -56,7 +56,7 @@ type Order = {
   id: number;
   guestName: string;
   phoneNumber: string | null;
-  items: Array<{ name: string; quantity: number; price: number; unitPrice?: number; lineTotal?: number }>;
+  items: Array<{ name: string; quantity: number; price: number; unitPrice?: number; lineTotal?: number; comboName?: string | null; comboSelections?: Array<{ slotId: string; slotName: string; menuItemId: number; name: string; quantity: number }> | null }>;
   status: string;
   createdAt: string;
   orderSource?: "guest" | "staff" | string;
@@ -378,9 +378,24 @@ function SessionOrders({ sessionId, onOrdersDeleted }: { sessionId: number; onCl
                             <td className="px-3 py-2">
                               <p className="font-semibold">{order.guestName}</p>
                               {order.phoneNumber && <p className="text-[11px] text-muted-foreground">{order.phoneNumber}</p>}
-                              <p className="text-[11px] text-muted-foreground mt-0.5 max-w-[18rem] truncate">
-                                {order.items.map(i => `${i.quantity}× ${i.name}`).join(", ")}
-                              </p>
+                              <div className="mt-0.5 space-y-0.5">
+                                {order.items.map((i, idx) => (
+                                  <div key={idx}>
+                                    <p className="text-[11px] text-muted-foreground max-w-[18rem] truncate">
+                                      {i.quantity}× {i.name}
+                                    </p>
+                                    {i.comboSelections && i.comboSelections.length > 0 && (
+                                      <div className="pl-2 border-l-2 border-indigo-200 dark:border-indigo-800 space-y-0.5">
+                                        {i.comboSelections.map((sel, j) => (
+                                          <p key={j} className="text-[10px] text-muted-foreground/70 max-w-[16rem] truncate">
+                                            {sel.slotName}: {sel.name}{sel.quantity > 1 ? ` ×${sel.quantity * i.quantity}` : i.quantity > 1 ? ` ×${i.quantity}` : ""}
+                                          </p>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
                               {(() => {
                                 const pay = formatPaymentSummary(order);
                                 if (!pay) return null;
