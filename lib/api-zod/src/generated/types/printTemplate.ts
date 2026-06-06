@@ -9,7 +9,7 @@ import type { PrintTemplateLogoPosition } from "./printTemplateLogoPosition";
 import type { TicketLayout } from "./ticketLayout";
 
 /**
- * Per-printer receipt/label template. Global fields apply to all ticket types; per-type fields override section order and styles.
+ * Global receipt/label template shared across all printers. Global fields apply to all ticket types; per-type fields override section order and styles.
  */
 export interface PrintTemplate {
   /** Overrides the business name shown on receipts. */

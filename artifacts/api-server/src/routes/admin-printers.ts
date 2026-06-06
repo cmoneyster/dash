@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { db } from "@workspace/db";
-import { printersTable, printJobsTable, type PrintTemplate } from "@workspace/db/schema";
+import { printersTable, printJobsTable, eventSettingsTable, type PrintTemplate } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 
 const sectionStyleSchema = z.object({
@@ -36,6 +36,7 @@ const printTemplateSchema = z.object({
   customer_receipt: ticketLayoutSchema.nullable().optional(),
   item_label:      ticketLayoutSchema.nullable().optional(),
   plate_label:     ticketLayoutSchema.nullable().optional(),
+  combo_label:     ticketLayoutSchema.nullable().optional(),
 });
 import {
   cancelJob,
@@ -54,6 +55,52 @@ import type {
 } from "../lib/printRenderer";
 
 const router: IRouter = Router();
+
+/**
+ * GET /api/admin/settings/print-template
+ * Returns the global print template from event_settings (or null if not yet set).
+ */
+router.get("/admin/settings/print-template", async (req, res) => {
+  try {
+    const [row] = await db.select({ printTemplate: eventSettingsTable.printTemplate }).from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    res.json({ printTemplate: row?.printTemplate ?? null });
+  } catch (err) {
+    req.log.error({ err }, "get global print template failed");
+    res.status(500).json({ error: "Failed to load print template" });
+  }
+});
+
+/**
+ * PATCH /api/admin/settings/print-template
+ * Validates and upserts the global print template into event_settings.
+ */
+router.patch("/admin/settings/print-template", async (req, res) => {
+  try {
+    const b = req.body as Record<string, unknown>;
+    let template: PrintTemplate | null;
+    if (b.printTemplate == null) {
+      template = null;
+    } else {
+      const parsed = printTemplateSchema.safeParse(b.printTemplate);
+      if (!parsed.success) {
+        req.log.warn({ issues: parsed.error.issues, raw: b.printTemplate }, "global printTemplate validation failed");
+        res.status(400).json({ error: "Invalid printTemplate", issues: parsed.error.issues });
+        return;
+      }
+      template = parsed.data as PrintTemplate;
+    }
+    const [existing] = await db.select({ id: eventSettingsTable.id }).from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    if (existing) {
+      await db.update(eventSettingsTable).set({ printTemplate: template, updatedAt: new Date() }).where(eq(eventSettingsTable.id, 1));
+    } else {
+      await db.insert(eventSettingsTable).values({ id: 1, printTemplate: template });
+    }
+    res.json({ printTemplate: template });
+  } catch (err) {
+    req.log.error({ err }, "patch global print template failed");
+    res.status(500).json({ error: "Failed to save print template" });
+  }
+});
 
 router.get("/admin/printers", async (req, res) => {
   try {
@@ -557,8 +604,8 @@ router.get("/admin/print-jobs/:id/preview", async (req, res) => {
       res.status(404).json({ error: "not found" });
       return;
     }
-    const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, job.printerId));
-    const template = printer?.printTemplate ?? undefined;
+    const [settings] = await db.select({ printTemplate: eventSettingsTable.printTemplate }).from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    const template = (settings?.printTemplate as PrintTemplate | null) ?? undefined;
     const { bytes } = renderJob(job.payload as unknown as RenderablePayload, template);
     const text = Buffer.from(
       bytes.filter((b: number) => b === 0x0a || (b >= 0x20 && b <= 0x7e)),

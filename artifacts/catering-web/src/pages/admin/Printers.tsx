@@ -9,6 +9,9 @@ import {
   useRetryPrintJob,
   useTestLanPrinter,
   useGetPrintAgentHeartbeat,
+  useGetGlobalPrintTemplate,
+  usePatchGlobalPrintTemplate,
+  getGetGlobalPrintTemplateQueryKey,
   getListPrintersQueryKey,
   getListPrintJobsQueryKey,
   type Printer,
@@ -318,38 +321,37 @@ function SectionRow({
 // ─── PrintTemplateDesignerModal ───────────────────────────────────────────────
 
 function PrintTemplateDesignerModal({
-  printer,
+  printers,
   onClose,
 }: {
-  printer: Printer;
+  printers: Printer[];
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const update = useUpdatePrinter({
+  const { data: globalData } = useGetGlobalPrintTemplate({
+    query: { queryKey: getGetGlobalPrintTemplateQueryKey() },
+  });
+  const patch = usePatchGlobalPrintTemplate({
     mutation: {
-      onSuccess: (updated) => {
-        // Immediately write the returned printer into the list cache so the
-        // modal re-initialises from fresh data the instant the user reopens it,
-        // without having to wait for the background refetch to complete.
-        qc.setQueryData<Printer[]>(
-          getListPrintersQueryKey(),
-          (old) => old?.map((p) => p.id === updated.id ? updated : p) ?? [updated],
-        );
-        qc.invalidateQueries({ queryKey: getListPrintersQueryKey() });
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetGlobalPrintTemplateQueryKey() });
       },
     },
   });
 
-  const existing = printer.printTemplate as PrintTemplate | null | undefined;
+  const existing = globalData?.printTemplate as PrintTemplate | null | undefined;
 
   const [testPrintState, setTestPrintState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const lanPrinter = printers.find((p) => p.lanIp && p.enabled);
+
   const handleTestPrint = async () => {
+    if (!lanPrinter) return;
     setTestPrintState("sending");
     try {
       const token = getAdminToken();
-      const res = await fetch(`/api/admin/printers/${printer.id}/test-print-template`, {
+      const res = await fetch(`/api/admin/printers/${lanPrinter.id}/test-print-template`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -383,16 +385,40 @@ function PrintTemplateDesignerModal({
     plate_label:     existing?.plate_label     ?? undefined,
   });
 
+  const [initialized, setInitialized] = useState(false);
+  useEffect(() => {
+    if (!initialized && globalData !== undefined) {
+      const t = globalData.printTemplate as PrintTemplate | null | undefined;
+      setTpl({
+        businessName:    t?.businessName    ?? "",
+        footer:          t?.footer          ?? "",
+        dividerChar:     t?.dividerChar     ?? "-",
+        headerText:      t?.headerText      ?? "",
+        logoUrl:         t?.logoUrl         ?? "",
+        logoPosition:    t?.logoPosition    ?? null,
+        reverseOrder:    t?.reverseOrder    ?? false,
+        kitchen_ticket:  t?.kitchen_ticket  ?? undefined,
+        customer_receipt: t?.customer_receipt ?? undefined,
+        item_label:      t?.item_label      ?? undefined,
+        plate_label:     t?.plate_label     ?? undefined,
+      });
+      setInitialized(true);
+    }
+  }, [globalData, initialized]);
+
   const [ticketType, setTicketType] = useState<TicketType>("kitchen_ticket");
   const [previewText, setPreviewText] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const previewPrinter = printers.find((p) => p.lanIp) ?? printers[0];
+
   const fetchPreview = (template: PrintTemplate, type: TicketType) => {
+    if (!previewPrinter) { setPreviewText("(no printers configured)"); return; }
     setPreviewLoading(true);
     const token = getAdminToken();
-    fetch(`/api/admin/printers/${printer.id}/preview-template`, {
+    fetch(`/api/admin/printers/${previewPrinter.id}/preview-template`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -420,7 +446,7 @@ function PrintTemplateDesignerModal({
       dividerChar: tpl.dividerChar?.slice(0, 1) || "-",
     };
     try {
-      await update.mutateAsync({ id: printer.id, data: { printTemplate: clean } });
+      await patch.mutateAsync({ data: { printTemplate: clean } });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
@@ -440,10 +466,10 @@ function PrintTemplateDesignerModal({
           <div>
             <h2 className="font-semibold text-lg flex items-center gap-2">
               <Palette className="w-4 h-4 text-muted-foreground" />
-              Receipt template — {printer.name}
+              Print Template
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Customise each ticket type. Reorder sections and set visibility, bold, and alignment per section.
+              Global template applied to all printers. Reorder sections and set visibility, bold, and alignment per section.
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="w-5 h-5" /></button>
@@ -640,12 +666,12 @@ function PrintTemplateDesignerModal({
             >
               Close
             </button>
-            {printer.lanIp && (
+            {lanPrinter && (
               <button
                 type="button"
                 onClick={handleTestPrint}
                 disabled={testPrintState === "sending"}
-                title="Print the current design (unsaved) to the physical printer"
+                title="Print the current design (unsaved) to the printer"
                 className={`px-4 py-2 rounded-xl font-medium text-sm transition-all active:scale-95 disabled:opacity-60 inline-flex items-center gap-2 border ${
                   testPrintState === "sent"
                     ? "border-green-500 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30"
@@ -666,12 +692,12 @@ function PrintTemplateDesignerModal({
             <button
               type="button"
               onClick={handleSave}
-              disabled={update.isPending || saved}
+              disabled={patch.isPending || saved}
               className={`px-5 py-2 rounded-xl font-medium text-sm transition-all active:scale-95 disabled:opacity-60 inline-flex items-center gap-2 ${
                 saved ? "bg-green-600 text-white" : "bg-primary text-primary-foreground hover:opacity-90"
               }`}
             >
-              {update.isPending
+              {patch.isPending
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
                 : saved
                 ? <><Check className="w-4 h-4" /> Saved</>
@@ -838,7 +864,6 @@ function PrinterDialog({
 function PrinterCard({ p }: { p: Printer }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [designingTemplate, setDesigningTemplate] = useState(false);
   const [testState, setTestState] = useState<"idle" | "pending" | "ok" | "err">("idle");
   const del = useDeletePrinter({
     mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPrintersQueryKey() }) },
@@ -870,35 +895,19 @@ function PrinterCard({ p }: { p: Printer }) {
   if (p.printsItemLabels) outputs.push("Item labels");
   const opensCashDrawer = p.opensCashDrawer === true;
 
-  const hasTemplate = !!(p.printTemplate as PrintTemplate | null | undefined);
-
   return (
     <div className="bg-card rounded-2xl border p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-muted rounded-xl"><PrinterIcon className="w-5 h-5 text-muted-foreground" /></div>
           <div>
-            <div className="font-semibold flex items-center gap-2">
-              {p.name}
-              {hasTemplate && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 font-medium">
-                  custom template
-                </span>
-              )}
-            </div>
+            <div className="font-semibold">{p.name}</div>
             <div className="text-xs text-muted-foreground">
               {p.model}{p.location ? ` · ${p.location}` : ""}{p.lanIp ? ` · ${p.lanIp}` : ""}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => setDesigningTemplate(true)}
-            className="p-2 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950/40 active:scale-95 transition-all text-violet-700 dark:text-violet-400"
-            title="Design receipt template"
-          >
-            <Palette className="w-4 h-4" />
-          </button>
           <button
             onClick={() => setEditing(true)}
             className="p-2 rounded-lg hover:bg-muted active:scale-95 transition-all"
@@ -955,12 +964,6 @@ function PrinterCard({ p }: { p: Printer }) {
       {p.lanIp && <RouterAgentSetup printer={p} />}
 
       <PrinterDialog open={editing} initial={p} onClose={() => setEditing(false)} />
-      {designingTemplate && (
-        <PrintTemplateDesignerModal
-          printer={p}
-          onClose={() => setDesigningTemplate(false)}
-        />
-      )}
     </div>
   );
 }
@@ -1371,27 +1374,34 @@ export default function Printers() {
     },
   });
   const [adding, setAdding] = useState(false);
+  const [designingTemplate, setDesigningTemplate] = useState(false);
 
   return (
     <AdminLayout>
       <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <PrinterIcon className="w-6 h-6" /> Printers
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Configure Star receipt printers for LAN direct printing via TCP port 9100. Use the{" "}
-              <span className="inline-flex items-center gap-1"><Palette className="w-3.5 h-3.5 text-violet-600" /> palette</span>{" "}
-              button on each printer to design its receipt template.
+              Configure Star receipt printers for LAN direct printing via TCP port 9100.
             </p>
           </div>
-          <button
-            onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 active:scale-95 transition-all shrink-0"
-          >
-            <Plus className="w-4 h-4" /> Add printer
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setDesigningTemplate(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 text-white font-medium hover:opacity-90 active:scale-95 transition-all"
+            >
+              <Palette className="w-4 h-4" /> Print Template
+            </button>
+            <button
+              onClick={() => setAdding(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 active:scale-95 transition-all"
+            >
+              <Plus className="w-4 h-4" /> Add printer
+            </button>
+          </div>
         </div>
 
         {!isLoading && printers.length > 0 && (
@@ -1413,6 +1423,12 @@ export default function Printers() {
         )}
 
         <PrinterDialog open={adding} initial={null} onClose={() => setAdding(false)} />
+        {designingTemplate && (
+          <PrintTemplateDesignerModal
+            printers={printers as Printer[]}
+            onClose={() => setDesigningTemplate(false)}
+          />
+        )}
         <PrintJobsPanel />
       </div>
     </AdminLayout>

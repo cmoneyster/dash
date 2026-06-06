@@ -2346,6 +2346,1086 @@ export const SendOpenaiMessageBody = zod.object({
 });
 
 /**
+ * @summary Get the global print template from event_settings
+ */
+export const getGlobalPrintTemplateResponsePrintTemplateKitchenTicketSectionsSizeMax = 8;
+
+export const getGlobalPrintTemplateResponsePrintTemplateCustomerReceiptSectionsSizeMax = 8;
+
+export const getGlobalPrintTemplateResponsePrintTemplateItemLabelSectionsSizeMax = 8;
+
+export const getGlobalPrintTemplateResponsePrintTemplatePlateLabelSectionsSizeMax = 8;
+
+export const GetGlobalPrintTemplateResponse = zod.object({
+  printTemplate: zod
+    .object({
+      businessName: zod
+        .string()
+        .nullish()
+        .describe("Overrides the business name shown on receipts."),
+      footer: zod
+        .string()
+        .nullish()
+        .describe("Footer text printed at the bottom of each ticket."),
+      dividerChar: zod
+        .string()
+        .nullish()
+        .describe('Single character used for divider lines (default \"-\").'),
+      headerText: zod
+        .string()
+        .nullish()
+        .describe(
+          'Overrides the ticket-type header title (e.g. \"KITCHEN\"). Applies to kitchen\/item\/plate tickets.',
+        ),
+      logoUrl: zod
+        .string()
+        .nullish()
+        .describe(
+          "URL of a logo image. Rendered via WebPRNT Image tag; shown as [LOGO] in ESC\/POS text preview.",
+        ),
+      logoPosition: zod
+        .enum(["before_name", "after_name"])
+        .nullish()
+        .describe(
+          "Where the logo appears relative to the business name or ticket title in the header section.",
+        ),
+      reverseOrder: zod
+        .boolean()
+        .nullish()
+        .describe(
+          "When true, sections are printed in reverse order (last-to-first) for printers that feed paper bottom-up.",
+        ),
+      kitchen_ticket: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      getGlobalPrintTemplateResponsePrintTemplateKitchenTicketSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      customer_receipt: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      getGlobalPrintTemplateResponsePrintTemplateCustomerReceiptSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      item_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      getGlobalPrintTemplateResponsePrintTemplateItemLabelSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      plate_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      getGlobalPrintTemplateResponsePrintTemplatePlateLabelSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+    })
+    .nullable()
+    .describe(
+      "Global receipt\/label template shared across all printers. Global fields apply to all ticket types; per-type fields override section order and styles.",
+    ),
+});
+
+/**
+ * @summary Save the global print template to event_settings
+ */
+export const patchGlobalPrintTemplateBodyPrintTemplateKitchenTicketSectionsSizeMax = 8;
+
+export const patchGlobalPrintTemplateBodyPrintTemplateCustomerReceiptSectionsSizeMax = 8;
+
+export const patchGlobalPrintTemplateBodyPrintTemplateItemLabelSectionsSizeMax = 8;
+
+export const patchGlobalPrintTemplateBodyPrintTemplatePlateLabelSectionsSizeMax = 8;
+
+export const PatchGlobalPrintTemplateBody = zod.object({
+  printTemplate: zod
+    .object({
+      businessName: zod
+        .string()
+        .nullish()
+        .describe("Overrides the business name shown on receipts."),
+      footer: zod
+        .string()
+        .nullish()
+        .describe("Footer text printed at the bottom of each ticket."),
+      dividerChar: zod
+        .string()
+        .nullish()
+        .describe('Single character used for divider lines (default \"-\").'),
+      headerText: zod
+        .string()
+        .nullish()
+        .describe(
+          'Overrides the ticket-type header title (e.g. \"KITCHEN\"). Applies to kitchen\/item\/plate tickets.',
+        ),
+      logoUrl: zod
+        .string()
+        .nullish()
+        .describe(
+          "URL of a logo image. Rendered via WebPRNT Image tag; shown as [LOGO] in ESC\/POS text preview.",
+        ),
+      logoPosition: zod
+        .enum(["before_name", "after_name"])
+        .nullish()
+        .describe(
+          "Where the logo appears relative to the business name or ticket title in the header section.",
+        ),
+      reverseOrder: zod
+        .boolean()
+        .nullish()
+        .describe(
+          "When true, sections are printed in reverse order (last-to-first) for printers that feed paper bottom-up.",
+        ),
+      kitchen_ticket: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      patchGlobalPrintTemplateBodyPrintTemplateKitchenTicketSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      customer_receipt: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      patchGlobalPrintTemplateBodyPrintTemplateCustomerReceiptSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      item_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      patchGlobalPrintTemplateBodyPrintTemplateItemLabelSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      plate_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      patchGlobalPrintTemplateBodyPrintTemplatePlateLabelSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+    })
+    .nullable()
+    .describe(
+      "Global receipt\/label template shared across all printers. Global fields apply to all ticket types; per-type fields override section order and styles.",
+    ),
+});
+
+export const patchGlobalPrintTemplateResponsePrintTemplateKitchenTicketSectionsSizeMax = 8;
+
+export const patchGlobalPrintTemplateResponsePrintTemplateCustomerReceiptSectionsSizeMax = 8;
+
+export const patchGlobalPrintTemplateResponsePrintTemplateItemLabelSectionsSizeMax = 8;
+
+export const patchGlobalPrintTemplateResponsePrintTemplatePlateLabelSectionsSizeMax = 8;
+
+export const PatchGlobalPrintTemplateResponse = zod.object({
+  printTemplate: zod
+    .object({
+      businessName: zod
+        .string()
+        .nullish()
+        .describe("Overrides the business name shown on receipts."),
+      footer: zod
+        .string()
+        .nullish()
+        .describe("Footer text printed at the bottom of each ticket."),
+      dividerChar: zod
+        .string()
+        .nullish()
+        .describe('Single character used for divider lines (default \"-\").'),
+      headerText: zod
+        .string()
+        .nullish()
+        .describe(
+          'Overrides the ticket-type header title (e.g. \"KITCHEN\"). Applies to kitchen\/item\/plate tickets.',
+        ),
+      logoUrl: zod
+        .string()
+        .nullish()
+        .describe(
+          "URL of a logo image. Rendered via WebPRNT Image tag; shown as [LOGO] in ESC\/POS text preview.",
+        ),
+      logoPosition: zod
+        .enum(["before_name", "after_name"])
+        .nullish()
+        .describe(
+          "Where the logo appears relative to the business name or ticket title in the header section.",
+        ),
+      reverseOrder: zod
+        .boolean()
+        .nullish()
+        .describe(
+          "When true, sections are printed in reverse order (last-to-first) for printers that feed paper bottom-up.",
+        ),
+      kitchen_ticket: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      patchGlobalPrintTemplateResponsePrintTemplateKitchenTicketSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      customer_receipt: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      patchGlobalPrintTemplateResponsePrintTemplateCustomerReceiptSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      item_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      patchGlobalPrintTemplateResponsePrintTemplateItemLabelSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+      plate_label: zod
+        .object({
+          sectionOrder: zod
+            .array(
+              zod.enum([
+                "header",
+                "orderNumber",
+                "guestName",
+                "tableNumber",
+                "timestamp",
+                "source",
+                "items",
+                "totals",
+                "notes",
+                "footer",
+              ]),
+            )
+            .nullish()
+            .describe(
+              "Ordered list of section keys to render. Defaults to the built-in order.",
+            ),
+          sections: zod
+            .record(
+              zod.string(),
+              zod
+                .object({
+                  visible: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section is printed. Defaults to true.",
+                    ),
+                  bold: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "Whether this section text is bold. Inherits section default.",
+                    ),
+                  align: zod
+                    .enum(["left", "center", "right"])
+                    .nullish()
+                    .describe("Text alignment for this section."),
+                  size: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      patchGlobalPrintTemplateResponsePrintTemplatePlateLabelSectionsSizeMax,
+                    )
+                    .nullish()
+                    .describe(
+                      "Text size multiplier (1=normal, 2=double-height\/width, up to 8). Omit to use the section default.",
+                    ),
+                  dividerBefore: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately before this section.",
+                    ),
+                  dividerAfter: zod
+                    .boolean()
+                    .nullish()
+                    .describe(
+                      "When true, a divider line is printed immediately after this section.",
+                    ),
+                })
+                .describe("Per-section style overrides for a ticket template."),
+            )
+            .nullish()
+            .describe(
+              "Map of section key to style overrides. Sections not listed use defaults.",
+            ),
+        })
+        .nullish()
+        .describe(
+          "Per-ticket-type layout with section order and per-section style overrides.",
+        ),
+    })
+    .nullable()
+    .describe(
+      "Global receipt\/label template shared across all printers. Global fields apply to all ticket types; per-type fields override section order and styles.",
+    ),
+});
+
+/**
  * @summary List all configured printers
  */
 export const listPrintersResponsePrintTemplateKitchenTicketSectionsSizeMax = 8;
@@ -2729,7 +3809,7 @@ export const ListPrintersResponseItem = zod.object({
     })
     .nullish()
     .describe(
-      "Per-printer receipt\/label template. Global fields apply to all ticket types; per-type fields override section order and styles.",
+      "Global receipt\/label template shared across all printers. Global fields apply to all ticket types; per-type fields override section order and styles.",
     ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -3123,7 +4203,7 @@ export const UpdatePrinterBody = zod.object({
     })
     .nullish()
     .describe(
-      "Per-printer receipt\/label template. Global fields apply to all ticket types; per-type fields override section order and styles.",
+      "Global receipt\/label template shared across all printers. Global fields apply to all ticket types; per-type fields override section order and styles.",
     ),
 });
 
@@ -3508,7 +4588,7 @@ export const UpdatePrinterResponse = zod.object({
     })
     .nullish()
     .describe(
-      "Per-printer receipt\/label template. Global fields apply to all ticket types; per-type fields override section order and styles.",
+      "Global receipt\/label template shared across all printers. Global fields apply to all ticket types; per-type fields override section order and styles.",
     ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -3942,7 +5022,7 @@ export const PreviewPrinterTemplateBody = zod.object({
     })
     .nullish()
     .describe(
-      "Per-printer receipt\/label template. Global fields apply to all ticket types; per-type fields override section order and styles.",
+      "Global receipt\/label template shared across all printers. Global fields apply to all ticket types; per-type fields override section order and styles.",
     ),
 });
 

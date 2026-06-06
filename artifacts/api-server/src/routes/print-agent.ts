@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { printersTable } from "@workspace/db/schema";
+import { printersTable, eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import {
   getQueuedJobsForLanAgent,
@@ -86,7 +86,7 @@ router.post("/print-agent/jobs/:id/claim", async (req, res) => {
     }
 
     const [printer] = await db
-      .select({ lanIp: printersTable.lanIp, printTemplate: printersTable.printTemplate })
+      .select({ lanIp: printersTable.lanIp })
       .from(printersTable)
       .where(eq(printersTable.id, job.printerId));
 
@@ -97,11 +97,16 @@ router.post("/print-agent/jobs/:id/claim", async (req, res) => {
 
     // If a _templateOverride was embedded by test-print-template, use it
     // so the template builder's "Test Print" sends the current (unsaved) template.
+    // Otherwise use the global template from event_settings.
     const payloadObj = job.payload as Record<string, unknown>;
     const hasOverride = "_templateOverride" in payloadObj;
-    const effectiveTemplate: PrintTemplate | undefined = hasOverride
-      ? (payloadObj._templateOverride as PrintTemplate | null) ?? undefined
-      : (printer.printTemplate as PrintTemplate | null) ?? undefined;
+    let effectiveTemplate: PrintTemplate | undefined;
+    if (hasOverride) {
+      effectiveTemplate = (payloadObj._templateOverride as PrintTemplate | null) ?? undefined;
+    } else {
+      const [settings] = await db.select({ printTemplate: eventSettingsTable.printTemplate }).from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+      effectiveTemplate = (settings?.printTemplate as PrintTemplate | null) ?? undefined;
+    }
 
     const webPrntXml = renderJobWebPrnt(
       job.payload as unknown as RenderablePayload,
@@ -142,7 +147,7 @@ router.get("/print-agent/jobs/:id/bytes", async (req, res) => {
     }
 
     const [printer] = await db
-      .select({ lanIp: printersTable.lanIp, printTemplate: printersTable.printTemplate })
+      .select({ lanIp: printersTable.lanIp })
       .from(printersTable)
       .where(eq(printersTable.id, job.printerId));
 
@@ -153,12 +158,16 @@ router.get("/print-agent/jobs/:id/bytes", async (req, res) => {
 
     // A template_test job may embed a _templateOverride in the payload so the
     // operator can proof a template before saving it to the printer record.
+    // Otherwise use the global template from event_settings.
     const rawPayload = job.payload as unknown as Record<string, unknown>;
     const { _templateOverride, ...cleanPayload } = rawPayload;
-    const effectiveTemplate =
-      (_templateOverride && typeof _templateOverride === "object"
-        ? (_templateOverride as PrintTemplate)
-        : null) ?? (printer.printTemplate as PrintTemplate | undefined ?? undefined);
+    let effectiveTemplate: PrintTemplate | undefined;
+    if (_templateOverride && typeof _templateOverride === "object") {
+      effectiveTemplate = _templateOverride as PrintTemplate;
+    } else {
+      const [settings] = await db.select({ printTemplate: eventSettingsTable.printTemplate }).from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+      effectiveTemplate = (settings?.printTemplate as PrintTemplate | null) ?? undefined;
+    }
 
     const { bytes } = renderJob(
       cleanPayload as unknown as RenderablePayload,

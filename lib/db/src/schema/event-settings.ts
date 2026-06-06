@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { pgTable, integer, text, timestamp, boolean, numeric, jsonb } from "drizzle-orm/pg-core";
+import type { PrintTemplate } from "./printers";
 
 export const eventSettingsTable = pgTable("event_settings", {
   id: integer("id").primaryKey(),
@@ -195,6 +196,7 @@ export const eventSettingsTable = pgTable("event_settings", {
   // counts pending posts that arrived AFTER this timestamp.
   instagramAdminLastVisitedAt: timestamp("instagram_admin_last_visited_at"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  printTemplate: jsonb("print_template").$type<PrintTemplate>(),
 });
 
 export type EventSettings = typeof eventSettingsTable.$inferSelect;

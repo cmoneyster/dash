@@ -1025,7 +1025,7 @@ export interface TicketLayout {
 }
 
 /**
- * Per-printer receipt/label template. Global fields apply to all ticket types; per-type fields override section order and styles.
+ * Global receipt/label template shared across all printers. Global fields apply to all ticket types; per-type fields override section order and styles.
  */
 export interface PrintTemplate {
   /** Overrides the business name shown on receipts. */
@@ -1101,6 +1101,14 @@ export interface UpdatePrinterBody {
   opensCashDrawer?: boolean;
   enabled?: boolean;
   printTemplate?: PrintTemplate | null;
+}
+
+export interface GlobalPrintTemplateResponse {
+  printTemplate: PrintTemplate | null;
+}
+
+export interface PatchGlobalPrintTemplateBody {
+  printTemplate: PrintTemplate | null;
 }
 
 export type PreviewTemplateBodyTicketType =

@@ -904,6 +904,54 @@ paths:
           content:
             text/event-stream: {}
 
+  /admin/settings/print-template:
+    get:
+      operationId: getGlobalPrintTemplate
+      tags: [printers]
+      summary: Get the global print template from event_settings
+      responses:
+        "200":
+          description: Global print template (null if not yet configured)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalPrintTemplateResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: patchGlobalPrintTemplate
+      tags: [printers]
+      summary: Save the global print template to event_settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchGlobalPrintTemplateBody"
+      responses:
+        "200":
+          description: Saved global print template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalPrintTemplateResponse"
+        "400":
+          description: Invalid template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/printers:
     get:
       operationId: listPrinters
@@ -3253,9 +3301,27 @@ components:
           additionalProperties:
             $ref: "#/components/schemas/SectionStyle"
 
+    GlobalPrintTemplateResponse:
+      type: object
+      properties:
+        printTemplate:
+          $ref: "#/components/schemas/PrintTemplate"
+          nullable: true
+      required:
+        - printTemplate
+
+    PatchGlobalPrintTemplateBody:
+      type: object
+      properties:
+        printTemplate:
+          $ref: "#/components/schemas/PrintTemplate"
+          nullable: true
+      required:
+        - printTemplate
+
     PrintTemplate:
       type: object
-      description: Per-printer receipt/label template. Global fields apply to all ticket types; per-type fields override section order and styles.
+      description: Global receipt/label template shared across all printers. Global fields apply to all ticket types; per-type fields override section order and styles.
       properties:
         businessName:
           type: string

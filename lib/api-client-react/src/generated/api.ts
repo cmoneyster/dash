@@ -48,6 +48,7 @@ import type {
   GetDayLoadParams,
   GetPlanParams,
   GetSalesReportParams,
+  GlobalPrintTemplateResponse,
   HealthStatus,
   IdleActivitySnapshot,
   ListBlackoutTimeWindowsParams,
@@ -61,6 +62,7 @@ import type {
   OpenaiError,
   OpenaiMessage,
   Order,
+  PatchGlobalPrintTemplateBody,
   Plan,
   PostPrintAgentHeartbeat200,
   PreviewTemplateBody,
@@ -3883,6 +3885,175 @@ export const useSendOpenaiMessage = <
   TContext
 > => {
   return useMutation(getSendOpenaiMessageMutationOptions(options));
+};
+
+/**
+ * @summary Get the global print template from event_settings
+ */
+export const getGetGlobalPrintTemplateUrl = () => {
+  return `/api/admin/settings/print-template`;
+};
+
+export const getGlobalPrintTemplate = async (
+  options?: RequestInit,
+): Promise<GlobalPrintTemplateResponse> => {
+  return customFetch<GlobalPrintTemplateResponse>(
+    getGetGlobalPrintTemplateUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetGlobalPrintTemplateQueryKey = () => {
+  return [`/api/admin/settings/print-template`] as const;
+};
+
+export const getGetGlobalPrintTemplateQueryOptions = <
+  TData = Awaited<ReturnType<typeof getGlobalPrintTemplate>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getGlobalPrintTemplate>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetGlobalPrintTemplateQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getGlobalPrintTemplate>>
+  > = ({ signal }) => getGlobalPrintTemplate({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getGlobalPrintTemplate>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetGlobalPrintTemplateQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getGlobalPrintTemplate>>
+>;
+export type GetGlobalPrintTemplateQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get the global print template from event_settings
+ */
+
+export function useGetGlobalPrintTemplate<
+  TData = Awaited<ReturnType<typeof getGlobalPrintTemplate>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getGlobalPrintTemplate>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetGlobalPrintTemplateQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save the global print template to event_settings
+ */
+export const getPatchGlobalPrintTemplateUrl = () => {
+  return `/api/admin/settings/print-template`;
+};
+
+export const patchGlobalPrintTemplate = async (
+  patchGlobalPrintTemplateBody: PatchGlobalPrintTemplateBody,
+  options?: RequestInit,
+): Promise<GlobalPrintTemplateResponse> => {
+  return customFetch<GlobalPrintTemplateResponse>(
+    getPatchGlobalPrintTemplateUrl(),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(patchGlobalPrintTemplateBody),
+    },
+  );
+};
+
+export const getPatchGlobalPrintTemplateMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof patchGlobalPrintTemplate>>,
+    TError,
+    { data: BodyType<PatchGlobalPrintTemplateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof patchGlobalPrintTemplate>>,
+  TError,
+  { data: BodyType<PatchGlobalPrintTemplateBody> },
+  TContext
+> => {
+  const mutationKey = ["patchGlobalPrintTemplate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof patchGlobalPrintTemplate>>,
+    { data: BodyType<PatchGlobalPrintTemplateBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return patchGlobalPrintTemplate(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PatchGlobalPrintTemplateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof patchGlobalPrintTemplate>>
+>;
+export type PatchGlobalPrintTemplateMutationBody =
+  BodyType<PatchGlobalPrintTemplateBody>;
+export type PatchGlobalPrintTemplateMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Save the global print template to event_settings
+ */
+export const usePatchGlobalPrintTemplate = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof patchGlobalPrintTemplate>>,
+    TError,
+    { data: BodyType<PatchGlobalPrintTemplateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof patchGlobalPrintTemplate>>,
+  TError,
+  { data: BodyType<PatchGlobalPrintTemplateBody> },
+  TContext
+> => {
+  return useMutation(getPatchGlobalPrintTemplateMutationOptions(options));
 };
 
 /**
