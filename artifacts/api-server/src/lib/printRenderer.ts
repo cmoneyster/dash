@@ -121,10 +121,11 @@ const TICKET_DIVIDER_OVERRIDES: Partial<Record<TicketType, Partial<Record<Sectio
 export const DEFAULT_ORDERS: Record<TicketType, SectionKey[]> = {
   kitchen_ticket:   ["header", "orderNumber", "guestName", "tableNumber", "timestamp", "source", "items", "notes", "footer"],
   customer_receipt: ["header", "timestamp", "orderNumber", "guestName", "tableNumber", "items", "totals", "footer"],
-  // "header" prints businessName on item labels; "tableNumber" removed — ItemLabelPayload has no tableNumber field.
-  item_label:       ["header", "orderNumber", "guestName", "items", "timestamp"],
-  plate_label:      ["orderNumber", "guestName", "items", "timestamp"],
-  combo_label:      ["header", "orderNumber", "guestName", "items", "timestamp"],
+  // Non-bold sections (guestName, timestamp) come first so bold sections follow with no bold→non-bold
+  // transitions, eliminating the stray 'F' that <Bold on="false"/> causes on some Star firmware.
+  item_label:       ["guestName", "timestamp", "header", "orderNumber", "items"],
+  plate_label:      ["guestName", "timestamp", "orderNumber", "items"],
+  combo_label:      ["guestName", "timestamp", "header", "orderNumber", "items"],
 };
 
 function getLayout(tmpl: PrintTemplate | undefined, key: TicketType): TicketLayout | undefined {
@@ -744,10 +745,17 @@ function xmlEsc(s: string): string {
 
 class WebPrntBuilder {
   private cmds: string[] = [];
+  /** Tracks current bold state to suppress no-op <Bold> tags that cause stray 'F' characters. */
+  private _bold = false;
 
   text(s: string) { if (s) this.cmds.push(`<Text>${xmlEsc(s)}</Text>`); return this; }
   line(s = "")    { this.cmds.push(`<Text>${xmlEsc(s)}\n</Text>`); return this; }
-  bold(on: boolean) { this.cmds.push(`<Bold on="${on}"/>`); return this; }
+  bold(on: boolean) {
+    if (this._bold === on) return this;
+    this._bold = on;
+    this.cmds.push(on ? `<Bold on="true"/>` : `<Bold on="false"/>`);
+    return this;
+  }
   sizeN(n: number) {
     const capped = Math.max(1, Math.min(2, Math.round(n)));
     this.cmds.push(capped >= 2
@@ -762,7 +770,8 @@ class WebPrntBuilder {
   }
   center() { this.cmds.push(`<Alignment Method="Center"/>`); return this; }
   left()   { this.cmds.push(`<Alignment Method="Left"/>`);   return this; }
-  initialize() { this.cmds.unshift(`<Initialize/>`); return this; }
+  /** Resets all print settings to default (bold off, size 1, left align). Safe to call at label start. */
+  initialize() { this.cmds.push(`<Initialize/>`); this._bold = false; return this; }
   div(c = "-") { return this.line(divider(c)); }
   image(src: string, width = 200) {
     this.cmds.push(`<Image Source="${xmlEsc(src)}" Width="${width}"/>`);
@@ -974,18 +983,20 @@ function webItemLabelSection(
   b.align(style.align);
   switch (section) {
     case "header":
-      if (tmpl?.businessName) b.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).bold(false).left();
+      // No trailing bold(false): with non-bold sections first in DEFAULT_ORDERS, the next
+      // section is always bold too (orderNumber / items), so no bold→non-bold transition occurs.
+      if (tmpl?.businessName) b.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).left();
       break;
     case "orderNumber":
-      b.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1).bold(false);
+      b.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1);
       break;
     case "guestName":
-      b.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1).bold(false);
+      b.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1);
       break;
     case "items":
       b.bold(style.bold).sizeN(style.size);
       wrap(`${p.quantity}x ${p.itemName}`).forEach((w) => b.line(w));
-      b.sizeN(1).bold(false);
+      b.sizeN(1);
       if (p.isFullBox) b.line("[FULL BOX]");
       if (p.modifiers?.length) for (const m of p.modifiers) wrap(`+ ${m}`, 2).forEach((w) => b.line(w));
       if (p.partOfCombo) b.line(`Part of: ${p.partOfCombo}`);
@@ -995,7 +1006,7 @@ function webItemLabelSection(
       }
       break;
     case "timestamp":
-      b.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1).bold(false);
+      b.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1);
       break;
     case "footer": {
       const footer = tmpl?.footer;
@@ -1014,6 +1025,7 @@ function webItemLabelSection(
 
 function webPrntItemLabel(p: ItemLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
+  b.initialize();
   const order = resolveOrder(tmpl, "item_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
@@ -1039,18 +1051,20 @@ function webComboLabelSection(
   b.align(style.align);
   switch (section) {
     case "header":
-      if (tmpl?.businessName) b.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).bold(false).left();
+      if (tmpl?.businessName) b.sizeN(style.size).bold(style.bold).line(tmpl.businessName).sizeN(1).left();
       break;
     case "orderNumber":
-      b.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1).bold(false);
+      b.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1);
       break;
     case "guestName":
-      b.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1).bold(false);
+      b.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1);
       break;
     case "items": {
       b.bold(style.bold).sizeN(style.size);
       wrap(p.comboName).forEach((w) => b.line(w));
-      b.sizeN(1).bold(false);
+      // No bold(false) here: remaining content (divider, selections) stays bold for
+      // visual consistency; size returns to 1 so the combo name stands out by size alone.
+      b.sizeN(1);
       b.div(dchar);
       const collapsed = collapseComboSelections(p.comboSelections, 1);
       for (const { name, qty } of collapsed) {
@@ -1059,7 +1073,7 @@ function webComboLabelSection(
       break;
     }
     case "timestamp":
-      b.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1).bold(false);
+      b.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1);
       break;
     case "footer": {
       const footer = tmpl?.footer;
@@ -1078,6 +1092,7 @@ function webComboLabelSection(
 
 function webPrntComboLabel(p: ComboLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
+  b.initialize();
   const order = resolveOrder(tmpl, "combo_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
@@ -1103,22 +1118,25 @@ function webPlateLabelSection(
   b.align(style.align);
   switch (section) {
     case "orderNumber":
-      b.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1).bold(false);
+      b.bold(style.bold).sizeN(style.size).line(`#${p.orderNumber}`).sizeN(1);
       break;
     case "guestName":
-      b.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1).bold(false);
+      b.bold(style.bold).sizeN(style.size).line(`Guest: ${p.guestName}`).sizeN(1);
       break;
     case "items":
-      b.bold(style.bold).sizeN(style.size).line(p.plateLabel).sizeN(1).bold(false);
+      // Plate label: bold=true at size=2 for the plate header, then size=1 for line items.
+      // No bold(false) after header — line items and modifiers remain bold at size=1 so
+      // we never emit <Bold on="false"/> (which prints a stray 'F' on Star firmware).
+      b.bold(style.bold).sizeN(style.size).line(p.plateLabel).sizeN(1);
       b.div(dchar);
       for (const l of p.lines) {
-        b.bold(true).line(`${l.quantity}x ${l.name}`).bold(false);
+        b.line(`${l.quantity}x ${l.name}`);
         if (l.modifiers?.length) for (const m of l.modifiers) b.line(`  + ${m}`);
         if (l.notes) wrap(`* ${l.notes}`, 2).forEach((w) => b.line(w));
       }
       break;
     case "timestamp":
-      b.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1).bold(false);
+      b.bold(style.bold).sizeN(style.size).line(fmtTime(new Date(p.placedAt))).sizeN(1);
       break;
     case "footer": {
       const footer = tmpl?.footer;
@@ -1137,6 +1155,7 @@ function webPlateLabelSection(
 
 function webPrntPlateLabel(p: PlateLabelPayload, tmpl?: PrintTemplate): string {
   const b = new WebPrntBuilder();
+  b.initialize();
   const order = resolveOrder(tmpl, "plate_label");
   const dchar = tmpl?.dividerChar ?? "-";
   for (const section of order) {
