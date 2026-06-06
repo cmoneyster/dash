@@ -11,7 +11,7 @@ import { TAX_DISCLOSURE, TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import {
   Trash2, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
   Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck, Calendar, Send, ShieldCheck,
-  Phone, RefreshCw, Flame,
+  Phone, RefreshCw, Flame, Plus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation, useSearch } from "wouter";
@@ -1069,6 +1069,15 @@ export default function Plan() {
                   <span className="hidden sm:inline">Clear Plan</span>
                 </button>
               )}
+              {!clearConfirm && (
+                <Link
+                  href="/menu"
+                  className="flex items-center gap-2 px-3 py-2.5 border border-border text-muted-foreground font-semibold rounded-xl text-sm hover:border-primary hover:text-primary transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="hidden sm:inline">Add Items</span>
+                </Link>
+              )}
               <button
                 onClick={openShare}
                 className="flex items-center gap-2 px-4 py-2.5 bg-foreground text-background font-semibold rounded-xl text-sm hover:bg-primary transition-colors"
@@ -1627,6 +1636,17 @@ export default function Plan() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* ── Add more items nudge ── */}
+            <div className="flex justify-center py-2">
+              <Link
+                href="/menu"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add more items
+              </Link>
             </div>
 
             {/* ── Submit Catering Inquiry ── */}
