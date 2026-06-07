@@ -160,9 +160,11 @@ const SECTION_LABELS: Record<SectionKey, string> = {
 const DEFAULT_TICKET_SECTIONS: Record<TicketType, SectionKey[]> = {
   kitchen_ticket:   ["header", "orderNumber", "guestName", "tableNumber", "timestamp", "source", "items", "notes", "footer"],
   customer_receipt: ["header", "timestamp", "orderNumber", "guestName", "tableNumber", "items", "totals", "footer"],
-  // "header" prints businessName; "tableNumber" removed — item labels have no table number field.
-  item_label:       ["header", "orderNumber", "guestName", "items", "timestamp"],
-  plate_label:      ["orderNumber", "guestName", "items", "timestamp"],
+  // Non-bold sections first to match server DEFAULT_ORDERS (avoids bold→non-bold transitions).
+  // "footer" included so template designer shows/previews it; only prints when footer text is set.
+  item_label:       ["guestName", "timestamp", "header", "orderNumber", "items", "footer"],
+  plate_label:      ["guestName", "timestamp", "orderNumber", "items", "footer"],
+  combo_label:      ["guestName", "timestamp", "header", "orderNumber", "items", "footer"],
 };
 
 const EMPTY_TEMPLATE: PrintTemplate = { businessName: "", footer: "", dividerChar: "-" };
@@ -176,6 +178,7 @@ const TICKET_SIZE_OVERRIDES_FE: Partial<Record<TicketType, Partial<Record<Sectio
   customer_receipt: { header: 1 },
   item_label:       { header: 1, orderNumber: 2, items: 2 },
   plate_label:      { orderNumber: 2, items: 2 },
+  combo_label:      { header: 1, orderNumber: 2, items: 2 },
 };
 
 function getEffectiveDefaultSize(tt: TicketType, key: SectionKey): number {

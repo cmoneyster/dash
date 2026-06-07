@@ -123,9 +123,9 @@ export const DEFAULT_ORDERS: Record<TicketType, SectionKey[]> = {
   customer_receipt: ["header", "timestamp", "orderNumber", "guestName", "tableNumber", "items", "totals", "footer"],
   // Non-bold sections (guestName, timestamp) come first so bold sections follow with no bold→non-bold
   // transitions, eliminating the stray 'F' that <Bold on="false"/> causes on some Star firmware.
-  item_label:       ["guestName", "timestamp", "header", "orderNumber", "items"],
-  plate_label:      ["guestName", "timestamp", "orderNumber", "items"],
-  combo_label:      ["guestName", "timestamp", "header", "orderNumber", "items"],
+  item_label:       ["guestName", "timestamp", "header", "orderNumber", "items", "footer"],
+  plate_label:      ["guestName", "timestamp", "orderNumber", "items", "footer"],
+  combo_label:      ["guestName", "timestamp", "header", "orderNumber", "items", "footer"],
 };
 
 function getLayout(tmpl: PrintTemplate | undefined, key: TicketType): TicketLayout | undefined {
