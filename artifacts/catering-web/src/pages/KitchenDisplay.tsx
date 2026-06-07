@@ -263,6 +263,8 @@ export default function KitchenDisplay() {
   const [updating, setUpdating] = useState<Set<number>>(new Set());
   const prevOrderIds = useRef<Set<number>>(new Set());
   const [showDone, setShowDone] = useState(false);
+  const [completedFlash, setCompletedFlash] = useState<string | null>(null);
+  const completedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("kitchen_sound") !== "off");
   const soundEnabledRef = useRef(soundEnabled);
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
@@ -905,6 +907,13 @@ export default function KitchenDisplay() {
         // Server already wiped fired_item_ids in the same transaction
         // when the new status is ready / done / picked_up, so nothing
         // for the client to clean up.
+        if (COMPLETED_STATUSES.has(updated.status)) {
+          const label = updated.status === "picked_up" ? "Picked up" : "Done";
+          const name = updated.guestName ? ` — ${updated.guestName}` : "";
+          if (completedFlashTimer.current) clearTimeout(completedFlashTimer.current);
+          setCompletedFlash(`${label}${name} · moved to "Show done"`);
+          completedFlashTimer.current = setTimeout(() => setCompletedFlash(null), 4000);
+        }
       }
     } finally {
       setUpdating(s => { const n = new Set(s); n.delete(order.id); return n; });
@@ -1220,8 +1229,14 @@ export default function KitchenDisplay() {
                   <RefreshCw className="w-4 h-4 text-white/50" />
                 </button>
                 <button
-                  onClick={() => setShowDone(s => !s)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${showDone ? "bg-white/20 text-white" : "bg-white/10 text-white/60 hover:bg-white/15"}`}
+                  onClick={() => { setShowDone(s => !s); setCompletedFlash(null); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    showDone
+                      ? "bg-white/20 text-white"
+                      : completedFlash
+                        ? "bg-emerald-500/30 text-emerald-300 ring-2 ring-emerald-400/60 animate-pulse"
+                        : "bg-white/10 text-white/60 hover:bg-white/15"
+                  }`}
                 >
                   {showDone ? "Hide done" : `Show done (${doneOrders.length})`}
                 </button>
@@ -1235,6 +1250,12 @@ export default function KitchenDisplay() {
           </div>
         </div>
       </header>
+
+      {completedFlash && view === "orders" && (
+        <div className="bg-emerald-900/60 border-b border-emerald-700/40 px-4 py-2 text-center text-sm font-semibold text-emerald-300 flex items-center justify-center gap-2">
+          <span>✓ {completedFlash}</span>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {view === "stock" && (
