@@ -1571,6 +1571,16 @@ components:
           type: integer
         revenue:
           type: number
+        components:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              quantity:
+                type: integer
+            required: [name, quantity]
       required: [name, quantity, revenue]
 
     SalesReportOrderLine:

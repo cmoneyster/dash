@@ -116,6 +116,7 @@ export * from "./salesReport";
 export * from "./salesReportBySource";
 export * from "./salesReportByType";
 export * from "./salesReportItem";
+export * from "./salesReportItemComponentsItem";
 export * from "./salesReportOrder";
 export * from "./salesReportOrderLine";
 export * from "./salesReportOrderPaymentMethod";

@@ -245,6 +245,9 @@ export default function SalesReports() {
   }
 
   const [itemSort, setItemSort] = useState<{ col: "name" | "quantity" | "revenue"; dir: "asc" | "desc" }>({ col: "revenue", dir: "desc" });
+  const [itemView, setItemView] = useState<"combos" | "components">("combos");
+  const [expandedCombos, setExpandedCombos] = useState<Set<string>>(new Set());
+
   // Backend merges items across event+catering in totals.items based on scope.
   const sortedItems = useMemo(() => {
     const items = [...(report?.totals.items ?? [])];
@@ -255,6 +258,39 @@ export default function SalesReports() {
       return itemSort.dir === "asc" ? cmp : -cmp;
     });
     return items;
+  }, [report, itemSort]);
+
+  // Flattened view: dissolve combos into their component items and merge quantities.
+  const flattenedItems = useMemo(() => {
+    const acc = new Map<string, { name: string; quantity: number }>();
+    for (const item of (report?.totals.items ?? [])) {
+      if (item.components && item.components.length > 0) {
+        for (const comp of item.components) {
+          const existing = acc.get(comp.name);
+          if (existing) {
+            existing.quantity += comp.quantity;
+          } else {
+            acc.set(comp.name, { name: comp.name, quantity: comp.quantity });
+          }
+        }
+      } else {
+        const existing = acc.get(item.name);
+        if (existing) {
+          existing.quantity += item.quantity;
+        } else {
+          acc.set(item.name, { name: item.name, quantity: item.quantity });
+        }
+      }
+    }
+    const flat = Array.from(acc.values());
+    const col = itemSort.col === "revenue" ? "quantity" : itemSort.col;
+    flat.sort((a, b) => {
+      const av = a[col as "name" | "quantity"];
+      const bv = b[col as "name" | "quantity"];
+      const cmp = typeof av === "string" ? (av as string).localeCompare(bv as string) : (av as number) - (bv as number);
+      return itemSort.dir === "asc" ? cmp : -cmp;
+    });
+    return flat;
   }, [report, itemSort]);
 
   return (
@@ -672,12 +708,58 @@ export default function SalesReports() {
           </div>
 
           <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-border bg-secondary/30">
-              <h2 className="font-display font-bold text-lg">Item Breakdown</h2>
-              <p className="text-xs text-muted-foreground">Click any column header to sort.</p>
+            <div className="px-5 py-4 border-b border-border bg-secondary/30 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-display font-bold text-lg">Item Breakdown</h2>
+                <p className="text-xs text-muted-foreground">Click any column header to sort.</p>
+              </div>
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5 text-xs font-medium">
+                <button
+                  onClick={() => setItemView("combos")}
+                  className={`px-3 py-1.5 rounded-md transition-colors ${itemView === "combos" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  By combo
+                </button>
+                <button
+                  onClick={() => setItemView("components")}
+                  className={`px-3 py-1.5 rounded-md transition-colors ${itemView === "components" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  By component
+                </button>
+              </div>
             </div>
             {report.totals.items.length === 0 ? (
               <div className="px-5 py-12 text-center text-muted-foreground text-sm">No items sold.</div>
+            ) : itemView === "components" ? (
+              <table className="w-full text-sm">
+                <thead className="border-b border-border bg-secondary/20">
+                  <tr className="text-left text-xs text-muted-foreground uppercase tracking-wider">
+                    {(["name", "quantity"] as const).map(col => {
+                      const isActive = itemSort.col === col;
+                      const arrow = isActive ? (itemSort.dir === "asc" ? " ▲" : " ▼") : "";
+                      const align = col === "name" ? "text-left" : "text-center w-32";
+                      const label = col === "name" ? "Item" : "Qty";
+                      return (
+                        <th
+                          key={col}
+                          onClick={() => setItemSort(s => ({ col, dir: s.col === col && s.dir === "desc" ? "asc" : "desc" }))}
+                          className={`px-5 py-2.5 font-semibold cursor-pointer select-none hover:text-foreground ${align} ${isActive ? "text-foreground" : ""}`}
+                        >
+                          {label}{arrow}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {flattenedItems.map(it => (
+                    <tr key={it.name} className="border-b border-border/50 last:border-0">
+                      <td className="px-5 py-2.5">{it.name}</td>
+                      <td className="px-5 py-2.5 text-center font-medium">{it.quantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ) : (
               <table className="w-full text-sm">
                 <thead className="border-b border-border bg-secondary/20">
@@ -700,13 +782,47 @@ export default function SalesReports() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedItems.map(it => (
-                    <tr key={it.name} className="border-b border-border/50 last:border-0">
-                      <td className="px-5 py-2.5">{it.name}</td>
-                      <td className="px-5 py-2.5 text-center font-medium">{it.quantity}</td>
-                      <td className="px-5 py-2.5 text-right font-semibold">{fmt(it.revenue)}</td>
-                    </tr>
-                  ))}
+                  {sortedItems.map(it => {
+                    const hasComponents = it.components && it.components.length > 0;
+                    const isExpanded = expandedCombos.has(it.name);
+                    return (
+                      <Fragment key={it.name}>
+                        <tr
+                          className={`border-b border-border/50 last:border-0 ${hasComponents ? "cursor-pointer hover:bg-secondary/30" : ""}`}
+                          onClick={hasComponents ? () => setExpandedCombos(prev => {
+                            const next = new Set(prev);
+                            if (next.has(it.name)) next.delete(it.name); else next.add(it.name);
+                            return next;
+                          }) : undefined}
+                        >
+                          <td className="px-5 py-2.5 flex items-center gap-1.5">
+                            {hasComponents ? (
+                              isExpanded
+                                ? <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                                : <ChevronRight className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                            ) : (
+                              <span className="w-3.5 shrink-0" />
+                            )}
+                            {it.name}
+                          </td>
+                          <td className="px-5 py-2.5 text-center font-medium">{it.quantity}</td>
+                          <td className="px-5 py-2.5 text-right font-semibold">{fmt(it.revenue)}</td>
+                        </tr>
+                        {hasComponents && isExpanded && it.components!.map(comp => (
+                          <tr key={comp.name} className="border-b border-border/50 last:border-0 bg-secondary/10">
+                            <td className="py-2 text-muted-foreground">
+                              <span className="pl-10 pr-5 flex items-center gap-1.5">
+                                <span className="w-1 h-1 rounded-full bg-muted-foreground/50 shrink-0" />
+                                {comp.name}
+                              </span>
+                            </td>
+                            <td className="px-5 py-2 text-center text-muted-foreground">{comp.quantity}</td>
+                            <td className="px-5 py-2 text-right text-muted-foreground">—</td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

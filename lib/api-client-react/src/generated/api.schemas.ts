@@ -53,10 +53,16 @@ export const SalesReportScope = {
   all: "all",
 } as const;
 
+export type SalesReportItemComponentsItem = {
+  name: string;
+  quantity: number;
+};
+
 export interface SalesReportItem {
   name: string;
   quantity: number;
   revenue: number;
+  components?: SalesReportItemComponentsItem[];
 }
 
 export interface SalesReportOrderLine {

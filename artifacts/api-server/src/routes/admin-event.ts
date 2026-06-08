@@ -288,6 +288,7 @@ type SnapshotItem = {
   price: number;
   unitPrice?: number;
   lineTotal?: number;
+  comboSelections?: Array<{ slotId: string; slotName: string; menuItemId: number; name: string; quantity: number }>;
 };
 
 // Bucket an order by its payment method for the cash-drawer reconcile view.
@@ -308,7 +309,7 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
   let subtotal = 0;
   let tax = 0;
   let itemCount = 0;
-  const itemBreakdown: Record<string, { name: string; quantity: number; revenue: number }> = {};
+  const itemBreakdown: Record<string, { name: string; quantity: number; revenue: number; components?: Record<string, { name: string; quantity: number }> }> = {};
   const paymentBuckets: Record<PaymentBucket, { orderCount: number; revenue: number }> = {
     cash: { orderCount: 0, revenue: 0 },
     card: { orderCount: 0, revenue: 0 },
@@ -373,12 +374,24 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
       tax += orderTax;
       paymentBuckets[bucket].orderCount += 1;
       paymentBuckets[bucket].revenue += orderTotal;
-      for (const i of lineSnapshots) {
-        itemCount += i.quantity;
-        const key = `${i.itemId}::${i.name}`;
-        if (!itemBreakdown[key]) itemBreakdown[key] = { name: i.name, quantity: 0, revenue: 0 };
-        itemBreakdown[key].quantity += i.quantity;
-        itemBreakdown[key].revenue += i.lineTotal;
+      for (let idx = 0; idx < lineSnapshots.length; idx++) {
+        const ls = lineSnapshots[idx];
+        const snap = items[idx];
+        itemCount += ls.quantity;
+        const key = `${ls.itemId}::${ls.name}`;
+        if (!itemBreakdown[key]) itemBreakdown[key] = { name: ls.name, quantity: 0, revenue: 0 };
+        itemBreakdown[key].quantity += ls.quantity;
+        itemBreakdown[key].revenue += ls.lineTotal;
+        if (snap.comboSelections && snap.comboSelections.length > 0) {
+          if (!itemBreakdown[key].components) itemBreakdown[key].components = {};
+          for (const sel of snap.comboSelections) {
+            const compKey = `${sel.menuItemId}::${sel.name}`;
+            if (!itemBreakdown[key].components![compKey]) {
+              itemBreakdown[key].components![compKey] = { name: sel.name, quantity: 0 };
+            }
+            itemBreakdown[key].components![compKey].quantity += sel.quantity * ls.quantity;
+          }
+        }
       }
       const timeToReadySec = o.readyAt
         ? Math.max(0, Math.round((o.readyAt.getTime() - o.createdAt.getTime()) / 1000))
@@ -518,7 +531,14 @@ function buildReport(orders: typeof eventOrdersTable.$inferSelect[]) {
       medianReadyToPickupSec: readyToPickupAgg.medianSec,
     },
     items: Object.values(itemBreakdown)
-      .map(i => ({ ...i, revenue: round2(i.revenue) }))
+      .map(i => ({
+        name: i.name,
+        quantity: i.quantity,
+        revenue: round2(i.revenue),
+        ...(i.components && Object.keys(i.components).length > 0
+          ? { components: Object.values(i.components).sort((a, b) => b.quantity - a.quantity) }
+          : {}),
+      }))
       .sort((a, b) => b.revenue - a.revenue),
     orders: orderRows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     byPaymentMethod: (Object.entries(paymentBuckets) as Array<[PaymentBucket, { orderCount: number; revenue: number }]>)

@@ -5,9 +5,11 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { SalesReportItemComponentsItem } from "./salesReportItemComponentsItem";
 
 export interface SalesReportItem {
   name: string;
   quantity: number;
   revenue: number;
+  components?: SalesReportItemComponentsItem[];
 }

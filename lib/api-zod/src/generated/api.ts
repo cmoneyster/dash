@@ -5151,6 +5151,14 @@ export const GetSalesReportResponse = zod.object({
         name: zod.string(),
         quantity: zod.number(),
         revenue: zod.number(),
+        components: zod
+          .array(
+            zod.object({
+              name: zod.string(),
+              quantity: zod.number(),
+            }),
+          )
+          .optional(),
       }),
     ),
     orders: zod.array(
@@ -5249,6 +5257,14 @@ export const GetSalesReportResponse = zod.object({
           name: zod.string(),
           quantity: zod.number(),
           revenue: zod.number(),
+          components: zod
+            .array(
+              zod.object({
+                name: zod.string(),
+                quantity: zod.number(),
+              }),
+            )
+            .optional(),
         }),
       ),
       orders: zod.array(
@@ -5352,6 +5368,14 @@ export const GetSalesReportResponse = zod.object({
           name: zod.string(),
           quantity: zod.number(),
           revenue: zod.number(),
+          components: zod
+            .array(
+              zod.object({
+                name: zod.string(),
+                quantity: zod.number(),
+              }),
+            )
+            .optional(),
         }),
       ),
       orders: zod.array(
@@ -5499,6 +5523,14 @@ export const GetSalesReportResponse = zod.object({
             name: zod.string(),
             quantity: zod.number(),
             revenue: zod.number(),
+            components: zod
+              .array(
+                zod.object({
+                  name: zod.string(),
+                  quantity: zod.number(),
+                }),
+              )
+              .optional(),
           }),
         ),
         orders: zod.array(
