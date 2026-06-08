@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { randomUUID } from "node:crypto";
 import { db } from "@workspace/db";
 import { planItemsTable, menuItemsTable, sharedPlansTable, cateringInquiriesTable, menuCategoriesTable, eventSettingsTable, type QuoteLineItem } from "@workspace/db/schema";
@@ -7,6 +7,15 @@ import { sendNewInquiryAlert } from "../lib/sms";
 import { computeEffectivePriceDetail, computeOtdSetupFeeRow } from "@workspace/pricing";
 import { computeQuoteTotals } from "../lib/quote";
 const router: IRouter = Router();
+
+function publicBaseUrl(req: Request): string {
+  const env = process.env.PUBLIC_BASE_URL?.trim().replace(/\/$/, "");
+  if (env) return env;
+  const fwd = req.headers["x-forwarded-proto"];
+  const proto = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(",")[0] || req.protocol || "https";
+  const host = req.get("host");
+  return `${proto}://${host}`;
+}
 
 // Hard fallbacks — mirrors the schema defaults and the same constants in orders.ts.
 const OTD_DEFAULTS = {
@@ -519,6 +528,7 @@ router.post("/plan/submit-inquiry", async (req, res): Promise<void> => {
       total: `$${seededTotals.total.toFixed(2)}`,
       clientPhone: customerPhone?.trim() || null,
       venueAddress: venueAddress?.trim() || null,
+      link: `${publicBaseUrl(req)}/admin/catering?inquiry=${inquiryRow.id}`,
     }).catch(() => {});
 
     res.status(201).json({
