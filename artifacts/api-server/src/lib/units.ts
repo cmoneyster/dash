@@ -44,6 +44,19 @@ export function conversionFactor(recipeUnit: string, ingredientUnit: string): nu
   return ru.toBase / iu.toBase;
 }
 
+// Returns true when BOTH units are canonical but belong to different families
+// (e.g. oz vs cup). This is a data-error state — conversion is not just
+// unknown (legacy text), it is explicitly impossible. Returns false when
+// either unit is unrecognized (legacy free-text), since those should fall
+// back to 1:1 rather than be flagged as an error.
+export function isIncompatibleConversion(recipeUnit: string, ingredientUnit: string): boolean {
+  if (recipeUnit === ingredientUnit) return false;
+  const ru = UNIT_MAP.get(recipeUnit);
+  const iu = UNIT_MAP.get(ingredientUnit);
+  if (!ru || !iu) return false; // unknown unit → legacy, not an error
+  return ru.family !== iu.family;
+}
+
 export function groupedUnits() {
   const families = new Map<string, UnitDef[]>();
   for (const u of UNITS) {

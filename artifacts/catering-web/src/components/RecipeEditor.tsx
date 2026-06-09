@@ -53,6 +53,7 @@ type RecipeLine = {
   ingredientUnit: string;
   quantityPerYield: number;
   recipeUnit: string | null;
+  conversionError?: boolean | null;
 };
 type RecipeDetail = {
   id: number;
@@ -321,11 +322,11 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
                           {recipe.lines.map((line, i) => {
                             const ing = ingredients.find(x => x.id === line.ingredientId);
                             const ru = line.recipeUnit ?? line.ingredientUnit;
-                            const factor = conversionFactor(ru, line.ingredientUnit) ?? 1;
-                            const lineCost = ing?.currentCost != null
+                            const factor = line.conversionError ? null : (conversionFactor(ru, line.ingredientUnit) ?? 1);
+                            const lineCost = !line.conversionError && ing?.currentCost != null && factor != null
                               ? ing.currentCost * line.quantityPerYield * factor
                               : null;
-                            const showConversion = line.recipeUnit && line.recipeUnit !== line.ingredientUnit;
+                            const showConversion = !line.conversionError && line.recipeUnit && line.recipeUnit !== line.ingredientUnit;
                             return (
                               <tr key={i}>
                                 <td className="px-4 py-2.5">
@@ -334,7 +335,13 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
                                 </td>
                                 <td className="px-4 py-2.5 text-right tabular-nums">
                                   {line.quantityPerYield} {ru !== line.ingredientUnit ? ru : line.ingredientUnit}
-                                  {showConversion && (
+                                  {line.conversionError && (
+                                    <span className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-destructive/15 text-destructive">
+                                      <AlertCircle className="w-2.5 h-2.5" />
+                                      unit mismatch
+                                    </span>
+                                  )}
+                                  {showConversion && factor != null && (
                                     <span className="text-[10px] text-indigo-500 dark:text-indigo-400 ml-1">
                                       = {(line.quantityPerYield * factor).toFixed(4)} {line.ingredientUnit}
                                     </span>

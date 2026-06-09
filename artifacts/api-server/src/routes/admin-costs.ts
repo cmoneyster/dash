@@ -12,7 +12,7 @@ import {
   eventSessionsTable,
 } from "@workspace/db/schema";
 import { eq, desc, and, lte, gte, isNotNull, inArray, sql } from "drizzle-orm";
-import { conversionFactor, groupedUnits } from "../lib/units";
+import { conversionFactor, isIncompatibleConversion, groupedUnits } from "../lib/units";
 
 const router: IRouter = Router();
 
@@ -97,8 +97,13 @@ async function computeRecipeCostPerServing(
     if (cost == null) { missing++; continue; }
     const iu = line.ingredientUnit ?? "";
     const ru = line.recipeUnit ?? iu;
-    const factor = conversionFactor(ru, iu) ?? 1;
-    total += qty * factor * cost;
+    const factor = conversionFactor(ru, iu);
+    if (factor === null) {
+      if (isIncompatibleConversion(ru, iu)) { missing++; continue; }
+      total += qty * cost; // unknown legacy unit → 1:1 fallback
+    } else {
+      total += qty * factor * cost;
+    }
   }
   if (missing === lines.length) return { costPerServing: null, missingCosts: missing };
   const cps = round4(total / yieldServings);
@@ -342,14 +347,19 @@ router.get("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
       menuItemId: itemId,
       yieldServings: recipe.yieldServings,
       notes: recipe.notes,
-      lines: lines.map(l => ({
-        id: l.id,
-        ingredientId: l.ingredientId,
-        ingredientName: l.ingredientName ?? "",
-        ingredientUnit: l.ingredientUnit ?? "",
-        quantityPerYield: parseFloat(l.quantityPerYield),
-        recipeUnit: l.recipeUnit ?? null,
-      })),
+      lines: lines.map(l => {
+        const iu = l.ingredientUnit ?? "";
+        const ru = l.recipeUnit ?? null;
+        return {
+          id: l.id,
+          ingredientId: l.ingredientId,
+          ingredientName: l.ingredientName ?? "",
+          ingredientUnit: iu,
+          quantityPerYield: parseFloat(l.quantityPerYield),
+          recipeUnit: ru,
+          conversionError: ru ? isIncompatibleConversion(ru, iu) : false,
+        };
+      }),
       costPerServing,
       costPerUnit,
       missingCosts,
@@ -452,14 +462,19 @@ router.put("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
       menuItemId: itemId,
       yieldServings: recipe.yieldServings,
       notes: recipe.notes,
-      lines: linesData.map(l => ({
-        id: l.id,
-        ingredientId: l.ingredientId,
-        ingredientName: l.ingredientName ?? "",
-        ingredientUnit: l.ingredientUnit ?? "",
-        quantityPerYield: parseFloat(l.quantityPerYield),
-        recipeUnit: l.recipeUnit ?? null,
-      })),
+      lines: linesData.map(l => {
+        const iu = l.ingredientUnit ?? "";
+        const ru = l.recipeUnit ?? null;
+        return {
+          id: l.id,
+          ingredientId: l.ingredientId,
+          ingredientName: l.ingredientName ?? "",
+          ingredientUnit: iu,
+          quantityPerYield: parseFloat(l.quantityPerYield),
+          recipeUnit: ru,
+          conversionError: ru ? isIncompatibleConversion(ru, iu) : false,
+        };
+      }),
       costPerServing,
       costPerUnit,
       missingCosts,
@@ -695,8 +710,13 @@ router.get("/admin/costs/summary", async (req, res) => {
           if (cost == null) { hasAllCosts = false; continue; }
           const iu = ingredientUnitMap.get(line.ingredientId) ?? "";
           const ru = line.recipeUnit ?? iu;
-          const factor = conversionFactor(ru, iu) ?? 1;
-          recipeCost += parseFloat(line.quantityPerYield) * factor * cost;
+          const factor = conversionFactor(ru, iu);
+          if (factor === null) {
+            if (isIncompatibleConversion(ru, iu)) { hasAllCosts = false; continue; }
+            recipeCost += parseFloat(line.quantityPerYield) * cost; // legacy 1:1
+          } else {
+            recipeCost += parseFloat(line.quantityPerYield) * factor * cost;
+          }
         }
         if (!hasAllCosts) { withoutRecipe++; continue; }
 
@@ -733,8 +753,13 @@ router.get("/admin/costs/summary", async (req, res) => {
               if (cost == null) { hasAll = false; break; }
               const iu = ingredientUnitMap.get(l.ingredientId) ?? "";
               const ru = l.recipeUnit ?? iu;
-              const factor = conversionFactor(ru, iu) ?? 1;
-              recipeCost += parseFloat(l.quantityPerYield) * factor * cost;
+              const factor = conversionFactor(ru, iu);
+              if (factor === null) {
+                if (isIncompatibleConversion(ru, iu)) { hasAll = false; break; }
+                recipeCost += parseFloat(l.quantityPerYield) * cost; // legacy 1:1
+              } else {
+                recipeCost += parseFloat(l.quantityPerYield) * factor * cost;
+              }
             }
             if (hasAll) {
               const servingSize = menuItemMap.get(item.itemId)?.servingSize ?? 1;

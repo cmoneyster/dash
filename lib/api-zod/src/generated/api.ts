@@ -6144,6 +6144,12 @@ export const GetMenuItemRecipeResponse = zod
         ingredientUnit: zod.string(),
         quantityPerYield: zod.number(),
         recipeUnit: zod.string().nullish(),
+        conversionError: zod
+          .boolean()
+          .nullish()
+          .describe(
+            "True when recipeUnit and ingredientUnit are both canonical units but belong to different measurement families (e.g. oz vs cup). This line is excluded from cost calculations. Null\/false otherwise.\n",
+          ),
       }),
     ),
     costPerServing: zod.number().nullish(),
@@ -6193,6 +6199,12 @@ export const SaveMenuItemRecipeResponse = zod.object({
       ingredientUnit: zod.string(),
       quantityPerYield: zod.number(),
       recipeUnit: zod.string().nullish(),
+      conversionError: zod
+        .boolean()
+        .nullish()
+        .describe(
+          "True when recipeUnit and ingredientUnit are both canonical units but belong to different measurement families (e.g. oz vs cup). This line is excluded from cost calculations. Null\/false otherwise.\n",
+        ),
     }),
   ),
   costPerServing: zod.number().nullish(),

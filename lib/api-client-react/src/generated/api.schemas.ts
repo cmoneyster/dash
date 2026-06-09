@@ -1328,6 +1328,9 @@ export interface RecipeLine {
   ingredientUnit: string;
   quantityPerYield: number;
   recipeUnit?: string | null;
+  /** True when recipeUnit and ingredientUnit are both canonical units but belong to different measurement families (e.g. oz vs cup). This line is excluded from cost calculations. Null/false otherwise.
+   */
+  conversionError?: boolean | null;
 }
 
 export interface PanSizeCost {
