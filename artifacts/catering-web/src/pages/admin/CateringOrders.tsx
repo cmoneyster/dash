@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
-  Plus, Loader2, X, Save, Trash2, ChevronRight, CalendarDays, Clock,
+  Plus, Loader2, X, Save, Trash2, ChevronLeft, ChevronRight, CalendarDays, Clock,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
   GripVertical, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck,
@@ -501,7 +501,7 @@ function MenuPicker({ menu, onPick }: {
                 key={m.id}
                 type="button"
                 onClick={() => handleClick(m)}
-                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-secondary"
+                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-secondary min-h-[44px]"
               >
                 <div className="min-w-0">
                   <p className="font-medium truncate">{m.name}</p>
@@ -797,7 +797,8 @@ function QuoteEditor({
                 <SortableLineItem key={li.id} id={li.id}>
                   {(handle) => (
                   <>
-                  <div className="grid grid-cols-[36px_1fr_60px_90px_80px_28px] gap-2 items-center">
+                  {/* Desktop row — single grid */}
+                  <div className="hidden sm:grid grid-cols-[36px_1fr_60px_90px_80px_28px] gap-2 items-center">
                     <button
                       type="button"
                       {...handle.attributes}
@@ -832,8 +833,54 @@ function QuoteEditor({
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
+                  {/* Mobile card — two rows */}
+                  <div className="sm:hidden space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        {...handle.attributes}
+                        {...handle.listeners}
+                        title="Drag to reorder"
+                        aria-label="Drag to reorder"
+                        className="p-1 shrink-0 rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-grab active:cursor-grabbing"
+                        data-testid={`drag-handle-line-${li.id}`}
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </button>
+                      <input
+                        value={li.name}
+                        onChange={e => updateItem(li.id, { name: e.target.value })}
+                        placeholder="Item name"
+                        className={`${txtCls} flex-1`}
+                      />
+                      <button type="button" onClick={() => removeItem(li.id)} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded hover:bg-red-50 dark:hover:bg-red-950/40 text-muted-foreground hover:text-destructive shrink-0" title="Remove">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 pl-7">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground shrink-0">Qty</span>
+                        <input
+                          type="number" min={0} step="1" inputMode="numeric"
+                          value={li.quantity}
+                          onChange={e => changeQuantity(li.id, e.target.value === "" ? 0 : Number(e.target.value))}
+                          className={numCls}
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground shrink-0">@</span>
+                        <input
+                          type="number" min={0} step="0.01" inputMode="decimal"
+                          value={li.unitPrice}
+                          onChange={e => changeUnitPrice(li.id, e.target.value === "" ? 0 : Number(e.target.value))}
+                          className={numCls}
+                        />
+                      </div>
+                      <span className="ml-auto text-right text-sm font-semibold tabular-nums">{formatCurrency(lineTotal)}</span>
+                    </div>
+                  </div>
                   {(descriptor || li.tierApplied || isPan || li.priceMode === "manual") && (
-                    <div className="pl-[44px] flex items-center flex-wrap gap-2 text-xs text-muted-foreground">
+                    <div className="pl-[44px] sm:pl-[44px] flex items-center flex-wrap gap-2 text-xs text-muted-foreground">
                       {isPan && m ? (
                         <>
                           <span>Size:</span>
@@ -1056,25 +1103,51 @@ function AdjustmentList({
       ) : (
         <div className="space-y-1.5">
           {rows.map(r => (
-            <div key={r.id} className="grid grid-cols-[1fr_70px_90px_28px] gap-2 items-center">
-              <input value={r.label} onChange={e => onUpdate(r.id, { label: e.target.value })} placeholder="Label" className={txtCls} />
-              <select
-                value={r.kind}
-                onChange={e => onUpdate(r.id, { kind: e.target.value as "fixed" | "percent" })}
-                className="px-2 py-1.5 text-sm border border-border rounded-lg bg-background"
-              >
-                <option value="fixed">$</option>
-                <option value="percent">%</option>
-              </select>
-              <input
-                type="number" min={0} step="0.01" inputMode="decimal"
-                value={r.amount}
-                onChange={e => onUpdate(r.id, { amount: e.target.value === "" ? 0 : Number(e.target.value) })}
-                className={numCls}
-              />
-              <button type="button" onClick={() => onRemove(r.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40 text-muted-foreground hover:text-destructive">
-                <X className="w-3.5 h-3.5" />
-              </button>
+            <div key={r.id} className="space-y-1.5 sm:space-y-0">
+              {/* Desktop: single grid row */}
+              <div className="hidden sm:grid grid-cols-[1fr_70px_90px_28px] gap-2 items-center">
+                <input value={r.label} onChange={e => onUpdate(r.id, { label: e.target.value })} placeholder="Label" className={txtCls} />
+                <select
+                  value={r.kind}
+                  onChange={e => onUpdate(r.id, { kind: e.target.value as "fixed" | "percent" })}
+                  className="px-2 py-1.5 text-sm border border-border rounded-lg bg-background"
+                >
+                  <option value="fixed">$</option>
+                  <option value="percent">%</option>
+                </select>
+                <input
+                  type="number" min={0} step="0.01" inputMode="decimal"
+                  value={r.amount}
+                  onChange={e => onUpdate(r.id, { amount: e.target.value === "" ? 0 : Number(e.target.value) })}
+                  className={numCls}
+                />
+                <button type="button" onClick={() => onRemove(r.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40 text-muted-foreground hover:text-destructive">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {/* Mobile: label full-width, then controls row */}
+              <div className="sm:hidden space-y-1.5">
+                <input value={r.label} onChange={e => onUpdate(r.id, { label: e.target.value })} placeholder="Label" className={txtCls} />
+                <div className="flex items-center gap-2">
+                  <select
+                    value={r.kind}
+                    onChange={e => onUpdate(r.id, { kind: e.target.value as "fixed" | "percent" })}
+                    className="px-2 py-1.5 text-sm border border-border rounded-lg bg-background min-h-[44px]"
+                  >
+                    <option value="fixed">$</option>
+                    <option value="percent">%</option>
+                  </select>
+                  <input
+                    type="number" min={0} step="0.01" inputMode="decimal"
+                    value={r.amount}
+                    onChange={e => onUpdate(r.id, { amount: e.target.value === "" ? 0 : Number(e.target.value) })}
+                    className={`${numCls} flex-1`}
+                  />
+                  <button type="button" onClick={() => onRemove(r.id)} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded hover:bg-red-50 dark:hover:bg-red-950/40 text-muted-foreground hover:text-destructive shrink-0">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -2384,6 +2457,17 @@ function DetailPanel({
 
   return (
     <div className="flex flex-col h-full">
+      {/* Mobile-only back button — hidden on sm+ where the two-panel layout is active */}
+      <div className="sm:hidden px-4 pt-3 pb-0 shrink-0">
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground min-h-[44px] px-1"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Back to inquiries
+        </button>
+      </div>
       <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
           <h2 className="font-display font-bold text-lg">{isNew ? "New Inquiry" : form.clientName || "Edit Inquiry"}</h2>
@@ -2770,6 +2854,10 @@ export default function CateringOrders() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "event_asc" | "event_desc">("newest");
   const [menu, setMenu] = useState<AdminMenuItem[]>([]);
+  // Drives mobile single-panel navigation (<sm). "list" shows the inquiry
+  // list full-screen; "detail" shows the open inquiry full-screen.
+  // On sm+ both panels are always visible side-by-side.
+  const [mobileView, setMobileView] = useState<"list" | "detail">("list");
   // Per-inquiry unread inbound SMS counts. Updated over the same SSE
   // stream the chat panel uses, so the list badge moves the moment a
   // new inbound lands or the admin opens the thread.
@@ -2894,6 +2982,7 @@ export default function CateringOrders() {
       if (match) {
         setSelected(match);
         setIsNew(false);
+        setMobileView("detail");
         // Clear the param so refresh doesn't re-trigger.
         const next = new URL(window.location.href);
         next.searchParams.delete("inquiry");
@@ -2905,11 +2994,13 @@ export default function CateringOrders() {
   function openNew() {
     setSelected(emptyForm());
     setIsNew(true);
+    setMobileView("detail");
   }
 
   function closePanel() {
     setSelected(null);
     setIsNew(false);
+    setMobileView("list");
   }
 
   function handleSaved(saved: Inquiry) {
@@ -2962,8 +3053,11 @@ export default function CateringOrders() {
   return (
     <AdminLayout>
       <div className="flex h-[calc(100vh-8rem)] -m-4 md:-m-8 overflow-hidden">
-        {/* Left panel — list */}
-        <div className={cn("flex flex-col border-r border-border bg-background transition-all", selected ? "hidden md:flex md:w-80 lg:w-96 shrink-0" : "flex-1")}>
+        {/* Left panel — list.
+            Mobile (<sm): visible only when mobileView === "list".
+            sm+: always visible as a fixed-width sidebar when an inquiry is open,
+            or full-width when nothing is selected. */}
+        <div className={cn("flex flex-col border-r border-border bg-background transition-all", mobileView === "detail" ? "hidden sm:flex sm:w-80 lg:w-96 shrink-0" : "flex-1")}>
           {/* Header */}
           <div className="px-6 py-5 border-b border-border shrink-0">
             <div className="flex items-center justify-between mb-4">
@@ -3054,73 +3148,105 @@ export default function CateringOrders() {
                   return (
                     <button
                       key={inquiry.id}
-                      onClick={() => { setSelected(inquiry); setIsNew(false); }}
+                      onClick={() => { setSelected(inquiry); setIsNew(false); setMobileView("detail"); }}
                       className={cn(
-                        "w-full text-left px-6 py-4 flex items-center gap-4 hover:bg-secondary/50 transition-colors",
+                        "w-full text-left hover:bg-secondary/50 transition-colors",
                         isSelected && "bg-secondary"
                       )}
                     >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                          <span className="font-semibold text-sm truncate">{inquiry.clientName}</span>
-                          {unreadByInquiry[inquiry.id] > 0 && (
-                            <span
-                              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-primary text-primary-foreground rounded-full font-bold"
-                              title={`${unreadByInquiry[inquiry.id]} new inbound text${unreadByInquiry[inquiry.id] === 1 ? "" : "s"}`}
-                            >
-                              <MessageSquare className="w-2.5 h-2.5" /> {unreadByInquiry[inquiry.id]}
-                            </span>
-                          )}
-                          <span className={cn("shrink-0 text-xs px-2 py-0.5 rounded-full font-medium", status.color)}>{status.label}</span>
-                          {isCart && (
-                            <span className="shrink-0 flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded-full font-semibold">
-                              <ShoppingCart className="w-2.5 h-2.5" /> Cart
-                            </span>
-                          )}
-                          {inquiry.serviceMode === "on_the_dash" ? (
-                            <span
-                              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 rounded-full font-bold uppercase tracking-wider"
-                              title="On the Dash Experience — food trailer cooking on-site"
-                            >
-                              <Flame className="w-2.5 h-2.5" /> On the Dash
-                            </span>
-                          ) : inquiry.serviceMode === "drop_off" ? (
-                            <span
-                              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded-full font-semibold uppercase tracking-wider"
-                              title="Standard Drop-Off catering"
-                            >
-                              <Truck className="w-2.5 h-2.5" /> Drop-Off
-                            </span>
-                          ) : null}
-                          {inquiry.quoteNumber && (
-                            <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 rounded-full">
-                              {inquiry.quoteNumber}
-                            </span>
-                          )}
-                          {inquiry.quoteAcceptedAt && (
-                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 rounded-full font-semibold">
-                              <Check className="w-2.5 h-2.5" /> Accepted
-                            </span>
-                          )}
-                          {inquiry.quoteChangeRequestAt && !inquiry.quoteAcceptedAt && (
-                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-full font-semibold">
-                              <MessageSquare className="w-2.5 h-2.5" /> Changes requested
-                            </span>
-                          )}
+                      {/* Desktop row (sm+) — full badge set */}
+                      <div className="hidden sm:flex items-center gap-4 px-6 py-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                            <span className="font-semibold text-sm truncate">{inquiry.clientName}</span>
+                            {unreadByInquiry[inquiry.id] > 0 && (
+                              <span
+                                className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-primary text-primary-foreground rounded-full font-bold"
+                                title={`${unreadByInquiry[inquiry.id]} new inbound text${unreadByInquiry[inquiry.id] === 1 ? "" : "s"}`}
+                              >
+                                <MessageSquare className="w-2.5 h-2.5" /> {unreadByInquiry[inquiry.id]}
+                              </span>
+                            )}
+                            <span className={cn("shrink-0 text-xs px-2 py-0.5 rounded-full font-medium", status.color)}>{status.label}</span>
+                            {isCart && (
+                              <span className="shrink-0 flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded-full font-semibold">
+                                <ShoppingCart className="w-2.5 h-2.5" /> Cart
+                              </span>
+                            )}
+                            {inquiry.serviceMode === "on_the_dash" ? (
+                              <span
+                                className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 rounded-full font-bold uppercase tracking-wider"
+                                title="On the Dash Experience — food trailer cooking on-site"
+                              >
+                                <Flame className="w-2.5 h-2.5" /> On the Dash
+                              </span>
+                            ) : inquiry.serviceMode === "drop_off" ? (
+                              <span
+                                className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded-full font-semibold uppercase tracking-wider"
+                                title="Standard Drop-Off catering"
+                              >
+                                <Truck className="w-2.5 h-2.5" /> Drop-Off
+                              </span>
+                            ) : null}
+                            {inquiry.quoteNumber && (
+                              <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 rounded-full">
+                                {inquiry.quoteNumber}
+                              </span>
+                            )}
+                            {inquiry.quoteAcceptedAt && (
+                              <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 rounded-full font-semibold">
+                                <Check className="w-2.5 h-2.5" /> Accepted
+                              </span>
+                            )}
+                            {inquiry.quoteChangeRequestAt && !inquiry.quoteAcceptedAt && (
+                              <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-full font-semibold">
+                                <MessageSquare className="w-2.5 h-2.5" /> Changes requested
+                              </span>
+                            )}
+                          </div>
+                          {inquiry.organization && <p className="text-xs text-muted-foreground truncate">{inquiry.organization}</p>}
+                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                            {inquiry.eventDate && <span>{formatDate(inquiry.eventDate)}{inquiry.eventTime ? ` · ${inquiry.eventTime}` : ""}</span>}
+                            {inquiry.guestCount && <span>{inquiry.guestCount} guests</span>}
+                            {(inquiry.total ?? inquiry.orderTotal) && (
+                              <span className="font-semibold text-foreground/70">
+                                {inquiry.total ? formatCurrency(Number(inquiry.total)) : inquiry.orderTotal}
+                              </span>
+                            )}
+                            {!inquiry.eventDate && !inquiry.guestCount && <span>Added {formatDate(inquiry.createdAt)}</span>}
+                          </div>
                         </div>
-                        {inquiry.organization && <p className="text-xs text-muted-foreground truncate">{inquiry.organization}</p>}
-                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                          {inquiry.eventDate && <span>{formatDate(inquiry.eventDate)}{inquiry.eventTime ? ` · ${inquiry.eventTime}` : ""}</span>}
-                          {inquiry.guestCount && <span>{inquiry.guestCount} guests</span>}
+                        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                      </div>
+                      {/* Mobile compact card (<sm) — name, status badge, date, total */}
+                      <div className="sm:hidden px-4 py-3 min-h-[56px]">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-semibold text-sm truncate">{inquiry.clientName}</span>
+                            {unreadByInquiry[inquiry.id] > 0 && (
+                              <span
+                                className="shrink-0 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-primary text-primary-foreground rounded-full font-bold"
+                                title={`${unreadByInquiry[inquiry.id]} unread`}
+                              >
+                                <MessageSquare className="w-2.5 h-2.5" /> {unreadByInquiry[inquiry.id]}
+                              </span>
+                            )}
+                          </div>
+                          <span className={cn("shrink-0 text-xs px-2 py-0.5 rounded-full font-medium", status.color)}>{status.label}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <span>
+                            {inquiry.eventDate
+                              ? formatDate(inquiry.eventDate)
+                              : `Added ${formatDate(inquiry.createdAt)}`}
+                          </span>
                           {(inquiry.total ?? inquiry.orderTotal) && (
-                            <span className="font-semibold text-foreground/70">
+                            <span className="font-semibold text-foreground/70 tabular-nums">
                               {inquiry.total ? formatCurrency(Number(inquiry.total)) : inquiry.orderTotal}
                             </span>
                           )}
-                          {!inquiry.eventDate && !inquiry.guestCount && <span>Added {formatDate(inquiry.createdAt)}</span>}
                         </div>
                       </div>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                     </button>
                   );
                 })}
@@ -3142,7 +3268,7 @@ export default function CateringOrders() {
             />
           </div>
         ) : (
-          <div className="flex-1 hidden md:flex items-center justify-center text-muted-foreground flex-col gap-3">
+          <div className="flex-1 hidden sm:flex items-center justify-center text-muted-foreground flex-col gap-3">
             <FileText className="w-16 h-16 opacity-10" />
             <p className="font-medium">Select an inquiry to view details</p>
             <p className="text-sm">or click New to create one</p>
