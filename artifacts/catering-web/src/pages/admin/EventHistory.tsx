@@ -7,6 +7,7 @@ import {
   Zap, ZapOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LaborPanel } from "@/components/LaborPanel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -450,6 +451,11 @@ function SessionOrders({ sessionId, onOrdersDeleted }: { sessionId: number; onCl
               </div>
             </>
           )}
+
+          {/* Labor costs */}
+          <div className="border-t border-border pt-4">
+            <LaborPanel referenceType="event_session" referenceId={sessionId} />
+          </div>
         </div>
       )}
     </div>

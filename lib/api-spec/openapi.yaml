@@ -1501,6 +1501,311 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ── Cost Tracking ─────────────────────────────────────────────────────────
+
+  /admin/costs/ingredients:
+    get:
+      operationId: listIngredients
+      tags: [admin]
+      summary: List all ingredients with current cost and history
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of ingredients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IngredientWithCost"
+    post:
+      operationId: createIngredient
+      tags: [admin]
+      summary: Create an ingredient
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIngredientInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngredientWithCost"
+
+  /admin/costs/ingredients/{id}:
+    put:
+      operationId: updateIngredient
+      tags: [admin]
+      summary: Update ingredient name/unit/notes
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIngredientInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngredientWithCost"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteIngredient
+      tags: [admin]
+      summary: Delete an ingredient (blocked if used in recipes)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+        "409":
+          description: Ingredient is used in a recipe
+
+  /admin/costs/ingredients/{id}/costs:
+    post:
+      operationId: addIngredientCost
+      tags: [admin]
+      summary: Record a new cost entry for an ingredient
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddIngredientCostInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngredientCostEntry"
+        "404":
+          description: Ingredient not found
+
+  /admin/menu/{itemId}/recipe:
+    get:
+      operationId: getMenuItemRecipe
+      tags: [admin]
+      summary: Get the recipe for a menu item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Recipe or null if not defined
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeDetail"
+        "404":
+          description: Menu item not found
+    put:
+      operationId: saveMenuItemRecipe
+      tags: [admin]
+      summary: Create or replace the recipe for a menu item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveRecipeInput"
+      responses:
+        "200":
+          description: Saved recipe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeDetail"
+        "404":
+          description: Menu item not found
+    delete:
+      operationId: deleteMenuItemRecipe
+      tags: [admin]
+      summary: Delete the recipe for a menu item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /admin/costs/labor:
+    get:
+      operationId: listLaborEntries
+      tags: [admin]
+      summary: List labor entries for an event session or catering inquiry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: referenceType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [event_session, catering_inquiry]
+        - name: referenceId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Labor entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LaborEntry"
+    post:
+      operationId: createLaborEntry
+      tags: [admin]
+      summary: Add a labor entry
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLaborInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LaborEntry"
+
+  /admin/costs/labor/{id}:
+    patch:
+      operationId: updateLaborEntry
+      tags: [admin]
+      summary: Update a labor entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLaborInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LaborEntry"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteLaborEntry
+      tags: [admin]
+      summary: Delete a labor entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /admin/costs/summary:
+    get:
+      operationId: getCostSummary
+      tags: [admin]
+      summary: Get cost summary (COGS + labor + profit) for a date range
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+        - name: to
+          in: query
+          schema:
+            type: string
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [events, catering, all]
+      responses:
+        "200":
+          description: Cost summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostSummary"
+
 components:
   schemas:
     SquareTerminalDevice:
@@ -3604,3 +3909,293 @@ components:
         serverUrl:
           type: ["string", "null"]
           description: The serverUrl reported by the agent in its last ping
+
+    # ── Cost Tracking ──────────────────────────────────────────────────────────
+
+    IngredientCostEntry:
+      type: object
+      required: [id, costPerUnit, effectiveAt]
+      properties:
+        id:
+          type: integer
+        costPerUnit:
+          type: number
+        effectiveAt:
+          type: string
+          format: date-time
+
+    IngredientWithCost:
+      type: object
+      required: [id, name, unit, createdAt, history]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        unit:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        currentCost:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngredientCostEntry"
+
+    CreateIngredientInput:
+      type: object
+      required: [name, unit]
+      properties:
+        name:
+          type: string
+        unit:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        initialCost:
+          type: number
+          nullable: true
+
+    UpdateIngredientInput:
+      type: object
+      properties:
+        name:
+          type: string
+        unit:
+          type: string
+        notes:
+          type: string
+          nullable: true
+
+    AddIngredientCostInput:
+      type: object
+      required: [costPerUnit]
+      properties:
+        costPerUnit:
+          type: number
+        effectiveAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    RecipeLine:
+      type: object
+      required: [id, ingredientId, ingredientName, ingredientUnit, quantityPerYield]
+      properties:
+        id:
+          type: integer
+        ingredientId:
+          type: integer
+        ingredientName:
+          type: string
+        ingredientUnit:
+          type: string
+        quantityPerYield:
+          type: number
+
+    PanSizeCost:
+      type: object
+      required: [label, servings, costPerPan]
+      properties:
+        label:
+          type: string
+        servings:
+          type: integer
+        costPerPan:
+          type: number
+
+    RecipeDetail:
+      type: object
+      required: [id, menuItemId, yieldServings, lines]
+      properties:
+        id:
+          type: integer
+        menuItemId:
+          type: integer
+        yieldServings:
+          type: integer
+        notes:
+          type: string
+          nullable: true
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeLine"
+        costPerServing:
+          type: number
+          nullable: true
+        costPerUnit:
+          type: number
+          nullable: true
+        missingCosts:
+          type: integer
+        panSizeCosts:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/PanSizeCost"
+
+    SaveRecipeInput:
+      type: object
+      required: [lines]
+      properties:
+        yieldServings:
+          type: integer
+        notes:
+          type: string
+          nullable: true
+        lines:
+          type: array
+          items:
+            type: object
+            required: [ingredientId, quantityPerYield]
+            properties:
+              ingredientId:
+                type: integer
+              quantityPerYield:
+                type: number
+
+    LaborEntry:
+      type: object
+      required: [id, referenceType, referenceId, employeeName, createdAt]
+      properties:
+        id:
+          type: integer
+        referenceType:
+          type: string
+        referenceId:
+          type: integer
+        employeeName:
+          type: string
+        hours:
+          type: number
+          nullable: true
+        hourlyRate:
+          type: number
+          nullable: true
+        flatCost:
+          type: number
+          nullable: true
+        subtotal:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateLaborInput:
+      type: object
+      required: [referenceType, referenceId, employeeName]
+      properties:
+        referenceType:
+          type: string
+          enum: [event_session, catering_inquiry]
+        referenceId:
+          type: integer
+        employeeName:
+          type: string
+        hours:
+          type: number
+          nullable: true
+        hourlyRate:
+          type: number
+          nullable: true
+        flatCost:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    UpdateLaborInput:
+      type: object
+      properties:
+        employeeName:
+          type: string
+        hours:
+          type: number
+          nullable: true
+        hourlyRate:
+          type: number
+          nullable: true
+        flatCost:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    CostSummaryItemBreakdown:
+      type: object
+      required: [name, quantity, cogs, revenue]
+      properties:
+        name:
+          type: string
+        quantity:
+          type: integer
+        cogs:
+          type: number
+        revenue:
+          type: number
+        margin:
+          type: number
+          nullable: true
+
+    CostSummaryLaborBreakdown:
+      type: object
+      required: [referenceType, referenceId, name, laborCost]
+      properties:
+        referenceType:
+          type: string
+        referenceId:
+          type: integer
+        name:
+          type: string
+        laborCost:
+          type: number
+
+    CostSummary:
+      type: object
+      required: [from, to, scope, revenue, cogs, laborCost, grossProfit, itemsWithRecipe, itemsWithoutRecipe, itemBreakdown, laborBreakdown]
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        scope:
+          type: string
+        revenue:
+          type: number
+        cogs:
+          type: number
+        laborCost:
+          type: number
+        grossProfit:
+          type: number
+        grossMargin:
+          type: number
+          nullable: true
+        itemsWithRecipe:
+          type: integer
+        itemsWithoutRecipe:
+          type: integer
+        itemBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/CostSummaryItemBreakdown"
+        laborBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/CostSummaryLaborBreakdown"

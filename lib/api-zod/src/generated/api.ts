@@ -6028,3 +6028,278 @@ export const GetPrintAgentHeartbeatResponse = zod.object({
     .nullable()
     .describe("The serverUrl reported by the agent in its last ping"),
 });
+
+/**
+ * @summary List all ingredients with current cost and history
+ */
+export const ListIngredientsResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  unit: zod.string(),
+  notes: zod.string().nullish(),
+  currentCost: zod.number().nullish(),
+  createdAt: zod.coerce.date(),
+  history: zod.array(
+    zod.object({
+      id: zod.number(),
+      costPerUnit: zod.number(),
+      effectiveAt: zod.coerce.date(),
+    }),
+  ),
+});
+export const ListIngredientsResponse = zod.array(ListIngredientsResponseItem);
+
+/**
+ * @summary Create an ingredient
+ */
+export const CreateIngredientBody = zod.object({
+  name: zod.string(),
+  unit: zod.string(),
+  notes: zod.string().nullish(),
+  initialCost: zod.number().nullish(),
+});
+
+/**
+ * @summary Update ingredient name/unit/notes
+ */
+export const UpdateIngredientParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateIngredientBody = zod.object({
+  name: zod.string().optional(),
+  unit: zod.string().optional(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateIngredientResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  unit: zod.string(),
+  notes: zod.string().nullish(),
+  currentCost: zod.number().nullish(),
+  createdAt: zod.coerce.date(),
+  history: zod.array(
+    zod.object({
+      id: zod.number(),
+      costPerUnit: zod.number(),
+      effectiveAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Delete an ingredient (blocked if used in recipes)
+ */
+export const DeleteIngredientParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Record a new cost entry for an ingredient
+ */
+export const AddIngredientCostParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AddIngredientCostBody = zod.object({
+  costPerUnit: zod.number(),
+  effectiveAt: zod.coerce.date().nullish(),
+});
+
+/**
+ * @summary Get the recipe for a menu item
+ */
+export const GetMenuItemRecipeParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+export const GetMenuItemRecipeResponse = zod.object({
+  id: zod.number(),
+  menuItemId: zod.number(),
+  yieldServings: zod.number(),
+  notes: zod.string().nullish(),
+  lines: zod.array(
+    zod.object({
+      id: zod.number(),
+      ingredientId: zod.number(),
+      ingredientName: zod.string(),
+      ingredientUnit: zod.string(),
+      quantityPerYield: zod.number(),
+    }),
+  ),
+  costPerServing: zod.number().nullish(),
+  costPerUnit: zod.number().nullish(),
+  missingCosts: zod.number().optional(),
+  panSizeCosts: zod
+    .array(
+      zod.object({
+        label: zod.string(),
+        servings: zod.number(),
+        costPerPan: zod.number(),
+      }),
+    )
+    .nullish(),
+});
+
+/**
+ * @summary Create or replace the recipe for a menu item
+ */
+export const SaveMenuItemRecipeParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+export const SaveMenuItemRecipeBody = zod.object({
+  yieldServings: zod.number().optional(),
+  notes: zod.string().nullish(),
+  lines: zod.array(
+    zod.object({
+      ingredientId: zod.number(),
+      quantityPerYield: zod.number(),
+    }),
+  ),
+});
+
+export const SaveMenuItemRecipeResponse = zod.object({
+  id: zod.number(),
+  menuItemId: zod.number(),
+  yieldServings: zod.number(),
+  notes: zod.string().nullish(),
+  lines: zod.array(
+    zod.object({
+      id: zod.number(),
+      ingredientId: zod.number(),
+      ingredientName: zod.string(),
+      ingredientUnit: zod.string(),
+      quantityPerYield: zod.number(),
+    }),
+  ),
+  costPerServing: zod.number().nullish(),
+  costPerUnit: zod.number().nullish(),
+  missingCosts: zod.number().optional(),
+  panSizeCosts: zod
+    .array(
+      zod.object({
+        label: zod.string(),
+        servings: zod.number(),
+        costPerPan: zod.number(),
+      }),
+    )
+    .nullish(),
+});
+
+/**
+ * @summary Delete the recipe for a menu item
+ */
+export const DeleteMenuItemRecipeParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+/**
+ * @summary List labor entries for an event session or catering inquiry
+ */
+export const ListLaborEntriesQueryParams = zod.object({
+  referenceType: zod.enum(["event_session", "catering_inquiry"]),
+  referenceId: zod.coerce.number(),
+});
+
+export const ListLaborEntriesResponseItem = zod.object({
+  id: zod.number(),
+  referenceType: zod.string(),
+  referenceId: zod.number(),
+  employeeName: zod.string(),
+  hours: zod.number().nullish(),
+  hourlyRate: zod.number().nullish(),
+  flatCost: zod.number().nullish(),
+  subtotal: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const ListLaborEntriesResponse = zod.array(ListLaborEntriesResponseItem);
+
+/**
+ * @summary Add a labor entry
+ */
+export const CreateLaborEntryBody = zod.object({
+  referenceType: zod.enum(["event_session", "catering_inquiry"]),
+  referenceId: zod.number(),
+  employeeName: zod.string(),
+  hours: zod.number().nullish(),
+  hourlyRate: zod.number().nullish(),
+  flatCost: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Update a labor entry
+ */
+export const UpdateLaborEntryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateLaborEntryBody = zod.object({
+  employeeName: zod.string().optional(),
+  hours: zod.number().nullish(),
+  hourlyRate: zod.number().nullish(),
+  flatCost: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateLaborEntryResponse = zod.object({
+  id: zod.number(),
+  referenceType: zod.string(),
+  referenceId: zod.number(),
+  employeeName: zod.string(),
+  hours: zod.number().nullish(),
+  hourlyRate: zod.number().nullish(),
+  flatCost: zod.number().nullish(),
+  subtotal: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Delete a labor entry
+ */
+export const DeleteLaborEntryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Get cost summary (COGS + labor + profit) for a date range
+ */
+export const GetCostSummaryQueryParams = zod.object({
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+  scope: zod.enum(["events", "catering", "all"]).optional(),
+});
+
+export const GetCostSummaryResponse = zod.object({
+  from: zod.coerce.date(),
+  to: zod.coerce.date(),
+  scope: zod.string(),
+  revenue: zod.number(),
+  cogs: zod.number(),
+  laborCost: zod.number(),
+  grossProfit: zod.number(),
+  grossMargin: zod.number().nullish(),
+  itemsWithRecipe: zod.number(),
+  itemsWithoutRecipe: zod.number(),
+  itemBreakdown: zod.array(
+    zod.object({
+      name: zod.string(),
+      quantity: zod.number(),
+      cogs: zod.number(),
+      revenue: zod.number(),
+      margin: zod.number().nullish(),
+    }),
+  ),
+  laborBreakdown: zod.array(
+    zod.object({
+      referenceType: zod.string(),
+      referenceId: zod.number(),
+      name: zod.string(),
+      laborCost: zod.number(),
+    }),
+  ),
+});

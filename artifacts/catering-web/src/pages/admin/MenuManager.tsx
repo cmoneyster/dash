@@ -16,6 +16,7 @@ import { getAdminToken } from "@/components/AdminGuard";
 import { useAdminCategories, ADMIN_CATEGORIES_QUERY_KEY } from "@/lib/categories";
 import { adminReorderMenuItems } from "@/lib/admin-menu";
 import { MenuCsvDialog, ExportMenuButton, AppliedToast } from "./MenuCsvDialog";
+import { RecipeEditor } from "@/components/RecipeEditor";
 import {
   DndContext,
   closestCenter,
@@ -1335,6 +1336,12 @@ export default function MenuManager() {
                 </div>
               </form>
             </div>
+
+            {editingItem && (
+              <div className="px-6 py-4 border-t border-border">
+                <RecipeEditor menuItemId={editingItem.id} menuItemName={editingItem.name} />
+              </div>
+            )}
 
             <div className="px-6 py-4 border-t border-border bg-secondary/30 flex justify-end gap-3">
               <button onClick={() => setIsDialogOpen(false)} className="px-5 py-2 font-semibold text-muted-foreground hover:text-foreground">

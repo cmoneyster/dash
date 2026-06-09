@@ -7,6 +7,7 @@ import {
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
   GripVertical, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck,
 } from "lucide-react";
+import { LaborPanel } from "@/components/LaborPanel";
 import {
   DndContext,
   closestCenter,
@@ -2728,6 +2729,12 @@ function DetailPanel({
           {error && <p className="text-destructive text-sm">{error}</p>}
         </div>
       </form>
+
+      {form.id !== undefined && (
+        <div className="px-6 py-4 border-t border-border">
+          <LaborPanel referenceType="catering_inquiry" referenceId={form.id as number} />
+        </div>
+      )}
 
       <div className="px-6 py-4 border-t border-border flex items-center gap-3 shrink-0">
         {!isNew && (

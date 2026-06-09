@@ -39,6 +39,7 @@ import adminPrintersRouter from "./admin-printers";
 import printAgentRouter from "./print-agent";
 import printAgentInstallRouter from "./print-agent-install";
 import printAgentHeartbeatPublicRouter from "./print-agent-heartbeat-public";
+import adminCostsRouter from "./admin-costs";
 
 const router: IRouter = Router();
 
@@ -90,6 +91,8 @@ router.use("/admin/printers", requireAdminAuth);
 router.use("/admin/print-jobs", requireAdminAuth);
 router.use("/admin/event-orders", requireAdminAuth);
 router.use("/admin/square", requireAdminAuth);
+router.use("/admin/costs", requireAdminAuth);
+router.use("/admin/menu/:itemId/recipe", requireAdminAuth);
 router.use("/print-agent", requireAdminAuth);
 router.use(adminMenuRouter);
 router.use(adminMenuCsvRouter);
@@ -108,6 +111,7 @@ router.use(adminSmsSettingsRouter);
 router.use(adminSmsMessagesRouter);
 router.use(adminDemoRouter);
 router.use(adminPrintersRouter);
+router.use(adminCostsRouter);
 router.use(printAgentRouter);
 
 export default router;

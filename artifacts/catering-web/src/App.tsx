@@ -43,6 +43,8 @@ import AiRecommendations from "@/pages/admin/AiRecommendations";
 import MenuPackages from "@/pages/admin/MenuPackages";
 import MenuPackageEdit from "@/pages/admin/MenuPackageEdit";
 import Printers from "@/pages/admin/Printers";
+import CostIngredients from "@/pages/admin/CostIngredients";
+import CostSummary from "@/pages/admin/CostSummary";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -137,6 +139,12 @@ function Router() {
       </Route>
       <Route path="/admin/menu-packages/:id">
         {() => <AdminGuard><MenuPackageEdit /></AdminGuard>}
+      </Route>
+      <Route path="/admin/costs/ingredients">
+        {() => <AdminGuard><CostIngredients /></AdminGuard>}
+      </Route>
+      <Route path="/admin/costs/summary">
+        {() => <AdminGuard><CostSummary /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />

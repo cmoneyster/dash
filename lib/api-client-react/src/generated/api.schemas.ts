@@ -1287,6 +1287,146 @@ export interface PrintAgentHeartbeatStatus {
   serverUrl: string | null;
 }
 
+export interface IngredientCostEntry {
+  id: number;
+  costPerUnit: number;
+  effectiveAt: string;
+}
+
+export interface IngredientWithCost {
+  id: number;
+  name: string;
+  unit: string;
+  notes?: string | null;
+  currentCost?: number | null;
+  createdAt: string;
+  history: IngredientCostEntry[];
+}
+
+export interface CreateIngredientInput {
+  name: string;
+  unit: string;
+  notes?: string | null;
+  initialCost?: number | null;
+}
+
+export interface UpdateIngredientInput {
+  name?: string;
+  unit?: string;
+  notes?: string | null;
+}
+
+export interface AddIngredientCostInput {
+  costPerUnit: number;
+  effectiveAt?: string | null;
+}
+
+export interface RecipeLine {
+  id: number;
+  ingredientId: number;
+  ingredientName: string;
+  ingredientUnit: string;
+  quantityPerYield: number;
+}
+
+export interface PanSizeCost {
+  label: string;
+  servings: number;
+  costPerPan: number;
+}
+
+export interface RecipeDetail {
+  id: number;
+  menuItemId: number;
+  yieldServings: number;
+  notes?: string | null;
+  lines: RecipeLine[];
+  costPerServing?: number | null;
+  costPerUnit?: number | null;
+  missingCosts?: number;
+  panSizeCosts?: PanSizeCost[] | null;
+}
+
+export type SaveRecipeInputLinesItem = {
+  ingredientId: number;
+  quantityPerYield: number;
+};
+
+export interface SaveRecipeInput {
+  yieldServings?: number;
+  notes?: string | null;
+  lines: SaveRecipeInputLinesItem[];
+}
+
+export interface LaborEntry {
+  id: number;
+  referenceType: string;
+  referenceId: number;
+  employeeName: string;
+  hours?: number | null;
+  hourlyRate?: number | null;
+  flatCost?: number | null;
+  subtotal?: number | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export type CreateLaborInputReferenceType =
+  (typeof CreateLaborInputReferenceType)[keyof typeof CreateLaborInputReferenceType];
+
+export const CreateLaborInputReferenceType = {
+  event_session: "event_session",
+  catering_inquiry: "catering_inquiry",
+} as const;
+
+export interface CreateLaborInput {
+  referenceType: CreateLaborInputReferenceType;
+  referenceId: number;
+  employeeName: string;
+  hours?: number | null;
+  hourlyRate?: number | null;
+  flatCost?: number | null;
+  notes?: string | null;
+}
+
+export interface UpdateLaborInput {
+  employeeName?: string;
+  hours?: number | null;
+  hourlyRate?: number | null;
+  flatCost?: number | null;
+  notes?: string | null;
+}
+
+export interface CostSummaryItemBreakdown {
+  name: string;
+  quantity: number;
+  cogs: number;
+  revenue: number;
+  margin?: number | null;
+}
+
+export interface CostSummaryLaborBreakdown {
+  referenceType: string;
+  referenceId: number;
+  name: string;
+  laborCost: number;
+}
+
+export interface CostSummary {
+  from: string;
+  to: string;
+  scope: string;
+  revenue: number;
+  cogs: number;
+  laborCost: number;
+  grossProfit: number;
+  grossMargin?: number | null;
+  itemsWithRecipe: number;
+  itemsWithoutRecipe: number;
+  itemBreakdown: CostSummaryItemBreakdown[];
+  laborBreakdown: CostSummaryLaborBreakdown[];
+}
+
 export type ListMenuItemsParams = {
   category?: string;
   available?: boolean;
@@ -1400,3 +1540,31 @@ export type FailPrintAgentJob200 = {
 export type PostPrintAgentHeartbeat200 = {
   ok?: boolean;
 };
+
+export type ListLaborEntriesParams = {
+  referenceType: ListLaborEntriesReferenceType;
+  referenceId: number;
+};
+
+export type ListLaborEntriesReferenceType =
+  (typeof ListLaborEntriesReferenceType)[keyof typeof ListLaborEntriesReferenceType];
+
+export const ListLaborEntriesReferenceType = {
+  event_session: "event_session",
+  catering_inquiry: "catering_inquiry",
+} as const;
+
+export type GetCostSummaryParams = {
+  from?: string;
+  to?: string;
+  scope?: GetCostSummaryScope;
+};
+
+export type GetCostSummaryScope =
+  (typeof GetCostSummaryScope)[keyof typeof GetCostSummaryScope];
+
+export const GetCostSummaryScope = {
+  events: "events",
+  catering: "catering",
+  all: "all",
+} as const;
