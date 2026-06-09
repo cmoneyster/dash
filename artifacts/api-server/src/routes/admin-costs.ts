@@ -11,7 +11,7 @@ import {
   cateringInquiriesTable,
   eventSessionsTable,
 } from "@workspace/db/schema";
-import { eq, desc, and, lte, inArray, sql } from "drizzle-orm";
+import { eq, desc, and, lte, gte, isNotNull, inArray, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -756,8 +756,19 @@ router.get("/admin/costs/summary", async (req, res) => {
         await processItemsForBreakdown(items, o.createdAt);
       }
 
-      // Labor for event sessions in range
-      const sessions = await db.select().from(eventSessionsTable);
+      // Labor for event sessions in range — only sessions whose date falls within the requested range
+      const fromDateStr = from.toISOString().slice(0, 10);
+      const toDateStr = to.toISOString().slice(0, 10);
+      const sessions = await db
+        .select()
+        .from(eventSessionsTable)
+        .where(
+          and(
+            isNotNull(eventSessionsTable.date),
+            gte(eventSessionsTable.date, fromDateStr),
+            lte(eventSessionsTable.date, toDateStr),
+          ),
+        );
       for (const session of sessions) {
         const laborEntries = await db
           .select()

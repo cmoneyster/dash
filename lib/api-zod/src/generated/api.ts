@@ -6114,33 +6114,35 @@ export const GetMenuItemRecipeParams = zod.object({
   itemId: zod.coerce.number(),
 });
 
-export const GetMenuItemRecipeResponse = zod.object({
-  id: zod.number(),
-  menuItemId: zod.number(),
-  yieldServings: zod.number(),
-  notes: zod.string().nullish(),
-  lines: zod.array(
-    zod.object({
-      id: zod.number(),
-      ingredientId: zod.number(),
-      ingredientName: zod.string(),
-      ingredientUnit: zod.string(),
-      quantityPerYield: zod.number(),
-    }),
-  ),
-  costPerServing: zod.number().nullish(),
-  costPerUnit: zod.number().nullish(),
-  missingCosts: zod.number().optional(),
-  panSizeCosts: zod
-    .array(
+export const GetMenuItemRecipeResponse = zod
+  .object({
+    id: zod.number(),
+    menuItemId: zod.number(),
+    yieldServings: zod.number(),
+    notes: zod.string().nullish(),
+    lines: zod.array(
       zod.object({
-        label: zod.string(),
-        servings: zod.number(),
-        costPerPan: zod.number(),
+        id: zod.number(),
+        ingredientId: zod.number(),
+        ingredientName: zod.string(),
+        ingredientUnit: zod.string(),
+        quantityPerYield: zod.number(),
       }),
-    )
-    .nullish(),
-});
+    ),
+    costPerServing: zod.number().nullish(),
+    costPerUnit: zod.number().nullish(),
+    missingCosts: zod.number().optional(),
+    panSizeCosts: zod
+      .array(
+        zod.object({
+          label: zod.string(),
+          servings: zod.number(),
+          costPerPan: zod.number(),
+        }),
+      )
+      .nullish(),
+  })
+  .nullable();
 
 /**
  * @summary Create or replace the recipe for a menu item

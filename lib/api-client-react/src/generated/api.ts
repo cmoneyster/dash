@@ -6192,8 +6192,8 @@ export const getGetMenuItemRecipeUrl = (itemId: number) => {
 export const getMenuItemRecipe = async (
   itemId: number,
   options?: RequestInit,
-): Promise<RecipeDetail> => {
-  return customFetch<RecipeDetail>(getGetMenuItemRecipeUrl(itemId), {
+): Promise<RecipeDetail | null> => {
+  return customFetch<RecipeDetail | null>(getGetMenuItemRecipeUrl(itemId), {
     ...options,
     method: "GET",
   });

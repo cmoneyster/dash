@@ -4,7 +4,7 @@ import { getAdminToken } from "@/components/AdminGuard";
 import {
   Loader2, Download, BarChart3, Users, ShoppingBag, DollarSign,
   Receipt, Package, ChevronDown, ChevronRight, Wallet, Timer,
-  Ban, AlertCircle, FileText, X, CheckSquare,
+  Ban, AlertCircle, FileText, X, CheckSquare, TrendingDown, TrendingUp,
 } from "lucide-react";
 import type {
   SalesReport,
@@ -49,6 +49,18 @@ type ReportVoidRow = SalesReportVoidRow;
 type ReportVoids = SalesReportVoids;
 type ReportTotals = SalesReportTotals;
 type Report = SalesReport;
+
+type CostSummaryData = {
+  revenue: number;
+  cogs: number;
+  laborCost: number;
+  grossProfit: number;
+  grossMargin: number | null;
+  itemsWithRecipe: number;
+  itemsWithoutRecipe: number;
+  itemBreakdown: Array<{ name: string; quantity: number; cogs: number; revenue: number; margin: number | null }>;
+  laborBreakdown: Array<{ referenceType: string; referenceId: number; name: string; laborCost: number }>;
+};
 
 function todayISO(d: Date = new Date()) {
   const x = new Date(d);
@@ -109,6 +121,11 @@ export default function SalesReports() {
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  // Cost overlay
+  const [showCostOverlay, setShowCostOverlay] = useState(false);
+  const [costSummary, setCostSummary] = useState<CostSummaryData | null>(null);
+  const [costLoading, setCostLoading] = useState(false);
+
   // Session filter
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
@@ -156,6 +173,19 @@ export default function SalesReports() {
   }
 
   useEffect(() => { loadReport(); /* eslint-disable-next-line */ }, [from, to, source, status, scope, selectedSessionId]);
+
+  useEffect(() => {
+    if (!showCostOverlay) { setCostSummary(null); return; }
+    let cancelled = false;
+    setCostLoading(true);
+    const params = new URLSearchParams({ from, to, scope });
+    fetch(`${BASE}/api/admin/costs/summary?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(data => { if (!cancelled) setCostSummary(data as CostSummaryData); })
+      .catch(() => { if (!cancelled) setCostSummary(null); })
+      .finally(() => { if (!cancelled) setCostLoading(false); });
+    return () => { cancelled = true; };
+  /* eslint-disable-next-line */ }, [showCostOverlay, from, to, scope, token]);
 
   async function downloadCsv(type: "orders" | "items" | "voids") {
     const params = new URLSearchParams({ from, to, source, status, type, scope });
@@ -399,6 +429,17 @@ export default function SalesReports() {
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
             Refresh
           </button>
+          <button
+            onClick={() => setShowCostOverlay(v => !v)}
+            className={`px-5 py-2 font-semibold rounded-xl flex items-center gap-2 transition border ${
+              showCostOverlay
+                ? "bg-amber-600 text-white border-amber-700 hover:bg-amber-700"
+                : "bg-background text-foreground border-border hover:bg-secondary"
+            }`}
+          >
+            {costLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingDown className="w-4 h-4" />}
+            Cost Estimates
+          </button>
           <div className="ml-auto flex flex-wrap gap-2">
             <button
               onClick={() => downloadCsv("orders")}
@@ -440,6 +481,75 @@ export default function SalesReports() {
             <Kpi label="Tax Collected" value={scope === "catering" ? "—" : fmt(report.totals.tax)} icon={<Receipt className="w-5 h-5" />} accent="text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40" />
             {scope !== "catering" && <VoidsKpi voids={report.totals.voids} />}
           </div>
+
+          {showCostOverlay && (
+            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-2xl shadow-sm overflow-hidden mb-6">
+              <div className="px-5 py-4 border-b border-amber-200 dark:border-amber-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TrendingDown className="w-5 h-5 text-amber-700 dark:text-amber-400" />
+                  <div>
+                    <h2 className="font-display font-bold text-lg">Cost Estimates</h2>
+                    <p className="text-xs text-muted-foreground">COGS + labor derived from ingredient costs and recipes. Estimates only — not all items may have recipes.</p>
+                  </div>
+                </div>
+                {costLoading && <Loader2 className="w-4 h-4 animate-spin text-amber-600" />}
+              </div>
+              {costSummary ? (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-amber-200 dark:bg-amber-800">
+                    <div className="bg-amber-50 dark:bg-amber-950/20 p-4 text-center">
+                      <p className="text-xs text-muted-foreground mb-1">COGS</p>
+                      <p className="text-xl font-bold text-amber-700 dark:text-amber-300">{fmt(costSummary.cogs)}</p>
+                    </div>
+                    <div className="bg-amber-50 dark:bg-amber-950/20 p-4 text-center">
+                      <p className="text-xs text-muted-foreground mb-1">Labor</p>
+                      <p className="text-xl font-bold text-amber-700 dark:text-amber-300">{fmt(costSummary.laborCost)}</p>
+                    </div>
+                    <div className="bg-amber-50 dark:bg-amber-950/20 p-4 text-center">
+                      <p className="text-xs text-muted-foreground mb-1">Gross Profit</p>
+                      <p className={`text-xl font-bold ${costSummary.grossProfit >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                        {fmt(costSummary.grossProfit)}
+                      </p>
+                    </div>
+                    <div className="bg-amber-50 dark:bg-amber-950/20 p-4 text-center">
+                      <p className="text-xs text-muted-foreground mb-1">Gross Margin</p>
+                      <p className={`text-xl font-bold flex items-center justify-center gap-1 ${
+                        costSummary.grossMargin != null && costSummary.grossMargin >= 0
+                          ? "text-emerald-700 dark:text-emerald-400"
+                          : "text-rose-600 dark:text-rose-400"
+                      }`}>
+                        {costSummary.grossMargin != null
+                          ? <>{costSummary.grossMargin >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}{costSummary.grossMargin.toFixed(1)}%</>
+                          : "—"}
+                      </p>
+                    </div>
+                  </div>
+                  {costSummary.itemsWithoutRecipe > 0 && (
+                    <div className="px-5 py-3 bg-amber-100/60 dark:bg-amber-900/20 border-t border-amber-200 dark:border-amber-800 flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      {costSummary.itemsWithoutRecipe} item type{costSummary.itemsWithoutRecipe !== 1 ? "s" : ""} without a recipe — COGS is a partial estimate.{" "}
+                      <a href={`${BASE}/admin/costs/ingredients`} className="underline hover:no-underline font-medium">Manage recipes →</a>
+                    </div>
+                  )}
+                  {costSummary.laborBreakdown.length > 0 && (
+                    <div className="px-5 py-4 border-t border-amber-200 dark:border-amber-800">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Labor by Session / Inquiry</p>
+                      <div className="space-y-1">
+                        {costSummary.laborBreakdown.map((lb, i) => (
+                          <div key={i} className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground truncate mr-4">{lb.name}</span>
+                            <span className="font-semibold tabular-nums shrink-0">{fmt(lb.laborCost)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : !costLoading && (
+                <div className="px-5 py-10 text-center text-sm text-muted-foreground">No cost data available for this range.</div>
+              )}
+            </div>
+          )}
 
           {scope !== "catering" && (
             <PickupTimeCard stats={report.totals.pickupStats} totalOrders={report.totals.orderCount} />
