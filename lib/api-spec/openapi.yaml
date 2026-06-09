@@ -4244,7 +4244,7 @@ components:
 
     CostSummary:
       type: object
-      required: [from, to, scope, revenue, cogs, laborCost, grossProfit, itemsWithRecipe, itemsWithoutRecipe, itemBreakdown, laborBreakdown]
+      required: [from, to, scope, revenue, cogs, laborCost, grossProfit, itemsWithRecipe, itemsWithoutRecipe, isEstimated, itemBreakdown, laborBreakdown]
       properties:
         from:
           type: string
@@ -4269,6 +4269,9 @@ components:
           type: integer
         itemsWithoutRecipe:
           type: integer
+        isEstimated:
+          type: boolean
+          description: True when any ingredient cost was resolved via latest-cost fallback because no price existed at or before the order date. Figures are approximate.
         itemBreakdown:
           type: array
           items:

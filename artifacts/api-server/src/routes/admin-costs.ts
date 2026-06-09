@@ -34,13 +34,21 @@ function parseDate(v: unknown, fallback: Date): Date {
 }
 
 // Get the most recent cost per unit for an ingredient at or before `asOf`.
+// When no entry exists at or before `asOf`, falls back to the latest available
+// price and records the cache key in `fallbackKeys` so callers can signal that
+// figures are approximate.
 async function costAtDate(
   ingredientId: number,
   asOf: Date,
   cache?: Map<string, number>,
+  fallbackKeys?: Set<string>,
 ): Promise<number | null> {
   const key = `${ingredientId}@${asOf.toISOString()}`;
-  if (cache?.has(key)) return cache.get(key)!;
+  if (cache?.has(key)) {
+    // Preserve fallback classification on cache hits
+    if (fallbackKeys && fallbackKeyCache.has(key)) fallbackKeys.add(key);
+    return cache.get(key)!;
+  }
   const [row] = await db
     .select({ costPerUnit: ingredientCostHistoryTable.costPerUnit })
     .from(ingredientCostHistoryTable)
@@ -52,10 +60,31 @@ async function costAtDate(
     )
     .orderBy(desc(ingredientCostHistoryTable.effectiveAt))
     .limit(1);
-  const val = row ? parseFloat(row.costPerUnit) : null;
-  if (cache && val != null) cache.set(key, val);
-  return val;
+  if (row) {
+    const val = parseFloat(row.costPerUnit);
+    cache?.set(key, val);
+    return val;
+  }
+  // No cost entry at or before asOf — fall back to the latest available price.
+  const [latestRow] = await db
+    .select({ costPerUnit: ingredientCostHistoryTable.costPerUnit })
+    .from(ingredientCostHistoryTable)
+    .where(eq(ingredientCostHistoryTable.ingredientId, ingredientId))
+    .orderBy(desc(ingredientCostHistoryTable.effectiveAt))
+    .limit(1);
+  if (latestRow) {
+    const val = parseFloat(latestRow.costPerUnit);
+    cache?.set(key, val);
+    fallbackKeyCache.add(key);
+    fallbackKeys?.add(key);
+    return val;
+  }
+  return null;
 }
+
+// Tracks which costAtDate cache keys were resolved via latest-cost fallback,
+// so that cache hits on the same key are also classified as fallback.
+const fallbackKeyCache = new Set<string>();
 
 // Get the latest cost for an ingredient regardless of date.
 async function latestCost(ingredientId: number): Promise<number | null> {
@@ -742,6 +771,7 @@ router.get("/admin/costs/summary", async (req, res) => {
     async function computeOrderCogs(
       items: Array<{ itemId?: number; name: string; quantity: number }>,
       atDate: Date,
+      fallbackKeys?: Set<string>,
     ): Promise<{ cogs: number; itemsWithRecipe: number; itemsWithoutRecipe: number }> {
       let cogs = 0;
       let withRecipe = 0;
@@ -756,7 +786,7 @@ router.get("/admin/costs/summary", async (req, res) => {
         let recipeCost = 0;
         let hasAllCosts = true;
         for (const line of lines) {
-          const cost = await costAtDate(line.ingredientId, atDate, costCache);
+          const cost = await costAtDate(line.ingredientId, atDate, costCache, fallbackKeys);
           if (cost == null) { hasAllCosts = false; continue; }
           const iu = ingredientUnitMap.get(line.ingredientId) ?? "";
           const ru = line.recipeUnit ?? iu;
@@ -788,6 +818,7 @@ router.get("/admin/costs/summary", async (req, res) => {
     async function processItemsForBreakdown(
       items: Array<{ itemId?: number; name: string; quantity: number; unitPrice?: number; price?: number; lineTotal?: number }>,
       atDate: Date,
+      fallbackKeys?: Set<string>,
     ) {
       for (const item of items) {
         const key = item.itemId ? `${item.itemId}::${item.name}` : `0::${item.name}`;
@@ -799,7 +830,7 @@ router.get("/admin/costs/summary", async (req, res) => {
             let recipeCost = 0;
             let hasAll = true;
             for (const l of lines) {
-              const cost = await costAtDate(l.ingredientId, atDate, costCache);
+              const cost = await costAtDate(l.ingredientId, atDate, costCache, fallbackKeys);
               if (cost == null) { hasAll = false; break; }
               const iu = ingredientUnitMap.get(l.ingredientId) ?? "";
               const ru = l.recipeUnit ?? iu;
@@ -826,6 +857,8 @@ router.get("/admin/costs/summary", async (req, res) => {
         itemBreakdown.set(key, entry);
       }
     }
+
+    const fallbackKeys = new Set<string>();
 
     let totalRevenue = 0;
     let totalCogs = 0;
@@ -855,11 +888,11 @@ router.get("/admin/costs/summary", async (req, res) => {
         totalRevenue = round2(totalRevenue + orderRevenue);
 
         const items = (o.items ?? []) as Array<{ itemId?: number; name: string; quantity: number; price?: number; unitPrice?: number; lineTotal?: number }>;
-        const r = await computeOrderCogs(items, o.createdAt);
+        const r = await computeOrderCogs(items, o.createdAt, fallbackKeys);
         totalCogs = round2(totalCogs + r.cogs);
         itemsWithRecipe += r.itemsWithRecipe;
         itemsWithoutRecipe += r.itemsWithoutRecipe;
-        await processItemsForBreakdown(items, o.createdAt);
+        await processItemsForBreakdown(items, o.createdAt, fallbackKeys);
       }
 
       // Labor for event sessions in range — only sessions whose date falls within the requested range
@@ -926,11 +959,11 @@ router.get("/admin/costs/summary", async (req, res) => {
           quantity: l.quantity,
           unitPrice: l.unitPrice,
         }));
-        const r = await computeOrderCogs(items, inq.createdAt);
+        const r = await computeOrderCogs(items, inq.createdAt, fallbackKeys);
         totalCogs = round2(totalCogs + r.cogs);
         itemsWithRecipe += r.itemsWithRecipe;
         itemsWithoutRecipe += r.itemsWithoutRecipe;
-        await processItemsForBreakdown(items, inq.createdAt);
+        await processItemsForBreakdown(items, inq.createdAt, fallbackKeys);
 
         // Labor for this catering inquiry
         const laborEntries = await db
@@ -972,6 +1005,7 @@ router.get("/admin/costs/summary", async (req, res) => {
       grossMargin,
       itemsWithRecipe,
       itemsWithoutRecipe,
+      isEstimated: fallbackKeys.size > 0,
       itemBreakdown: Array.from(itemBreakdown.values())
         .sort((a, b) => b.cogs - a.cogs)
         .map(e => ({

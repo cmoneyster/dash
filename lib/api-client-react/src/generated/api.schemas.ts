@@ -1464,6 +1464,8 @@ export interface CostSummary {
   grossMargin?: number | null;
   itemsWithRecipe: number;
   itemsWithoutRecipe: number;
+  /** True when any ingredient cost was resolved via latest-cost fallback because no price existed at or before the order date. Figures are approximate. */
+  isEstimated: boolean;
   itemBreakdown: CostSummaryItemBreakdown[];
   laborBreakdown: CostSummaryLaborBreakdown[];
 }

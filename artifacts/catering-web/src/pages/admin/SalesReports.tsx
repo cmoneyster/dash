@@ -58,6 +58,7 @@ type CostSummaryData = {
   grossMargin: number | null;
   itemsWithRecipe: number;
   itemsWithoutRecipe: number;
+  isEstimated: boolean;
   itemBreakdown: Array<{ name: string; quantity: number; cogs: number; revenue: number; margin: number | null }>;
   laborBreakdown: Array<{ referenceType: string; referenceId: number; name: string; laborCost: number }>;
 };
@@ -529,6 +530,12 @@ export default function SalesReports() {
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                       {costSummary.itemsWithoutRecipe} item type{costSummary.itemsWithoutRecipe !== 1 ? "s" : ""} without a recipe — COGS is a partial estimate.{" "}
                       <a href={`${BASE}/admin/costs/ingredients`} className="underline hover:no-underline font-medium">Manage recipes →</a>
+                    </div>
+                  )}
+                  {costSummary.isEstimated && (
+                    <div className="px-5 py-3 bg-amber-50/80 dark:bg-amber-950/30 border-t border-amber-200 dark:border-amber-800 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      Ingredient prices may post-date some orders — estimates use the latest available prices.
                     </div>
                   )}
                   {costSummary.laborBreakdown.length > 0 && (

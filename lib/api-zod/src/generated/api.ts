@@ -6426,6 +6426,11 @@ export const GetCostSummaryResponse = zod.object({
   grossMargin: zod.number().nullish(),
   itemsWithRecipe: zod.number(),
   itemsWithoutRecipe: zod.number(),
+  isEstimated: zod
+    .boolean()
+    .describe(
+      "True when any ingredient cost was resolved via latest-cost fallback because no price existed at or before the order date. Figures are approximate.",
+    ),
   itemBreakdown: zod.array(
     zod.object({
       name: zod.string(),
