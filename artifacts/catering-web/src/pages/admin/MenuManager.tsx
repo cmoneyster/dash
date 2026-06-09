@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import {
   useAdminListMenuItems,
@@ -10,7 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon, Upload, GripVertical, Search, Sparkles, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Edit2, Trash2, X, ImageIcon, Loader2, Check, Library, Infinity as InfinityIcon, Upload, GripVertical, Search, Sparkles, ChevronUp, ChevronDown, ExternalLink } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { getAdminToken } from "@/components/AdminGuard";
 import { useAdminCategories, ADMIN_CATEGORIES_QUERY_KEY } from "@/lib/categories";
@@ -232,6 +232,9 @@ export default function MenuManager() {
   const [sourceItemId, setSourceItemId] = useState<number | null>(null);
   const [recipeOwners, setRecipeOwners] = useState<{ id: number; name: string }[]>([]);
   const [loadingRecipeOwners, setLoadingRecipeOwners] = useState(false);
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
+  const [sourcePickerQuery, setSourcePickerQuery] = useState("");
+  const sourcePickerRef = useRef<HTMLDivElement>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isCsvDialogOpen, setIsCsvDialogOpen] = useState(false);
   const [applyResult, setApplyResult] = useState<{
@@ -406,6 +409,17 @@ export default function MenuManager() {
     const isEntreeCat = picked?.plannerGroup === "entree";
     setValue("pricingTemplate", isEntreeCat ? "pan_sizes" : "per_unit");
   }, [watchedCategory, adminCategories, setValue]);
+
+  useEffect(() => {
+    if (!sourcePickerOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (sourcePickerRef.current && !sourcePickerRef.current.contains(e.target as Node)) {
+        setSourcePickerOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [sourcePickerOpen]);
 
   const generateDescription = async (name: string, target: "dialog" | number) => {
     if (!name.trim()) return;
@@ -1071,22 +1085,67 @@ export default function MenuManager() {
                     <p className="text-xs text-indigo-700/70 dark:text-indigo-300/70">
                       When set, the Recipe & Cost section will display the source item's recipe read-only. Clear this field to write a custom recipe for this item.
                     </p>
-                    <select
-                      value={sourceItemId ?? ""}
-                      onChange={e => setSourceItemId(e.target.value ? parseInt(e.target.value) : null)}
-                      disabled={loadingRecipeOwners}
-                      className="w-full px-3 py-2 border border-indigo-200 dark:border-indigo-700 rounded-lg text-sm bg-background disabled:opacity-60"
-                    >
-                      <option value="">— No source (use own recipe) —</option>
-                      {recipeOwners.map(o => (
-                        <option key={o.id} value={o.id}>{o.name}</option>
-                      ))}
-                    </select>
-                    {loadingRecipeOwners && (
-                      <p className="text-xs text-indigo-500">Loading items with recipes…</p>
-                    )}
+                    <div ref={sourcePickerRef} className="relative">
+                      <button
+                        type="button"
+                        disabled={loadingRecipeOwners}
+                        onClick={() => { setSourcePickerOpen(v => !v); setSourcePickerQuery(""); }}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 border border-indigo-200 dark:border-indigo-700 rounded-lg text-sm bg-background disabled:opacity-60 text-left"
+                      >
+                        <span className={sourceItemId ? "" : "text-muted-foreground italic"}>
+                          {loadingRecipeOwners
+                            ? "Loading…"
+                            : sourceItemId
+                              ? (recipeOwners.find(o => o.id === sourceItemId)?.name ?? "Unknown")
+                              : "— No source (use own recipe) —"}
+                        </span>
+                        <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                      </button>
+                      {sourcePickerOpen && (
+                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
+                          <div className="p-2 border-b border-border">
+                            <div className="relative">
+                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                              <input
+                                autoFocus
+                                type="text"
+                                value={sourcePickerQuery}
+                                onChange={e => setSourcePickerQuery(e.target.value)}
+                                placeholder="Search catering items…"
+                                className="w-full pl-8 pr-3 py-1.5 border border-border rounded-lg text-sm bg-background outline-none"
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-48 overflow-y-auto">
+                            <button
+                              type="button"
+                              onClick={() => { setSourceItemId(null); setSourcePickerOpen(false); }}
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-secondary/60 text-muted-foreground italic"
+                            >
+                              — No source (use own recipe) —
+                            </button>
+                            {recipeOwners
+                              .filter(o => o.name.toLowerCase().includes(sourcePickerQuery.toLowerCase()))
+                              .map(o => (
+                                <button
+                                  key={o.id}
+                                  type="button"
+                                  onClick={() => { setSourceItemId(o.id); setSourcePickerOpen(false); }}
+                                  className={`w-full text-left px-4 py-2 text-sm hover:bg-secondary/60 flex items-center gap-2 ${o.id === sourceItemId ? "font-semibold text-primary" : ""}`}
+                                >
+                                  {o.id === sourceItemId && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
+                                  {o.name}
+                                </button>
+                              ))}
+                            {recipeOwners.filter(o => o.name.toLowerCase().includes(sourcePickerQuery.toLowerCase())).length === 0 && (
+                              <p className="text-center py-4 text-sm text-muted-foreground">No matches</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     {!loadingRecipeOwners && recipeOwners.length === 0 && (
-                      <p className="text-xs text-indigo-500/70">No other items have recipes yet.</p>
+                      <p className="text-xs text-indigo-500/70">No catering items have recipes yet.</p>
                     )}
                   </div>
                 )}
@@ -1392,7 +1451,17 @@ export default function MenuManager() {
 
             {editingItem && (
               <div className="px-6 py-4 border-t border-border">
-                <RecipeEditor menuItemId={editingItem.id} menuItemName={editingItem.name} />
+                <RecipeEditor
+                  menuItemId={editingItem.id}
+                  menuItemName={editingItem.name}
+                  onViewSource={(sourceId, sourceName) => {
+                    const sourceItem = items?.find((i: any) => i.id === sourceId);
+                    if (sourceItem) {
+                      setIsDialogOpen(false);
+                      setTimeout(() => openEdit(sourceItem), 80);
+                    }
+                  }}
+                />
               </div>
             )}
 

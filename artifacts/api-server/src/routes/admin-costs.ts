@@ -297,8 +297,11 @@ router.get("/admin/menu/recipe-owners", async (req, res): Promise<void> => {
     const owners = await db
       .select({ id: menuItemsTable.id, name: menuItemsTable.name })
       .from(menuItemsTable)
-      .where(exists(
-        db.select({ one: sql<number>`1` }).from(recipesTable).where(eq(recipesTable.menuItemId, menuItemsTable.id)),
+      .where(and(
+        eq(menuItemsTable.available, true),
+        exists(
+          db.select({ one: sql<number>`1` }).from(recipesTable).where(eq(recipesTable.menuItemId, menuItemsTable.id)),
+        ),
       ))
       .orderBy(asc(menuItemsTable.name));
     res.json(owners);
@@ -710,13 +713,24 @@ router.get("/admin/costs/summary", async (req, res) => {
       linesByRecipeId.set(l.recipeId, arr);
     }
 
-    // Pre-load all menu items for serving size
+    // Pre-load all menu items for serving size and sourceItemId
     const allMenuItems = await db.select({
       id: menuItemsTable.id,
       servingSize: menuItemsTable.servingSize,
       pricingTemplate: menuItemsTable.pricingTemplate,
+      sourceItemId: menuItemsTable.sourceItemId,
     }).from(menuItemsTable);
     const menuItemMap = new Map(allMenuItems.map(m => [m.id, m]));
+
+    // Resolve one-level recipe inheritance: for items with no own recipe but a
+    // sourceItemId, point recipeByMenuItemId at the source's recipe so COGS
+    // computation works transparently.
+    for (const m of allMenuItems) {
+      if (!recipeByMenuItemId.has(m.id) && m.sourceItemId != null) {
+        const sourceRecipe = recipeByMenuItemId.get(m.sourceItemId);
+        if (sourceRecipe) recipeByMenuItemId.set(m.id, sourceRecipe);
+      }
+    }
 
     // Pre-load ingredient units for conversion factor lookup
     const allIngredients = await db.select({ id: ingredientsTable.id, unit: ingredientsTable.unit }).from(ingredientsTable);

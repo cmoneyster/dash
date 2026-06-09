@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
-  Plus, Trash2, Check, Loader2, FlaskConical, DollarSign, AlertCircle, ChevronDown, ChevronRight,
+  Plus, Trash2, Check, Loader2, FlaskConical, DollarSign, AlertCircle, ChevronDown, ChevronRight, ArrowRight,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -81,7 +81,11 @@ type DraftLine = {
 let _keyCounter = 0;
 function newKey() { return String(++_keyCounter); }
 
-export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number; menuItemName: string }) {
+export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
+  menuItemId: number;
+  menuItemName: string;
+  onViewSource?: (sourceItemId: number, sourceItemName: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -265,12 +269,24 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
               {recipe ? (
                 <div className="space-y-3">
                   {recipe.isInherited && recipe.inheritedFrom && (
-                    <div className="bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-lg p-3 flex items-start gap-2 text-xs text-indigo-800 dark:text-indigo-300">
-                      <FlaskConical className="w-4 h-4 shrink-0 mt-0.5 text-indigo-500" />
-                      <span>
-                        Recipe inherited from <strong>{recipe.inheritedFrom.name}</strong>.
-                        To use a custom recipe for this item, remove the recipe source link first (edit the item and clear the Recipe Source field).
-                      </span>
+                    <div className="bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-lg p-3 text-xs text-indigo-800 dark:text-indigo-300">
+                      <div className="flex items-start gap-2">
+                        <FlaskConical className="w-4 h-4 shrink-0 mt-0.5 text-indigo-500" />
+                        <span>
+                          Recipe inherited from <strong>{recipe.inheritedFrom.name}</strong>.
+                          To use a custom recipe for this item, remove the recipe source link first (edit the item and clear the Recipe Source field).
+                        </span>
+                      </div>
+                      {onViewSource && recipe.inheritedFrom && (
+                        <button
+                          type="button"
+                          onClick={() => onViewSource(recipe.inheritedFrom!.id, recipe.inheritedFrom!.name)}
+                          className="mt-2 ml-6 flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 font-medium transition-colors"
+                        >
+                          <ArrowRight className="w-3.5 h-3.5" />
+                          Go to {recipe.inheritedFrom.name}
+                        </button>
+                      )}
                     </div>
                   )}
                   {!recipe.isInherited && recipe.missingCosts > 0 && (
