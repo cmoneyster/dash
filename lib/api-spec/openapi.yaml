@@ -2477,6 +2477,10 @@ components:
         comboComponentLabels:
           type: boolean
           description: Whether to also print individual component labels for each combo component.
+        sourceItemId:
+          type: integer
+          nullable: true
+          description: When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.
       required:
         - id
         - name
@@ -2660,6 +2664,10 @@ components:
             $ref: "#/components/schemas/ComboSlot"
         comboComponentLabels:
           type: boolean
+        sourceItemId:
+          type: integer
+          nullable: true
+          description: When set, this item inherits its recipe from the referenced menu item.
 
     RecommendedItem:
       type: object
@@ -4042,7 +4050,7 @@ components:
 
     RecipeDetail:
       type: object
-      required: [id, menuItemId, yieldServings, lines]
+      required: [id, menuItemId, yieldServings, lines, isInherited]
       properties:
         id:
           type: integer
@@ -4070,6 +4078,19 @@ components:
           nullable: true
           items:
             $ref: "#/components/schemas/PanSizeCost"
+        isInherited:
+          type: boolean
+          description: True when this recipe is sourced from another item via sourceItemId (read-only, cannot be edited here).
+        inheritedFrom:
+          type: object
+          nullable: true
+          description: Source item details when isInherited is true.
+          required: [id, name]
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
 
     SaveRecipeInput:
       type: object

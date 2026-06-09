@@ -59,4 +59,6 @@ export interface MenuItem {
   comboSlots?: ComboSlot[] | null;
   /** Whether to also print individual component labels for each combo component. */
   comboComponentLabels?: boolean;
+  /** When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe. */
+  sourceItemId?: number | null;
 }

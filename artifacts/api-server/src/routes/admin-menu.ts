@@ -179,6 +179,7 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
       isCombo,
       comboSlots,
       comboComponentLabels,
+      sourceItemId,
     } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined)             updates.name = name;
@@ -224,6 +225,7 @@ router.put("/admin/menu/:id", async (req, res): Promise<void> => {
     if (isCombo !== undefined)          updates.isCombo = isCombo === true || isCombo === "true";
     if (comboSlots !== undefined)       updates.comboSlots = Array.isArray(comboSlots) ? comboSlots : null;
     if (comboComponentLabels !== undefined) updates.comboComponentLabels = comboComponentLabels === true || comboComponentLabels === "true";
+    if (sourceItemId !== undefined)     updates.sourceItemId = sourceItemId === null || sourceItemId === "" ? null : parseInt(String(sourceItemId));
 
     // If the category is being changed to a different value, drop the
     // item at the bottom of the destination category so it doesn't

@@ -11,7 +11,7 @@ import {
   cateringInquiriesTable,
   eventSessionsTable,
 } from "@workspace/db/schema";
-import { eq, desc, and, lte, gte, isNotNull, inArray, sql } from "drizzle-orm";
+import { eq, desc, and, lte, gte, isNotNull, inArray, sql, exists, asc } from "drizzle-orm";
 import { conversionFactor, isIncompatibleConversion, groupedUnits } from "../lib/units";
 
 const router: IRouter = Router();
@@ -290,81 +290,133 @@ router.post("/admin/costs/ingredients/:id/costs", async (req, res): Promise<void
 
 // ── Recipes ───────────────────────────────────────────────────────────────────
 
+// Returns [{id, name}] of menu items that have their own recipe rows — used by
+// the admin UI to populate the "inherit recipe from" picker.
+router.get("/admin/menu/recipe-owners", async (req, res): Promise<void> => {
+  try {
+    const owners = await db
+      .select({ id: menuItemsTable.id, name: menuItemsTable.name })
+      .from(menuItemsTable)
+      .where(exists(
+        db.select({ one: sql<number>`1` }).from(recipesTable).where(eq(recipesTable.menuItemId, menuItemsTable.id)),
+      ))
+      .orderBy(asc(menuItemsTable.name));
+    res.json(owners);
+  } catch (err) {
+    req.log.error({ err }, "Error listing recipe owners");
+    res.status(500).json({ error: "Failed to list recipe owners" });
+  }
+});
+
+// ── Helper: build a recipe response object from a resolved recipe row + owning item ──
+async function buildRecipeResponse(
+  recipe: typeof recipesTable.$inferSelect,
+  item: typeof menuItemsTable.$inferSelect,
+  menuItemId: number,
+  isInherited: boolean,
+  inheritedFrom: { id: number; name: string } | null,
+) {
+  const lines = await db
+    .select({
+      id: recipeLinesTable.id,
+      ingredientId: recipeLinesTable.ingredientId,
+      quantityPerYield: recipeLinesTable.quantityPerYield,
+      recipeUnit: recipeLinesTable.recipeUnit,
+      ingredientName: ingredientsTable.name,
+      ingredientUnit: ingredientsTable.unit,
+    })
+    .from(recipeLinesTable)
+    .leftJoin(ingredientsTable, eq(recipeLinesTable.ingredientId, ingredientsTable.id))
+    .where(eq(recipeLinesTable.recipeId, recipe.id));
+
+  const { costPerServing, missingCosts } = await computeRecipeCostPerServing(
+    recipe.id,
+    recipe.yieldServings,
+  );
+
+  const servingSize = item.servingSize ?? 1;
+  const costPerUnit = costPerServing != null ? round4(costPerServing * servingSize) : null;
+
+  let panSizeCosts: Array<{ label: string; servings: number; costPerPan: number }> | null = null;
+  if (item.pricingTemplate === "pan_sizes" && costPerServing != null) {
+    panSizeCosts = [];
+    const sizes = [
+      { label: item.size1Label, servings: item.size1Servings },
+      { label: item.size2Label, servings: item.size2Servings },
+      { label: item.size3Label, servings: item.size3Servings },
+      { label: item.size4Label, servings: item.size4Servings },
+      { label: item.size5Label, servings: item.size5Servings },
+    ];
+    for (const s of sizes) {
+      if (s.label && s.servings) {
+        panSizeCosts.push({
+          label: s.label,
+          servings: s.servings,
+          costPerPan: round2(costPerServing * s.servings),
+        });
+      }
+    }
+  }
+
+  return {
+    id: recipe.id,
+    menuItemId,
+    yieldServings: recipe.yieldServings,
+    notes: recipe.notes,
+    lines: lines.map(l => {
+      const iu = l.ingredientUnit ?? "";
+      const ru = l.recipeUnit ?? null;
+      return {
+        id: l.id,
+        ingredientId: l.ingredientId,
+        ingredientName: l.ingredientName ?? "",
+        ingredientUnit: iu,
+        quantityPerYield: parseFloat(l.quantityPerYield),
+        recipeUnit: ru,
+        conversionError: ru ? isIncompatibleConversion(ru, iu) : false,
+      };
+    }),
+    costPerServing,
+    costPerUnit,
+    missingCosts,
+    panSizeCosts,
+    isInherited,
+    inheritedFrom,
+  };
+}
+
 router.get("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
   try {
     const itemId = parseInt(req.params.itemId);
     const [item] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, itemId));
     if (!item) { res.status(404).json({ error: "Menu item not found" }); return; }
 
-    const [recipe] = await db.select().from(recipesTable).where(eq(recipesTable.menuItemId, itemId));
-    if (!recipe) { res.json(null); return; }
+    // Check for own recipe first
+    const [ownRecipe] = await db.select().from(recipesTable).where(eq(recipesTable.menuItemId, itemId));
+    if (ownRecipe) {
+      res.json(await buildRecipeResponse(ownRecipe, item, itemId, false, null));
+      return;
+    }
 
-    const lines = await db
-      .select({
-        id: recipeLinesTable.id,
-        ingredientId: recipeLinesTable.ingredientId,
-        quantityPerYield: recipeLinesTable.quantityPerYield,
-        recipeUnit: recipeLinesTable.recipeUnit,
-        ingredientName: ingredientsTable.name,
-        ingredientUnit: ingredientsTable.unit,
-      })
-      .from(recipeLinesTable)
-      .leftJoin(ingredientsTable, eq(recipeLinesTable.ingredientId, ingredientsTable.id))
-      .where(eq(recipeLinesTable.recipeId, recipe.id));
-
-    const { costPerServing, missingCosts } = await computeRecipeCostPerServing(
-      recipe.id,
-      recipe.yieldServings,
-    );
-
-    const servingSize = item.servingSize ?? 1;
-    const costPerUnit = costPerServing != null ? round4(costPerServing * servingSize) : null;
-
-    // Derive pan-size costs for pan_sizes template items
-    let panSizeCosts: Array<{ label: string; servings: number; costPerPan: number }> | null = null;
-    if (item.pricingTemplate === "pan_sizes" && costPerServing != null) {
-      panSizeCosts = [];
-      const sizes = [
-        { label: item.size1Label, servings: item.size1Servings },
-        { label: item.size2Label, servings: item.size2Servings },
-        { label: item.size3Label, servings: item.size3Servings },
-        { label: item.size4Label, servings: item.size4Servings },
-        { label: item.size5Label, servings: item.size5Servings },
-      ];
-      for (const s of sizes) {
-        if (s.label && s.servings) {
-          panSizeCosts.push({
-            label: s.label,
-            servings: s.servings,
-            costPerPan: round2(costPerServing * s.servings),
-          });
+    // No own recipe — check for inherited recipe via sourceItemId (one level only)
+    if (item.sourceItemId) {
+      const [sourceItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, item.sourceItemId));
+      if (sourceItem) {
+        const [sourceRecipe] = await db.select().from(recipesTable).where(eq(recipesTable.menuItemId, sourceItem.id));
+        if (sourceRecipe) {
+          res.json(await buildRecipeResponse(
+            sourceRecipe,
+            item,
+            itemId,
+            true,
+            { id: sourceItem.id, name: sourceItem.name },
+          ));
+          return;
         }
       }
     }
 
-    res.json({
-      id: recipe.id,
-      menuItemId: itemId,
-      yieldServings: recipe.yieldServings,
-      notes: recipe.notes,
-      lines: lines.map(l => {
-        const iu = l.ingredientUnit ?? "";
-        const ru = l.recipeUnit ?? null;
-        return {
-          id: l.id,
-          ingredientId: l.ingredientId,
-          ingredientName: l.ingredientName ?? "",
-          ingredientUnit: iu,
-          quantityPerYield: parseFloat(l.quantityPerYield),
-          recipeUnit: ru,
-          conversionError: ru ? isIncompatibleConversion(ru, iu) : false,
-        };
-      }),
-      costPerServing,
-      costPerUnit,
-      missingCosts,
-      panSizeCosts,
-    });
+    res.json(null);
   } catch (err) {
     req.log.error({ err }, "Error fetching recipe");
     res.status(500).json({ error: "Failed to fetch recipe" });
@@ -412,6 +464,10 @@ router.put("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
           })),
         );
       }
+      // Clear sourceItemId now that this item has its own recipe
+      if (item.sourceItemId != null) {
+        await tx.update(menuItemsTable).set({ sourceItemId: null }).where(eq(menuItemsTable.id, itemId));
+      }
       return r;
     });
 
@@ -457,29 +513,9 @@ router.put("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
       }
     }
 
-    res.json({
-      id: recipe.id,
-      menuItemId: itemId,
-      yieldServings: recipe.yieldServings,
-      notes: recipe.notes,
-      lines: linesData.map(l => {
-        const iu = l.ingredientUnit ?? "";
-        const ru = l.recipeUnit ?? null;
-        return {
-          id: l.id,
-          ingredientId: l.ingredientId,
-          ingredientName: l.ingredientName ?? "",
-          ingredientUnit: iu,
-          quantityPerYield: parseFloat(l.quantityPerYield),
-          recipeUnit: ru,
-          conversionError: ru ? isIncompatibleConversion(ru, iu) : false,
-        };
-      }),
-      costPerServing,
-      costPerUnit,
-      missingCosts,
-      panSizeCosts,
-    });
+    // Re-fetch item in case sourceItemId was just cleared
+    const [freshItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, itemId));
+    res.json(await buildRecipeResponse(recipe, freshItem ?? item, itemId, false, null));
   } catch (err) {
     req.log.error({ err }, "Error saving recipe");
     res.status(500).json({ error: "Failed to save recipe" });

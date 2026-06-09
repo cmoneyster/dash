@@ -65,6 +65,8 @@ type RecipeDetail = {
   costPerUnit: number | null;
   missingCosts: number;
   panSizeCosts?: Array<{ label: string; servings: number; costPerPan: number }> | null;
+  isInherited?: boolean;
+  inheritedFrom?: { id: number; name: string } | null;
 };
 
 type DraftLine = {
@@ -262,7 +264,22 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
             <>
               {recipe ? (
                 <div className="space-y-3">
-                  {recipe.missingCosts > 0 && (
+                  {recipe.isInherited && recipe.inheritedFrom && (
+                    <div className="bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-lg p-3 flex items-start gap-2 text-xs text-indigo-800 dark:text-indigo-300">
+                      <FlaskConical className="w-4 h-4 shrink-0 mt-0.5 text-indigo-500" />
+                      <span>
+                        Recipe inherited from <strong>{recipe.inheritedFrom.name}</strong>.
+                        To use a custom recipe for this item, remove the recipe source link first (edit the item and clear the Recipe Source field).
+                      </span>
+                    </div>
+                  )}
+                  {!recipe.isInherited && recipe.missingCosts > 0 && (
+                    <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg p-3 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      {recipe.missingCosts} ingredient{recipe.missingCosts > 1 ? "s are" : " is"} missing a cost entry. Cost estimates may be incomplete.
+                    </div>
+                  )}
+                  {recipe.isInherited && recipe.missingCosts > 0 && (
                     <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg p-3 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                       {recipe.missingCosts} ingredient{recipe.missingCosts > 1 ? "s are" : " is"} missing a cost entry. Cost estimates may be incomplete.
@@ -366,25 +383,27 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
                 <p className="text-sm text-muted-foreground">No recipe defined for {menuItemName} yet.</p>
               )}
 
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={startEdit}
-                  className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 text-sm"
-                >
-                  {recipe ? "Edit Recipe" : "Add Recipe"}
-                </button>
-                {recipe && (
+              {!recipe?.isInherited && (
+                <div className="flex gap-2 pt-1">
                   <button
                     type="button"
-                    onClick={deleteRecipe}
-                    disabled={deleting}
-                    className="px-4 py-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 font-semibold rounded-xl text-sm transition"
+                    onClick={startEdit}
+                    className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 text-sm"
                   >
-                    {deleting ? "Deleting…" : "Delete Recipe"}
+                    {recipe ? "Edit Recipe" : "Add Recipe"}
                   </button>
-                )}
-              </div>
+                  {recipe && (
+                    <button
+                      type="button"
+                      onClick={deleteRecipe}
+                      disabled={deleting}
+                      className="px-4 py-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 font-semibold rounded-xl text-sm transition"
+                    >
+                      {deleting ? "Deleting…" : "Delete Recipe"}
+                    </button>
+                  )}
+                </div>
+              )}
             </>
           )}
 

@@ -136,6 +136,12 @@ export const ListMenuItemsResponseItem = zod.object({
     .describe(
       "Whether to also print individual component labels for each combo component.",
     ),
+  sourceItemId: zod
+    .number()
+    .nullish()
+    .describe(
+      "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
+    ),
 });
 export const ListMenuItemsResponse = zod.array(ListMenuItemsResponseItem);
 
@@ -260,6 +266,12 @@ export const GetMenuItemResponse = zod.object({
     .describe(
       "Whether to also print individual component labels for each combo component.",
     ),
+  sourceItemId: zod
+    .number()
+    .nullish()
+    .describe(
+      "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
+    ),
 });
 
 /**
@@ -379,6 +391,12 @@ export const AdminListMenuItemsResponseItem = zod.object({
     .describe(
       "Whether to also print individual component labels for each combo component.",
     ),
+  sourceItemId: zod
+    .number()
+    .nullish()
+    .describe(
+      "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
+    ),
 });
 export const AdminListMenuItemsResponse = zod.array(
   AdminListMenuItemsResponseItem,
@@ -490,6 +508,12 @@ export const UpdateMenuItemBody = zod.object({
     )
     .nullish(),
   comboComponentLabels: zod.boolean().optional(),
+  sourceItemId: zod
+    .number()
+    .nullish()
+    .describe(
+      "When set, this item inherits its recipe from the referenced menu item.",
+    ),
 });
 
 export const updateMenuItemResponseMinimumOrderQtyDefault = 1;
@@ -605,6 +629,12 @@ export const UpdateMenuItemResponse = zod.object({
     .optional()
     .describe(
       "Whether to also print individual component labels for each combo component.",
+    ),
+  sourceItemId: zod
+    .number()
+    .nullish()
+    .describe(
+      "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
     ),
 });
 
@@ -1017,6 +1047,12 @@ export const GetCartResponse = zod.object({
           .describe(
             "Whether to also print individual component labels for each combo component.",
           ),
+        sourceItemId: zod
+          .number()
+          .nullish()
+          .describe(
+            "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
+          ),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -1160,6 +1196,12 @@ export const AddToCartResponse = zod.object({
           .optional()
           .describe(
             "Whether to also print individual component labels for each combo component.",
+          ),
+        sourceItemId: zod
+          .number()
+          .nullish()
+          .describe(
+            "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
           ),
       }),
       quantity: zod.number(),
@@ -1307,6 +1349,12 @@ export const UpdateCartItemResponse = zod.object({
           .describe(
             "Whether to also print individual component labels for each combo component.",
           ),
+        sourceItemId: zod
+          .number()
+          .nullish()
+          .describe(
+            "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
+          ),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -1448,6 +1496,12 @@ export const RemoveFromCartResponse = zod.object({
           .describe(
             "Whether to also print individual component labels for each combo component.",
           ),
+        sourceItemId: zod
+          .number()
+          .nullish()
+          .describe(
+            "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
+          ),
       }),
       quantity: zod.number(),
       sizeSlot: zod.number().nullish(),
@@ -1587,6 +1641,12 @@ export const GetPlanResponse = zod.object({
           .describe(
             "Whether to also print individual component labels for each combo component.",
           ),
+        sourceItemId: zod
+          .number()
+          .nullish()
+          .describe(
+            "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
+          ),
       }),
     }),
   ),
@@ -1721,6 +1781,12 @@ export const AddToPlanResponse = zod.object({
           .optional()
           .describe(
             "Whether to also print individual component labels for each combo component.",
+          ),
+        sourceItemId: zod
+          .number()
+          .nullish()
+          .describe(
+            "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
           ),
       }),
     }),
@@ -1857,6 +1923,12 @@ export const RemoveFromPlanResponse = zod.object({
           .optional()
           .describe(
             "Whether to also print individual component labels for each combo component.",
+          ),
+        sourceItemId: zod
+          .number()
+          .nullish()
+          .describe(
+            "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
           ),
       }),
     }),
@@ -2137,6 +2209,12 @@ export const SuggestMenuItemsResponse = zod.object({
           .optional()
           .describe(
             "Whether to also print individual component labels for each combo component.",
+          ),
+        sourceItemId: zod
+          .number()
+          .nullish()
+          .describe(
+            "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
           ),
       }),
       recommendedQuantity: zod.number(),
@@ -5870,6 +5948,12 @@ export const GetEventTakerMenuResponse = zod
           .describe(
             "Whether to also print individual component labels for each combo component.",
           ),
+        sourceItemId: zod
+          .number()
+          .nullish()
+          .describe(
+            "When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe.",
+          ),
       }),
     ),
     layout: zod
@@ -6164,6 +6248,18 @@ export const GetMenuItemRecipeResponse = zod
         }),
       )
       .nullish(),
+    isInherited: zod
+      .boolean()
+      .describe(
+        "True when this recipe is sourced from another item via sourceItemId (read-only, cannot be edited here).",
+      ),
+    inheritedFrom: zod
+      .object({
+        id: zod.number(),
+        name: zod.string(),
+      })
+      .nullish()
+      .describe("Source item details when isInherited is true."),
   })
   .nullable();
 
@@ -6219,6 +6315,18 @@ export const SaveMenuItemRecipeResponse = zod.object({
       }),
     )
     .nullish(),
+  isInherited: zod
+    .boolean()
+    .describe(
+      "True when this recipe is sourced from another item via sourceItemId (read-only, cannot be edited here).",
+    ),
+  inheritedFrom: zod
+    .object({
+      id: zod.number(),
+      name: zod.string(),
+    })
+    .nullish()
+    .describe("Source item details when isInherited is true."),
 });
 
 /**

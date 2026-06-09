@@ -229,6 +229,9 @@ export default function MenuManager() {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [comboSlots, setComboSlots] = useState<ComboSlot[]>([]);
+  const [sourceItemId, setSourceItemId] = useState<number | null>(null);
+  const [recipeOwners, setRecipeOwners] = useState<{ id: number; name: string }[]>([]);
+  const [loadingRecipeOwners, setLoadingRecipeOwners] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isCsvDialogOpen, setIsCsvDialogOpen] = useState(false);
   const [applyResult, setApplyResult] = useState<{
@@ -426,6 +429,23 @@ export default function MenuManager() {
     }
   };
 
+  async function loadRecipeOwners(excludeItemId?: number) {
+    setLoadingRecipeOwners(true);
+    try {
+      const res = await fetch(`/api/admin/menu/recipe-owners`, {
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      });
+      if (res.ok) {
+        const data: { id: number; name: string }[] = await res.json();
+        setRecipeOwners(excludeItemId ? data.filter(o => o.id !== excludeItemId) : data);
+      }
+    } catch {
+      // non-fatal — picker will just be empty
+    } finally {
+      setLoadingRecipeOwners(false);
+    }
+  }
+
   const openNew = () => {
     setEditingItem(null);
     reset({
@@ -445,6 +465,8 @@ export default function MenuManager() {
       comboComponentLabels: false,
     });
     setComboSlots([]);
+    setSourceItemId(null);
+    setRecipeOwners([]);
     setPreviewUrl("");
     setIsNewCategory(false);
     setIsDialogOpen(true);
@@ -452,6 +474,8 @@ export default function MenuManager() {
 
   const openEdit = (item: any) => {
     setEditingItem(item);
+    setSourceItemId(item.sourceItemId ?? null);
+    loadRecipeOwners(item.id);
     reset({
       ...item,
       allergens: item.allergens.join(", "),
@@ -509,6 +533,7 @@ export default function MenuManager() {
       isCombo: !!data.isCombo,
       comboSlots: data.isCombo && comboSlots.length > 0 ? comboSlots : null,
       comboComponentLabels: !!data.comboComponentLabels,
+      sourceItemId: sourceItemId ?? null,
     };
     if (editingItem) {
       updateMut.mutate({ id: editingItem.id, data: payload });
@@ -1037,6 +1062,34 @@ export default function MenuManager() {
                     className="w-full px-4 py-2 border rounded-xl resize-none text-sm"
                   />
                 </div>
+
+                {editingItem && (
+                  <div className="space-y-1.5 p-4 bg-indigo-50/60 dark:bg-indigo-950/20 rounded-xl border border-indigo-200 dark:border-indigo-800/40">
+                    <label className="block text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+                      Recipe Source <span className="font-normal text-indigo-600 dark:text-indigo-400 text-xs">(optional — inherit recipe from another item)</span>
+                    </label>
+                    <p className="text-xs text-indigo-700/70 dark:text-indigo-300/70">
+                      When set, the Recipe & Cost section will display the source item's recipe read-only. Clear this field to write a custom recipe for this item.
+                    </p>
+                    <select
+                      value={sourceItemId ?? ""}
+                      onChange={e => setSourceItemId(e.target.value ? parseInt(e.target.value) : null)}
+                      disabled={loadingRecipeOwners}
+                      className="w-full px-3 py-2 border border-indigo-200 dark:border-indigo-700 rounded-lg text-sm bg-background disabled:opacity-60"
+                    >
+                      <option value="">— No source (use own recipe) —</option>
+                      {recipeOwners.map(o => (
+                        <option key={o.id} value={o.id}>{o.name}</option>
+                      ))}
+                    </select>
+                    {loadingRecipeOwners && (
+                      <p className="text-xs text-indigo-500">Loading items with recipes…</p>
+                    )}
+                    {!loadingRecipeOwners && recipeOwners.length === 0 && (
+                      <p className="text-xs text-indigo-500/70">No other items have recipes yet.</p>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-3 p-4 bg-secondary/40 rounded-xl border border-border/50">
                   <label className="block text-sm font-semibold">Visibility</label>

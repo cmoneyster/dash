@@ -125,6 +125,7 @@ export * from "./printJobStatus";
 export * from "./printTemplate";
 export * from "./printTemplateLogoPosition";
 export * from "./recipeDetail";
+export * from "./recipeDetailInheritedFrom";
 export * from "./recipeLine";
 export * from "./recommendedItem";
 export * from "./recommendedItemSource";

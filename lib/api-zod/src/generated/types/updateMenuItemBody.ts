@@ -36,4 +36,6 @@ export interface UpdateMenuItemBody {
   isCombo?: boolean;
   comboSlots?: ComboSlot[] | null;
   comboComponentLabels?: boolean;
+  /** When set, this item inherits its recipe from the referenced menu item. */
+  sourceItemId?: number | null;
 }

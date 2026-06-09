@@ -378,6 +378,8 @@ export interface MenuItem {
   comboSlots?: ComboSlot[] | null;
   /** Whether to also print individual component labels for each combo component. */
   comboComponentLabels?: boolean;
+  /** When set, this item inherits its recipe from the referenced menu item (one level only). Cleared automatically when the item saves its own recipe. */
+  sourceItemId?: number | null;
 }
 
 /**
@@ -465,6 +467,8 @@ export interface UpdateMenuItemBody {
   isCombo?: boolean;
   comboSlots?: ComboSlot[] | null;
   comboComponentLabels?: boolean;
+  /** When set, this item inherits its recipe from the referenced menu item. */
+  sourceItemId?: number | null;
 }
 
 export type RecommendedItemSource =
@@ -1339,6 +1343,14 @@ export interface PanSizeCost {
   costPerPan: number;
 }
 
+/**
+ * Source item details when isInherited is true.
+ */
+export type RecipeDetailInheritedFrom = {
+  id: number;
+  name: string;
+} | null;
+
 export interface RecipeDetail {
   id: number;
   menuItemId: number;
@@ -1349,6 +1361,10 @@ export interface RecipeDetail {
   costPerUnit?: number | null;
   missingCosts?: number;
   panSizeCosts?: PanSizeCost[] | null;
+  /** True when this recipe is sourced from another item via sourceItemId (read-only, cannot be edited here). */
+  isInherited: boolean;
+  /** Source item details when isInherited is true. */
+  inheritedFrom?: RecipeDetailInheritedFrom;
 }
 
 export type SaveRecipeInputLinesItem = {

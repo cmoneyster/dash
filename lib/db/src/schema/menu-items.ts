@@ -1,4 +1,4 @@
-import { pgTable, serial, text, numeric, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, numeric, integer, boolean, timestamp, jsonb, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -96,6 +96,14 @@ export const menuItemsTable = pgTable("menu_items", {
   isCombo: boolean("is_combo").notNull().default(false),
   comboSlots: jsonb("combo_slots").$type<ComboSlot[]>(),
   comboComponentLabels: boolean("combo_component_labels").notNull().default(false),
+  // ── Recipe source link ────────────────────────────────────────────────────
+  // When set, this item has no recipe of its own — it inherits the recipe
+  // from the referenced item (one level only, no chaining). Useful for
+  // event-specific variants (different name/price/stock) that share the
+  // exact same ingredients as a catering menu item.
+  // If an item later gets its own recipe rows, sourceItemId should be cleared
+  // so the own recipe takes precedence unambiguously.
+  sourceItemId: integer("source_item_id").references((): AnyPgColumn => menuItemsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { PanSizeCost } from "./panSizeCost";
+import type { RecipeDetailInheritedFrom } from "./recipeDetailInheritedFrom";
 import type { RecipeLine } from "./recipeLine";
 
 export interface RecipeDetail {
@@ -18,4 +19,8 @@ export interface RecipeDetail {
   costPerUnit?: number | null;
   missingCosts?: number;
   panSizeCosts?: PanSizeCost[] | null;
+  /** True when this recipe is sourced from another item via sourceItemId (read-only, cannot be edited here). */
+  isInherited: boolean;
+  /** Source item details when isInherited is true. */
+  inheritedFrom?: RecipeDetailInheritedFrom;
 }
