@@ -811,19 +811,56 @@ router.get("/admin/costs/summary", async (req, res) => {
       return { cogs: round2(cogs), itemsWithRecipe: withRecipe, itemsWithoutRecipe: withoutRecipe };
     }
 
-    type ItemBreakdownEntry = { name: string; quantity: number; cogs: number; revenue: number };
+    type ItemBreakdownComponent = { name: string; quantity: number; cogs: number };
+    type ItemBreakdownEntry = { name: string; quantity: number; cogs: number; revenue: number; components?: Map<string, ItemBreakdownComponent> };
     const itemBreakdown = new Map<string, ItemBreakdownEntry>();
 
     // Per-item COGS breakdown helper
     async function processItemsForBreakdown(
-      items: Array<{ itemId?: number; name: string; quantity: number; unitPrice?: number; price?: number; lineTotal?: number }>,
+      items: Array<{ itemId?: number; name: string; quantity: number; unitPrice?: number; price?: number; lineTotal?: number; comboSelections?: Array<{ menuItemId: number; name: string; quantity: number }> }>,
       atDate: Date,
       fallbackKeys?: Set<string>,
     ) {
       for (const item of items) {
         const key = item.itemId ? `${item.itemId}::${item.name}` : `0::${item.name}`;
+        const entry = itemBreakdown.get(key) ?? { name: item.name, quantity: 0, cogs: 0, revenue: 0 };
         let costContrib = 0;
-        if (item.itemId) {
+
+        if (item.comboSelections && item.comboSelections.length > 0) {
+          // Combo item: COGS is the sum of component costs; accumulate each component separately
+          for (const sel of item.comboSelections) {
+            const compRecipe = recipeByMenuItemId.get(sel.menuItemId);
+            if (!compRecipe) continue;
+            const lines = linesByRecipeId.get(compRecipe.id) ?? [];
+            let compCost = 0;
+            let hasAll = true;
+            for (const l of lines) {
+              const cost = await costAtDate(l.ingredientId, atDate, costCache, fallbackKeys);
+              if (cost == null) { hasAll = false; break; }
+              const iu = ingredientUnitMap.get(l.ingredientId) ?? "";
+              const ru = l.recipeUnit ?? iu;
+              const factor = conversionFactor(ru, iu);
+              if (factor === null) {
+                if (isIncompatibleConversion(ru, iu)) { hasAll = false; break; }
+                compCost += parseFloat(l.quantityPerYield) * cost; // legacy 1:1
+              } else {
+                compCost += parseFloat(l.quantityPerYield) * factor * cost;
+              }
+            }
+            if (hasAll) {
+              const servingSize = menuItemMap.get(sel.menuItemId)?.servingSize ?? 1;
+              const compCogs = round2((compCost / compRecipe.yieldServings) * servingSize * sel.quantity * item.quantity);
+              costContrib = round2(costContrib + compCogs);
+
+              if (!entry.components) entry.components = new Map();
+              const compKey = `${sel.menuItemId}::${sel.name}`;
+              const compEntry = entry.components.get(compKey) ?? { name: sel.name, quantity: 0, cogs: 0 };
+              compEntry.quantity += sel.quantity * item.quantity;
+              compEntry.cogs = round2(compEntry.cogs + compCogs);
+              entry.components.set(compKey, compEntry);
+            }
+          }
+        } else if (item.itemId) {
           const recipe = recipeByMenuItemId.get(item.itemId);
           if (recipe) {
             const lines = linesByRecipeId.get(recipe.id) ?? [];
@@ -848,9 +885,9 @@ router.get("/admin/costs/summary", async (req, res) => {
             }
           }
         }
+
         const unitPrice = item.unitPrice != null ? Number(item.unitPrice) : Number(item.price ?? 0);
         const lineRevenue = item.lineTotal != null ? Number(item.lineTotal) : round2(unitPrice * item.quantity);
-        const entry = itemBreakdown.get(key) ?? { name: item.name, quantity: 0, cogs: 0, revenue: 0 };
         entry.quantity += item.quantity;
         entry.cogs = round2(entry.cogs + costContrib);
         entry.revenue = round2(entry.revenue + lineRevenue);
@@ -887,7 +924,7 @@ router.get("/admin/costs/summary", async (req, res) => {
         const orderRevenue = o.total != null ? parseFloat(o.total) : 0;
         totalRevenue = round2(totalRevenue + orderRevenue);
 
-        const items = (o.items ?? []) as Array<{ itemId?: number; name: string; quantity: number; price?: number; unitPrice?: number; lineTotal?: number }>;
+        const items = (o.items ?? []) as Array<{ itemId?: number; name: string; quantity: number; price?: number; unitPrice?: number; lineTotal?: number; comboSelections?: Array<{ menuItemId: number; name: string; quantity: number }> }>;
         const r = await computeOrderCogs(items, o.createdAt, fallbackKeys);
         totalCogs = round2(totalCogs + r.cogs);
         itemsWithRecipe += r.itemsWithRecipe;
@@ -1009,8 +1046,14 @@ router.get("/admin/costs/summary", async (req, res) => {
       itemBreakdown: Array.from(itemBreakdown.values())
         .sort((a, b) => b.cogs - a.cogs)
         .map(e => ({
-          ...e,
+          name: e.name,
+          quantity: e.quantity,
+          cogs: e.cogs,
+          revenue: e.revenue,
           margin: e.revenue > 0 ? round2(((e.revenue - e.cogs) / e.revenue) * 100) : null,
+          ...(e.components && e.components.size > 0
+            ? { components: Array.from(e.components.values()).sort((a, b) => b.quantity - a.quantity) }
+            : {}),
         })),
       laborBreakdown: sessionLaborTotals,
     });

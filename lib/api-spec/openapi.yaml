@@ -4213,6 +4213,17 @@ components:
           type: string
           nullable: true
 
+    CostSummaryItemBreakdownComponent:
+      type: object
+      required: [name, quantity, cogs]
+      properties:
+        name:
+          type: string
+        quantity:
+          type: integer
+        cogs:
+          type: number
+
     CostSummaryItemBreakdown:
       type: object
       required: [name, quantity, cogs, revenue]
@@ -4228,6 +4239,11 @@ components:
         margin:
           type: number
           nullable: true
+        components:
+          type: array
+          description: Present when the item is a combo — lists each selected component with its quantity and COGS contribution.
+          items:
+            $ref: "#/components/schemas/CostSummaryItemBreakdownComponent"
 
     CostSummaryLaborBreakdown:
       type: object

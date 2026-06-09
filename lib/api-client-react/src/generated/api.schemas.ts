@@ -1438,12 +1438,20 @@ export interface UpdateLaborInput {
   notes?: string | null;
 }
 
+export interface CostSummaryItemBreakdownComponent {
+  name: string;
+  quantity: number;
+  cogs: number;
+}
+
 export interface CostSummaryItemBreakdown {
   name: string;
   quantity: number;
   cogs: number;
   revenue: number;
   margin?: number | null;
+  /** Present when the item is a combo — lists each selected component with its quantity and COGS contribution. */
+  components?: CostSummaryItemBreakdownComponent[];
 }
 
 export interface CostSummaryLaborBreakdown {

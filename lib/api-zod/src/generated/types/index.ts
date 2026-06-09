@@ -36,6 +36,7 @@ export * from "./completePrintAgentJob200";
 export * from "./completePrintAgentJobBody";
 export * from "./costSummary";
 export * from "./costSummaryItemBreakdown";
+export * from "./costSummaryItemBreakdownComponent";
 export * from "./costSummaryLaborBreakdown";
 export * from "./createBlackoutDateBody";
 export * from "./createBlackoutTimeWindowBody";

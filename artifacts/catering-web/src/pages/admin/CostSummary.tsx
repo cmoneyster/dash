@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
   Loader2, TrendingDown, DollarSign, Users, TrendingUp,
   BarChart3, AlertCircle, Briefcase, FlaskConical, Link,
+  ChevronDown, ChevronRight,
 } from "lucide-react";
 import { Link as WouterLink } from "wouter";
 
@@ -45,7 +46,8 @@ function presetRange(p: Preset): { from: string; to: string } | null {
   return null;
 }
 
-type ItemBreakdown = { name: string; quantity: number; cogs: number; revenue: number; margin: number | null };
+type ItemBreakdownComponent = { name: string; quantity: number; cogs: number };
+type ItemBreakdown = { name: string; quantity: number; cogs: number; revenue: number; margin: number | null; components?: ItemBreakdownComponent[] };
 type LaborBreakdown = { referenceType: string; referenceId: number; name: string; laborCost: number };
 type Summary = {
   from: string;
@@ -92,6 +94,8 @@ export default function CostSummary() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [itemView, setItemView] = useState<"combos" | "components">("combos");
+  const [expandedCombos, setExpandedCombos] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,6 +119,33 @@ export default function CostSummary() {
     const r = presetRange(p);
     if (r) { setFrom(r.from); setTo(r.to); }
   }
+
+  // Flattened view: dissolve combos into their components and merge COGS + quantities
+  const flattenedItems = useMemo(() => {
+    const acc = new Map<string, { name: string; quantity: number; cogs: number }>();
+    for (const item of (summary?.itemBreakdown ?? [])) {
+      if (item.components && item.components.length > 0) {
+        for (const comp of item.components) {
+          const existing = acc.get(comp.name);
+          if (existing) {
+            existing.quantity += comp.quantity;
+            existing.cogs = parseFloat((existing.cogs + comp.cogs).toFixed(2));
+          } else {
+            acc.set(comp.name, { name: comp.name, quantity: comp.quantity, cogs: comp.cogs });
+          }
+        }
+      } else {
+        const existing = acc.get(item.name);
+        if (existing) {
+          existing.quantity += item.quantity;
+          existing.cogs = parseFloat((existing.cogs + item.cogs).toFixed(2));
+        } else {
+          acc.set(item.name, { name: item.name, quantity: item.quantity, cogs: item.cogs });
+        }
+      }
+    }
+    return Array.from(acc.values()).sort((a, b) => b.cogs - a.cogs || b.quantity - a.quantity);
+  }, [summary]);
 
   return (
     <AdminLayout>
@@ -213,35 +244,114 @@ export default function CostSummary() {
           {/* Item breakdown */}
           {summary.itemBreakdown.length > 0 && (
             <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden mb-6">
-              <div className="px-5 py-4 border-b border-border bg-secondary/30">
-                <h2 className="font-display font-bold text-lg">By Item</h2>
-                <p className="text-xs text-muted-foreground">COGS, revenue, and margin per item type. Items without recipes show $0.00 COGS.</p>
+              <div className="px-5 py-4 border-b border-border bg-secondary/30 flex flex-wrap items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <h2 className="font-display font-bold text-lg">By Item</h2>
+                  <p className="text-xs text-muted-foreground">COGS, revenue, and margin per item type. Items without recipes show $0.00 COGS.</p>
+                </div>
+                {summary.itemBreakdown.some(i => i.components && i.components.length > 0) && (
+                  <div className="flex items-center gap-1 rounded-lg bg-secondary p-1 text-xs font-semibold shrink-0">
+                    <button
+                      onClick={() => setItemView("combos")}
+                      className={`px-3 py-1.5 rounded-md transition-colors ${itemView === "combos" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      By combo
+                    </button>
+                    <button
+                      onClick={() => setItemView("components")}
+                      className={`px-3 py-1.5 rounded-md transition-colors ${itemView === "components" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      By component
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-secondary/20">
-                      <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Item</th>
-                      <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Qty</th>
-                      <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Revenue</th>
-                      <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">COGS</th>
-                      <th className="text-right px-5 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Margin</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {summary.itemBreakdown.map((item, i) => (
-                      <tr key={i} className="hover:bg-secondary/20 transition-colors">
-                        <td className="px-5 py-3 font-medium">{item.name}</td>
-                        <td className="px-4 py-3 text-right text-muted-foreground">{item.quantity}</td>
-                        <td className="px-4 py-3 text-right font-mono">{fmt(item.revenue)}</td>
-                        <td className="px-4 py-3 text-right font-mono text-amber-600 dark:text-amber-400">
-                          {item.cogs > 0 ? fmt(item.cogs) : <span className="text-muted-foreground italic text-xs">no recipe</span>}
-                        </td>
-                        <td className="px-5 py-3 text-right"><MarginBadge margin={item.cogs > 0 ? item.margin : null} /></td>
+                {itemView === "components" ? (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-secondary/20">
+                        <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Item</th>
+                        <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Qty</th>
+                        <th className="text-right px-5 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">COGS</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {flattenedItems.map((item, i) => (
+                        <tr key={i} className="hover:bg-secondary/20 transition-colors">
+                          <td className="px-5 py-3 font-medium">{item.name}</td>
+                          <td className="px-4 py-3 text-right text-muted-foreground">{item.quantity}</td>
+                          <td className="px-5 py-3 text-right font-mono text-amber-600 dark:text-amber-400">
+                            {item.cogs > 0 ? fmt(item.cogs) : <span className="text-muted-foreground italic text-xs">no recipe</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-secondary/20">
+                        <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Item</th>
+                        <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Qty</th>
+                        <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Revenue</th>
+                        <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">COGS</th>
+                        <th className="text-right px-5 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {summary.itemBreakdown.map((item, i) => {
+                        const hasComponents = item.components && item.components.length > 0;
+                        const isExpanded = expandedCombos.has(item.name);
+                        return (
+                          <Fragment key={i}>
+                            <tr
+                              className={`hover:bg-secondary/20 transition-colors ${hasComponents ? "cursor-pointer" : ""}`}
+                              onClick={hasComponents ? () => setExpandedCombos(prev => {
+                                const next = new Set(prev);
+                                if (next.has(item.name)) next.delete(item.name); else next.add(item.name);
+                                return next;
+                              }) : undefined}
+                            >
+                              <td className="px-5 py-3 font-medium flex items-center gap-1.5">
+                                {hasComponents ? (
+                                  isExpanded
+                                    ? <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                                    : <ChevronRight className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                                ) : (
+                                  <span className="w-3.5 shrink-0" />
+                                )}
+                                {item.name}
+                              </td>
+                              <td className="px-4 py-3 text-right text-muted-foreground">{item.quantity}</td>
+                              <td className="px-4 py-3 text-right font-mono">{fmt(item.revenue)}</td>
+                              <td className="px-4 py-3 text-right font-mono text-amber-600 dark:text-amber-400">
+                                {item.cogs > 0 ? fmt(item.cogs) : <span className="text-muted-foreground italic text-xs">no recipe</span>}
+                              </td>
+                              <td className="px-5 py-3 text-right"><MarginBadge margin={item.cogs > 0 ? item.margin : null} /></td>
+                            </tr>
+                            {hasComponents && isExpanded && item.components!.map((comp, ci) => (
+                              <tr key={ci} className="bg-secondary/10 border-b border-border/40 last:border-0">
+                                <td className="py-2 text-muted-foreground">
+                                  <span className="pl-10 pr-5 flex items-center gap-1.5">
+                                    <span className="w-1 h-1 rounded-full bg-muted-foreground/50 shrink-0" />
+                                    {comp.name}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 text-right text-muted-foreground text-xs">{comp.quantity}</td>
+                                <td className="px-4 py-2 text-right text-muted-foreground text-xs">—</td>
+                                <td className="px-4 py-2 text-right font-mono text-xs text-amber-500 dark:text-amber-400/80">
+                                  {comp.cogs > 0 ? fmt(comp.cogs) : <span className="text-muted-foreground italic">no recipe</span>}
+                                </td>
+                                <td className="px-5 py-2 text-right text-muted-foreground text-xs">—</td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           )}

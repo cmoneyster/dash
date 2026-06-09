@@ -5,6 +5,7 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { CostSummaryItemBreakdownComponent } from "./costSummaryItemBreakdownComponent";
 
 export interface CostSummaryItemBreakdown {
   name: string;
@@ -12,4 +13,6 @@ export interface CostSummaryItemBreakdown {
   cogs: number;
   revenue: number;
   margin?: number | null;
+  /** Present when the item is a combo — lists each selected component with its quantity and COGS contribution. */
+  components?: CostSummaryItemBreakdownComponent[];
 }

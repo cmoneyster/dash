@@ -6438,6 +6438,18 @@ export const GetCostSummaryResponse = zod.object({
       cogs: zod.number(),
       revenue: zod.number(),
       margin: zod.number().nullish(),
+      components: zod
+        .array(
+          zod.object({
+            name: zod.string(),
+            quantity: zod.number(),
+            cogs: zod.number(),
+          }),
+        )
+        .optional()
+        .describe(
+          "Present when the item is a combo — lists each selected component with its quantity and COGS contribution.",
+        ),
     }),
   ),
   laborBreakdown: zod.array(
