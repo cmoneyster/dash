@@ -5,9 +5,9 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { UnitDef } from "./unitDef";
 
-export type SaveRecipeInputLinesItem = {
-  ingredientId: number;
-  quantityPerYield: number;
-  recipeUnit?: string | null;
-};
+export interface UnitGroup {
+  family: string;
+  units: UnitDef[];
+}

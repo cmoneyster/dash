@@ -30,6 +30,7 @@ export const recipeLinesTable = pgTable("recipe_lines", {
   recipeId: integer("recipe_id").notNull().references(() => recipesTable.id, { onDelete: "cascade" }),
   ingredientId: integer("ingredient_id").notNull().references(() => ingredientsTable.id),
   quantityPerYield: numeric("quantity_per_yield", { precision: 12, scale: 4 }).notNull(),
+  recipeUnit: text("recipe_unit"),
 });
 
 export const eventLaborTable = pgTable("event_labor", {

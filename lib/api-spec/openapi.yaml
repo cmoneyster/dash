@@ -1503,6 +1503,23 @@ paths:
 
   # ── Cost Tracking ─────────────────────────────────────────────────────────
 
+  /admin/costs/units:
+    get:
+      operationId: listCostUnits
+      tags: [admin]
+      summary: List canonical units grouped by measurement family
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Grouped unit list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UnitGroup"
+
   /admin/costs/ingredients:
     get:
       operationId: listIngredients
@@ -4001,6 +4018,9 @@ components:
           type: string
         quantityPerYield:
           type: number
+        recipeUnit:
+          type: string
+          nullable: true
 
     PanSizeCost:
       type: object
@@ -4063,6 +4083,34 @@ components:
                 type: integer
               quantityPerYield:
                 type: number
+              recipeUnit:
+                type: string
+                nullable: true
+
+    UnitDef:
+      type: object
+      required: [symbol, label, family, toBase]
+      properties:
+        symbol:
+          type: string
+        label:
+          type: string
+        family:
+          type: string
+          enum: [weight, volume, count]
+        toBase:
+          type: number
+
+    UnitGroup:
+      type: object
+      required: [family, units]
+      properties:
+        family:
+          type: string
+        units:
+          type: array
+          items:
+            $ref: "#/components/schemas/UnitDef"
 
     LaborEntry:
       type: object

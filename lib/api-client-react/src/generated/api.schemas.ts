@@ -1327,6 +1327,7 @@ export interface RecipeLine {
   ingredientName: string;
   ingredientUnit: string;
   quantityPerYield: number;
+  recipeUnit?: string | null;
 }
 
 export interface PanSizeCost {
@@ -1350,12 +1351,33 @@ export interface RecipeDetail {
 export type SaveRecipeInputLinesItem = {
   ingredientId: number;
   quantityPerYield: number;
+  recipeUnit?: string | null;
 };
 
 export interface SaveRecipeInput {
   yieldServings?: number;
   notes?: string | null;
   lines: SaveRecipeInputLinesItem[];
+}
+
+export type UnitDefFamily = (typeof UnitDefFamily)[keyof typeof UnitDefFamily];
+
+export const UnitDefFamily = {
+  weight: "weight",
+  volume: "volume",
+  count: "count",
+} as const;
+
+export interface UnitDef {
+  symbol: string;
+  label: string;
+  family: UnitDefFamily;
+  toBase: number;
+}
+
+export interface UnitGroup {
+  family: string;
+  units: UnitDef[];
 }
 
 export interface LaborEntry {

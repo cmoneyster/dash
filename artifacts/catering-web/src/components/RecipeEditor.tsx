@@ -11,8 +11,49 @@ function authHeaders() {
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 }
 
+// Canonical unit groups — kept in sync with server-side units.ts
+const UNIT_GROUPS = [
+  { label: "Weight", units: ["g", "oz", "lb", "kg"] },
+  { label: "Volume", units: ["ml", "tsp", "tbsp", "fl_oz", "cup", "pint", "quart", "gallon", "l"] },
+  { label: "Count",  units: ["each", "dozen"] },
+] as const;
+
+const UNIT_FAMILY: Record<string, string> = {
+  g: "weight", oz: "weight", lb: "weight", kg: "weight",
+  ml: "volume", tsp: "volume", tbsp: "volume", fl_oz: "volume",
+  cup: "volume", pint: "volume", quart: "volume", gallon: "volume", l: "volume",
+  each: "count", dozen: "count",
+};
+
+const UNIT_TO_BASE: Record<string, number> = {
+  g: 1, oz: 28.3495, lb: 453.592, kg: 1000,
+  ml: 1, tsp: 4.92892, tbsp: 14.7868, fl_oz: 29.5735,
+  cup: 236.588, pint: 473.176, quart: 946.353, gallon: 3785.41, l: 1000,
+  each: 1, dozen: 12,
+};
+
+function conversionFactor(recipeUnit: string, ingredientUnit: string): number | null {
+  if (recipeUnit === ingredientUnit) return 1;
+  const rf = UNIT_FAMILY[recipeUnit];
+  const intf = UNIT_FAMILY[ingredientUnit];
+  if (!rf || !intf || rf !== intf) return null;
+  return UNIT_TO_BASE[recipeUnit] / UNIT_TO_BASE[ingredientUnit];
+}
+
+function compatibleUnits(ingredientUnit: string): readonly string[] {
+  const family = UNIT_FAMILY[ingredientUnit];
+  if (!family) return [ingredientUnit];
+  return UNIT_GROUPS.find(g => g.label.toLowerCase() === family)?.units ?? [ingredientUnit];
+}
+
 type Ingredient = { id: number; name: string; unit: string; currentCost: number | null };
-type RecipeLine = { ingredientId: number; ingredientName: string; ingredientUnit: string; quantityPerYield: number };
+type RecipeLine = {
+  ingredientId: number;
+  ingredientName: string;
+  ingredientUnit: string;
+  quantityPerYield: number;
+  recipeUnit: string | null;
+};
 type RecipeDetail = {
   id: number;
   menuItemId: number;
@@ -31,6 +72,7 @@ type DraftLine = {
   ingredientName: string;
   ingredientUnit: string;
   quantityPerYield: string;
+  recipeUnit: string;
 };
 
 let _keyCounter = 0;
@@ -86,11 +128,12 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
         ingredientName: l.ingredientName,
         ingredientUnit: l.ingredientUnit,
         quantityPerYield: String(l.quantityPerYield),
+        recipeUnit: l.recipeUnit ?? l.ingredientUnit,
       })));
       setDraftYield(String(recipe.yieldServings));
       setDraftNotes(recipe.notes ?? "");
     } else {
-      setDraftLines([{ _key: newKey(), ingredientId: 0, ingredientName: "", ingredientUnit: "", quantityPerYield: "" }]);
+      setDraftLines([{ _key: newKey(), ingredientId: 0, ingredientName: "", ingredientUnit: "", quantityPerYield: "", recipeUnit: "" }]);
       setDraftYield("1");
       setDraftNotes("");
     }
@@ -104,7 +147,7 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
   }
 
   function addLine() {
-    setDraftLines(prev => [...prev, { _key: newKey(), ingredientId: 0, ingredientName: "", ingredientUnit: "", quantityPerYield: "" }]);
+    setDraftLines(prev => [...prev, { _key: newKey(), ingredientId: 0, ingredientName: "", ingredientUnit: "", quantityPerYield: "", recipeUnit: "" }]);
   }
 
   function removeLine(key: string) {
@@ -118,11 +161,16 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
       ingredientId,
       ingredientName: ing?.name ?? "",
       ingredientUnit: ing?.unit ?? "",
+      recipeUnit: ing?.unit ?? "",
     } : l));
   }
 
   function updateQty(key: string, val: string) {
     setDraftLines(prev => prev.map(l => l._key === key ? { ...l, quantityPerYield: val } : l));
+  }
+
+  function updateRecipeUnit(key: string, unit: string) {
+    setDraftLines(prev => prev.map(l => l._key === key ? { ...l, recipeUnit: unit } : l));
   }
 
   async function saveRecipe() {
@@ -136,7 +184,11 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
       const body = {
         yieldServings: yieldSrv,
         notes: draftNotes.trim() || null,
-        lines: lines.map(l => ({ ingredientId: l.ingredientId, quantityPerYield: parseFloat(l.quantityPerYield) })),
+        lines: lines.map(l => ({
+          ingredientId: l.ingredientId,
+          quantityPerYield: parseFloat(l.quantityPerYield),
+          recipeUnit: l.recipeUnit && l.recipeUnit !== l.ingredientUnit ? l.recipeUnit : null,
+        })),
       };
       const res = await fetch(`${BASE}/api/admin/menu/${menuItemId}/recipe`, {
         method: "PUT",
@@ -216,7 +268,6 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
                     </div>
                   )}
 
-                  {/* Cost Summary */}
                   <div className="grid grid-cols-2 gap-2">
                     {recipe.costPerServing != null && (
                       <div className="bg-card border border-border rounded-xl p-3 text-center">
@@ -240,7 +291,6 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
                     </div>
                   </div>
 
-                  {/* Pan size costs */}
                   {recipe.panSizeCosts && recipe.panSizeCosts.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Cost by Pan Size</p>
@@ -256,7 +306,6 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
                     </div>
                   )}
 
-                  {/* Ingredient lines */}
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Ingredients</p>
                     <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -271,14 +320,26 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
                         <tbody className="divide-y divide-border">
                           {recipe.lines.map((line, i) => {
                             const ing = ingredients.find(x => x.id === line.ingredientId);
-                            const lineCost = ing?.currentCost != null ? ing.currentCost * line.quantityPerYield : null;
+                            const ru = line.recipeUnit ?? line.ingredientUnit;
+                            const factor = conversionFactor(ru, line.ingredientUnit) ?? 1;
+                            const lineCost = ing?.currentCost != null
+                              ? ing.currentCost * line.quantityPerYield * factor
+                              : null;
+                            const showConversion = line.recipeUnit && line.recipeUnit !== line.ingredientUnit;
                             return (
                               <tr key={i}>
                                 <td className="px-4 py-2.5">
                                   {line.ingredientName}
                                   <span className="text-xs text-muted-foreground ml-1">({line.ingredientUnit})</span>
                                 </td>
-                                <td className="px-4 py-2.5 text-right tabular-nums">{line.quantityPerYield}</td>
+                                <td className="px-4 py-2.5 text-right tabular-nums">
+                                  {line.quantityPerYield} {ru !== line.ingredientUnit ? ru : line.ingredientUnit}
+                                  {showConversion && (
+                                    <span className="text-[10px] text-indigo-500 dark:text-indigo-400 ml-1">
+                                      = {(line.quantityPerYield * factor).toFixed(4)} {line.ingredientUnit}
+                                    </span>
+                                  )}
+                                </td>
                                 <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground text-xs">
                                   {lineCost != null ? `$${lineCost.toFixed(4)}` : "—"}
                                 </td>
@@ -354,35 +415,67 @@ export function RecipeEditor({ menuItemId, menuItemName }: { menuItemId: number;
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Ingredient Lines</p>
                 <div className="space-y-2">
-                  {draftLines.map(line => (
-                    <div key={line._key} className="flex items-center gap-2">
-                      <select
-                        value={line.ingredientId || ""}
-                        onChange={e => updateLine(line._key, parseInt(e.target.value) || 0)}
-                        className="flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-background"
-                      >
-                        <option value="">Select ingredient…</option>
-                        {ingredients.map(ing => (
-                          <option key={ing.id} value={ing.id}>
-                            {ing.name} ({ing.unit}){ing.currentCost != null ? ` — $${ing.currentCost.toFixed(4)}/${ing.unit}` : " — no cost"}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.001"
-                        value={line.quantityPerYield}
-                        onChange={e => updateQty(line._key, e.target.value)}
-                        placeholder="Qty"
-                        className="w-24 px-3 py-2 border border-border rounded-lg text-sm bg-background text-right"
-                      />
-                      {line.ingredientUnit && <span className="text-xs text-muted-foreground w-10 shrink-0">{line.ingredientUnit}</span>}
-                      <button type="button" onClick={() => removeLine(line._key)} className="p-2 text-muted-foreground hover:text-destructive">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                  {draftLines.map(line => {
+                    const compatUnits = line.ingredientUnit ? compatibleUnits(line.ingredientUnit) : [];
+                    const factor = line.recipeUnit && line.ingredientUnit
+                      ? conversionFactor(line.recipeUnit, line.ingredientUnit)
+                      : null;
+                    const showHint = factor != null && factor !== 1 && line.quantityPerYield;
+                    const convertedQty = showHint
+                      ? parseFloat(line.quantityPerYield) * factor!
+                      : null;
+                    return (
+                      <div key={line._key} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={line.ingredientId || ""}
+                            onChange={e => updateLine(line._key, parseInt(e.target.value) || 0)}
+                            className="flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-background"
+                          >
+                            <option value="">Select ingredient…</option>
+                            {ingredients.map(ing => (
+                              <option key={ing.id} value={ing.id}>
+                                {ing.name} ({ing.unit}){ing.currentCost != null ? ` — $${ing.currentCost.toFixed(4)}/${ing.unit}` : " — no cost"}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            value={line.quantityPerYield}
+                            onChange={e => updateQty(line._key, e.target.value)}
+                            placeholder="Qty"
+                            className="w-24 px-3 py-2 border border-border rounded-lg text-sm bg-background text-right"
+                          />
+                          {line.ingredientUnit && compatUnits.length > 1 ? (
+                            <select
+                              value={line.recipeUnit || line.ingredientUnit}
+                              onChange={e => updateRecipeUnit(line._key, e.target.value)}
+                              className="w-24 px-2 py-2 border border-border rounded-lg text-sm bg-background"
+                              title="Unit used in recipe"
+                            >
+                              {compatUnits.map(u => (
+                                <option key={u} value={u}>{u}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            line.ingredientUnit && (
+                              <span className="text-xs text-muted-foreground w-10 shrink-0">{line.ingredientUnit}</span>
+                            )
+                          )}
+                          <button type="button" onClick={() => removeLine(line._key)} className="p-2 text-muted-foreground hover:text-destructive">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {showHint && convertedQty != null && (
+                          <p className="text-[11px] text-indigo-500 dark:text-indigo-400 pl-1">
+                            {line.quantityPerYield} {line.recipeUnit} = {convertedQty.toFixed(4)} {line.ingredientUnit}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 <button
                   type="button"

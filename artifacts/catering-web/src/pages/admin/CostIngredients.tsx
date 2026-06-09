@@ -3,7 +3,7 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
   Plus, Trash2, Edit2, X, Check, ChevronDown, ChevronRight, Loader2,
-  FlaskConical, History, DollarSign,
+  FlaskConical, History, DollarSign, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,15 +14,22 @@ function authHeaders() {
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 }
 
-function fmt(n: number | null | undefined) {
-  if (n == null) return "—";
-  return `$${n.toFixed(4)}`;
-}
-
 function fmtDate(s: string) {
   try {
     return new Date(s).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
   } catch { return s; }
+}
+
+const UNIT_GROUPS = [
+  { label: "Weight", units: ["g", "oz", "lb", "kg"] },
+  { label: "Volume", units: ["ml", "tsp", "tbsp", "fl_oz", "cup", "pint", "quart", "gallon", "l"] },
+  { label: "Count",  units: ["each", "dozen"] },
+] as const;
+
+const CANONICAL_UNITS = new Set(UNIT_GROUPS.flatMap(g => g.units as readonly string[]));
+
+function isCanonical(unit: string) {
+  return CANONICAL_UNITS.has(unit);
 }
 
 type CostEntry = { id: number; costPerUnit: number; effectiveAt: string };
@@ -42,7 +49,6 @@ export default function CostIngredients() {
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
-  // Add/edit ingredient form
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formName, setFormName] = useState("");
@@ -52,7 +58,6 @@ export default function CostIngredients() {
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
-  // Add cost entry
   const [addCostIngId, setAddCostIngId] = useState<number | null>(null);
   const [newCostValue, setNewCostValue] = useState("");
   const [newCostEffectiveAt, setNewCostEffectiveAt] = useState("");
@@ -115,11 +120,7 @@ export default function CostIngredients() {
         ? { name: formName.trim(), unit: formUnit.trim(), notes: formNotes.trim() || null }
         : { name: formName.trim(), unit: formUnit.trim(), notes: formNotes.trim() || null, initialCost: formInitialCost ? parseFloat(formInitialCost) : undefined };
 
-      const res = await fetch(url, {
-        method,
-        headers: authHeaders(),
-        body: JSON.stringify(body),
-      });
+      const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as any).error ?? "Failed to save");
@@ -136,10 +137,7 @@ export default function CostIngredients() {
   async function deleteIngredient(id: number, name: string) {
     if (!confirm(`Delete ingredient "${name}"? This cannot be undone.`)) return;
     try {
-      const res = await fetch(`${BASE}/api/admin/costs/ingredients/${id}`, {
-        method: "DELETE",
-        headers: authHeaders(),
-      });
+      const res = await fetch(`${BASE}/api/admin/costs/ingredients/${id}`, { method: "DELETE", headers: authHeaders() });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         alert((data as any).error ?? "Failed to delete");
@@ -161,9 +159,7 @@ export default function CostIngredients() {
       const body: Record<string, unknown> = { costPerUnit: cost };
       if (newCostEffectiveAt) body.effectiveAt = new Date(newCostEffectiveAt).toISOString();
       const res = await fetch(`${BASE}/api/admin/costs/ingredients/${ingId}/costs`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(body),
+        method: "POST", headers: authHeaders(), body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -188,6 +184,8 @@ export default function CostIngredients() {
     });
   }
 
+  const nonCanonicalCount = ingredients.filter(i => !isCanonical(i.unit)).length;
+
   return (
     <AdminLayout>
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -208,7 +206,16 @@ export default function CostIngredients() {
         </button>
       </div>
 
-      {/* Add / Edit form */}
+      {nonCanonicalCount > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-4 mb-6 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300">
+          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+          <span>
+            <strong>{nonCanonicalCount} ingredient{nonCanonicalCount !== 1 ? "s have" : " has"} a non-standard unit.</strong>{" "}
+            Edit {nonCanonicalCount !== 1 ? "them" : "it"} and select a standard unit so the system can automatically convert between units in recipes.
+          </span>
+        </div>
+      )}
+
       {showAddForm && (
         <div className="bg-card border border-border rounded-2xl p-5 mb-6 shadow-sm">
           <h2 className="font-display font-bold text-base mb-4">
@@ -226,12 +233,25 @@ export default function CostIngredients() {
             </div>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Unit *</label>
-              <input
+              <select
                 value={formUnit}
                 onChange={e => setFormUnit(e.target.value)}
-                placeholder="e.g. lb, oz, each, gallon"
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm"
-              />
+              >
+                <option value="">Select unit…</option>
+                {UNIT_GROUPS.map(g => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.units.map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </optgroup>
+                ))}
+                {formUnit && !isCanonical(formUnit) && (
+                  <optgroup label="Legacy (non-standard)">
+                    <option value={formUnit}>{formUnit} ⚠ non-standard</option>
+                  </optgroup>
+                )}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Notes</label>
@@ -307,9 +327,17 @@ export default function CostIngredients() {
                     {expanded.has(ing.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                   </button>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold">{ing.name}</span>
-                      <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">{ing.unit}</span>
+                      <span className={cn(
+                        "text-xs px-2 py-0.5 rounded-full",
+                        isCanonical(ing.unit)
+                          ? "text-muted-foreground bg-secondary"
+                          : "text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700/50",
+                      )}>
+                        {ing.unit}
+                        {!isCanonical(ing.unit) && " ⚠"}
+                      </span>
                     </div>
                     {ing.notes && <p className="text-xs text-muted-foreground mt-0.5">{ing.notes}</p>}
                   </div>
@@ -322,7 +350,11 @@ export default function CostIngredients() {
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
-                      onClick={() => { setAddCostIngId(addCostIngId === ing.id ? null : ing.id); setCostError(""); setNewCostValue(""); setNewCostEffectiveAt(""); setExpanded(prev => { const n = new Set(prev); n.add(ing.id); return n; }); }}
+                      onClick={() => {
+                        setAddCostIngId(addCostIngId === ing.id ? null : ing.id);
+                        setCostError(""); setNewCostValue(""); setNewCostEffectiveAt("");
+                        setExpanded(prev => { const n = new Set(prev); n.add(ing.id); return n; });
+                      }}
                       className="p-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                       title="Update cost"
                     >
@@ -345,7 +377,6 @@ export default function CostIngredients() {
                   </div>
                 </div>
 
-                {/* Add cost form */}
                 {addCostIngId === ing.id && (
                   <div className="px-5 pb-3 bg-indigo-50/50 dark:bg-indigo-950/20 border-t border-border">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-3 mb-2">Record New Cost</p>
@@ -355,9 +386,7 @@ export default function CostIngredients() {
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                           <input
-                            type="number"
-                            min="0"
-                            step="0.0001"
+                            type="number" min="0" step="0.0001"
                             value={newCostValue}
                             onChange={e => setNewCostValue(e.target.value)}
                             placeholder="0.0000"
@@ -393,7 +422,6 @@ export default function CostIngredients() {
                   </div>
                 )}
 
-                {/* Cost history */}
                 {expanded.has(ing.id) && (
                   <div className="px-5 pb-4 bg-secondary/20">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-3 mb-2 flex items-center gap-1.5">
@@ -404,7 +432,12 @@ export default function CostIngredients() {
                     ) : (
                       <div className="space-y-1">
                         {ing.history.map((h, idx) => (
-                          <div key={h.id} className={cn("flex items-center justify-between text-sm px-3 py-2 rounded-lg", idx === 0 ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800" : "bg-background border border-border")}>
+                          <div key={h.id} className={cn(
+                            "flex items-center justify-between text-sm px-3 py-2 rounded-lg",
+                            idx === 0
+                              ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800"
+                              : "bg-background border border-border",
+                          )}>
                             <span className="font-mono font-semibold">${h.costPerUnit.toFixed(4)} / {ing.unit}</span>
                             <span className="text-xs text-muted-foreground">{fmtDate(h.effectiveAt)}</span>
                             {idx === 0 && <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Current</span>}

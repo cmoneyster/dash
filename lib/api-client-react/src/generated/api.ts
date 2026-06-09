@@ -97,6 +97,7 @@ import type {
   TestLanResult,
   TestPrintBody,
   TopSeller,
+  UnitGroup,
   UpdateCartItemBody,
   UpdateIngredientInput,
   UpdateLaborInput,
@@ -5755,6 +5756,81 @@ export function useGetPrintAgentHeartbeat<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetPrintAgentHeartbeatQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List canonical units grouped by measurement family
+ */
+export const getListCostUnitsUrl = () => {
+  return `/api/admin/costs/units`;
+};
+
+export const listCostUnits = async (
+  options?: RequestInit,
+): Promise<UnitGroup[]> => {
+  return customFetch<UnitGroup[]>(getListCostUnitsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCostUnitsQueryKey = () => {
+  return [`/api/admin/costs/units`] as const;
+};
+
+export const getListCostUnitsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCostUnits>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCostUnits>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCostUnitsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCostUnits>>> = ({
+    signal,
+  }) => listCostUnits({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCostUnits>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCostUnitsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCostUnits>>
+>;
+export type ListCostUnitsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List canonical units grouped by measurement family
+ */
+
+export function useListCostUnits<
+  TData = Awaited<ReturnType<typeof listCostUnits>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCostUnits>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCostUnitsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

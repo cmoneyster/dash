@@ -12,8 +12,15 @@ import {
   eventSessionsTable,
 } from "@workspace/db/schema";
 import { eq, desc, and, lte, gte, isNotNull, inArray, sql } from "drizzle-orm";
+import { conversionFactor, groupedUnits } from "../lib/units";
 
 const router: IRouter = Router();
+
+// ── Units ─────────────────────────────────────────────────────────────────────
+
+router.get("/admin/costs/units", (_req, res) => {
+  res.json(groupedUnits());
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -69,8 +76,14 @@ async function computeRecipeCostPerServing(
   cache?: Map<string, number>,
 ): Promise<{ costPerServing: number | null; missingCosts: number }> {
   const lines = await db
-    .select()
+    .select({
+      ingredientId: recipeLinesTable.ingredientId,
+      quantityPerYield: recipeLinesTable.quantityPerYield,
+      recipeUnit: recipeLinesTable.recipeUnit,
+      ingredientUnit: ingredientsTable.unit,
+    })
     .from(recipeLinesTable)
+    .leftJoin(ingredientsTable, eq(recipeLinesTable.ingredientId, ingredientsTable.id))
     .where(eq(recipeLinesTable.recipeId, recipeId));
   if (lines.length === 0) return { costPerServing: null, missingCosts: 0 };
 
@@ -82,7 +95,10 @@ async function computeRecipeCostPerServing(
       ? await costAtDate(line.ingredientId, asOf, cache)
       : await latestCost(line.ingredientId);
     if (cost == null) { missing++; continue; }
-    total += qty * cost;
+    const iu = line.ingredientUnit ?? "";
+    const ru = line.recipeUnit ?? iu;
+    const factor = conversionFactor(ru, iu) ?? 1;
+    total += qty * factor * cost;
   }
   if (missing === lines.length) return { costPerServing: null, missingCosts: missing };
   const cps = round4(total / yieldServings);
@@ -283,6 +299,7 @@ router.get("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
         id: recipeLinesTable.id,
         ingredientId: recipeLinesTable.ingredientId,
         quantityPerYield: recipeLinesTable.quantityPerYield,
+        recipeUnit: recipeLinesTable.recipeUnit,
         ingredientName: ingredientsTable.name,
         ingredientUnit: ingredientsTable.unit,
       })
@@ -331,6 +348,7 @@ router.get("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
         ingredientName: l.ingredientName ?? "",
         ingredientUnit: l.ingredientUnit ?? "",
         quantityPerYield: parseFloat(l.quantityPerYield),
+        recipeUnit: l.recipeUnit ?? null,
       })),
       costPerServing,
       costPerUnit,
@@ -352,7 +370,7 @@ router.put("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
     const { yieldServings, notes, lines } = req.body as {
       yieldServings?: number;
       notes?: string;
-      lines?: Array<{ ingredientId: number; quantityPerYield: number | string }>;
+      lines?: Array<{ ingredientId: number; quantityPerYield: number | string; recipeUnit?: string | null }>;
     };
 
     const yield_ = Math.max(1, parseInt(String(yieldServings ?? 1)));
@@ -380,6 +398,7 @@ router.put("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
             recipeId: r.id,
             ingredientId: l.ingredientId,
             quantityPerYield: String(round4(parseFloat(String(l.quantityPerYield)))),
+            recipeUnit: l.recipeUnit?.trim() || null,
           })),
         );
       }
@@ -391,6 +410,7 @@ router.put("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
         id: recipeLinesTable.id,
         ingredientId: recipeLinesTable.ingredientId,
         quantityPerYield: recipeLinesTable.quantityPerYield,
+        recipeUnit: recipeLinesTable.recipeUnit,
         ingredientName: ingredientsTable.name,
         ingredientUnit: ingredientsTable.unit,
       })
@@ -438,6 +458,7 @@ router.put("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
         ingredientName: l.ingredientName ?? "",
         ingredientUnit: l.ingredientUnit ?? "",
         quantityPerYield: parseFloat(l.quantityPerYield),
+        recipeUnit: l.recipeUnit ?? null,
       })),
       costPerServing,
       costPerUnit,
@@ -646,6 +667,10 @@ router.get("/admin/costs/summary", async (req, res) => {
     }).from(menuItemsTable);
     const menuItemMap = new Map(allMenuItems.map(m => [m.id, m]));
 
+    // Pre-load ingredient units for conversion factor lookup
+    const allIngredients = await db.select({ id: ingredientsTable.id, unit: ingredientsTable.unit }).from(ingredientsTable);
+    const ingredientUnitMap = new Map(allIngredients.map(i => [i.id, i.unit]));
+
     const costCache = new Map<string, number>();
 
     // Compute COGS for an array of order items at a specific date
@@ -668,7 +693,10 @@ router.get("/admin/costs/summary", async (req, res) => {
         for (const line of lines) {
           const cost = await costAtDate(line.ingredientId, atDate, costCache);
           if (cost == null) { hasAllCosts = false; continue; }
-          recipeCost += parseFloat(line.quantityPerYield) * cost;
+          const iu = ingredientUnitMap.get(line.ingredientId) ?? "";
+          const ru = line.recipeUnit ?? iu;
+          const factor = conversionFactor(ru, iu) ?? 1;
+          recipeCost += parseFloat(line.quantityPerYield) * factor * cost;
         }
         if (!hasAllCosts) { withoutRecipe++; continue; }
 
@@ -703,7 +731,10 @@ router.get("/admin/costs/summary", async (req, res) => {
             for (const l of lines) {
               const cost = await costAtDate(l.ingredientId, atDate, costCache);
               if (cost == null) { hasAll = false; break; }
-              recipeCost += parseFloat(l.quantityPerYield) * cost;
+              const iu = ingredientUnitMap.get(l.ingredientId) ?? "";
+              const ru = l.recipeUnit ?? iu;
+              const factor = conversionFactor(ru, iu) ?? 1;
+              recipeCost += parseFloat(l.quantityPerYield) * factor * cost;
             }
             if (hasAll) {
               const servingSize = menuItemMap.get(item.itemId)?.servingSize ?? 1;

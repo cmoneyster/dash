@@ -12,4 +12,5 @@ export interface RecipeLine {
   ingredientName: string;
   ingredientUnit: string;
   quantityPerYield: number;
+  recipeUnit?: string | null;
 }

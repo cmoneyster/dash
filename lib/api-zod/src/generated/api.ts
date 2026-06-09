@@ -6030,6 +6030,22 @@ export const GetPrintAgentHeartbeatResponse = zod.object({
 });
 
 /**
+ * @summary List canonical units grouped by measurement family
+ */
+export const ListCostUnitsResponseItem = zod.object({
+  family: zod.string(),
+  units: zod.array(
+    zod.object({
+      symbol: zod.string(),
+      label: zod.string(),
+      family: zod.enum(["weight", "volume", "count"]),
+      toBase: zod.number(),
+    }),
+  ),
+});
+export const ListCostUnitsResponse = zod.array(ListCostUnitsResponseItem);
+
+/**
  * @summary List all ingredients with current cost and history
  */
 export const ListIngredientsResponseItem = zod.object({
@@ -6127,6 +6143,7 @@ export const GetMenuItemRecipeResponse = zod
         ingredientName: zod.string(),
         ingredientUnit: zod.string(),
         quantityPerYield: zod.number(),
+        recipeUnit: zod.string().nullish(),
       }),
     ),
     costPerServing: zod.number().nullish(),
@@ -6158,6 +6175,7 @@ export const SaveMenuItemRecipeBody = zod.object({
     zod.object({
       ingredientId: zod.number(),
       quantityPerYield: zod.number(),
+      recipeUnit: zod.string().nullish(),
     }),
   ),
 });
@@ -6174,6 +6192,7 @@ export const SaveMenuItemRecipeResponse = zod.object({
       ingredientName: zod.string(),
       ingredientUnit: zod.string(),
       quantityPerYield: zod.number(),
+      recipeUnit: zod.string().nullish(),
     }),
   ),
   costPerServing: zod.number().nullish(),
