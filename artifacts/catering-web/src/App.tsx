@@ -44,6 +44,7 @@ import MenuPackages from "@/pages/admin/MenuPackages";
 import MenuPackageEdit from "@/pages/admin/MenuPackageEdit";
 import Printers from "@/pages/admin/Printers";
 import CostIngredients from "@/pages/admin/CostIngredients";
+import CostPreparations from "@/pages/admin/CostPreparations";
 import CostSummary from "@/pages/admin/CostSummary";
 
 const queryClient = new QueryClient({
@@ -142,6 +143,9 @@ function Router() {
       </Route>
       <Route path="/admin/costs/ingredients">
         {() => <AdminGuard><CostIngredients /></AdminGuard>}
+      </Route>
+      <Route path="/admin/costs/preparations">
+        {() => <AdminGuard><CostPreparations /></AdminGuard>}
       </Route>
       <Route path="/admin/costs/summary">
         {() => <AdminGuard><CostSummary /></AdminGuard>}

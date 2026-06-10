@@ -7,7 +7,7 @@
  */
 
 /**
- * "ingredient" for raw ingredient lines; "sub_recipe" for preparation lines.
+ * "ingredient" for raw ingredient lines; "preparation" for preparation lines.
 
  */
 export type RecipeLineKind =
@@ -15,5 +15,5 @@ export type RecipeLineKind =
 
 export const RecipeLineKind = {
   ingredient: "ingredient",
-  sub_recipe: "sub_recipe",
+  preparation: "preparation",
 } as const;

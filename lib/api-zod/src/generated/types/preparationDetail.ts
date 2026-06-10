@@ -5,14 +5,16 @@
  * Catering Business API
  * OpenAPI spec version: 0.1.0
  */
+import type { PreparationLine } from "./preparationLine";
 
-export interface PreparationItem {
+export interface PreparationDetail {
   id: number;
   name: string;
   yieldServings: number;
-  /** The unit this preparation yields (e.g. "g", "ml"). */
   yieldUnit: string;
   notes?: string | null;
-  /** Cost per one unit of yieldUnit. Null if costs are incomplete. */
+  createdAt: Date;
+  updatedAt: Date;
+  lines: PreparationLine[];
   costPerYieldUnit?: number | null;
 }

@@ -16,11 +16,28 @@ export const ingredientCostHistoryTable = pgTable("ingredient_cost_history", {
   effectiveAt: timestamp("effective_at").notNull().defaultNow(),
 });
 
+export const preparationsTable = pgTable("preparations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  yieldServings: integer("yield_servings").notNull().default(1),
+  yieldUnit: text("yield_unit").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const preparationLinesTable = pgTable("preparation_lines", {
+  id: serial("id").primaryKey(),
+  preparationId: integer("preparation_id").notNull().references(() => preparationsTable.id, { onDelete: "cascade" }),
+  ingredientId: integer("ingredient_id").references(() => ingredientsTable.id),
+  quantityPerYield: numeric("quantity_per_yield", { precision: 12, scale: 4 }).notNull(),
+  recipeUnit: text("recipe_unit"),
+});
+
 export const recipesTable = pgTable("recipes", {
   id: serial("id").primaryKey(),
   menuItemId: integer("menu_item_id").notNull().unique().references(() => menuItemsTable.id),
   yieldServings: integer("yield_servings").notNull().default(1),
-  yieldUnit: text("yield_unit"),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -30,7 +47,7 @@ export const recipeLinesTable = pgTable("recipe_lines", {
   id: serial("id").primaryKey(),
   recipeId: integer("recipe_id").notNull().references(() => recipesTable.id, { onDelete: "cascade" }),
   ingredientId: integer("ingredient_id").references(() => ingredientsTable.id),
-  subRecipeId: integer("sub_recipe_id").references(() => recipesTable.id, { onDelete: "set null" }),
+  preparationId: integer("preparation_id").references(() => preparationsTable.id, { onDelete: "set null" }),
   quantityPerYield: numeric("quantity_per_yield", { precision: 12, scale: 4 }).notNull(),
   recipeUnit: text("recipe_unit"),
 });
@@ -50,6 +67,8 @@ export const eventLaborTable = pgTable("event_labor", {
 
 export type Ingredient = typeof ingredientsTable.$inferSelect;
 export type IngredientCostHistory = typeof ingredientCostHistoryTable.$inferSelect;
+export type Preparation = typeof preparationsTable.$inferSelect;
+export type PreparationLine = typeof preparationLinesTable.$inferSelect;
 export type Recipe = typeof recipesTable.$inferSelect;
 export type RecipeLine = typeof recipeLinesTable.$inferSelect;
 export type EventLabor = typeof eventLaborTable.$inferSelect;

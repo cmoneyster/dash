@@ -3,6 +3,8 @@ import { db } from "@workspace/db";
 import {
   ingredientsTable,
   ingredientCostHistoryTable,
+  preparationsTable,
+  preparationLinesTable,
   recipesTable,
   recipeLinesTable,
   eventLaborTable,
@@ -98,7 +100,7 @@ async function latestCost(ingredientId: number): Promise<number | null> {
 }
 
 // Compute cost-per-serving for a recipe using either current or historical costs.
-// Handles both ingredient lines and sub-recipe (preparation) lines (single level).
+// Handles both ingredient lines and preparation lines (single level).
 async function computeRecipeCostPerServing(
   recipeId: number,
   yieldServings: number,
@@ -108,7 +110,7 @@ async function computeRecipeCostPerServing(
   const lines = await db
     .select({
       ingredientId: recipeLinesTable.ingredientId,
-      subRecipeId: recipeLinesTable.subRecipeId,
+      preparationId: recipeLinesTable.preparationId,
       quantityPerYield: recipeLinesTable.quantityPerYield,
       recipeUnit: recipeLinesTable.recipeUnit,
       ingredientUnit: ingredientsTable.unit,
@@ -123,29 +125,29 @@ async function computeRecipeCostPerServing(
   for (const line of lines) {
     const qty = parseFloat(line.quantityPerYield);
 
-    if (line.subRecipeId != null) {
-      // Sub-recipe (preparation) line — resolve cost per yield unit of the preparation
-      const [subRec] = await db
-        .select({ yieldServings: recipesTable.yieldServings, yieldUnit: recipesTable.yieldUnit })
-        .from(recipesTable)
-        .where(eq(recipesTable.id, line.subRecipeId));
-      if (!subRec?.yieldUnit) { missing++; continue; }
+    if (line.preparationId != null) {
+      // Preparation line — resolve cost per yield unit from the preparations table
+      const [prep] = await db
+        .select({ yieldServings: preparationsTable.yieldServings, yieldUnit: preparationsTable.yieldUnit })
+        .from(preparationsTable)
+        .where(eq(preparationsTable.id, line.preparationId));
+      if (!prep) { missing++; continue; }
 
-      const subLines = await db
+      const prepLines = await db
         .select({
-          ingredientId: recipeLinesTable.ingredientId,
-          quantityPerYield: recipeLinesTable.quantityPerYield,
-          recipeUnit: recipeLinesTable.recipeUnit,
+          ingredientId: preparationLinesTable.ingredientId,
+          quantityPerYield: preparationLinesTable.quantityPerYield,
+          recipeUnit: preparationLinesTable.recipeUnit,
           ingredientUnit: ingredientsTable.unit,
         })
-        .from(recipeLinesTable)
-        .leftJoin(ingredientsTable, eq(recipeLinesTable.ingredientId, ingredientsTable.id))
-        .where(and(eq(recipeLinesTable.recipeId, line.subRecipeId), isNull(recipeLinesTable.subRecipeId)));
+        .from(preparationLinesTable)
+        .leftJoin(ingredientsTable, eq(preparationLinesTable.ingredientId, ingredientsTable.id))
+        .where(eq(preparationLinesTable.preparationId, line.preparationId));
 
-      if (subLines.length === 0) { missing++; continue; }
+      if (prepLines.length === 0) { missing++; continue; }
       let subTotal = 0;
       let subMissing = false;
-      for (const sl of subLines) {
+      for (const sl of prepLines) {
         if (!sl.ingredientId) { subMissing = true; break; }
         const cost = asOf
           ? await costAtDate(sl.ingredientId, asOf, cache)
@@ -163,11 +165,11 @@ async function computeRecipeCostPerServing(
       }
       if (subMissing) { missing++; continue; }
 
-      const costPerYieldUnit = subTotal / subRec.yieldServings;
-      const ru = line.recipeUnit ?? subRec.yieldUnit;
-      const factor = conversionFactor(ru, subRec.yieldUnit);
+      const costPerYieldUnit = subTotal / prep.yieldServings;
+      const ru = line.recipeUnit ?? prep.yieldUnit;
+      const factor = conversionFactor(ru, prep.yieldUnit);
       if (factor === null) {
-        if (isIncompatibleConversion(ru, subRec.yieldUnit)) { missing++; continue; }
+        if (isIncompatibleConversion(ru, prep.yieldUnit)) { missing++; continue; }
         total += qty * costPerYieldUnit;
       } else {
         total += qty * factor * costPerYieldUnit;
@@ -374,32 +376,120 @@ router.post("/admin/costs/ingredients/:id/costs", async (req, res): Promise<void
 
 // ── Recipes ───────────────────────────────────────────────────────────────────
 
-// Returns all recipes marked as preparations (yieldUnit set), with cost per yield unit.
-// Used by RecipeEditor to populate the "Add Preparation" picker.
+// ── Preparations CRUD ─────────────────────────────────────────────────────────
+
+async function computePreparationCostPerYieldUnit(prepId: number, yieldServings: number): Promise<number | null> {
+  const prepLines = await db
+    .select({
+      ingredientId: preparationLinesTable.ingredientId,
+      quantityPerYield: preparationLinesTable.quantityPerYield,
+      recipeUnit: preparationLinesTable.recipeUnit,
+      ingredientUnit: ingredientsTable.unit,
+    })
+    .from(preparationLinesTable)
+    .leftJoin(ingredientsTable, eq(preparationLinesTable.ingredientId, ingredientsTable.id))
+    .where(eq(preparationLinesTable.preparationId, prepId));
+
+  if (prepLines.length === 0) return null;
+  let total = 0;
+  for (const sl of prepLines) {
+    if (!sl.ingredientId) return null;
+    const cost = await latestCost(sl.ingredientId);
+    if (cost == null) return null;
+    const siu = sl.ingredientUnit ?? "";
+    const sru = sl.recipeUnit ?? siu;
+    const sfactor = conversionFactor(sru, siu);
+    if (sfactor === null) {
+      if (isIncompatibleConversion(sru, siu)) return null;
+      total += parseFloat(sl.quantityPerYield) * cost;
+    } else {
+      total += parseFloat(sl.quantityPerYield) * sfactor * cost;
+    }
+  }
+  return round4(total / yieldServings);
+}
+
+async function buildPreparationResponse(prep: typeof preparationsTable.$inferSelect) {
+  const rawLines = await db
+    .select({
+      id: preparationLinesTable.id,
+      ingredientId: preparationLinesTable.ingredientId,
+      quantityPerYield: preparationLinesTable.quantityPerYield,
+      recipeUnit: preparationLinesTable.recipeUnit,
+      ingredientName: ingredientsTable.name,
+      ingredientUnit: ingredientsTable.unit,
+    })
+    .from(preparationLinesTable)
+    .leftJoin(ingredientsTable, eq(preparationLinesTable.ingredientId, ingredientsTable.id))
+    .where(eq(preparationLinesTable.preparationId, prep.id));
+
+  const ingredientIds = rawLines.filter(l => l.ingredientId != null).map(l => l.ingredientId!);
+  const costMap = new Map<number, number>();
+  if (ingredientIds.length > 0) {
+    const costRows = await db
+      .select({ ingredientId: ingredientCostHistoryTable.ingredientId, costPerUnit: ingredientCostHistoryTable.costPerUnit })
+      .from(ingredientCostHistoryTable)
+      .where(inArray(ingredientCostHistoryTable.ingredientId, [...new Set(ingredientIds)]))
+      .orderBy(desc(ingredientCostHistoryTable.effectiveAt));
+    for (const row of costRows) {
+      if (!costMap.has(row.ingredientId)) costMap.set(row.ingredientId, parseFloat(row.costPerUnit));
+    }
+  }
+
+  const lines = rawLines.map(l => {
+    const qty = parseFloat(l.quantityPerYield);
+    const iu = l.ingredientUnit ?? "";
+    const ru = l.recipeUnit ?? null;
+    const incompat = ru ? isIncompatibleConversion(ru, iu) : false;
+    const unitCost = l.ingredientId != null ? (costMap.get(l.ingredientId) ?? null) : null;
+    let costContrib: number | null = null;
+    if (unitCost != null && !incompat) {
+      const factor = ru ? (conversionFactor(ru, iu) ?? 1) : 1;
+      costContrib = round4(qty * factor * unitCost);
+    }
+    return {
+      id: l.id,
+      ingredientId: l.ingredientId ?? 0,
+      ingredientName: l.ingredientName ?? "",
+      ingredientUnit: iu,
+      quantityPerYield: qty,
+      recipeUnit: ru,
+      conversionError: incompat || undefined,
+      costContribution: costContrib,
+    };
+  });
+
+  const costPerYieldUnit = await computePreparationCostPerYieldUnit(prep.id, prep.yieldServings);
+
+  return {
+    id: prep.id,
+    name: prep.name,
+    yieldServings: prep.yieldServings,
+    yieldUnit: prep.yieldUnit,
+    notes: prep.notes,
+    createdAt: prep.createdAt.toISOString(),
+    updatedAt: prep.updatedAt.toISOString(),
+    lines,
+    costPerYieldUnit,
+  };
+}
+
 router.get("/admin/costs/preparations", async (req, res): Promise<void> => {
   try {
     const preps = await db
-      .select({
-        id: recipesTable.id,
-        menuItemId: recipesTable.menuItemId,
-        name: menuItemsTable.name,
-        yieldServings: recipesTable.yieldServings,
-        yieldUnit: recipesTable.yieldUnit,
-      })
-      .from(recipesTable)
-      .innerJoin(menuItemsTable, eq(recipesTable.menuItemId, menuItemsTable.id))
-      .where(isNotNull(recipesTable.yieldUnit))
-      .orderBy(asc(menuItemsTable.name));
+      .select()
+      .from(preparationsTable)
+      .orderBy(asc(preparationsTable.name));
 
     const result = await Promise.all(preps.map(async (prep) => {
-      const { costPerServing } = await computeRecipeCostPerServing(prep.id, prep.yieldServings);
+      const costPerYieldUnit = await computePreparationCostPerYieldUnit(prep.id, prep.yieldServings);
       return {
         id: prep.id,
-        menuItemId: prep.menuItemId,
-        name: prep.name ?? "",
+        name: prep.name,
         yieldServings: prep.yieldServings,
-        yieldUnit: prep.yieldUnit!,
-        costPerYieldUnit: costPerServing,
+        yieldUnit: prep.yieldUnit,
+        notes: prep.notes,
+        costPerYieldUnit,
       };
     }));
 
@@ -407,6 +497,128 @@ router.get("/admin/costs/preparations", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "Error listing preparations");
     res.status(500).json({ error: "Failed to list preparations" });
+  }
+});
+
+router.post("/admin/costs/preparations", async (req, res): Promise<void> => {
+  try {
+    const { name, yieldServings, yieldUnit, notes, lines } = req.body as {
+      name?: string;
+      yieldServings?: number;
+      yieldUnit?: string;
+      notes?: string;
+      lines?: Array<{ ingredientId?: number | null; quantityPerYield: number | string; recipeUnit?: string | null }>;
+    };
+
+    if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+    if (!yieldUnit?.trim()) { res.status(400).json({ error: "yieldUnit is required" }); return; }
+    const yieldSrv = Math.max(1, parseInt(String(yieldServings ?? 1)));
+
+    const prep = await db.transaction(async (tx) => {
+      const [p] = await tx.insert(preparationsTable).values({
+        name: name.trim(),
+        yieldServings: yieldSrv,
+        yieldUnit: yieldUnit.trim(),
+        notes: notes?.trim() || null,
+      }).returning();
+      if (Array.isArray(lines) && lines.length > 0) {
+        const validLines = lines.filter(l => l.ingredientId != null && l.ingredientId > 0 && l.quantityPerYield);
+        if (validLines.length > 0) {
+          await tx.insert(preparationLinesTable).values(validLines.map(l => ({
+            preparationId: p.id,
+            ingredientId: l.ingredientId!,
+            quantityPerYield: String(round4(parseFloat(String(l.quantityPerYield)))),
+            recipeUnit: l.recipeUnit?.trim() || null,
+          })));
+        }
+      }
+      return p;
+    });
+
+    res.status(201).json(await buildPreparationResponse(prep));
+  } catch (err) {
+    req.log.error({ err }, "Error creating preparation");
+    res.status(500).json({ error: "Failed to create preparation" });
+  }
+});
+
+router.get("/admin/costs/preparations/:id", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    const [prep] = await db.select().from(preparationsTable).where(eq(preparationsTable.id, id));
+    if (!prep) { res.status(404).json({ error: "Preparation not found" }); return; }
+    res.json(await buildPreparationResponse(prep));
+  } catch (err) {
+    req.log.error({ err }, "Error fetching preparation");
+    res.status(500).json({ error: "Failed to fetch preparation" });
+  }
+});
+
+router.put("/admin/costs/preparations/:id", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    const [existing] = await db.select().from(preparationsTable).where(eq(preparationsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Preparation not found" }); return; }
+
+    const { name, yieldServings, yieldUnit, notes, lines } = req.body as {
+      name?: string;
+      yieldServings?: number;
+      yieldUnit?: string;
+      notes?: string;
+      lines?: Array<{ ingredientId?: number | null; quantityPerYield: number | string; recipeUnit?: string | null }>;
+    };
+
+    if (name !== undefined && !name.trim()) { res.status(400).json({ error: "name cannot be empty" }); return; }
+    if (yieldUnit !== undefined && !yieldUnit.trim()) { res.status(400).json({ error: "yieldUnit cannot be empty" }); return; }
+
+    const updates: Partial<typeof preparationsTable.$inferInsert> = { updatedAt: new Date() };
+    if (name !== undefined) updates.name = name.trim();
+    if (yieldServings !== undefined) updates.yieldServings = Math.max(1, parseInt(String(yieldServings)));
+    if (yieldUnit !== undefined) updates.yieldUnit = yieldUnit.trim();
+    if (notes !== undefined) updates.notes = notes?.trim() || null;
+
+    const prep = await db.transaction(async (tx) => {
+      const [p] = await tx.update(preparationsTable).set(updates).where(eq(preparationsTable.id, id)).returning();
+      if (Array.isArray(lines)) {
+        await tx.delete(preparationLinesTable).where(eq(preparationLinesTable.preparationId, id));
+        const validLines = lines.filter(l => l.ingredientId != null && l.ingredientId > 0 && l.quantityPerYield);
+        if (validLines.length > 0) {
+          await tx.insert(preparationLinesTable).values(validLines.map(l => ({
+            preparationId: id,
+            ingredientId: l.ingredientId!,
+            quantityPerYield: String(round4(parseFloat(String(l.quantityPerYield)))),
+            recipeUnit: l.recipeUnit?.trim() || null,
+          })));
+        }
+      }
+      return p;
+    });
+
+    res.json(await buildPreparationResponse(prep));
+  } catch (err) {
+    req.log.error({ err }, "Error updating preparation");
+    res.status(500).json({ error: "Failed to update preparation" });
+  }
+});
+
+router.delete("/admin/costs/preparations/:id", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    const inUse = await db
+      .select({ id: recipeLinesTable.id })
+      .from(recipeLinesTable)
+      .where(eq(recipeLinesTable.preparationId, id))
+      .limit(1);
+    if (inUse.length > 0) {
+      res.status(409).json({ error: "This preparation is referenced by one or more recipes and cannot be deleted." });
+      return;
+    }
+    const [deleted] = await db.delete(preparationsTable).where(eq(preparationsTable.id, id)).returning();
+    if (!deleted) { res.status(404).json({ error: "Preparation not found" }); return; }
+    res.status(204).send();
+  } catch (err) {
+    req.log.error({ err }, "Error deleting preparation");
+    res.status(500).json({ error: "Failed to delete preparation" });
   }
 });
 
@@ -443,7 +655,7 @@ async function buildRecipeResponse(
     .select({
       id: recipeLinesTable.id,
       ingredientId: recipeLinesTable.ingredientId,
-      subRecipeId: recipeLinesTable.subRecipeId,
+      preparationId: recipeLinesTable.preparationId,
       quantityPerYield: recipeLinesTable.quantityPerYield,
       recipeUnit: recipeLinesTable.recipeUnit,
       ingredientName: ingredientsTable.name,
@@ -453,21 +665,20 @@ async function buildRecipeResponse(
     .leftJoin(ingredientsTable, eq(recipeLinesTable.ingredientId, ingredientsTable.id))
     .where(eq(recipeLinesTable.recipeId, recipe.id));
 
-  // Fetch sub-recipe details for preparation lines
-  const subRecipeIds = [...new Set(rawLines.filter(l => l.subRecipeId != null).map(l => l.subRecipeId!))];
-  const subRecipeInfoRows = subRecipeIds.length > 0
+  // Fetch preparation details for preparation lines
+  const prepIds = [...new Set(rawLines.filter(l => l.preparationId != null).map(l => l.preparationId!))];
+  const prepInfoRows = prepIds.length > 0
     ? await db
         .select({
-          id: recipesTable.id,
-          yieldServings: recipesTable.yieldServings,
-          yieldUnit: recipesTable.yieldUnit,
-          menuItemName: menuItemsTable.name,
+          id: preparationsTable.id,
+          yieldServings: preparationsTable.yieldServings,
+          yieldUnit: preparationsTable.yieldUnit,
+          name: preparationsTable.name,
         })
-        .from(recipesTable)
-        .leftJoin(menuItemsTable, eq(recipesTable.menuItemId, menuItemsTable.id))
-        .where(inArray(recipesTable.id, subRecipeIds))
+        .from(preparationsTable)
+        .where(inArray(preparationsTable.id, prepIds))
     : [];
-  const subRecipeInfoMap = new Map(subRecipeInfoRows.map(r => [r.id, r]));
+  const prepInfoMap = new Map(prepInfoRows.map(r => [r.id, r]));
 
   // Batch-load latest ingredient costs for per-line costContribution
   const ingredientLineIds = [...new Set(rawLines.filter(l => l.ingredientId != null).map(l => l.ingredientId!))];
@@ -485,13 +696,13 @@ async function buildRecipeResponse(
     }
   }
 
-  // Compute cost-per-yield-unit for each referenced sub-recipe
-  const subRecipeCostMap = new Map<number, number | null>();
-  for (const id of subRecipeIds) {
-    const sri = subRecipeInfoMap.get(id);
-    if (sri) {
-      const { costPerServing: cps } = await computeRecipeCostPerServing(id, sri.yieldServings);
-      subRecipeCostMap.set(id, cps);
+  // Compute cost-per-yield-unit for each referenced preparation
+  const prepCostMap = new Map<number, number | null>();
+  for (const id of prepIds) {
+    const pi = prepInfoMap.get(id);
+    if (pi) {
+      const cost = await computePreparationCostPerYieldUnit(id, pi.yieldServings);
+      prepCostMap.set(id, cost);
     }
   }
 
@@ -526,11 +737,11 @@ async function buildRecipeResponse(
 
   const lines = rawLines.map(l => {
     const qty = parseFloat(l.quantityPerYield);
-    if (l.subRecipeId != null) {
-      const sri = subRecipeInfoMap.get(l.subRecipeId);
-      const yieldUnit = sri?.yieldUnit ?? "";
+    if (l.preparationId != null) {
+      const pi = prepInfoMap.get(l.preparationId);
+      const yieldUnit = pi?.yieldUnit ?? "";
       const ru = l.recipeUnit ?? yieldUnit;
-      const costPerYieldUnit = subRecipeCostMap.get(l.subRecipeId) ?? null;
+      const costPerYieldUnit = prepCostMap.get(l.preparationId) ?? null;
       let costContrib: number | null = null;
       if (costPerYieldUnit != null && yieldUnit) {
         const factor = conversionFactor(ru, yieldUnit);
@@ -540,10 +751,10 @@ async function buildRecipeResponse(
       }
       return {
         id: l.id,
-        kind: "sub_recipe" as const,
-        subRecipeId: l.subRecipeId,
-        subRecipeName: sri?.menuItemName ?? "Unknown preparation",
-        subRecipeYieldUnit: yieldUnit,
+        kind: "preparation" as const,
+        preparationId: l.preparationId,
+        preparationName: pi?.name ?? "Unknown preparation",
+        preparationYieldUnit: yieldUnit,
         quantityPerYield: qty,
         recipeUnit: l.recipeUnit ?? null,
         costContribution: costContrib,
@@ -575,7 +786,6 @@ async function buildRecipeResponse(
     id: recipe.id,
     menuItemId,
     yieldServings: recipe.yieldServings,
-    yieldUnit: recipe.yieldUnit ?? null,
     notes: recipe.notes,
     lines,
     costPerServing,
@@ -631,47 +841,45 @@ router.put("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
     const [item] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, itemId));
     if (!item) { res.status(404).json({ error: "Menu item not found" }); return; }
 
-    const { yieldServings, yieldUnit, notes, lines } = req.body as {
+    const { yieldServings, notes, lines } = req.body as {
       yieldServings?: number;
-      yieldUnit?: string | null;
       notes?: string;
       lines?: Array<{
         ingredientId?: number | null;
-        subRecipeId?: number | null;
+        preparationId?: number | null;
         quantityPerYield: number | string;
         recipeUnit?: string | null;
       }>;
     };
 
     const yield_ = Math.max(1, parseInt(String(yieldServings ?? 1)));
-    const yieldUnitVal = yieldUnit?.trim() || null;
     if (!Array.isArray(lines)) { res.status(400).json({ error: "lines array is required" }); return; }
 
-    // Validate lines: each must have exactly one of ingredientId or subRecipeId (XOR)
+    // Validate lines: each must have exactly one of ingredientId or preparationId (XOR)
     for (const l of lines) {
       const hasIng = l.ingredientId != null && l.ingredientId > 0;
-      const hasSub = l.subRecipeId != null && l.subRecipeId > 0;
-      if (!hasIng && !hasSub) {
-        res.status(400).json({ error: "Each recipe line must specify either ingredientId or subRecipeId" });
+      const hasPrep = l.preparationId != null && l.preparationId > 0;
+      if (!hasIng && !hasPrep) {
+        res.status(400).json({ error: "Each recipe line must specify either ingredientId or preparationId" });
         return;
       }
-      if (hasIng && hasSub) {
-        res.status(400).json({ error: "A recipe line cannot have both ingredientId and subRecipeId" });
+      if (hasIng && hasPrep) {
+        res.status(400).json({ error: "A recipe line cannot have both ingredientId and preparationId" });
         return;
       }
     }
 
-    // Validate that all referenced subRecipeIds exist
-    const subRecipeIdRefs = [...new Set(lines.filter(l => l.subRecipeId != null && l.subRecipeId! > 0).map(l => l.subRecipeId!))];
-    if (subRecipeIdRefs.length > 0) {
-      const existingSubRecipes = await db
-        .select({ id: recipesTable.id })
-        .from(recipesTable)
-        .where(inArray(recipesTable.id, subRecipeIdRefs));
-      const existingIds = new Set(existingSubRecipes.map(r => r.id));
-      const missing = subRecipeIdRefs.filter(id => !existingIds.has(id));
+    // Validate that all referenced preparationIds exist
+    const prepIdRefs = [...new Set(lines.filter(l => l.preparationId != null && l.preparationId! > 0).map(l => l.preparationId!))];
+    if (prepIdRefs.length > 0) {
+      const existingPreps = await db
+        .select({ id: preparationsTable.id })
+        .from(preparationsTable)
+        .where(inArray(preparationsTable.id, prepIdRefs));
+      const existingIds = new Set(existingPreps.map(r => r.id));
+      const missing = prepIdRefs.filter(id => !existingIds.has(id));
       if (missing.length > 0) {
-        res.status(400).json({ error: `Sub-recipe IDs not found: ${missing.join(", ")}` });
+        res.status(400).json({ error: `Preparation IDs not found: ${missing.join(", ")}` });
         return;
       }
     }
@@ -682,35 +890,29 @@ router.put("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
       if (existing) {
         [r] = await tx
           .update(recipesTable)
-          .set({ yieldServings: yield_, yieldUnit: yieldUnitVal, notes: notes?.trim() || null, updatedAt: new Date() })
+          .set({ yieldServings: yield_, notes: notes?.trim() || null, updatedAt: new Date() })
           .where(eq(recipesTable.id, existing.id))
           .returning();
         await tx.delete(recipeLinesTable).where(eq(recipeLinesTable.recipeId, existing.id));
       } else {
         [r] = await tx
           .insert(recipesTable)
-          .values({ menuItemId: itemId, yieldServings: yield_, yieldUnit: yieldUnitVal, notes: notes?.trim() || null })
+          .values({ menuItemId: itemId, yieldServings: yield_, notes: notes?.trim() || null })
           .returning();
       }
 
       const validLines = lines.filter(l => {
         const hasIng = l.ingredientId != null && l.ingredientId > 0;
-        const hasSub = l.subRecipeId != null && l.subRecipeId > 0;
-        return (hasIng || hasSub) && l.quantityPerYield;
+        const hasPrep = l.preparationId != null && l.preparationId > 0;
+        return (hasIng || hasPrep) && l.quantityPerYield;
       });
 
       if (validLines.length > 0) {
-        // Circular reference guard: a recipe cannot reference itself as a sub-recipe
-        for (const l of validLines) {
-          if (l.subRecipeId != null && l.subRecipeId === r.id) {
-            throw new Error("A recipe cannot reference itself as a sub-recipe");
-          }
-        }
         await tx.insert(recipeLinesTable).values(
           validLines.map(l => ({
             recipeId: r.id,
             ingredientId: (l.ingredientId != null && l.ingredientId > 0) ? l.ingredientId : null,
-            subRecipeId: (l.subRecipeId != null && l.subRecipeId > 0) ? l.subRecipeId : null,
+            preparationId: (l.preparationId != null && l.preparationId > 0) ? l.preparationId : null,
             quantityPerYield: String(round4(parseFloat(String(l.quantityPerYield)))),
             recipeUnit: l.recipeUnit?.trim() || null,
           })),
@@ -947,51 +1149,51 @@ router.get("/admin/costs/summary", async (req, res) => {
     const allIngredients = await db.select({ id: ingredientsTable.id, unit: ingredientsTable.unit }).from(ingredientsTable);
     const ingredientUnitMap = new Map(allIngredients.map(i => [i.id, i.unit]));
 
-    // Pre-load sub-recipe (preparation) data for lines that reference a preparation
-    const subRecipeIdSet = new Set<number>();
+    // Pre-load preparation data for recipe lines that reference a preparation
+    const prepIdSet = new Set<number>();
     for (const l of allLines) {
-      if (l.subRecipeId != null) subRecipeIdSet.add(l.subRecipeId);
+      if (l.preparationId != null) prepIdSet.add(l.preparationId);
     }
-    const subRecipeIds = [...subRecipeIdSet];
-    const subRecipeInfoRows = subRecipeIds.length > 0
+    const summaryPrepIds = [...prepIdSet];
+    const prepInfoRows = summaryPrepIds.length > 0
       ? await db
-          .select({ id: recipesTable.id, yieldServings: recipesTable.yieldServings, yieldUnit: recipesTable.yieldUnit })
-          .from(recipesTable)
-          .where(inArray(recipesTable.id, subRecipeIds))
+          .select({ id: preparationsTable.id, yieldServings: preparationsTable.yieldServings, yieldUnit: preparationsTable.yieldUnit })
+          .from(preparationsTable)
+          .where(inArray(preparationsTable.id, summaryPrepIds))
       : [];
-    const subRecipeMap = new Map(subRecipeInfoRows.map(r => [r.id, r]));
+    const summaryPrepMap = new Map(prepInfoRows.map(r => [r.id, r]));
 
-    // Load ingredient lines for each sub-recipe (single-level only)
-    const subRecipeLineRows = subRecipeIds.length > 0
+    // Load ingredient lines for each referenced preparation
+    const prepLineRows = summaryPrepIds.length > 0
       ? await db
           .select()
-          .from(recipeLinesTable)
-          .where(and(inArray(recipeLinesTable.recipeId, subRecipeIds), isNull(recipeLinesTable.subRecipeId)))
+          .from(preparationLinesTable)
+          .where(inArray(preparationLinesTable.preparationId, summaryPrepIds))
       : [];
-    const subRecipeLinesByRecipeId = new Map<number, typeof subRecipeLineRows>();
-    for (const sl of subRecipeLineRows) {
-      const arr = subRecipeLinesByRecipeId.get(sl.recipeId) ?? [];
+    const prepLinesByPrepId = new Map<number, typeof prepLineRows>();
+    for (const sl of prepLineRows) {
+      const arr = prepLinesByPrepId.get(sl.preparationId) ?? [];
       arr.push(sl);
-      subRecipeLinesByRecipeId.set(sl.recipeId, arr);
+      prepLinesByPrepId.set(sl.preparationId, arr);
     }
 
     const costCache = new Map<string, number>();
 
-    // Compute the cost contribution for a single recipe line (ingredient or sub-recipe).
+    // Compute the cost contribution for a single recipe line (ingredient or preparation).
     // Returns the numeric cost, or "missing" if costs are unavailable.
     async function resolveLineCost(
-      line: { ingredientId: number | null; subRecipeId: number | null; quantityPerYield: string; recipeUnit: string | null },
+      line: { ingredientId: number | null; preparationId: number | null; quantityPerYield: string; recipeUnit: string | null },
       atDate: Date,
       fallbackKeys?: Set<string>,
     ): Promise<number | "missing"> {
       const qty = parseFloat(line.quantityPerYield);
-      if (line.subRecipeId != null) {
-        const subRec = subRecipeMap.get(line.subRecipeId);
-        if (!subRec?.yieldUnit) return "missing";
-        const subLines = subRecipeLinesByRecipeId.get(line.subRecipeId) ?? [];
-        if (subLines.length === 0) return "missing";
-        let subCost = 0;
-        for (const sl of subLines) {
+      if (line.preparationId != null) {
+        const prep = summaryPrepMap.get(line.preparationId);
+        if (!prep) return "missing";
+        const prepLines = prepLinesByPrepId.get(line.preparationId) ?? [];
+        if (prepLines.length === 0) return "missing";
+        let prepCost = 0;
+        for (const sl of prepLines) {
           if (!sl.ingredientId) return "missing";
           const sCost = await costAtDate(sl.ingredientId, atDate, costCache, fallbackKeys);
           if (sCost == null) return "missing";
@@ -1000,16 +1202,16 @@ router.get("/admin/costs/summary", async (req, res) => {
           const sfactor = conversionFactor(sru, siu);
           if (sfactor === null) {
             if (isIncompatibleConversion(sru, siu)) return "missing";
-            subCost += parseFloat(sl.quantityPerYield) * sCost;
+            prepCost += parseFloat(sl.quantityPerYield) * sCost;
           } else {
-            subCost += parseFloat(sl.quantityPerYield) * sfactor * sCost;
+            prepCost += parseFloat(sl.quantityPerYield) * sfactor * sCost;
           }
         }
-        const costPerYieldUnit = subCost / subRec.yieldServings;
-        const ru = line.recipeUnit ?? subRec.yieldUnit;
-        const factor = conversionFactor(ru, subRec.yieldUnit);
+        const costPerYieldUnit = prepCost / prep.yieldServings;
+        const ru = line.recipeUnit ?? prep.yieldUnit;
+        const factor = conversionFactor(ru, prep.yieldUnit);
         if (factor === null) {
-          if (isIncompatibleConversion(ru, subRec.yieldUnit)) return "missing";
+          if (isIncompatibleConversion(ru, prep.yieldUnit)) return "missing";
           return qty * costPerYieldUnit;
         }
         return qty * factor * costPerYieldUnit;

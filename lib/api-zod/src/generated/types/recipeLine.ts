@@ -9,7 +9,7 @@ import type { RecipeLineKind } from "./recipeLineKind";
 
 export interface RecipeLine {
   id: number;
-  /** "ingredient" for raw ingredient lines; "sub_recipe" for preparation lines.
+  /** "ingredient" for raw ingredient lines; "preparation" for preparation lines.
    */
   kind: RecipeLineKind;
   /** Present only when kind = "ingredient". */
@@ -18,12 +18,12 @@ export interface RecipeLine {
   ingredientName?: string;
   /** Present only when kind = "ingredient". */
   ingredientUnit?: string;
-  /** Present only when kind = "sub_recipe". */
-  subRecipeId?: number;
-  /** Present only when kind = "sub_recipe". */
-  subRecipeName?: string;
-  /** The yield unit of the sub-recipe (e.g. "g"). Present only when kind = "sub_recipe". */
-  subRecipeYieldUnit?: string;
+  /** Present only when kind = "preparation". */
+  preparationId?: number;
+  /** Present only when kind = "preparation". */
+  preparationName?: string;
+  /** The yield unit of the preparation (e.g. "g"). Present only when kind = "preparation". */
+  preparationYieldUnit?: string;
   quantityPerYield: number;
   recipeUnit?: string | null;
   /** True when recipeUnit and ingredientUnit are both canonical units but belong to different measurement families (e.g. oz vs cup). This line is excluded from cost calculations. Null/false otherwise.

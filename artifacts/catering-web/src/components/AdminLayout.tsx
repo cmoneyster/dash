@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity, Sparkles, Package as PackageIcon, Printer as PrinterIcon, FlaskConical, TrendingDown } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity, Sparkles, Package as PackageIcon, Printer as PrinterIcon, FlaskConical, TrendingDown, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken, getAdminToken } from "@/components/AdminGuard";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -213,6 +213,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Costs</p>
       </div>
       <AdminNavLink href="/admin/costs/ingredients" icon={FlaskConical} onClick={onNavigate}>Ingredient Library</AdminNavLink>
+      <AdminNavLink href="/admin/costs/preparations" icon={Layers} onClick={onNavigate}>Preparations</AdminNavLink>
       <AdminNavLink href="/admin/costs/summary" icon={TrendingDown} onClick={onNavigate}>Cost Summary</AdminNavLink>
     </>
   );

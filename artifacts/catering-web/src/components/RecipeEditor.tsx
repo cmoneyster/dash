@@ -47,7 +47,7 @@ function compatibleUnits(ingredientUnit: string): readonly string[] {
 }
 
 type Ingredient = { id: number; name: string; unit: string; currentCost: number | null };
-type Preparation = { id: number; menuItemId: number; name: string; yieldServings: number; yieldUnit: string; costPerYieldUnit: number | null };
+type Preparation = { id: number; name: string; yieldServings: number; yieldUnit: string; costPerYieldUnit: number | null };
 
 type RecipeIngLine = {
   kind: "ingredient";
@@ -61,11 +61,11 @@ type RecipeIngLine = {
   costContribution?: number | null;
 };
 type RecipePrepLine = {
-  kind: "sub_recipe";
+  kind: "preparation";
   id: number;
-  subRecipeId: number;
-  subRecipeName: string;
-  subRecipeYieldUnit: string;
+  preparationId: number;
+  preparationName: string;
+  preparationYieldUnit: string;
   quantityPerYield: number;
   recipeUnit: string | null;
   costContribution?: number | null;
@@ -76,7 +76,6 @@ type RecipeDetail = {
   id: number;
   menuItemId: number;
   yieldServings: number;
-  yieldUnit: string | null;
   notes: string | null;
   lines: RecipeLine[];
   costPerServing: number | null;
@@ -99,9 +98,9 @@ type DraftIngLine = {
 type DraftPrepLine = {
   _key: string;
   kind: "prep";
-  subRecipeId: number;
-  subRecipeName: string;
-  subRecipeYieldUnit: string;
+  preparationId: number;
+  preparationName: string;
+  preparationYieldUnit: string;
   quantityPerYield: string;
   recipeUnit: string;
 };
@@ -127,7 +126,6 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
   const [editing, setEditing] = useState(false);
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [draftYield, setDraftYield] = useState("1");
-  const [draftYieldUnit, setDraftYieldUnit] = useState("");
   const [draftNotes, setDraftNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -167,15 +165,15 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
   function startEdit() {
     if (recipe) {
       setDraftLines(recipe.lines.map(l => {
-        if (l.kind === "sub_recipe") {
+        if (l.kind === "preparation") {
           return {
             _key: newKey(),
             kind: "prep",
-            subRecipeId: l.subRecipeId,
-            subRecipeName: l.subRecipeName,
-            subRecipeYieldUnit: l.subRecipeYieldUnit,
+            preparationId: l.preparationId,
+            preparationName: l.preparationName,
+            preparationYieldUnit: l.preparationYieldUnit,
             quantityPerYield: String(l.quantityPerYield),
-            recipeUnit: l.recipeUnit ?? l.subRecipeYieldUnit,
+            recipeUnit: l.recipeUnit ?? l.preparationYieldUnit,
           } satisfies DraftPrepLine;
         }
         return {
@@ -189,12 +187,10 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
         } satisfies DraftIngLine;
       }));
       setDraftYield(String(recipe.yieldServings));
-      setDraftYieldUnit(recipe.yieldUnit ?? "");
       setDraftNotes(recipe.notes ?? "");
     } else {
       setDraftLines([newIngLine()]);
       setDraftYield("1");
-      setDraftYieldUnit("");
       setDraftNotes("");
     }
     setEditing(true);
@@ -213,7 +209,7 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
   function addPrepLine() {
     setDraftLines(prev => [
       ...prev,
-      { _key: newKey(), kind: "prep", subRecipeId: 0, subRecipeName: "", subRecipeYieldUnit: "", quantityPerYield: "", recipeUnit: "" },
+      { _key: newKey(), kind: "prep", preparationId: 0, preparationName: "", preparationYieldUnit: "", quantityPerYield: "", recipeUnit: "" },
     ]);
   }
 
@@ -238,9 +234,9 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
     setDraftLines(prev => prev.map(l => l._key === key ? {
       ...l,
       kind: "prep" as const,
-      subRecipeId,
-      subRecipeName: prep?.name ?? "",
-      subRecipeYieldUnit: prep?.yieldUnit ?? "",
+      preparationId: subRecipeId,
+      preparationName: prep?.name ?? "",
+      preparationYieldUnit: prep?.yieldUnit ?? "",
       recipeUnit: prep?.yieldUnit ?? "",
     } : l));
   }
@@ -256,7 +252,7 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
   async function saveRecipe() {
     const validLines = draftLines.filter(l =>
       l.kind === "ingredient" ? (l.ingredientId > 0 && l.quantityPerYield !== "") :
-      (l.subRecipeId > 0 && l.quantityPerYield !== "")
+      (l.preparationId > 0 && l.quantityPerYield !== "")
     );
     if (validLines.length === 0) { setError("Add at least one ingredient or preparation line"); return; }
     const yieldSrv = parseInt(draftYield);
@@ -266,14 +262,13 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
     try {
       const body = {
         yieldServings: yieldSrv,
-        yieldUnit: draftYieldUnit.trim() || null,
         notes: draftNotes.trim() || null,
         lines: validLines.map(l => {
           if (l.kind === "prep") {
             return {
-              subRecipeId: l.subRecipeId,
+              preparationId: l.preparationId,
               quantityPerYield: parseFloat(l.quantityPerYield),
-              recipeUnit: l.recipeUnit && l.recipeUnit !== l.subRecipeYieldUnit ? l.recipeUnit : null,
+              recipeUnit: l.recipeUnit && l.recipeUnit !== l.preparationYieldUnit ? l.recipeUnit : null,
             };
           }
           return {
@@ -402,8 +397,8 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                     )}
                     <div className="bg-card border border-border rounded-xl p-3 text-center">
                       <p className="text-xs text-muted-foreground mb-1">Yield</p>
-                      <p className="text-lg font-bold">{recipe.yieldServings}{recipe.yieldUnit ? ` ${recipe.yieldUnit}` : ""}</p>
-                      {!recipe.yieldUnit && <p className="text-[10px] text-muted-foreground">servings</p>}
+                      <p className="text-lg font-bold">{recipe.yieldServings}</p>
+                      <p className="text-[10px] text-muted-foreground">servings</p>
                     </div>
                   </div>
 
@@ -435,14 +430,14 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                         </thead>
                         <tbody className="divide-y divide-border">
                           {recipe.lines.map((line, i) => {
-                            if (line.kind === "sub_recipe") {
-                              const ru = line.recipeUnit ?? line.subRecipeYieldUnit;
+                            if (line.kind === "preparation") {
+                              const ru = line.recipeUnit ?? line.preparationYieldUnit;
                               return (
                                 <tr key={i}>
                                   <td className="px-4 py-2.5">
                                     <div className="flex items-center gap-1.5">
                                       <Layers className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                                      <span>{line.subRecipeName}</span>
+                                      <span>{line.preparationName}</span>
                                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 font-medium">prep</span>
                                     </div>
                                   </td>
@@ -545,22 +540,6 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">
-                    Yield Unit
-                    <span className="ml-1 text-muted-foreground/60 font-normal">(set if this is a preparation)</span>
-                  </label>
-                  <select
-                    value={draftYieldUnit}
-                    onChange={e => setDraftYieldUnit(e.target.value)}
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background"
-                  >
-                    <option value="">— servings-based (not a preparation) —</option>
-                    {UNIT_GROUPS.flatMap(g => g.units).map(u => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
-                </div>
               </div>
 
               <div>
@@ -578,14 +557,14 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                 <div className="space-y-2">
                   {draftLines.map(line => {
                     if (line.kind === "prep") {
-                      const prep = preparations.find(p => p.id === line.subRecipeId);
-                      const yieldUnit = prep?.yieldUnit ?? line.subRecipeYieldUnit;
+                      const prep = preparations.find(p => p.id === line.preparationId);
+                      const yieldUnit = prep?.yieldUnit ?? line.preparationYieldUnit;
                       const compatUnits = yieldUnit ? compatibleUnits(yieldUnit) : [];
                       return (
                         <div key={line._key} className="flex items-center gap-2">
                           <Layers className="w-4 h-4 text-violet-500 shrink-0" />
                           <select
-                            value={line.subRecipeId || ""}
+                            value={line.preparationId || ""}
                             onChange={e => updatePrepLine(line._key, parseInt(e.target.value) || 0)}
                             className="flex-1 px-3 py-2 border border-violet-300 dark:border-violet-700 rounded-lg text-sm bg-background"
                           >

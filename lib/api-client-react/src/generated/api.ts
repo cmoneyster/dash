@@ -74,6 +74,7 @@ import type {
   PatchGlobalPrintTemplateBody,
   Plan,
   PostPrintAgentHeartbeat200,
+  PreparationDetail,
   PreparationItem,
   PreviewTemplateBody,
   PreviewTemplateResult,
@@ -85,6 +86,7 @@ import type {
   RecommendedItem,
   ReorderRecommendationsBody,
   SalesReport,
+  SavePreparationInput,
   SaveRecipeInput,
   SendOpenaiMessageBody,
   SquareTerminalDevice,
@@ -6873,7 +6875,7 @@ export const useDeleteLaborEntry = <
 };
 
 /**
- * @summary List all recipes marked as preparations (yieldUnit set), with cost per yield unit
+ * @summary List all preparations with cost per yield unit
  */
 export const getListPreparationsUrl = () => {
   return `/api/admin/costs/preparations`;
@@ -6924,7 +6926,7 @@ export type ListPreparationsQueryResult = NonNullable<
 export type ListPreparationsQueryError = ErrorType<unknown>;
 
 /**
- * @summary List all recipes marked as preparations (yieldUnit set), with cost per yield unit
+ * @summary List all preparations with cost per yield unit
  */
 
 export function useListPreparations<
@@ -6946,6 +6948,350 @@ export function useListPreparations<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Create a new preparation
+ */
+export const getCreatePreparationUrl = () => {
+  return `/api/admin/costs/preparations`;
+};
+
+export const createPreparation = async (
+  savePreparationInput: SavePreparationInput,
+  options?: RequestInit,
+): Promise<PreparationDetail> => {
+  return customFetch<PreparationDetail>(getCreatePreparationUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(savePreparationInput),
+  });
+};
+
+export const getCreatePreparationMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPreparation>>,
+    TError,
+    { data: BodyType<SavePreparationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createPreparation>>,
+  TError,
+  { data: BodyType<SavePreparationInput> },
+  TContext
+> => {
+  const mutationKey = ["createPreparation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createPreparation>>,
+    { data: BodyType<SavePreparationInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createPreparation(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreatePreparationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createPreparation>>
+>;
+export type CreatePreparationMutationBody = BodyType<SavePreparationInput>;
+export type CreatePreparationMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a new preparation
+ */
+export const useCreatePreparation = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPreparation>>,
+    TError,
+    { data: BodyType<SavePreparationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createPreparation>>,
+  TError,
+  { data: BodyType<SavePreparationInput> },
+  TContext
+> => {
+  return useMutation(getCreatePreparationMutationOptions(options));
+};
+
+/**
+ * @summary Get a single preparation with lines and cost
+ */
+export const getGetPreparationUrl = (id: number) => {
+  return `/api/admin/costs/preparations/${id}`;
+};
+
+export const getPreparation = async (
+  id: number,
+  options?: RequestInit,
+): Promise<PreparationDetail> => {
+  return customFetch<PreparationDetail>(getGetPreparationUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPreparationQueryKey = (id: number) => {
+  return [`/api/admin/costs/preparations/${id}`] as const;
+};
+
+export const getGetPreparationQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPreparation>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPreparation>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPreparationQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPreparation>>> = ({
+    signal,
+  }) => getPreparation(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPreparation>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPreparationQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPreparation>>
+>;
+export type GetPreparationQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get a single preparation with lines and cost
+ */
+
+export function useGetPreparation<
+  TData = Awaited<ReturnType<typeof getPreparation>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPreparation>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPreparationQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a preparation (replaces all lines when provided)
+ */
+export const getUpdatePreparationUrl = (id: number) => {
+  return `/api/admin/costs/preparations/${id}`;
+};
+
+export const updatePreparation = async (
+  id: number,
+  savePreparationInput: SavePreparationInput,
+  options?: RequestInit,
+): Promise<PreparationDetail> => {
+  return customFetch<PreparationDetail>(getUpdatePreparationUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(savePreparationInput),
+  });
+};
+
+export const getUpdatePreparationMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePreparation>>,
+    TError,
+    { id: number; data: BodyType<SavePreparationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updatePreparation>>,
+  TError,
+  { id: number; data: BodyType<SavePreparationInput> },
+  TContext
+> => {
+  const mutationKey = ["updatePreparation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updatePreparation>>,
+    { id: number; data: BodyType<SavePreparationInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updatePreparation(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdatePreparationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updatePreparation>>
+>;
+export type UpdatePreparationMutationBody = BodyType<SavePreparationInput>;
+export type UpdatePreparationMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a preparation (replaces all lines when provided)
+ */
+export const useUpdatePreparation = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePreparation>>,
+    TError,
+    { id: number; data: BodyType<SavePreparationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updatePreparation>>,
+  TError,
+  { id: number; data: BodyType<SavePreparationInput> },
+  TContext
+> => {
+  return useMutation(getUpdatePreparationMutationOptions(options));
+};
+
+/**
+ * @summary Delete a preparation (fails if referenced by recipes)
+ */
+export const getDeletePreparationUrl = (id: number) => {
+  return `/api/admin/costs/preparations/${id}`;
+};
+
+export const deletePreparation = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeletePreparationUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeletePreparationMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePreparation>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deletePreparation>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deletePreparation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deletePreparation>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deletePreparation(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeletePreparationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deletePreparation>>
+>;
+
+export type DeletePreparationMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete a preparation (fails if referenced by recipes)
+ */
+export const useDeletePreparation = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePreparation>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deletePreparation>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeletePreparationMutationOptions(options));
+};
 
 /**
  * @summary Get cost summary (COGS + labor + profit) for a date range
