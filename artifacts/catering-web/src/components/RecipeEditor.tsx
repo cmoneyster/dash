@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getAdminToken } from "@/components/AdminGuard";
 import {
-  Plus, Trash2, Check, Loader2, FlaskConical, DollarSign, AlertCircle, ChevronDown, ChevronRight, ArrowRight,
+  Plus, Trash2, Check, Loader2, FlaskConical, DollarSign, AlertCircle, ChevronDown, ChevronRight, ArrowRight, Layers,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -47,7 +47,11 @@ function compatibleUnits(ingredientUnit: string): readonly string[] {
 }
 
 type Ingredient = { id: number; name: string; unit: string; currentCost: number | null };
-type RecipeLine = {
+type Preparation = { id: number; menuItemId: number; name: string; yieldServings: number; yieldUnit: string; costPerYieldUnit: number | null };
+
+type RecipeIngLine = {
+  kind: "ingredient";
+  id: number;
   ingredientId: number;
   ingredientName: string;
   ingredientUnit: string;
@@ -55,10 +59,22 @@ type RecipeLine = {
   recipeUnit: string | null;
   conversionError?: boolean | null;
 };
+type RecipePrepLine = {
+  kind: "sub_recipe";
+  id: number;
+  subRecipeId: number;
+  subRecipeName: string;
+  subRecipeYieldUnit: string;
+  quantityPerYield: number;
+  recipeUnit: string | null;
+};
+type RecipeLine = RecipeIngLine | RecipePrepLine;
+
 type RecipeDetail = {
   id: number;
   menuItemId: number;
   yieldServings: number;
+  yieldUnit: string | null;
   notes: string | null;
   lines: RecipeLine[];
   costPerServing: number | null;
@@ -69,17 +85,31 @@ type RecipeDetail = {
   inheritedFrom?: { id: number; name: string } | null;
 };
 
-type DraftLine = {
+type DraftIngLine = {
   _key: string;
+  kind: "ingredient";
   ingredientId: number;
   ingredientName: string;
   ingredientUnit: string;
   quantityPerYield: string;
   recipeUnit: string;
 };
+type DraftPrepLine = {
+  _key: string;
+  kind: "prep";
+  subRecipeId: number;
+  subRecipeName: string;
+  subRecipeYieldUnit: string;
+  quantityPerYield: string;
+  recipeUnit: string;
+};
+type DraftLine = DraftIngLine | DraftPrepLine;
 
 let _keyCounter = 0;
 function newKey() { return String(++_keyCounter); }
+function newIngLine(): DraftIngLine {
+  return { _key: newKey(), kind: "ingredient", ingredientId: 0, ingredientName: "", ingredientUnit: "", quantityPerYield: "", recipeUnit: "" };
+}
 
 export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
   menuItemId: number;
@@ -91,9 +121,11 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const [preparations, setPreparations] = useState<Preparation[]>([]);
   const [editing, setEditing] = useState(false);
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [draftYield, setDraftYield] = useState("1");
+  const [draftYieldUnit, setDraftYieldUnit] = useState("");
   const [draftNotes, setDraftNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -104,16 +136,19 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
     setLoading(true);
     setError("");
     try {
-      const [recipeRes, ingredientsRes] = await Promise.all([
+      const [recipeRes, ingredientsRes, prepsRes] = await Promise.all([
         fetch(`${BASE}/api/admin/menu/${menuItemId}/recipe`, { headers: authHeaders() }),
         fetch(`${BASE}/api/admin/costs/ingredients`, { headers: authHeaders() }),
+        fetch(`${BASE}/api/admin/costs/preparations`, { headers: authHeaders() }),
       ]);
-      const [recipeData, ingsData] = await Promise.all([
+      const [recipeData, ingsData, prepsData] = await Promise.all([
         recipeRes.json(),
         ingredientsRes.json(),
+        prepsRes.json(),
       ]);
       setRecipe(recipeRes.ok ? recipeData : null);
       setIngredients(Array.isArray(ingsData) ? ingsData : []);
+      setPreparations(Array.isArray(prepsData) ? prepsData : []);
       setLoaded(true);
     } catch {
       setError("Failed to load recipe data");
@@ -129,19 +164,35 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
 
   function startEdit() {
     if (recipe) {
-      setDraftLines(recipe.lines.map(l => ({
-        _key: newKey(),
-        ingredientId: l.ingredientId,
-        ingredientName: l.ingredientName,
-        ingredientUnit: l.ingredientUnit,
-        quantityPerYield: String(l.quantityPerYield),
-        recipeUnit: l.recipeUnit ?? l.ingredientUnit,
-      })));
+      setDraftLines(recipe.lines.map(l => {
+        if (l.kind === "sub_recipe") {
+          return {
+            _key: newKey(),
+            kind: "prep",
+            subRecipeId: l.subRecipeId,
+            subRecipeName: l.subRecipeName,
+            subRecipeYieldUnit: l.subRecipeYieldUnit,
+            quantityPerYield: String(l.quantityPerYield),
+            recipeUnit: l.recipeUnit ?? l.subRecipeYieldUnit,
+          } satisfies DraftPrepLine;
+        }
+        return {
+          _key: newKey(),
+          kind: "ingredient",
+          ingredientId: l.ingredientId,
+          ingredientName: l.ingredientName,
+          ingredientUnit: l.ingredientUnit,
+          quantityPerYield: String(l.quantityPerYield),
+          recipeUnit: l.recipeUnit ?? l.ingredientUnit,
+        } satisfies DraftIngLine;
+      }));
       setDraftYield(String(recipe.yieldServings));
+      setDraftYieldUnit(recipe.yieldUnit ?? "");
       setDraftNotes(recipe.notes ?? "");
     } else {
-      setDraftLines([{ _key: newKey(), ingredientId: 0, ingredientName: "", ingredientUnit: "", quantityPerYield: "", recipeUnit: "" }]);
+      setDraftLines([newIngLine()]);
       setDraftYield("1");
+      setDraftYieldUnit("");
       setDraftNotes("");
     }
     setEditing(true);
@@ -154,21 +205,41 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
   }
 
   function addLine() {
-    setDraftLines(prev => [...prev, { _key: newKey(), ingredientId: 0, ingredientName: "", ingredientUnit: "", quantityPerYield: "", recipeUnit: "" }]);
+    setDraftLines(prev => [...prev, newIngLine()]);
+  }
+
+  function addPrepLine() {
+    setDraftLines(prev => [
+      ...prev,
+      { _key: newKey(), kind: "prep", subRecipeId: 0, subRecipeName: "", subRecipeYieldUnit: "", quantityPerYield: "", recipeUnit: "" },
+    ]);
   }
 
   function removeLine(key: string) {
     setDraftLines(prev => prev.filter(l => l._key !== key));
   }
 
-  function updateLine(key: string, ingredientId: number) {
+  function updateIngLine(key: string, ingredientId: number) {
     const ing = ingredients.find(i => i.id === ingredientId);
     setDraftLines(prev => prev.map(l => l._key === key ? {
       ...l,
+      kind: "ingredient" as const,
       ingredientId,
       ingredientName: ing?.name ?? "",
       ingredientUnit: ing?.unit ?? "",
       recipeUnit: ing?.unit ?? "",
+    } : l));
+  }
+
+  function updatePrepLine(key: string, subRecipeId: number) {
+    const prep = preparations.find(p => p.id === subRecipeId);
+    setDraftLines(prev => prev.map(l => l._key === key ? {
+      ...l,
+      kind: "prep" as const,
+      subRecipeId,
+      subRecipeName: prep?.name ?? "",
+      subRecipeYieldUnit: prep?.yieldUnit ?? "",
+      recipeUnit: prep?.yieldUnit ?? "",
     } : l));
   }
 
@@ -181,8 +252,11 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
   }
 
   async function saveRecipe() {
-    const lines = draftLines.filter(l => l.ingredientId > 0 && l.quantityPerYield);
-    if (lines.length === 0) { setError("Add at least one ingredient line"); return; }
+    const validLines = draftLines.filter(l =>
+      l.kind === "ingredient" ? (l.ingredientId > 0 && l.quantityPerYield !== "") :
+      (l.subRecipeId > 0 && l.quantityPerYield !== "")
+    );
+    if (validLines.length === 0) { setError("Add at least one ingredient or preparation line"); return; }
     const yieldSrv = parseInt(draftYield);
     if (!yieldSrv || yieldSrv < 1) { setError("Yield servings must be ≥ 1"); return; }
     setSaving(true);
@@ -190,12 +264,22 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
     try {
       const body = {
         yieldServings: yieldSrv,
+        yieldUnit: draftYieldUnit.trim() || null,
         notes: draftNotes.trim() || null,
-        lines: lines.map(l => ({
-          ingredientId: l.ingredientId,
-          quantityPerYield: parseFloat(l.quantityPerYield),
-          recipeUnit: l.recipeUnit && l.recipeUnit !== l.ingredientUnit ? l.recipeUnit : null,
-        })),
+        lines: validLines.map(l => {
+          if (l.kind === "prep") {
+            return {
+              subRecipeId: l.subRecipeId,
+              quantityPerYield: parseFloat(l.quantityPerYield),
+              recipeUnit: l.recipeUnit && l.recipeUnit !== l.subRecipeYieldUnit ? l.recipeUnit : null,
+            };
+          }
+          return {
+            ingredientId: l.ingredientId,
+            quantityPerYield: parseFloat(l.quantityPerYield),
+            recipeUnit: l.recipeUnit && l.recipeUnit !== l.ingredientUnit ? l.recipeUnit : null,
+          };
+        }),
       };
       const res = await fetch(`${BASE}/api/admin/menu/${menuItemId}/recipe`, {
         method: "PUT",
@@ -229,6 +313,8 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
     }
   }
 
+  const totalLines = recipe?.lines.length ?? 0;
+
   return (
     <div className="border border-indigo-200 dark:border-indigo-800/50 rounded-xl overflow-hidden bg-indigo-50/30 dark:bg-indigo-950/10">
       <button
@@ -241,7 +327,7 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
           <span className="font-semibold text-sm">Recipe & Cost</span>
           {recipe && !loading && (
             <span className="ml-3 text-xs text-indigo-600 dark:text-indigo-400 font-medium">
-              {recipe.lines.length} ingredient{recipe.lines.length !== 1 ? "s" : ""}
+              {totalLines} line{totalLines !== 1 ? "s" : ""}
               {recipe.costPerServing != null && ` · $${recipe.costPerServing.toFixed(4)}/serving`}
               {recipe.missingCosts > 0 && ` · ${recipe.missingCosts} missing cost${recipe.missingCosts > 1 ? "s" : ""}`}
             </span>
@@ -289,13 +375,7 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                       )}
                     </div>
                   )}
-                  {!recipe.isInherited && recipe.missingCosts > 0 && (
-                    <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg p-3 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
-                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                      {recipe.missingCosts} ingredient{recipe.missingCosts > 1 ? "s are" : " is"} missing a cost entry. Cost estimates may be incomplete.
-                    </div>
-                  )}
-                  {recipe.isInherited && recipe.missingCosts > 0 && (
+                  {recipe.missingCosts > 0 && (
                     <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg p-3 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                       {recipe.missingCosts} ingredient{recipe.missingCosts > 1 ? "s are" : " is"} missing a cost entry. Cost estimates may be incomplete.
@@ -320,8 +400,8 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                     )}
                     <div className="bg-card border border-border rounded-xl p-3 text-center">
                       <p className="text-xs text-muted-foreground mb-1">Yield</p>
-                      <p className="text-lg font-bold">{recipe.yieldServings}</p>
-                      <p className="text-[10px] text-muted-foreground">servings</p>
+                      <p className="text-lg font-bold">{recipe.yieldServings}{recipe.yieldUnit ? ` ${recipe.yieldUnit}` : ""}</p>
+                      {!recipe.yieldUnit && <p className="text-[10px] text-muted-foreground">servings</p>}
                     </div>
                   </div>
 
@@ -341,18 +421,36 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                   )}
 
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Ingredients</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Ingredients & Preparations</p>
                     <div className="bg-card border border-border rounded-xl overflow-hidden">
                       <table className="w-full text-sm">
                         <thead className="border-b border-border bg-secondary/30">
                           <tr>
-                            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Ingredient</th>
+                            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Ingredient / Preparation</th>
                             <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground">Qty / Yield</th>
-                            <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground">Cost</th>
+                            <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground">Est. Cost</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
                           {recipe.lines.map((line, i) => {
+                            if (line.kind === "sub_recipe") {
+                              const ru = line.recipeUnit ?? line.subRecipeYieldUnit;
+                              return (
+                                <tr key={i}>
+                                  <td className="px-4 py-2.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <Layers className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                                      <span>{line.subRecipeName}</span>
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 font-medium">prep</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right tabular-nums">
+                                    {line.quantityPerYield} {ru}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground text-xs">—</td>
+                                </tr>
+                              );
+                            }
                             const ing = ingredients.find(x => x.id === line.ingredientId);
                             const ru = line.recipeUnit ?? line.ingredientUnit;
                             const factor = line.conversionError ? null : (conversionFactor(ru, line.ingredientUnit) ?? 1);
@@ -444,20 +542,84 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">Notes</label>
+                  <label className="block text-xs text-muted-foreground mb-1">
+                    Yield Unit
+                    <span className="ml-1 text-muted-foreground/60 font-normal">(e.g. g, ml — set if this is a preparation)</span>
+                  </label>
                   <input
-                    value={draftNotes}
-                    onChange={e => setDraftNotes(e.target.value)}
-                    placeholder="Optional notes"
+                    value={draftYieldUnit}
+                    onChange={e => setDraftYieldUnit(e.target.value)}
+                    placeholder="Leave blank for servings-based"
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background"
                   />
                 </div>
               </div>
 
               <div>
+                <label className="block text-xs text-muted-foreground mb-1">Notes</label>
+                <input
+                  value={draftNotes}
+                  onChange={e => setDraftNotes(e.target.value)}
+                  placeholder="Optional notes"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background"
+                />
+              </div>
+
+              <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Ingredient Lines</p>
                 <div className="space-y-2">
                   {draftLines.map(line => {
+                    if (line.kind === "prep") {
+                      const prep = preparations.find(p => p.id === line.subRecipeId);
+                      const yieldUnit = prep?.yieldUnit ?? line.subRecipeYieldUnit;
+                      const compatUnits = yieldUnit ? compatibleUnits(yieldUnit) : [];
+                      return (
+                        <div key={line._key} className="flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-violet-500 shrink-0" />
+                          <select
+                            value={line.subRecipeId || ""}
+                            onChange={e => updatePrepLine(line._key, parseInt(e.target.value) || 0)}
+                            className="flex-1 px-3 py-2 border border-violet-300 dark:border-violet-700 rounded-lg text-sm bg-background"
+                          >
+                            <option value="">Select preparation…</option>
+                            {preparations.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} ({p.yieldUnit}){p.costPerYieldUnit != null ? ` — $${p.costPerYieldUnit.toFixed(4)}/${p.yieldUnit}` : " — no cost"}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            value={line.quantityPerYield}
+                            onChange={e => updateQty(line._key, e.target.value)}
+                            placeholder="Qty"
+                            className="w-24 px-3 py-2 border border-border rounded-lg text-sm bg-background text-right"
+                          />
+                          {yieldUnit && compatUnits.length > 1 ? (
+                            <select
+                              value={line.recipeUnit || yieldUnit}
+                              onChange={e => updateRecipeUnit(line._key, e.target.value)}
+                              className="w-24 px-2 py-2 border border-border rounded-lg text-sm bg-background"
+                              title="Unit used in recipe"
+                            >
+                              {compatUnits.map(u => (
+                                <option key={u} value={u}>{u}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            yieldUnit && (
+                              <span className="text-xs text-muted-foreground w-10 shrink-0">{yieldUnit}</span>
+                            )
+                          )}
+                          <button type="button" onClick={() => removeLine(line._key)} className="p-2 text-muted-foreground hover:text-destructive">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    }
+
                     const compatUnits = line.ingredientUnit ? compatibleUnits(line.ingredientUnit) : [];
                     const factor = line.recipeUnit && line.ingredientUnit
                       ? conversionFactor(line.recipeUnit, line.ingredientUnit)
@@ -471,7 +633,7 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                         <div className="flex items-center gap-2">
                           <select
                             value={line.ingredientId || ""}
-                            onChange={e => updateLine(line._key, parseInt(e.target.value) || 0)}
+                            onChange={e => updateIngLine(line._key, parseInt(e.target.value) || 0)}
                             className="flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-background"
                           >
                             <option value="">Select ingredient…</option>
@@ -519,13 +681,24 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                     );
                   })}
                 </div>
-                <button
-                  type="button"
-                  onClick={addLine}
-                  className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-1 hover:underline"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add ingredient
-                </button>
+                <div className="flex gap-3 mt-2">
+                  <button
+                    type="button"
+                    onClick={addLine}
+                    className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-1 hover:underline"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add ingredient
+                  </button>
+                  {preparations.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={addPrepLine}
+                      className="text-xs text-violet-600 dark:text-violet-400 font-semibold flex items-center gap-1 hover:underline"
+                    >
+                      <Layers className="w-3.5 h-3.5" /> Add preparation
+                    </button>
+                  )}
+                </div>
               </div>
 
               {error && <p className="text-destructive text-xs">{error}</p>}

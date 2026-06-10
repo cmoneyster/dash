@@ -74,6 +74,7 @@ import type {
   PatchGlobalPrintTemplateBody,
   Plan,
   PostPrintAgentHeartbeat200,
+  PreparationItem,
   PreviewTemplateBody,
   PreviewTemplateResult,
   PrintAgentHeartbeatInput,
@@ -6870,6 +6871,81 @@ export const useDeleteLaborEntry = <
 > => {
   return useMutation(getDeleteLaborEntryMutationOptions(options));
 };
+
+/**
+ * @summary List all recipes marked as preparations (yieldUnit set), with cost per yield unit
+ */
+export const getListPreparationsUrl = () => {
+  return `/api/admin/costs/preparations`;
+};
+
+export const listPreparations = async (
+  options?: RequestInit,
+): Promise<PreparationItem[]> => {
+  return customFetch<PreparationItem[]>(getListPreparationsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPreparationsQueryKey = () => {
+  return [`/api/admin/costs/preparations`] as const;
+};
+
+export const getListPreparationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPreparations>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPreparations>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPreparationsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPreparations>>
+  > = ({ signal }) => listPreparations({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPreparations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPreparationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPreparations>>
+>;
+export type ListPreparationsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all recipes marked as preparations (yieldUnit set), with cost per yield unit
+ */
+
+export function useListPreparations<
+  TData = Awaited<ReturnType<typeof listPreparations>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPreparations>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPreparationsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get cost summary (COGS + labor + profit) for a date range

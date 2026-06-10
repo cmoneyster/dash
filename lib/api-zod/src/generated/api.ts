@@ -6219,13 +6219,47 @@ export const GetMenuItemRecipeResponse = zod
     id: zod.number(),
     menuItemId: zod.number(),
     yieldServings: zod.number(),
+    yieldUnit: zod
+      .string()
+      .nullish()
+      .describe(
+        'When set, this recipe is a preparation (base sub-recipe); the unit it produces (e.g. \"g\").',
+      ),
     notes: zod.string().nullish(),
     lines: zod.array(
       zod.object({
         id: zod.number(),
-        ingredientId: zod.number(),
-        ingredientName: zod.string(),
-        ingredientUnit: zod.string(),
+        kind: zod
+          .enum(["ingredient", "sub_recipe"])
+          .describe(
+            '\"ingredient\" for raw ingredient lines; \"sub_recipe\" for preparation lines.\n',
+          ),
+        ingredientId: zod
+          .number()
+          .optional()
+          .describe('Present only when kind = \"ingredient\".'),
+        ingredientName: zod
+          .string()
+          .optional()
+          .describe('Present only when kind = \"ingredient\".'),
+        ingredientUnit: zod
+          .string()
+          .optional()
+          .describe('Present only when kind = \"ingredient\".'),
+        subRecipeId: zod
+          .number()
+          .optional()
+          .describe('Present only when kind = \"sub_recipe\".'),
+        subRecipeName: zod
+          .string()
+          .optional()
+          .describe('Present only when kind = \"sub_recipe\".'),
+        subRecipeYieldUnit: zod
+          .string()
+          .optional()
+          .describe(
+            'The yield unit of the sub-recipe (e.g. \"g\"). Present only when kind = \"sub_recipe\".',
+          ),
         quantityPerYield: zod.number(),
         recipeUnit: zod.string().nullish(),
         conversionError: zod
@@ -6272,10 +6306,27 @@ export const SaveMenuItemRecipeParams = zod.object({
 
 export const SaveMenuItemRecipeBody = zod.object({
   yieldServings: zod.number().optional(),
+  yieldUnit: zod
+    .string()
+    .nullish()
+    .describe(
+      'When set, marks this recipe as a preparation with the given yield unit (e.g. \"g\").',
+    ),
   notes: zod.string().nullish(),
   lines: zod.array(
     zod.object({
-      ingredientId: zod.number(),
+      ingredientId: zod
+        .number()
+        .nullish()
+        .describe(
+          "Required for ingredient lines. Mutually exclusive with subRecipeId.",
+        ),
+      subRecipeId: zod
+        .number()
+        .nullish()
+        .describe(
+          "Required for preparation lines. Mutually exclusive with ingredientId.",
+        ),
       quantityPerYield: zod.number(),
       recipeUnit: zod.string().nullish(),
     }),
@@ -6286,13 +6337,47 @@ export const SaveMenuItemRecipeResponse = zod.object({
   id: zod.number(),
   menuItemId: zod.number(),
   yieldServings: zod.number(),
+  yieldUnit: zod
+    .string()
+    .nullish()
+    .describe(
+      'When set, this recipe is a preparation (base sub-recipe); the unit it produces (e.g. \"g\").',
+    ),
   notes: zod.string().nullish(),
   lines: zod.array(
     zod.object({
       id: zod.number(),
-      ingredientId: zod.number(),
-      ingredientName: zod.string(),
-      ingredientUnit: zod.string(),
+      kind: zod
+        .enum(["ingredient", "sub_recipe"])
+        .describe(
+          '\"ingredient\" for raw ingredient lines; \"sub_recipe\" for preparation lines.\n',
+        ),
+      ingredientId: zod
+        .number()
+        .optional()
+        .describe('Present only when kind = \"ingredient\".'),
+      ingredientName: zod
+        .string()
+        .optional()
+        .describe('Present only when kind = \"ingredient\".'),
+      ingredientUnit: zod
+        .string()
+        .optional()
+        .describe('Present only when kind = \"ingredient\".'),
+      subRecipeId: zod
+        .number()
+        .optional()
+        .describe('Present only when kind = \"sub_recipe\".'),
+      subRecipeName: zod
+        .string()
+        .optional()
+        .describe('Present only when kind = \"sub_recipe\".'),
+      subRecipeYieldUnit: zod
+        .string()
+        .optional()
+        .describe(
+          'The yield unit of the sub-recipe (e.g. \"g\"). Present only when kind = \"sub_recipe\".',
+        ),
       quantityPerYield: zod.number(),
       recipeUnit: zod.string().nullish(),
       conversionError: zod
@@ -6405,6 +6490,24 @@ export const UpdateLaborEntryResponse = zod.object({
 export const DeleteLaborEntryParams = zod.object({
   id: zod.coerce.number(),
 });
+
+/**
+ * @summary List all recipes marked as preparations (yieldUnit set), with cost per yield unit
+ */
+export const ListPreparationsResponseItem = zod.object({
+  id: zod.number(),
+  menuItemId: zod.number(),
+  name: zod.string(),
+  yieldServings: zod.number(),
+  yieldUnit: zod
+    .string()
+    .describe('The unit this preparation yields (e.g. \"g\", \"ml\").'),
+  costPerYieldUnit: zod
+    .number()
+    .nullish()
+    .describe("Cost per one unit of yieldUnit. Null if costs are incomplete."),
+});
+export const ListPreparationsResponse = zod.array(ListPreparationsResponseItem);
 
 /**
  * @summary Get cost summary (COGS + labor + profit) for a date range

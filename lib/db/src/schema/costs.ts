@@ -20,6 +20,7 @@ export const recipesTable = pgTable("recipes", {
   id: serial("id").primaryKey(),
   menuItemId: integer("menu_item_id").notNull().unique().references(() => menuItemsTable.id),
   yieldServings: integer("yield_servings").notNull().default(1),
+  yieldUnit: text("yield_unit"),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -28,7 +29,8 @@ export const recipesTable = pgTable("recipes", {
 export const recipeLinesTable = pgTable("recipe_lines", {
   id: serial("id").primaryKey(),
   recipeId: integer("recipe_id").notNull().references(() => recipesTable.id, { onDelete: "cascade" }),
-  ingredientId: integer("ingredient_id").notNull().references(() => ingredientsTable.id),
+  ingredientId: integer("ingredient_id").references(() => ingredientsTable.id),
+  subRecipeId: integer("sub_recipe_id").references(() => recipesTable.id, { onDelete: "set null" }),
   quantityPerYield: numeric("quantity_per_yield", { precision: 12, scale: 4 }).notNull(),
   recipeUnit: text("recipe_unit"),
 });

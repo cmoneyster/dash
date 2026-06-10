@@ -13,6 +13,8 @@ export interface RecipeDetail {
   id: number;
   menuItemId: number;
   yieldServings: number;
+  /** When set, this recipe is a preparation (base sub-recipe); the unit it produces (e.g. "g"). */
+  yieldUnit?: string | null;
   notes?: string | null;
   lines: RecipeLine[];
   costPerServing?: number | null;

@@ -9,6 +9,8 @@ import type { SaveRecipeInputLinesItem } from "./saveRecipeInputLinesItem";
 
 export interface SaveRecipeInput {
   yieldServings?: number;
+  /** When set, marks this recipe as a preparation with the given yield unit (e.g. "g"). */
+  yieldUnit?: string | null;
   notes?: string | null;
   lines: SaveRecipeInputLinesItem[];
 }

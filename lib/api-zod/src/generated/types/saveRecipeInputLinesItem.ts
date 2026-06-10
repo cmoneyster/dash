@@ -7,7 +7,10 @@
  */
 
 export type SaveRecipeInputLinesItem = {
-  ingredientId: number;
+  /** Required for ingredient lines. Mutually exclusive with subRecipeId. */
+  ingredientId?: number | null;
+  /** Required for preparation lines. Mutually exclusive with ingredientId. */
+  subRecipeId?: number | null;
   quantityPerYield: number;
   recipeUnit?: string | null;
 };

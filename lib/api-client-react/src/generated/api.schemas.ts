@@ -1325,11 +1325,35 @@ export interface AddIngredientCostInput {
   effectiveAt?: string | null;
 }
 
+/**
+ * "ingredient" for raw ingredient lines; "sub_recipe" for preparation lines.
+
+ */
+export type RecipeLineKind =
+  (typeof RecipeLineKind)[keyof typeof RecipeLineKind];
+
+export const RecipeLineKind = {
+  ingredient: "ingredient",
+  sub_recipe: "sub_recipe",
+} as const;
+
 export interface RecipeLine {
   id: number;
-  ingredientId: number;
-  ingredientName: string;
-  ingredientUnit: string;
+  /** "ingredient" for raw ingredient lines; "sub_recipe" for preparation lines.
+   */
+  kind: RecipeLineKind;
+  /** Present only when kind = "ingredient". */
+  ingredientId?: number;
+  /** Present only when kind = "ingredient". */
+  ingredientName?: string;
+  /** Present only when kind = "ingredient". */
+  ingredientUnit?: string;
+  /** Present only when kind = "sub_recipe". */
+  subRecipeId?: number;
+  /** Present only when kind = "sub_recipe". */
+  subRecipeName?: string;
+  /** The yield unit of the sub-recipe (e.g. "g"). Present only when kind = "sub_recipe". */
+  subRecipeYieldUnit?: string;
   quantityPerYield: number;
   recipeUnit?: string | null;
   /** True when recipeUnit and ingredientUnit are both canonical units but belong to different measurement families (e.g. oz vs cup). This line is excluded from cost calculations. Null/false otherwise.
@@ -1341,6 +1365,17 @@ export interface PanSizeCost {
   label: string;
   servings: number;
   costPerPan: number;
+}
+
+export interface PreparationItem {
+  id: number;
+  menuItemId: number;
+  name: string;
+  yieldServings: number;
+  /** The unit this preparation yields (e.g. "g", "ml"). */
+  yieldUnit: string;
+  /** Cost per one unit of yieldUnit. Null if costs are incomplete. */
+  costPerYieldUnit?: number | null;
 }
 
 /**
@@ -1355,6 +1390,8 @@ export interface RecipeDetail {
   id: number;
   menuItemId: number;
   yieldServings: number;
+  /** When set, this recipe is a preparation (base sub-recipe); the unit it produces (e.g. "g"). */
+  yieldUnit?: string | null;
   notes?: string | null;
   lines: RecipeLine[];
   costPerServing?: number | null;
@@ -1368,13 +1405,18 @@ export interface RecipeDetail {
 }
 
 export type SaveRecipeInputLinesItem = {
-  ingredientId: number;
+  /** Required for ingredient lines. Mutually exclusive with subRecipeId. */
+  ingredientId?: number | null;
+  /** Required for preparation lines. Mutually exclusive with ingredientId. */
+  subRecipeId?: number | null;
   quantityPerYield: number;
   recipeUnit?: string | null;
 };
 
 export interface SaveRecipeInput {
   yieldServings?: number;
+  /** When set, marks this recipe as a preparation with the given yield unit (e.g. "g"). */
+  yieldUnit?: string | null;
   notes?: string | null;
   lines: SaveRecipeInputLinesItem[];
 }
