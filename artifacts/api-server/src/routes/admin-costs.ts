@@ -469,6 +469,32 @@ async function buildRecipeResponse(
     : [];
   const subRecipeInfoMap = new Map(subRecipeInfoRows.map(r => [r.id, r]));
 
+  // Batch-load latest ingredient costs for per-line costContribution
+  const ingredientLineIds = [...new Set(rawLines.filter(l => l.ingredientId != null).map(l => l.ingredientId!))];
+  const ingredientCostMap = new Map<number, number>();
+  if (ingredientLineIds.length > 0) {
+    const costRows = await db
+      .select({ ingredientId: ingredientCostHistoryTable.ingredientId, costPerUnit: ingredientCostHistoryTable.costPerUnit })
+      .from(ingredientCostHistoryTable)
+      .where(inArray(ingredientCostHistoryTable.ingredientId, ingredientLineIds))
+      .orderBy(desc(ingredientCostHistoryTable.effectiveAt));
+    for (const row of costRows) {
+      if (!ingredientCostMap.has(row.ingredientId)) {
+        ingredientCostMap.set(row.ingredientId, parseFloat(row.costPerUnit));
+      }
+    }
+  }
+
+  // Compute cost-per-yield-unit for each referenced sub-recipe
+  const subRecipeCostMap = new Map<number, number | null>();
+  for (const id of subRecipeIds) {
+    const sri = subRecipeInfoMap.get(id);
+    if (sri) {
+      const { costPerServing: cps } = await computeRecipeCostPerServing(id, sri.yieldServings);
+      subRecipeCostMap.set(id, cps);
+    }
+  }
+
   const { costPerServing, missingCosts } = await computeRecipeCostPerServing(
     recipe.id,
     recipe.yieldServings,
@@ -499,29 +525,49 @@ async function buildRecipeResponse(
   }
 
   const lines = rawLines.map(l => {
+    const qty = parseFloat(l.quantityPerYield);
     if (l.subRecipeId != null) {
       const sri = subRecipeInfoMap.get(l.subRecipeId);
+      const yieldUnit = sri?.yieldUnit ?? "";
+      const ru = l.recipeUnit ?? yieldUnit;
+      const costPerYieldUnit = subRecipeCostMap.get(l.subRecipeId) ?? null;
+      let costContrib: number | null = null;
+      if (costPerYieldUnit != null && yieldUnit) {
+        const factor = conversionFactor(ru, yieldUnit);
+        if (!isIncompatibleConversion(ru, yieldUnit)) {
+          costContrib = round4(qty * (factor ?? 1) * costPerYieldUnit);
+        }
+      }
       return {
         id: l.id,
         kind: "sub_recipe" as const,
         subRecipeId: l.subRecipeId,
         subRecipeName: sri?.menuItemName ?? "Unknown preparation",
-        subRecipeYieldUnit: sri?.yieldUnit ?? "",
-        quantityPerYield: parseFloat(l.quantityPerYield),
+        subRecipeYieldUnit: yieldUnit,
+        quantityPerYield: qty,
         recipeUnit: l.recipeUnit ?? null,
+        costContribution: costContrib,
       };
     }
     const iu = l.ingredientUnit ?? "";
     const ru = l.recipeUnit ?? null;
+    const incompat = ru ? isIncompatibleConversion(ru, iu) : false;
+    const latestCostVal = l.ingredientId != null ? (ingredientCostMap.get(l.ingredientId) ?? null) : null;
+    let costContrib: number | null = null;
+    if (latestCostVal != null && !incompat) {
+      const factor = ru ? (conversionFactor(ru, iu) ?? 1) : 1;
+      costContrib = round4(qty * factor * latestCostVal);
+    }
     return {
       id: l.id,
       kind: "ingredient" as const,
       ingredientId: l.ingredientId ?? 0,
       ingredientName: l.ingredientName ?? "",
       ingredientUnit: iu,
-      quantityPerYield: parseFloat(l.quantityPerYield),
+      quantityPerYield: qty,
       recipeUnit: ru,
-      conversionError: ru ? isIncompatibleConversion(ru, iu) : false,
+      conversionError: incompat,
+      costContribution: costContrib,
     };
   });
 
@@ -601,12 +647,31 @@ router.put("/admin/menu/:itemId/recipe", async (req, res): Promise<void> => {
     const yieldUnitVal = yieldUnit?.trim() || null;
     if (!Array.isArray(lines)) { res.status(400).json({ error: "lines array is required" }); return; }
 
-    // Validate lines: each must have exactly one of ingredientId or subRecipeId
+    // Validate lines: each must have exactly one of ingredientId or subRecipeId (XOR)
     for (const l of lines) {
       const hasIng = l.ingredientId != null && l.ingredientId > 0;
       const hasSub = l.subRecipeId != null && l.subRecipeId > 0;
+      if (!hasIng && !hasSub) {
+        res.status(400).json({ error: "Each recipe line must specify either ingredientId or subRecipeId" });
+        return;
+      }
       if (hasIng && hasSub) {
         res.status(400).json({ error: "A recipe line cannot have both ingredientId and subRecipeId" });
+        return;
+      }
+    }
+
+    // Validate that all referenced subRecipeIds exist
+    const subRecipeIdRefs = [...new Set(lines.filter(l => l.subRecipeId != null && l.subRecipeId! > 0).map(l => l.subRecipeId!))];
+    if (subRecipeIdRefs.length > 0) {
+      const existingSubRecipes = await db
+        .select({ id: recipesTable.id })
+        .from(recipesTable)
+        .where(inArray(recipesTable.id, subRecipeIdRefs));
+      const existingIds = new Set(existingSubRecipes.map(r => r.id));
+      const missing = subRecipeIdRefs.filter(id => !existingIds.has(id));
+      if (missing.length > 0) {
+        res.status(400).json({ error: `Sub-recipe IDs not found: ${missing.join(", ")}` });
         return;
       }
     }

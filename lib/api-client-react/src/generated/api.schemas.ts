@@ -1359,6 +1359,9 @@ export interface RecipeLine {
   /** True when recipeUnit and ingredientUnit are both canonical units but belong to different measurement families (e.g. oz vs cup). This line is excluded from cost calculations. Null/false otherwise.
    */
   conversionError?: boolean | null;
+  /** Estimated cost contribution of this line using the most recent ingredient or sub-recipe cost. Null when costs are unavailable or a unit mismatch exists.
+   */
+  costContribution?: number | null;
 }
 
 export interface PanSizeCost {

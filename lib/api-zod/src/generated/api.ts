@@ -6268,6 +6268,12 @@ export const GetMenuItemRecipeResponse = zod
           .describe(
             "True when recipeUnit and ingredientUnit are both canonical units but belong to different measurement families (e.g. oz vs cup). This line is excluded from cost calculations. Null\/false otherwise.\n",
           ),
+        costContribution: zod
+          .number()
+          .nullish()
+          .describe(
+            "Estimated cost contribution of this line using the most recent ingredient or sub-recipe cost. Null when costs are unavailable or a unit mismatch exists.\n",
+          ),
       }),
     ),
     costPerServing: zod.number().nullish(),
@@ -6385,6 +6391,12 @@ export const SaveMenuItemRecipeResponse = zod.object({
         .nullish()
         .describe(
           "True when recipeUnit and ingredientUnit are both canonical units but belong to different measurement families (e.g. oz vs cup). This line is excluded from cost calculations. Null\/false otherwise.\n",
+        ),
+      costContribution: zod
+        .number()
+        .nullish()
+        .describe(
+          "Estimated cost contribution of this line using the most recent ingredient or sub-recipe cost. Null when costs are unavailable or a unit mismatch exists.\n",
         ),
     }),
   ),

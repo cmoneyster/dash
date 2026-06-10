@@ -58,6 +58,7 @@ type RecipeIngLine = {
   quantityPerYield: number;
   recipeUnit: string | null;
   conversionError?: boolean | null;
+  costContribution?: number | null;
 };
 type RecipePrepLine = {
   kind: "sub_recipe";
@@ -67,6 +68,7 @@ type RecipePrepLine = {
   subRecipeYieldUnit: string;
   quantityPerYield: number;
   recipeUnit: string | null;
+  costContribution?: number | null;
 };
 type RecipeLine = RecipeIngLine | RecipePrepLine;
 
@@ -447,7 +449,9 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                                   <td className="px-4 py-2.5 text-right tabular-nums">
                                     {line.quantityPerYield} {ru}
                                   </td>
-                                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground text-xs">—</td>
+                                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground text-xs">
+                                    {line.costContribution != null ? `$${line.costContribution.toFixed(4)}` : "—"}
+                                  </td>
                                 </tr>
                               );
                             }
@@ -544,14 +548,18 @@ export function RecipeEditor({ menuItemId, menuItemName, onViewSource }: {
                 <div>
                   <label className="block text-xs text-muted-foreground mb-1">
                     Yield Unit
-                    <span className="ml-1 text-muted-foreground/60 font-normal">(e.g. g, ml — set if this is a preparation)</span>
+                    <span className="ml-1 text-muted-foreground/60 font-normal">(set if this is a preparation)</span>
                   </label>
-                  <input
+                  <select
                     value={draftYieldUnit}
                     onChange={e => setDraftYieldUnit(e.target.value)}
-                    placeholder="Leave blank for servings-based"
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background"
-                  />
+                  >
+                    <option value="">— servings-based (not a preparation) —</option>
+                    {UNIT_GROUPS.flatMap(g => g.units).map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
