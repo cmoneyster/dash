@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity, Sparkles, Package as PackageIcon, Printer as PrinterIcon, FlaskConical, TrendingDown, Layers } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity, Sparkles, Package as PackageIcon, Printer as PrinterIcon, FlaskConical, TrendingDown, Layers, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken, getAdminToken } from "@/components/AdminGuard";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -34,121 +34,43 @@ function AdminNavLink({ href, icon: Icon, children, onClick, badge }: { href: st
   );
 }
 
-function useInstagramBadge(): number {
+function useInstagramBadge(refreshKey: number): number {
   const [count, setCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    let int: ReturnType<typeof setInterval> | null = null;
-
-    async function load() {
-      const token = getAdminToken();
-      if (!token) return;
-      try {
-        const r = await fetch("/api/admin/instagram/badge", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!r.ok) return;
-        const data = (await r.json()) as { newSinceLastVisit?: number; totalPending?: number };
-        if (!cancelled) setCount(data.newSinceLastVisit ?? 0);
-      } catch {
-        // silent — sidebar shouldn't break if poller endpoint hiccups
-      }
-    }
-
-    function startInterval() {
-      if (int !== null) return;
-      int = setInterval(load, 60_000);
-    }
-    function stopInterval() {
-      if (int === null) return;
-      clearInterval(int);
-      int = null;
-    }
-
-    // Start polling and fetch immediately — but only if the tab is
-    // already visible. If we're mounted while hidden (e.g. the admin
-    // pre-loads several tabs) don't make any requests until the user
-    // actually looks at this tab.
-    if (document.visibilityState !== "hidden") {
-      void load();
-      startInterval();
-    }
-
-    function onVisibilityChange() {
-      if (document.visibilityState === "hidden") {
-        // Tab went to background — stop the interval entirely so no
-        // further network requests are made while the tab is hidden.
-        stopInterval();
-      } else {
-        // Tab came to foreground — fetch immediately for a fresh badge
-        // count, then restart the regular 60 s cadence.
-        void load();
-        startInterval();
-      }
-    }
-
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      cancelled = true;
-      stopInterval();
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, []);
-  return count;
-}
-
-function useUnmatchedSmsBadge(): number {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    let es: EventSource | null = null;
-    let pollInt: ReturnType<typeof setInterval> | null = null;
-
-    async function load() {
-      const token = getAdminToken();
-      if (!token) return;
-      try {
-        const r = await fetch("/api/admin/messages/badges", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!r.ok) return;
-        const data = (await r.json()) as { unmatchedCount?: number };
-        if (!cancelled) setCount(data.unmatchedCount ?? 0);
-      } catch {
-        // silent — sidebar shouldn't break if poller endpoint hiccups
-      }
-    }
-    load();
-
     const token = getAdminToken();
-    if (token) {
-      try {
-        es = new EventSource(`/api/admin/messages/stream?token=${encodeURIComponent(token)}`);
-        es.addEventListener("inbound", () => load());
-        es.addEventListener("unmatched-changed", () => load());
-        es.onerror = () => {
-          // Fall back to a slower poll until the stream comes back.
-          if (!pollInt) pollInt = setInterval(load, 60_000);
-        };
-      } catch {
-        pollInt = setInterval(load, 60_000);
-      }
-    } else {
-      pollInt = setInterval(load, 60_000);
-    }
-
-    return () => {
-      cancelled = true;
-      es?.close();
-      if (pollInt) clearInterval(pollInt);
-    };
-  }, []);
+    if (!token) return;
+    fetch("/api/admin/instagram/badge", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { newSinceLastVisit?: number } | null) => {
+        if (!cancelled) setCount(data?.newSinceLastVisit ?? 0);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [refreshKey]);
   return count;
 }
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
-  const instagramBadge = useInstagramBadge();
-  const unmatchedBadge = useUnmatchedSmsBadge();
+function useUnmatchedSmsBadge(refreshKey: number): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const token = getAdminToken();
+    if (!token) return;
+    fetch("/api/admin/messages/badges", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { unmatchedCount?: number } | null) => {
+        if (!cancelled) setCount(data?.unmatchedCount ?? 0);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+  return count;
+}
+
+function NavLinks({ onNavigate, refreshKey }: { onNavigate?: () => void; refreshKey: number }) {
+  const instagramBadge = useInstagramBadge(refreshKey);
+  const unmatchedBadge = useUnmatchedSmsBadge(refreshKey);
   return (
     <>
       <AdminNavLink href="/admin" icon={LayoutDashboard} onClick={onNavigate}>Dashboard</AdminNavLink>
@@ -219,9 +141,31 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+function RefreshBadgesButton({ onRefresh }: { onRefresh: () => void }) {
+  const [spinning, setSpinning] = useState(false);
+  const handleClick = () => {
+    setSpinning(true);
+    onRefresh();
+    setTimeout(() => setSpinning(false), 600);
+  };
+  return (
+    <button
+      onClick={handleClick}
+      title="Refresh notification badges"
+      className="flex items-center gap-3 w-full px-4 py-3 rounded-xl font-medium text-foreground/70 hover:bg-secondary hover:text-foreground transition-all duration-200"
+    >
+      <RefreshCw className={cn("w-5 h-5", spinning && "animate-spin")} />
+      Refresh Badges
+    </button>
+  );
+}
+
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [, navigate] = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleRefresh = useCallback(() => setRefreshKey(k => k + 1), []);
 
   useEffect(() => {
     if (drawerOpen) {
@@ -256,11 +200,12 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-        <nav className="flex-1 p-4 space-y-2">
-          <NavLinks />
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          <NavLinks refreshKey={refreshKey} />
         </nav>
         <div className="p-4 border-t border-border space-y-2">
           <ThemeToggle withLabel />
+          <RefreshBadgesButton onRefresh={handleRefresh} />
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 w-full px-4 py-3 rounded-xl font-medium text-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-all duration-200"
@@ -302,10 +247,11 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          <NavLinks onNavigate={() => setDrawerOpen(false)} />
+          <NavLinks onNavigate={() => setDrawerOpen(false)} refreshKey={refreshKey} />
         </nav>
         <div className="p-4 border-t border-border space-y-2">
           <ThemeToggle withLabel />
+          <RefreshBadgesButton onRefresh={handleRefresh} />
           <Link
             href="/"
             onClick={() => setDrawerOpen(false)}
