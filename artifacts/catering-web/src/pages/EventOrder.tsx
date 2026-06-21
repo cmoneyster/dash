@@ -239,6 +239,15 @@ export default function EventOrder() {
               {loginLoading ? "Checking…" : "Continue"}
             </button>
           </form>
+          <p className="text-center text-sm text-muted-foreground mt-5">
+            Just here to explore?{" "}
+            <a
+              href={`${BASE}/demo`}
+              className="font-semibold text-foreground underline-offset-2 hover:underline"
+            >
+              Try the demo →
+            </a>
+          </p>
         </div>
       </div>
     );
