@@ -2,7 +2,34 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { HashtagWall } from "@/components/HashtagWall";
 import { FirstVisitInterstitial } from "@/components/FirstVisitInterstitial";
-import { ArrowRight, Star, Clock, CalendarCheck } from "lucide-react";
+import { ArrowRight, Star, Clock, CalendarCheck, UtensilsCrossed, ShoppingBag, Users, Send } from "lucide-react";
+
+const HOW_IT_WORKS_STEPS = [
+  {
+    number: "1",
+    icon: UtensilsCrossed,
+    title: "Browse the Menu",
+    body: "Explore our full menu of Asian-inspired dishes. Filter by category or let Dashy, our AI assistant, help you narrow it down.",
+  },
+  {
+    number: "2",
+    icon: ShoppingBag,
+    title: "Add Items to Your Plan",
+    body: "Build your custom menu — any order size is welcome. A single pan, a few items, or a full spread. Drop-off or meet-up, we make it work.",
+  },
+  {
+    number: "3",
+    icon: Users,
+    title: "Check Serving Amounts",
+    body: "Enter your guest count and the Event Plan tells you whether you have enough food — with suggestions if you need a little more.",
+  },
+  {
+    number: "4",
+    icon: Send,
+    title: "Submit Your Inquiry",
+    body: "Share your event details and send us your plan. We'll confirm availability, answer any questions, and finalize the order with you.",
+  },
+];
 
 export default function Home() {
   return (
@@ -29,7 +56,7 @@ export default function Home() {
               Bold flavors. Unforgettable events.
             </h1>
             <p className="text-lg md:text-xl text-foreground/70 mb-10 leading-relaxed max-w-xl">
-              dash by Hollywood East Cafe brings bold, fresh, Asian-inspired flavors to your event — from intimate gatherings to large celebrations.
+              dash by Hollywood East Cafe brings bold, fresh, Asian-inspired flavors to your event — from a single pan drop-off to a full-scale celebration.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link 
@@ -45,6 +72,55 @@ export default function Home() {
                 Start Planning
               </Link>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="py-20 bg-secondary/40 border-y border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <span className="inline-block py-1 px-3 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest mb-4">
+              Simple &amp; flexible
+            </span>
+            <h2 className="font-display font-bold text-3xl sm:text-4xl mb-3">
+              How it works
+            </h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              From browsing to your door — here's how to place a catering order in four easy steps.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+            {HOW_IT_WORKS_STEPS.map((step) => {
+              const Icon = step.icon;
+              return (
+                <div key={step.number} className="relative flex flex-col bg-card rounded-2xl border border-border p-6 shadow-sm">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">
+                      {step.number}
+                    </span>
+                    <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center text-primary shrink-0">
+                      <Icon className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <h3 className="font-display font-bold text-lg mb-2">{step.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{step.body}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+            <div className="px-5 py-3 rounded-xl bg-primary/10 border border-primary/20 text-sm font-semibold text-primary">
+              No minimum order — single pans, small orders, and drop-off or meet-up all welcome
+            </div>
+            <Link
+              href="/menu"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-bold rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all text-sm"
+            >
+              Browse the Menu <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </section>

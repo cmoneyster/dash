@@ -590,7 +590,7 @@ export default function SharedPlan() {
                     Some items aren't available with the On the Dash Experience
                   </p>
                   <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
-                    Our mobile trailer can't prepare these on-site. Remove them or switch to Standard Drop-Off.
+                    Our mobile trailer can't prepare these on-site. Remove them or switch to Drop-Off / Meet-Up.
                   </p>
                 </div>
               </div>
@@ -614,7 +614,7 @@ export default function SharedPlan() {
                 }}
                 className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors"
               >
-                <Truck className="w-4 h-4" /> Switch to Standard Drop-Off
+                <Truck className="w-4 h-4" /> Switch to Drop-Off / Meet-Up
               </button>
             </div>
           );

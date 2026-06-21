@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Sparkles, Calendar, MapPin, X, Flame } from "lucide-react";
+import { MapPin, UtensilsCrossed, X, Flame } from "lucide-react";
 
 const STORAGE_KEY = "dash_landing_suppressed_until_v1";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -18,7 +18,7 @@ function isSuppressed(): boolean {
 }
 
 type Tile = {
-  id: "at-event" | "demo" | "planning";
+  id: "at-event" | "browsing";
   title: string;
   body: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -30,29 +30,20 @@ type Tile = {
 const TILES: Tile[] = [
   {
     id: "at-event",
-    title: "I'm at the event right now",
-    body: "Enter the password from your event sign and start ordering food fresh from the trailer.",
+    title: "I'm at an event — or want to try the demo",
+    body: "Order food at a live event, or take a guided tour of the guest ordering experience.",
     icon: MapPin,
     href: "/event",
     testId: "tile-at-event",
     otdBadge: true,
   },
   {
-    id: "demo",
-    title: "Demo the guest ordering experience",
-    body: "See exactly what your guests will see — place a sample order and get a real preview text.",
-    icon: Sparkles,
-    href: "/demo",
-    testId: "tile-demo",
-    otdBadge: true,
-  },
-  {
-    id: "planning",
-    title: "I'm planning an event",
-    body: "Tell us about your date and headcount and we'll help you build a quote.",
-    icon: Calendar,
-    href: "/plan",
-    testId: "tile-planning",
+    id: "browsing",
+    title: "Browse the menu / plan an event",
+    body: "Explore our full menu, build your event plan, and submit a catering inquiry — all at your own pace.",
+    icon: UtensilsCrossed,
+    href: "/",
+    testId: "tile-browsing",
   },
 ];
 
@@ -96,7 +87,7 @@ export function FirstVisitInterstitial() {
       aria-label="What brings you here today?"
       className="fixed inset-0 z-[100] bg-foreground/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
     >
-      <div className="relative w-full max-w-5xl bg-card rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-10 my-3 sm:my-8">
+      <div className="relative w-full max-w-2xl bg-card rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-10 my-3 sm:my-8">
         <button
           type="button"
           onClick={() => setOpen(false)}
@@ -110,7 +101,7 @@ export function FirstVisitInterstitial() {
           <h2 className="font-display font-bold text-lg sm:text-4xl">
             What brings you to dash today?
           </h2>
-          <p className="text-xs sm:text-base text-muted-foreground mt-1 sm:mt-2 max-w-2xl mx-auto">
+          <p className="text-xs sm:text-base text-muted-foreground mt-1 sm:mt-2 max-w-xl mx-auto">
             Pick the option that fits. You can always come back from here.
           </p>
         </div>
@@ -128,7 +119,7 @@ export function FirstVisitInterstitial() {
           </span>
         </label>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
           {TILES.map((tile) => {
             const Icon = tile.icon;
             return (
@@ -137,7 +128,7 @@ export function FirstVisitInterstitial() {
                 type="button"
                 onClick={() => pickTile(tile.href)}
                 data-testid={tile.testId}
-                className="group text-left flex md:flex-col items-start gap-3 p-3 sm:p-6 rounded-xl sm:rounded-2xl border border-border bg-background hover:bg-primary/5 hover:border-primary hover:-translate-y-0.5 hover:shadow-lg transition-all"
+                className="group text-left flex sm:flex-col items-start gap-3 p-3 sm:p-6 rounded-xl sm:rounded-2xl border border-border bg-background hover:bg-primary/5 hover:border-primary hover:-translate-y-0.5 hover:shadow-lg transition-all"
               >
                 <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 rounded-lg sm:rounded-xl bg-secondary group-hover:bg-primary group-hover:text-primary-foreground flex items-center justify-center transition-colors">
                   <Icon className="w-4.5 h-4.5 sm:w-6 sm:h-6" />
@@ -150,7 +141,7 @@ export function FirstVisitInterstitial() {
                     </span>
                   )}
                   <p className="font-bold text-sm sm:text-base leading-snug">{tile.title}</p>
-                  <p className="hidden sm:block text-sm text-muted-foreground leading-relaxed mt-2 flex-1">{tile.body}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mt-1 sm:mt-2 flex-1">{tile.body}</p>
                   <span className="hidden sm:inline-block text-xs uppercase tracking-widest font-semibold text-primary mt-3">
                     Choose →
                   </span>

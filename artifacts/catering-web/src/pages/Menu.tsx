@@ -367,7 +367,7 @@ function PackageCard({
         {blockedByOtd && (
           <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800 flex items-center gap-1.5">
             <Flame className="w-3 h-3 shrink-0" />
-            Only available with Standard Drop-Off
+            Only available with Drop-Off / Meet-Up
           </div>
         )}
         <span className="mt-4 text-sm font-semibold text-primary">View details →</span>
