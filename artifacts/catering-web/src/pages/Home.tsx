@@ -73,7 +73,7 @@ export default function Home() {
               We bring the kitchen to you.
             </h1>
             <p className="text-sm md:text-base text-foreground/70 mb-6 leading-relaxed max-w-xl">
-              Our food trailer comes on-site and cooks bold, fresh food live at your event — hot off the grill, right in front of your guests. Prefer drop-off or a meet-up? We do that too. And our menu goes beyond any one cuisine — custom requests are always welcome.
+              Our food trailer comes on-site and cooks bold, fresh food live at your event — hot off the grill, crispy from the fryer, or freshly steamed, right in front of your guests. Prefer drop-off or a meet-up? We do that too. Our menu is rooted in bold Asian-inspired flavors, with an eclectic range that goes beyond any single style.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
@@ -149,7 +149,7 @@ export default function Home() {
               </div>
               <h3 className="font-display font-bold text-2xl mb-3">Bold, Eclectic Flavors</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Our menu draws from bold, globally-inspired recipes — and we're always open to custom requests. If you have a vision, we'll work with you to make it happen.
+                Our menu is rooted in bold, Asian-inspired recipes with an eclectic range that goes beyond any single style — expect exciting, unexpected flavors at every event.
               </p>
             </div>
             <div className="flex flex-col items-start">
@@ -167,7 +167,7 @@ export default function Home() {
               </div>
               <h3 className="font-display font-bold text-2xl mb-3">On-Site Experience</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Our food trailer arrives at your venue and cooks everything fresh, right in front of your guests — hot off the grill and made to order at your event.
+                Our food trailer arrives at your venue and cooks everything fresh, right in front of your guests — hot off the grill, crispy from the fryer, or freshly steamed, made to order at your event.
               </p>
             </div>
           </div>
