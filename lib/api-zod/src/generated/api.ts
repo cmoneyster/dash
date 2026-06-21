@@ -719,6 +719,18 @@ export const CheckAvailabilityResponse = zod.object({
 });
 
 /**
+ * @summary Public site configuration (hero image URL, etc.)
+ */
+export const GetSiteConfigResponse = zod.object({
+  heroImageUrl: zod
+    .string()
+    .nullable()
+    .describe(
+      "URL of the custom home page hero image, or null if using the default.",
+    ),
+});
+
+/**
  * @summary List curated chat-bot recommendations
  */
 export const AdminListRecommendationsResponseItem = zod.object({
@@ -6659,4 +6671,31 @@ export const GetCostSummaryResponse = zod.object({
       laborCost: zod.number(),
     }),
   ),
+});
+
+/**
+ * @summary Set or clear the home page hero image URL
+ */
+export const UpdateHeroImageBody = zod.object({
+  heroImageUrl: zod
+    .string()
+    .nullish()
+    .describe("New hero image URL, or null to reset to default."),
+});
+
+export const UpdateHeroImageResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
+ * @summary Upload and process a hero image (resized to 1920×1080 JPEG)
+ */
+export const UploadHeroImageBody = zod.object({
+  image: zod.instanceof(File),
+});
+
+export const UploadHeroImageResponse = zod.object({
+  servingUrl: zod
+    .string()
+    .describe("Serving URL of the processed 1920×1080 hero image."),
 });

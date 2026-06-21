@@ -1556,6 +1556,25 @@ export interface CostSummary {
   laborBreakdown: CostSummaryLaborBreakdown[];
 }
 
+export interface SiteConfig {
+  /** URL of the custom home page hero image, or null if using the default. */
+  heroImageUrl: string | null;
+}
+
+export interface UpdateHeroImageBody {
+  /** New hero image URL, or null to reset to default. */
+  heroImageUrl?: string | null;
+}
+
+export interface UpdateHeroImageResponse {
+  ok: boolean;
+}
+
+export interface UploadHeroImageResponse {
+  /** Serving URL of the processed 1920×1080 hero image. */
+  servingUrl: string;
+}
+
 export type ListMenuItemsParams = {
   category?: string;
   available?: boolean;
@@ -1697,3 +1716,7 @@ export const GetCostSummaryScope = {
   catering: "catering",
   all: "all",
 } as const;
+
+export type UploadHeroImageBody = {
+  image: Blob;
+};

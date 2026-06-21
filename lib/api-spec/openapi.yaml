@@ -245,6 +245,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/AvailabilityResponse"
 
+  /site-config:
+    get:
+      operationId: getSiteConfig
+      tags: [events]
+      summary: Public site configuration (hero image URL, etc.)
+      responses:
+        "200":
+          description: Site config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteConfig"
+
   # Admin chat-bot recommended items
   /admin/recommendations:
     get:
@@ -1950,6 +1963,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CostSummary"
+
+  /admin/event-settings/hero-image:
+    patch:
+      operationId: updateHeroImage
+      tags: [admin]
+      summary: Set or clear the home page hero image URL
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateHeroImageBody"
+      responses:
+        "200":
+          description: Hero image updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateHeroImageResponse"
+
+  /admin/images/upload-hero:
+    post:
+      operationId: uploadHeroImage
+      tags: [admin]
+      summary: Upload and process a hero image (resized to 1920×1080 JPEG)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+              required: [image]
+      responses:
+        "200":
+          description: Processed hero image URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadHeroImageResponse"
 
 components:
   schemas:
@@ -4552,3 +4612,35 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CostSummaryLaborBreakdown"
+
+    SiteConfig:
+      type: object
+      required: [heroImageUrl]
+      properties:
+        heroImageUrl:
+          type: string
+          nullable: true
+          description: URL of the custom home page hero image, or null if using the default.
+
+    UpdateHeroImageBody:
+      type: object
+      properties:
+        heroImageUrl:
+          type: string
+          nullable: true
+          description: New hero image URL, or null to reset to default.
+
+    UpdateHeroImageResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+
+    UploadHeroImageResponse:
+      type: object
+      required: [servingUrl]
+      properties:
+        servingUrl:
+          type: string
+          description: Serving URL of the processed 1920×1080 hero image.

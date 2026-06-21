@@ -92,8 +92,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* How It Works cards — overlap the hero photo bottom */}
-        <div className="relative z-10 -mt-10 sm:-mt-16 pb-16 bg-gradient-to-b from-transparent to-background">
+        {/* How It Works cards — overlap only on desktop; stack naturally on mobile */}
+        <div className="relative z-10 mt-0 lg:-mt-16 pb-16 bg-gradient-to-b from-transparent to-background">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="mb-6 text-center">
               <span className="inline-block py-1 px-3 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest mb-3">

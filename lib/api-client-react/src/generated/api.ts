@@ -89,6 +89,7 @@ import type {
   SavePreparationInput,
   SaveRecipeInput,
   SendOpenaiMessageBody,
+  SiteConfig,
   SquareTerminalDevice,
   SuggestItemsBody,
   SuggestItemsResponse,
@@ -102,11 +103,15 @@ import type {
   TopSeller,
   UnitGroup,
   UpdateCartItemBody,
+  UpdateHeroImageBody,
+  UpdateHeroImageResponse,
   UpdateIngredientInput,
   UpdateLaborInput,
   UpdateMenuItemBody,
   UpdateOrderStatusBody,
   UpdatePrinterBody,
+  UploadHeroImageBody,
+  UploadHeroImageResponse,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -979,6 +984,81 @@ export function useCheckAvailability<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getCheckAvailabilityQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Public site configuration (hero image URL, etc.)
+ */
+export const getGetSiteConfigUrl = () => {
+  return `/api/site-config`;
+};
+
+export const getSiteConfig = async (
+  options?: RequestInit,
+): Promise<SiteConfig> => {
+  return customFetch<SiteConfig>(getGetSiteConfigUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSiteConfigQueryKey = () => {
+  return [`/api/site-config`] as const;
+};
+
+export const getGetSiteConfigQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSiteConfig>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSiteConfig>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSiteConfigQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSiteConfig>>> = ({
+    signal,
+  }) => getSiteConfig({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSiteConfig>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSiteConfigQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSiteConfig>>
+>;
+export type GetSiteConfigQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Public site configuration (hero image URL, etc.)
+ */
+
+export function useGetSiteConfig<
+  TData = Awaited<ReturnType<typeof getSiteConfig>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSiteConfig>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSiteConfigQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -7386,3 +7466,177 @@ export function useGetCostSummary<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Set or clear the home page hero image URL
+ */
+export const getUpdateHeroImageUrl = () => {
+  return `/api/admin/event-settings/hero-image`;
+};
+
+export const updateHeroImage = async (
+  updateHeroImageBody: UpdateHeroImageBody,
+  options?: RequestInit,
+): Promise<UpdateHeroImageResponse> => {
+  return customFetch<UpdateHeroImageResponse>(getUpdateHeroImageUrl(), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateHeroImageBody),
+  });
+};
+
+export const getUpdateHeroImageMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateHeroImage>>,
+    TError,
+    { data: BodyType<UpdateHeroImageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateHeroImage>>,
+  TError,
+  { data: BodyType<UpdateHeroImageBody> },
+  TContext
+> => {
+  const mutationKey = ["updateHeroImage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateHeroImage>>,
+    { data: BodyType<UpdateHeroImageBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateHeroImage(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateHeroImageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateHeroImage>>
+>;
+export type UpdateHeroImageMutationBody = BodyType<UpdateHeroImageBody>;
+export type UpdateHeroImageMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Set or clear the home page hero image URL
+ */
+export const useUpdateHeroImage = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateHeroImage>>,
+    TError,
+    { data: BodyType<UpdateHeroImageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateHeroImage>>,
+  TError,
+  { data: BodyType<UpdateHeroImageBody> },
+  TContext
+> => {
+  return useMutation(getUpdateHeroImageMutationOptions(options));
+};
+
+/**
+ * @summary Upload and process a hero image (resized to 1920×1080 JPEG)
+ */
+export const getUploadHeroImageUrl = () => {
+  return `/api/admin/images/upload-hero`;
+};
+
+export const uploadHeroImage = async (
+  uploadHeroImageBody: UploadHeroImageBody,
+  options?: RequestInit,
+): Promise<UploadHeroImageResponse> => {
+  const formData = new FormData();
+  formData.append(`image`, uploadHeroImageBody.image);
+
+  return customFetch<UploadHeroImageResponse>(getUploadHeroImageUrl(), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getUploadHeroImageMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadHeroImage>>,
+    TError,
+    { data: BodyType<UploadHeroImageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadHeroImage>>,
+  TError,
+  { data: BodyType<UploadHeroImageBody> },
+  TContext
+> => {
+  const mutationKey = ["uploadHeroImage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadHeroImage>>,
+    { data: BodyType<UploadHeroImageBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return uploadHeroImage(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadHeroImageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadHeroImage>>
+>;
+export type UploadHeroImageMutationBody = BodyType<UploadHeroImageBody>;
+export type UploadHeroImageMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Upload and process a hero image (resized to 1920×1080 JPEG)
+ */
+export const useUploadHeroImage = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadHeroImage>>,
+    TError,
+    { data: BodyType<UploadHeroImageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadHeroImage>>,
+  TError,
+  { data: BodyType<UploadHeroImageBody> },
+  TContext
+> => {
+  return useMutation(getUploadHeroImageMutationOptions(options));
+};
