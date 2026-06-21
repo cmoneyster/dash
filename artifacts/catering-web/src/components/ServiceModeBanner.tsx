@@ -30,19 +30,6 @@ export function ServiceModeBanner({
         <div className="inline-flex rounded-xl border border-border bg-background p-1 shrink-0">
           <button
             type="button"
-            onClick={() => onChange("drop_off")}
-            aria-pressed={mode === "drop_off"}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              mode === "drop_off"
-                ? "bg-foreground text-background"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <PackageOpen className="w-3.5 h-3.5" />
-            Drop-Off or Meet-Up
-          </button>
-          <button
-            type="button"
             onClick={() => onChange("on_the_dash")}
             aria-pressed={mode === "on_the_dash"}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
@@ -53,6 +40,19 @@ export function ServiceModeBanner({
           >
             <Flame className="w-3.5 h-3.5" />
             On the Dash
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange("drop_off")}
+            aria-pressed={mode === "drop_off"}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              mode === "drop_off"
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <PackageOpen className="w-3.5 h-3.5" />
+            Drop-Off or Meet-Up
           </button>
         </div>
       </div>
