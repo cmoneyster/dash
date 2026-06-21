@@ -42,6 +42,15 @@ router.get("/events/day-load", async (req, res): Promise<void> => {
 // admin auth. Mirrors the OTD subset of /admin/event-settings. Returns
 // schema defaults when the row is missing so a fresh database doesn't
 // break checkout.
+router.get("/site-config", async (_req, res) => {
+  try {
+    const [settings] = await db.select({ heroImageUrl: eventSettingsTable.heroImageUrl }).from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    res.json({ heroImageUrl: settings?.heroImageUrl ?? null });
+  } catch {
+    res.json({ heroImageUrl: null });
+  }
+});
+
 router.get("/event-settings/otd-config", async (_req, res) => {
   try {
     const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));

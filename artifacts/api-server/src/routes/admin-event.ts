@@ -48,6 +48,7 @@ router.get("/admin/event-settings", async (req, res) => {
       dailyBuffetSlots: settings?.dailyBuffetSlots ?? null,
       dailyGrazingSlots: settings?.dailyGrazingSlots ?? null,
       dailyMadeToOrderSlots: settings?.dailyMadeToOrderSlots ?? null,
+      heroImageUrl: settings?.heroImageUrl ?? null,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching event settings");
@@ -121,6 +122,7 @@ router.put("/admin/event-settings", async (req, res) => {
       dailyBuffetSlots: s.dailyBuffetSlots ?? null,
       dailyGrazingSlots: s.dailyGrazingSlots ?? null,
       dailyMadeToOrderSlots: s.dailyMadeToOrderSlots ?? null,
+      heroImageUrl: s.heroImageUrl ?? null,
     });
 
     // OTD numeric helpers — money/hour values stored as numeric strings.
@@ -269,6 +271,23 @@ router.put("/admin/event-settings", async (req, res) => {
     }
     req.log.error({ err }, "Error updating event settings");
     res.status(500).json({ error: "Failed to update event settings" });
+  }
+});
+
+router.patch("/admin/event-settings/hero-image", async (req, res) => {
+  try {
+    const { heroImageUrl } = req.body as { heroImageUrl?: string | null };
+    const url = heroImageUrl == null || heroImageUrl === "" ? null : heroImageUrl;
+    const [existing] = await db.select({ id: eventSettingsTable.id }).from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    if (existing) {
+      await db.update(eventSettingsTable).set({ heroImageUrl: url, updatedAt: new Date() }).where(eq(eventSettingsTable.id, 1));
+    } else {
+      await db.insert(eventSettingsTable).values({ id: 1, eventName: "", eventPassword: process.env.EVENT_PASSWORD ?? "", heroImageUrl: url });
+    }
+    res.json({ heroImageUrl: url });
+  } catch (err) {
+    req.log.error({ err }, "Error updating hero image");
+    res.status(500).json({ error: "Failed to update hero image" });
   }
 });
 

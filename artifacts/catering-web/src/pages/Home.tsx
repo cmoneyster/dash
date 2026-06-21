@@ -1,8 +1,11 @@
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { HashtagWall } from "@/components/HashtagWall";
 import { FirstVisitInterstitial } from "@/components/FirstVisitInterstitial";
 import { ArrowRight, Star, Clock, CalendarCheck, UtensilsCrossed, ShoppingBag, Users, Send } from "lucide-react";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const HOW_IT_WORKS_STEPS = [
   {
@@ -32,101 +35,112 @@ const HOW_IT_WORKS_STEPS = [
 ];
 
 export default function Home() {
+  const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/site-config`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.heroImageUrl) setHeroImageUrl(data.heroImageUrl); })
+      .catch(() => {});
+  }, []);
+
+  const heroSrc = heroImageUrl ?? `${import.meta.env.BASE_URL}images/hero.png`;
+
   return (
     <Layout>
       <FirstVisitInterstitial />
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-40 overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          {/* landing page hero scenic catering table spread */}
-          <img 
-            src={`${import.meta.env.BASE_URL}images/hero.png`}
+
+      {/* Hero + How It Works — unified overlapping section */}
+      <section className="relative pt-28 pb-0 overflow-visible">
+        {/* Background photo */}
+        <div className="absolute inset-x-0 top-0 h-[520px] sm:h-[480px] z-0">
+          <img
+            src={heroSrc}
             alt="Beautiful catering spread"
             className="w-full h-full object-cover object-center"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/80 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent" />
         </div>
 
+        {/* Hero text */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="max-w-2xl">
+          <div className="max-w-2xl pb-24 sm:pb-32">
             <span className="inline-block py-1 px-3 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest mb-6">
               Modern Asian-Inspired Catering
             </span>
-            <h1 className="font-display text-5xl md:text-7xl font-bold text-foreground leading-[1.1] mb-6 text-balance">
+            <h1 className="font-display text-4xl md:text-5xl font-bold text-foreground leading-[1.1] mb-5 text-balance">
               Bold flavors. Unforgettable events.
             </h1>
-            <p className="text-lg md:text-xl text-foreground/70 mb-10 leading-relaxed max-w-xl">
+            <p className="text-base md:text-lg text-foreground/70 mb-8 leading-relaxed max-w-xl">
               dash by Hollywood East Cafe brings bold, fresh, Asian-inspired flavors to your event — from a single pan drop-off to a full-scale celebration.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link 
-                href="/menu" 
-                className="px-8 py-4 bg-primary text-primary-foreground font-bold rounded-xl shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 hover:-translate-y-0.5 transition-all text-center flex items-center justify-center gap-2"
+              <Link
+                href="/menu"
+                className="px-7 py-3.5 bg-primary text-primary-foreground font-bold rounded-xl shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 hover:-translate-y-0.5 transition-all text-center flex items-center justify-center gap-2"
               >
                 Explore Menu <ArrowRight className="w-5 h-5" />
               </Link>
-              <Link 
-                href="/plan" 
-                className="px-8 py-4 bg-card text-foreground font-bold rounded-xl border border-border shadow-sm hover:border-primary/50 hover:bg-secondary/50 transition-all text-center"
+              <Link
+                href="/plan"
+                className="px-7 py-3.5 bg-card text-foreground font-bold rounded-xl border border-border shadow-sm hover:border-primary/50 hover:bg-secondary/50 transition-all text-center"
               >
                 Start Planning
               </Link>
             </div>
           </div>
         </div>
-      </section>
 
-      {/* How It Works */}
-      <section className="py-20 bg-secondary/40 border-y border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <span className="inline-block py-1 px-3 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest mb-4">
-              Simple &amp; flexible
-            </span>
-            <h2 className="font-display font-bold text-3xl sm:text-4xl mb-3">
-              How it works
-            </h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
-              From browsing to your door — here's how to place a catering order in four easy steps.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
-            {HOW_IT_WORKS_STEPS.map((step) => {
-              const Icon = step.icon;
-              return (
-                <div key={step.number} className="relative flex flex-col bg-card rounded-2xl border border-border p-6 shadow-sm">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">
-                      {step.number}
-                    </span>
-                    <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center text-primary shrink-0">
-                      <Icon className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <h3 className="font-display font-bold text-lg mb-2">{step.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{step.body}</p>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
-            <div className="px-5 py-3 rounded-xl bg-primary/10 border border-primary/20 text-sm font-semibold text-primary">
-              No minimum order — single pans, small orders, and drop-off or meet-up all welcome
+        {/* How It Works cards — overlap the hero photo bottom */}
+        <div className="relative z-10 -mt-10 sm:-mt-16 pb-16 bg-gradient-to-b from-transparent to-background">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="mb-6 text-center">
+              <span className="inline-block py-1 px-3 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest mb-3">
+                Simple &amp; flexible
+              </span>
+              <h2 className="font-display font-bold text-2xl sm:text-3xl">
+                How it works
+              </h2>
             </div>
-            <Link
-              href="/menu"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-bold rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all text-sm"
-            >
-              Browse the Menu <ArrowRight className="w-4 h-4" />
-            </Link>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+              {HOW_IT_WORKS_STEPS.map((step) => {
+                const Icon = step.icon;
+                return (
+                  <div key={step.number} className="relative flex flex-col bg-card rounded-2xl border border-border p-5 shadow-md">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">
+                        {step.number}
+                      </span>
+                      <div className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center text-primary shrink-0">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <h3 className="font-display font-bold text-base mb-1.5">{step.title}</h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{step.body}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+              <div className="px-5 py-3 rounded-xl bg-primary/10 border border-primary/20 text-sm font-semibold text-primary">
+                No minimum order — single pans, small orders, and drop-off or meet-up all welcome
+              </div>
+              <Link
+                href="/menu"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-bold rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all text-sm"
+              >
+                Browse the Menu <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Features */}
-      <section className="py-24 bg-background">
+      <section className="py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
             <div className="flex flex-col items-start">

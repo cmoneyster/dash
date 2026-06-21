@@ -1,8 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminToken } from "@/components/AdminGuard";
-import { Upload, Trash2, Copy, Check, ImageIcon, Loader2, X, ZoomIn, Clipboard } from "lucide-react";
+import { Upload, Trash2, Copy, Check, ImageIcon, Loader2, X, ZoomIn, Clipboard, Image, RotateCcw } from "lucide-react";
 import { ImageLightbox } from "@/components/ImageLightbox";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface ImageRecord {
   id: number;
@@ -21,7 +23,7 @@ function useImageLibrary() {
     setLoading(true);
     try {
       const token = getAdminToken();
-      const res = await fetch("/api/admin/images", {
+      const res = await fetch(`${BASE}/api/admin/images`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) setImages(await res.json());
@@ -35,7 +37,7 @@ function useImageLibrary() {
     const token = getAdminToken();
     const form = new FormData();
     form.append("image", file);
-    const res = await fetch("/api/admin/images/upload", {
+    const res = await fetch(`${BASE}/api/admin/images/upload`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: form,
@@ -48,7 +50,7 @@ function useImageLibrary() {
 
   const deleteImage = useCallback(async (id: number) => {
     const token = getAdminToken();
-    await fetch(`/api/admin/images/${id}`, {
+    await fetch(`${BASE}/api/admin/images/${id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -56,6 +58,168 @@ function useImageLibrary() {
   }, []);
 
   return { images, loading, initialized, fetchImages, uploadImage, deleteImage };
+}
+
+function useHeroImage() {
+  const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  const fetchHero = useCallback(async () => {
+    try {
+      const token = getAdminToken();
+      const res = await fetch(`${BASE}/api/admin/event-settings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setHeroImageUrl(data.heroImageUrl ?? null);
+      }
+    } finally {
+      setInitialized(true);
+    }
+  }, []);
+
+  const patchHero = useCallback(async (url: string | null) => {
+    setSaving(true);
+    try {
+      const token = getAdminToken();
+      const res = await fetch(`${BASE}/api/admin/event-settings/hero-image`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ heroImageUrl: url }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      setHeroImageUrl(url);
+    } finally {
+      setSaving(false);
+    }
+  }, []);
+
+  const uploadHero = useCallback(async (file: File) => {
+    setUploading(true);
+    try {
+      const token = getAdminToken();
+      const form = new FormData();
+      form.append("image", file);
+      const res = await fetch(`${BASE}/api/admin/images/upload-hero`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const { servingUrl } = await res.json();
+      await patchHero(servingUrl);
+    } finally {
+      setUploading(false);
+    }
+  }, [patchHero]);
+
+  return { heroImageUrl, uploading, saving, initialized, fetchHero, uploadHero, resetHero: () => patchHero(null) };
+}
+
+function HeroImageCard() {
+  const { heroImageUrl, uploading, saving, initialized, fetchHero, uploadHero, resetHero } = useHeroImage();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { fetchHero(); }, [fetchHero]);
+
+  const handleFile = async (file: File) => {
+    setError(null);
+    try {
+      await uploadHero(file);
+    } catch {
+      setError("Upload failed — please try again.");
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const busy = uploading || saving;
+
+  return (
+    <div className="mb-10 rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+            <Image className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="font-display font-bold text-lg leading-tight">Hero Image</h2>
+            <p className="text-xs text-muted-foreground">Home page banner · 1920×1080 (16:9)</p>
+          </div>
+        </div>
+        {heroImageUrl && (
+          <button
+            onClick={resetHero}
+            disabled={busy}
+            className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Reset to default
+          </button>
+        )}
+      </div>
+
+      <div className="p-6">
+        {!initialized ? (
+          <div className="flex items-center justify-center h-40">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : heroImageUrl ? (
+          <div className="flex flex-col sm:flex-row gap-6 items-start">
+            <div className="w-full sm:w-64 shrink-0 rounded-xl overflow-hidden border border-border aspect-video bg-secondary">
+              <img src={heroImageUrl} alt="Current hero" className="w-full h-full object-cover" />
+            </div>
+            <div className="flex flex-col gap-3">
+              <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                ✓ Custom hero image active
+              </p>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                This image is currently shown on the home page. Upload a new image to replace it, or reset to restore the default photo.
+              </p>
+              <button
+                onClick={() => inputRef.current?.click()}
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-primary hover:text-primary-foreground disabled:opacity-50 transition-colors w-fit"
+              >
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {uploading ? "Uploading…" : saving ? "Saving…" : "Upload new image"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row gap-6 items-start">
+            <div className="w-full sm:w-64 shrink-0 rounded-xl border-2 border-dashed border-border aspect-video bg-secondary/50 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <ImageIcon className="w-8 h-8 opacity-30" />
+              <p className="text-xs font-medium">Using default photo</p>
+            </div>
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                The home page is currently showing the built-in default photo. Upload a 16:9 landscape image to replace it — your photo will be processed at 1920×1080.
+              </p>
+              <button
+                onClick={() => inputRef.current?.click()}
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-primary hover:text-primary-foreground disabled:opacity-50 transition-colors w-fit"
+              >
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {uploading ? "Uploading…" : saving ? "Saving…" : "Upload hero image"}
+              </button>
+            </div>
+          </div>
+        )}
+        {error && <p className="mt-3 text-sm text-destructive font-medium">{error}</p>}
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleChange} />
+      </div>
+    </div>
+  );
 }
 
 function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
@@ -255,7 +419,14 @@ export default function ImageLibrary() {
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       <div ref={el => { if (el && !initialized) handleLoad(); }} className="mb-8">
         <h1 className="font-display font-bold text-2xl sm:text-4xl mb-2">Image Library</h1>
-        <p className="text-muted-foreground">Upload photos for your menu items. All images are auto-cropped to 4:3 (800×600).</p>
+        <p className="text-muted-foreground">Upload and manage photos for your menu items and site.</p>
+      </div>
+
+      <HeroImageCard />
+
+      <div className="mb-6">
+        <h2 className="font-display font-bold text-xl mb-1">Menu Images</h2>
+        <p className="text-sm text-muted-foreground">All images are auto-cropped to 4:3 (800×600).</p>
       </div>
 
       <DropZone onFiles={handleFiles} />

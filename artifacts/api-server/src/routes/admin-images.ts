@@ -23,6 +23,9 @@ const objectStorage = new ObjectStorageService();
 const TARGET_WIDTH = 800;
 const TARGET_HEIGHT = 600;
 
+const HERO_WIDTH = 1920;
+const HERO_HEIGHT = 1080;
+
 router.use("/admin/images", requireAdminAuth);
 
 router.get("/admin/images", async (req, res) => {
@@ -87,6 +90,47 @@ router.post(
     } catch (err) {
       req.log.error({ err }, "Error uploading image");
       res.status(500).json({ error: "Failed to upload image" });
+    }
+  }
+);
+
+router.post(
+  "/admin/images/upload-hero",
+  upload.single("image"),
+  async (req, res) => {
+    if (!req.file) {
+      res.status(400).json({ error: "No image file provided" });
+      return;
+    }
+
+    try {
+      const processed = await sharp(req.file.buffer)
+        .resize(HERO_WIDTH, HERO_HEIGHT, {
+          fit: "cover",
+          position: "centre",
+        })
+        .jpeg({ quality: 92, progressive: true })
+        .toBuffer();
+
+      const uploadUrl = await objectStorage.getObjectEntityUploadURL();
+
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "image/jpeg" },
+        body: processed,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error(`GCS upload failed: ${uploadRes.status}`);
+      }
+
+      const objectPath = objectStorage.normalizeObjectEntityPath(uploadUrl);
+      const servingUrl = `/api/storage${objectPath}`;
+
+      res.status(201).json({ servingUrl });
+    } catch (err) {
+      req.log.error({ err }, "Error uploading hero image");
+      res.status(500).json({ error: "Failed to upload hero image" });
     }
   }
 );

@@ -161,6 +161,10 @@ export const eventSettingsTable = pgTable("event_settings", {
   dailyBuffetSlots: integer("daily_buffet_slots"),
   dailyGrazingSlots: integer("daily_grazing_slots"),
   dailyMadeToOrderSlots: integer("daily_made_to_order_slots"),
+  // ── Site appearance ───────────────────────────────────────────────────────
+  // Serving URL of the custom home-page hero image uploaded via Admin → Images.
+  // When null the frontend falls back to the bundled hero.png.
+  heroImageUrl: text("hero_image_url"),
   // ── Site & Social ──────────────────────────────────────────────────────────
   // Brand Instagram handle (no leading @). Empty string = not configured.
   // Used by the public footer link AND by the hashtag-wall auto-approve rule
