@@ -4,7 +4,7 @@ import { Layout } from "@/components/Layout";
 import { MenuCard, MenuCardCompact } from "@/components/MenuCard";
 import { PackageDetail } from "@/components/PackageDetail";
 import { fetchPublicPackages, type PublicMenuPackage } from "@/lib/menuPackages";
-import { Users, Package as PackageIcon, Flame, Instagram, MapPin, Share2 } from "lucide-react";
+import { Users, Package as PackageIcon, PackageOpen, Flame, Instagram } from "lucide-react";
 import { 
   useListMenuItems,
   useAddToPlan, 
@@ -165,10 +165,7 @@ export default function Menu() {
               <Flame className="w-3.5 h-3.5" /> On the Dash — live trailer cooking
             </span>
             <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-semibold">
-              <MapPin className="w-3.5 h-3.5" /> Drop-Off or Meet-Up
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-secondary border border-border text-muted-foreground text-sm font-semibold">
-              <Share2 className="w-3.5 h-3.5" /> Collaborative Event Plan
+              <PackageOpen className="w-3.5 h-3.5" /> Drop-Off or Meet-Up
             </span>
           </div>
         </div>
