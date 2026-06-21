@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { HashtagWall } from "@/components/HashtagWall";
 import { FirstVisitInterstitial } from "@/components/FirstVisitInterstitial";
-import { ArrowRight, Star, Clock, CalendarCheck, UtensilsCrossed, ShoppingBag, Users, Send } from "lucide-react";
+import { ArrowRight, Star, Clock, Flame, UtensilsCrossed, ShoppingBag, Users, Send } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -12,7 +12,7 @@ const HOW_IT_WORKS_STEPS = [
     number: "1",
     icon: UtensilsCrossed,
     title: "Browse the Menu",
-    body: "Explore our full menu of Asian-inspired dishes. Filter by category or let Dashy, our AI assistant, help you narrow it down.",
+    body: "Explore our full menu of bold, eclectic dishes — and a secret items section with surprises beyond the usual. Filter by category or let Dashy, our AI assistant, help you narrow it down.",
   },
   {
     number: "2",
@@ -67,13 +67,13 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="max-w-2xl pb-14 sm:pb-16">
             <span className="inline-block py-1 px-3 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest mb-4">
-              Modern Asian-Inspired Catering
+              The On The Dash Experience
             </span>
             <h1 className="font-display text-3xl md:text-4xl font-bold text-foreground leading-[1.1] mb-4 text-balance">
-              Bold flavors. Unforgettable events.
+              We bring the kitchen to you.
             </h1>
             <p className="text-sm md:text-base text-foreground/70 mb-6 leading-relaxed max-w-xl">
-              dash by Hollywood East Cafe brings bold, fresh, Asian-inspired flavors to your event — from a single pan drop-off to a full-scale celebration.
+              Our food trailer comes on-site and cooks bold, fresh food live at your event — hot off the grill, right in front of your guests. Prefer drop-off or a meet-up? We do that too. And our menu goes beyond any one cuisine — custom requests are always welcome.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
@@ -126,7 +126,7 @@ export default function Home() {
 
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
               <div className="px-5 py-3 rounded-xl bg-primary/10 border border-primary/20 text-sm font-semibold text-primary">
-                No minimum order — single pans, small orders, and drop-off or meet-up all welcome
+                Food trailer on-site cooking · drop-off · meet-up · no minimum order
               </div>
               <Link
                 href="/menu"
@@ -147,9 +147,9 @@ export default function Home() {
               <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center text-primary mb-6">
                 <Star className="w-7 h-7" />
               </div>
-              <h3 className="font-display font-bold text-2xl mb-3">Bold Flavors</h3>
+              <h3 className="font-display font-bold text-2xl mb-3">Bold, Eclectic Flavors</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Authentic, Asian-inspired recipes crafted to bring exciting, bold tastes to every bite of your event's menu.
+                Our menu draws from bold, globally-inspired recipes — and we're always open to custom requests. If you have a vision, we'll work with you to make it happen.
               </p>
             </div>
             <div className="flex flex-col items-start">
@@ -163,11 +163,11 @@ export default function Home() {
             </div>
             <div className="flex flex-col items-start">
               <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center text-primary mb-6">
-                <CalendarCheck className="w-7 h-7" />
+                <Flame className="w-7 h-7" />
               </div>
-              <h3 className="font-display font-bold text-2xl mb-3">Seamless Planning</h3>
+              <h3 className="font-display font-bold text-2xl mb-3">On-Site Experience</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Use our intelligent planning tools and dashy, our AI assistant, to effortlessly design the perfect menu for your guest count.
+                Our food trailer arrives at your venue and cooks everything fresh, right in front of your guests — hot off the grill and made to order at your event.
               </p>
             </div>
           </div>
