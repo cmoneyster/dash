@@ -51,28 +51,28 @@ export default function Home() {
       <FirstVisitInterstitial />
 
       {/* Hero + How It Works — unified overlapping section */}
-      <section className="relative pt-28 pb-0 overflow-visible">
+      <section className="relative pt-20 pb-0 overflow-visible">
         {/* Background photo */}
-        <div className="absolute inset-x-0 top-0 h-[520px] sm:h-[480px] z-0">
+        <div className="absolute inset-x-0 top-0 h-[300px] sm:h-[340px] z-0">
           <img
             src={heroSrc}
             alt="Beautiful catering spread"
             className="w-full h-full object-cover object-center"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/80 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background to-transparent" />
         </div>
 
         {/* Hero text */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="max-w-2xl pb-24 sm:pb-32">
-            <span className="inline-block py-1 px-3 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest mb-6">
+          <div className="max-w-2xl pb-14 sm:pb-16">
+            <span className="inline-block py-1 px-3 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest mb-4">
               Modern Asian-Inspired Catering
             </span>
-            <h1 className="font-display text-4xl md:text-5xl font-bold text-foreground leading-[1.1] mb-5 text-balance">
+            <h1 className="font-display text-3xl md:text-4xl font-bold text-foreground leading-[1.1] mb-4 text-balance">
               Bold flavors. Unforgettable events.
             </h1>
-            <p className="text-base md:text-lg text-foreground/70 mb-8 leading-relaxed max-w-xl">
+            <p className="text-sm md:text-base text-foreground/70 mb-6 leading-relaxed max-w-xl">
               dash by Hollywood East Cafe brings bold, fresh, Asian-inspired flavors to your event — from a single pan drop-off to a full-scale celebration.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
