@@ -4,7 +4,7 @@ import { Layout } from "@/components/Layout";
 import { MenuCard, MenuCardCompact } from "@/components/MenuCard";
 import { PackageDetail } from "@/components/PackageDetail";
 import { fetchPublicPackages, type PublicMenuPackage } from "@/lib/menuPackages";
-import { Users, Package as PackageIcon, Flame, Instagram } from "lucide-react";
+import { Users, Package as PackageIcon, Flame, Instagram, MapPin, Share2 } from "lucide-react";
 import { 
   useListMenuItems,
   useAddToPlan, 
@@ -157,9 +157,20 @@ export default function Menu() {
       <div className="bg-secondary/30 py-16 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="font-display font-bold text-3xl sm:text-5xl mb-4">Curated Offerings</h1>
-          <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
-            Discover our seasonal selections, crafted with passion and precision. Build your perfect event menu or add favorites to your wishlist.
+          <p className="text-muted-foreground max-w-2xl mx-auto text-lg mb-6">
+            Discover our seasonal selections. Tap ♡ on any item to add it to your collaborative Event Plan — share it with a partner or coordinator, check serving amounts, and request a quote together.
           </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-400/30 text-orange-700 dark:text-orange-400 text-sm font-semibold">
+              <Flame className="w-3.5 h-3.5" /> On the Dash — live trailer cooking
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-semibold">
+              <MapPin className="w-3.5 h-3.5" /> Drop-Off or Meet-Up
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-secondary border border-border text-muted-foreground text-sm font-semibold">
+              <Share2 className="w-3.5 h-3.5" /> Collaborative Event Plan
+            </span>
+          </div>
         </div>
       </div>
 
