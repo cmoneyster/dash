@@ -1120,6 +1120,19 @@ export default function Plan() {
               Browse Menu
             </Link>
 
+            {/* ── Collaboration teaser ── */}
+            <div className="mt-6 mx-auto max-w-sm flex items-start gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3.5 text-left animate-fade-slide-up">
+              <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                <Share2 className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground mb-0.5">Planning with others?</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Once you've added items, share your plan via a link — a partner, family member, or coordinator can view it, adjust quantities, and add items together. No sign-up needed.
+                </p>
+              </div>
+            </div>
+
             {/* ── Calculator teaser ── */}
             <div className="mt-10 relative select-none pointer-events-none animate-fade-slide-up" aria-hidden="true">
               <div className="absolute inset-0 z-10 flex flex-col items-end justify-end pb-3 bg-gradient-to-t from-card via-card/70 to-transparent rounded-2xl">

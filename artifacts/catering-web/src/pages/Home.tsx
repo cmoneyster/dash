@@ -17,8 +17,8 @@ const HOW_IT_WORKS_STEPS = [
   {
     number: "2",
     icon: ShoppingBag,
-    title: "Add Items to Your Plan",
-    body: "Build your custom menu — any order size is welcome. A single pan, a few items, or a full spread. Drop-off or meet-up, we make it work.",
+    title: "Build & Share Your Plan",
+    body: "Add items to your plan — any size is welcome, from a single pan to a full spread. Planning with a partner or family? Share your plan via a simple link and co-plan together in real time. No sign-up needed.",
   },
   {
     number: "3",
