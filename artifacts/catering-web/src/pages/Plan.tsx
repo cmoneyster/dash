@@ -854,6 +854,11 @@ export default function Plan() {
                 </div>
               ) : (
                 <>
+                  {/* Collaborative intro */}
+                  <p className="text-sm text-foreground/80 leading-relaxed">
+                    Share your plan with a partner, family member, or event coordinator — anyone with the link can view your menu, adjust quantities, add items, and even submit the inquiry. <span className="font-semibold text-foreground">It's real-time collaborative planning, no sign-up needed.</span>
+                  </p>
+
                   {/* Name field — primary CTA */}
                   <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
@@ -907,6 +912,17 @@ export default function Plan() {
                       <p className="text-xs text-muted-foreground mt-1.5">
                         Link active for {daysUntil(shareExpiry)} days after last use. Anyone with the link can view and edit.
                       </p>
+                    )}
+                    {shareUrl && (
+                      <a
+                        href={shareUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 mt-2 text-xs font-semibold text-primary hover:underline"
+                      >
+                        <Share2 className="w-3 h-3" />
+                        Preview your shared plan →
+                      </a>
                     )}
                   </div>
 
@@ -1083,7 +1099,10 @@ export default function Plan() {
                 className="flex items-center gap-2 px-4 py-2.5 bg-foreground text-background font-semibold rounded-xl text-sm hover:bg-primary transition-colors"
               >
                 <Share2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Save & Share</span>
+                <span className="hidden sm:flex flex-col items-start leading-tight">
+                  <span>Save &amp; Share</span>
+                  <span className="text-[10px] font-normal opacity-70">collaborate via link</span>
+                </span>
                 <span className="sm:hidden">Share</span>
               </button>
             </div>
