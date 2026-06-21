@@ -161,12 +161,40 @@ export default function Menu() {
             Discover our seasonal selections. Tap ♡ on any item to add it to your collaborative Event Plan — share it with a partner or coordinator, check serving amounts, and request a quote together.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-400/30 text-orange-700 dark:text-orange-400 text-sm font-semibold">
-              <Flame className="w-3.5 h-3.5" /> On the Dash — live trailer cooking
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-semibold">
-              <PackageOpen className="w-3.5 h-3.5" /> Drop-Off or Meet-Up
-            </span>
+            <button
+              type="button"
+              onClick={() => setServiceMode("on_the_dash")}
+              aria-pressed={serviceMode === "on_the_dash"}
+              className={`flex flex-col items-start text-left px-4 py-3 rounded-xl border transition-all ${
+                serviceMode === "on_the_dash"
+                  ? "bg-orange-500/15 border-orange-400/50 text-orange-700 dark:text-orange-400"
+                  : "bg-orange-500/5 border-orange-400/20 text-orange-700/60 dark:text-orange-400/60 hover:bg-orange-500/10 hover:border-orange-400/40"
+              }`}
+            >
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
+                <Flame className="w-3.5 h-3.5" /> On the Dash
+              </span>
+              <span className="text-xs font-normal text-muted-foreground mt-0.5">
+                Our food trailer cooks everything fresh on-site
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setServiceMode("drop_off")}
+              aria-pressed={serviceMode === "drop_off"}
+              className={`flex flex-col items-start text-left px-4 py-3 rounded-xl border transition-all ${
+                serviceMode === "drop_off"
+                  ? "bg-primary/15 border-primary/50 text-primary"
+                  : "bg-primary/5 border-primary/20 text-primary/60 hover:bg-primary/10 hover:border-primary/40"
+              }`}
+            >
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
+                <PackageOpen className="w-3.5 h-3.5" /> Drop-Off or Meet-Up
+              </span>
+              <span className="text-xs font-normal text-muted-foreground mt-0.5">
+                Pre-cooked and delivered — any size, wherever works for you
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -375,7 +403,7 @@ function PackageCard({
         {blockedByOtd && (
           <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800 flex items-center gap-1.5">
             <Flame className="w-3 h-3 shrink-0" />
-            Only available with Drop-Off / Meet-Up
+            Only available with Drop-Off or Meet-Up
           </div>
         )}
         <span className="mt-4 text-sm font-semibold text-primary">View details →</span>

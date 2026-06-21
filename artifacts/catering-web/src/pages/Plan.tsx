@@ -10,7 +10,7 @@ import { formatCurrency } from "@/lib/utils";
 import { TAX_DISCLOSURE, TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import {
   Trash2, Heart, Users, Calculator, ChevronDown, ChevronUp, ChevronRight,
-  Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, Truck, Calendar, Send, ShieldCheck,
+  Share2, Copy, CheckCheck, X, Loader2, Utensils, AlertTriangle, PackageOpen, Calendar, Send, ShieldCheck,
   Phone, RefreshCw, Flame, Plus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -969,7 +969,7 @@ export default function Plan() {
                   Some saved items can't be cooked on-site
                 </p>
                 <p className="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
-                  You're set to <strong>On the Dash Experience</strong>, but our food trailer can't prepare these items live. Switch to Drop-Off / Meet-Up to keep them, or remove them from your plan.
+                  You're set to <strong>On the Dash Experience</strong>, but our food trailer can't prepare these items live. Switch to Drop-Off or Meet-Up to keep them, or remove them from your plan.
                 </p>
               </div>
             </div>
@@ -997,8 +997,8 @@ export default function Plan() {
               onClick={() => setServiceMode("drop_off")}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-700 text-white text-sm font-semibold rounded-xl hover:bg-amber-800 transition-colors"
             >
-              <Truck className="w-4 h-4" />
-              Switch to Drop-Off / Meet-Up
+              <PackageOpen className="w-4 h-4" />
+              Switch to Drop-Off or Meet-Up
             </button>
           </div>
         )}

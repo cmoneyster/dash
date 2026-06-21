@@ -1,4 +1,4 @@
-import { MapPin, Flame } from "lucide-react";
+import { PackageOpen, Flame } from "lucide-react";
 import type { ServiceMode } from "@/lib/serviceMode";
 
 // Compact toggle used at the top of Menu / Plan / SharedPlan so the
@@ -38,8 +38,8 @@ export function ServiceModeBanner({
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <MapPin className="w-3.5 h-3.5" />
-            Drop-Off / Meet-Up
+            <PackageOpen className="w-3.5 h-3.5" />
+            Drop-Off or Meet-Up
           </button>
           <button
             type="button"

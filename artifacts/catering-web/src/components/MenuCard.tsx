@@ -146,16 +146,16 @@ export function MenuCard({ item, onAddToPlan, onTogglePlan, isInPlan, serviceMod
           {blockedByOtd && (
             <div
               className="mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800 flex items-center gap-1.5"
-              title="The food trailer can't cook this on-site. Switch to Drop-Off / Meet-Up to order it."
+              title="The food trailer can't cook this on-site. Switch to Drop-Off or Meet-Up to order it."
             >
               <Flame className="w-3 h-3 shrink-0" />
-              Only available with Drop-Off / Meet-Up
+              Only available with Drop-Off or Meet-Up
             </div>
           )}
           <button
             onClick={() => onAddToPlan(item)}
             disabled={addDisabled}
-            title={blockedByOtd ? "Switch to Drop-Off / Meet-Up to add this item" : undefined}
+            title={blockedByOtd ? "Switch to Drop-Off or Meet-Up to add this item" : undefined}
             className={`w-full py-3.5 px-4 font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 group/btn mt-auto ${
               isInPlan
                 ? "bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground"

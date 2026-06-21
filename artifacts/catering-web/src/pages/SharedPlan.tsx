@@ -6,7 +6,7 @@ import { TAX_DISCLOSURE, TAX_DISCLOSURE_SHORT } from "@/lib/tax";
 import { getSessionId } from "@/lib/session";
 import {
   Trash2, Heart, Users, AlertTriangle, Copy, CheckCheck, Loader2,
-  Calculator, Utensils, ChevronDown, ChevronUp, Truck, Send,
+  Calculator, Utensils, ChevronDown, ChevronUp, PackageOpen, Send,
 } from "lucide-react";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { useToast } from "@/hooks/use-toast";
@@ -590,7 +590,7 @@ export default function SharedPlan() {
                     Some items aren't available with the On the Dash Experience
                   </p>
                   <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
-                    Our mobile trailer can't prepare these on-site. Remove them or switch to Drop-Off / Meet-Up.
+                    Our mobile trailer can't prepare these on-site. Remove them or switch to Drop-Off or Meet-Up.
                   </p>
                 </div>
               </div>
@@ -614,7 +614,7 @@ export default function SharedPlan() {
                 }}
                 className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors"
               >
-                <Truck className="w-4 h-4" /> Switch to Drop-Off / Meet-Up
+                <PackageOpen className="w-4 h-4" /> Switch to Drop-Off or Meet-Up
               </button>
             </div>
           );
