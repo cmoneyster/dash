@@ -343,7 +343,11 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined, we
         .filter(Boolean);
       const domain = domains[0] ?? null;
       if (!domain) return null;
-      return `https://${domain}/api/sms/inbound?secret=${encodeURIComponent(webhookSecret)}&port=$port&from=$sn&body=$sm&ts=$tm`;
+      // No template variables in the URL — the gateway appends its own
+      // fields (sender, receiver, content, port, etc.) automatically.
+      // Adding $port/$sn/$sm caused the gateway to send them as literal
+      // strings rather than expanding them, breaking port detection.
+      return `https://${domain}/api/sms/inbound?secret=${encodeURIComponent(webhookSecret)}`;
     })(),
   };
 }

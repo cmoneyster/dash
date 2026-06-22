@@ -1,0 +1,61 @@
+Prompt to send to your agent:
+
+I want to add an SMS bot feature to this project using a GoIP eJoinTech hardware gateway. The gateway forwards inbound SMS as HTTP GET requests to a URL I configure on the device. I also need to send outbound SMS through the same gateway. Here is a detailed description of exactly how it works and what to build, based on a working implementation I already have.
+
+Overview
+The system has two sides:
+1. Inbound — The GoIP gateway makes an HTTP GET request to a webhook URL on my server every time an SMS arrives. The server parses the sender, recipient, and message body from the query string, then runs bot logic.
+2. Outbound — The server sends SMS back by driving the gateway's HTML admin UI programmatically (it has no JSON API). This involves: GET the login page → parse a session nonce → POST credentials with an MD5 challenge digest → POST the SMS send form.
+
+Part 1 — Inbound webhook endpoint
+Create a route that handles both GET and POST at the same path (e.g. POST /api/sms/incoming and GET /api/sms/incoming). The handler must be unauthenticated (no session/auth middleware) because the gateway hits it directly.
+The GoIP gateway sends fields with these names — but be flexible, because different firmware versions use different names:
+Meaning	Possible field names
+Sender's phone number	from, sender, src, phone
+Recipient / SIM number	to, receiver, dst, recipient
+Message body	body, sms, content, message, text
+Check both req.body and req.query for each field (whichever is populated first wins). Return HTTP 400 if from or body are missing.
+Pass the parsed values to your bot handler, then return a JSON response: { reply: string, sessionId: string | null }. Do not use the response body to trigger an outbound SMS — the gateway ignores it. Send the reply yourself via the outbound adapter (see Part 2).
+On the GoIP device's web UI, set the "SMS Receive URL" to:
+http://YOUR_SERVER_HOST/api/sms/incoming
+
+
+Part 2 — Outbound SMS adapter (eJoinTech / GoIP HTML scraping)
+The gateway has no JSON API. Sending an SMS requires driving its HTML admin UI exactly as a browser would. Implement a sendSms(to: string, body: string): Promise<void> function with the following behavior:
+Login flow (3 steps)
+Step 1 — GET /login_en.html
+* Capture the Set-Cookie header (e.g. auth_01603b=abc...). Take the first key=value pair before the first ;.
+* Parse the per-session nonce from the HTML body: look for var cookies_nonce = "<hex>" — extract the hex string.
+Step 2 — POST /login_en.html
+* Compute: digest = MD5(username + ":" + password + ":" + nonce)
+* Submit application/x-www-form-urlencoded with fields: nonce="", encoded=<username>:<digest>, loginStatus=-1
+* Send the cookie from Step 1 in the Cookie header
+* Parse success from the response: look for id="ID_LoginStatus" with value="0". Any other value means the credentials were rejected — throw an error.
+* The POST response may rotate the cookie. If the Set-Cookie response header contains a new key=value pair, use it as the authenticated session cookie; otherwise keep the original.
+Step 3 — POST /goip_sms_en.html (the actual send)
+* Submit application/x-www-form-urlencoded with these fields:
+command = "goip_send_sms"
+goip_cmd_port = <port number, 1-indexed, e.g. "1">
+selected_port = <port number minus 1, 0-indexed, e.g. "0">
+selected_slot = <SIM slot within port: A=0, B=1, C=2 …>
+goip_sms_dst = <recipient, national number only — strip "+" and country code>
+goip_sms_send = <message body with CRLF line endings>
+
+* Send the authenticated session cookie.
+* Normalize line endings in the body to \r\n before URL-encoding (the browser does this automatically; raw \n bytes cause the gateway to mangle the message).
+* Strip the + and country code from the recipient number. For US numbers this means stripping a leading 1 if the number is 11 digits. Final form should be 7–10 digits only.
+* A successful send returns a page whose <title> contains "SMS Settings". Any other title (including "Login" or "Index") means either the send failed or the session expired.
+* If the response page title is "Login" or "Index", the session has expired — invalidate the cached session, re-login, and retry the send once.
+Session caching
+* Cache the authenticated session cookie in memory (a module-level variable).
+* Invalidate and re-login on auth-bounce as described above.
+* Serialize concurrent login attempts (if two sends happen simultaneously while no session exists, only one login attempt should fire; the other should wait for it).
+Carrier dedup bypass
+Mobile carriers silently drop SMS that are byte-identical to the previous message sent to the same recipient within a short window (~30 minutes). To prevent this, track the last body sent to each recipient. If the same body is about to be sent again within the window, append a small discriminator like (#2), (#3), etc. The first send is always pristine.
+Environment variables (store as secrets)
+Variable	Description
+EJOINTECH_BASE_URL	Full URL to the gateway admin UI, e.g. http://192.168.1.10:1640 (no trailing slash; if no http:// prefix is present, prepend it automatically)
+EJOINTECH_USERNAME	Gateway admin username
+EJOINTECH_PASSWORD	Gateway admin password
+EJOINTECH_PORT	SIM port to send from. Format: "1", "1A", "2B", etc. Number is 1-indexed; optional letter selects the SIM slot within the port (A=0, B=1, …)
+EJOINTECH_TIMEOUT_MS	Optional. Per-request timeout in milliseconds. Default: 15000

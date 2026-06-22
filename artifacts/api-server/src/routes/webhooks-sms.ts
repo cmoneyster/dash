@@ -88,8 +88,49 @@ function pick(obj: Record<string, unknown>, keys: string[]): unknown {
 function asString(v: unknown): string | null {
   if (typeof v === "string") return v.trim();
   if (typeof v === "number") return String(v);
-  if (Array.isArray(v) && v.length > 0) return asString(v[0]);
+  // For arrays, return the first non-template-variable element.
+  if (Array.isArray(v)) {
+    for (const item of v) {
+      const s = asString(item);
+      if (s !== null && !s.startsWith("$")) return s;
+    }
+  }
   return null;
+}
+
+// Extract the actual SMS text from the eJoinTech gateway's formatted
+// content block. Some firmware versions wrap the body in a metadata
+// header section:
+//   Sender: ...\r\nReceiver: ...\r\nSMSC: ...\r\nSCTS: ...\r\n\r\n<text>
+// The real message is everything after the last blank line. Falls back
+// to the full string when no blank-line separator is found.
+function extractSmsBody(raw: string): string {
+  const withLF = raw.replace(/\r\n/g, "\n");
+  const idx = withLF.lastIndexOf("\n\n");
+  if (idx !== -1) {
+    const after = withLF.slice(idx + 2).trim();
+    if (after.length > 0) return after;
+  }
+  return raw.trim();
+}
+
+// Parse a port number from a raw value that may be an array (when the
+// URL had a literal "$port" plus the gateway's own "7A" appended), a
+// prefixed string ("SIM7", "PORT7", "7A"), or a plain integer string.
+// Skips unexpanded template variables (values starting with "$").
+// Returns NaN when no valid 1-8 port can be extracted.
+function parsePort(raw: unknown): number {
+  const candidates: unknown[] = Array.isArray(raw) ? raw : [raw];
+  for (const c of candidates) {
+    const s = typeof c === "string" ? c.trim() : typeof c === "number" ? String(c) : null;
+    if (!s || s.startsWith("$")) continue;
+    const m = s.match(/(\d+)/);
+    if (m) {
+      const n = Number(m[1]);
+      if (Number.isInteger(n) && n >= 1 && n <= 8) return n;
+    }
+  }
+  return NaN;
 }
 
 function parseTs(v: unknown): Date {
@@ -138,20 +179,19 @@ async function handleInbound(req: Request, res: Response, raw: Record<string, un
     const id = asString(pick(raw, ["id", "messageId", "msgid", "sms_id", "smsid"]));
     const portRaw = pick(raw, ["port", "sim", "line", "channel", "slot"]);
     const from = asString(pick(raw, ["from", "src", "sender", "phone", "sn"]));
-    const body = asString(pick(raw, ["body", "content", "text", "message", "sm", "sms"]));
+    // "content" carries a metadata header block on some eJoinTech firmware;
+    // extractSmsBody strips the header and returns just the message text.
+    const bodyRaw = asString(pick(raw, ["body", "content", "text", "message", "sm", "sms"]));
+    const body = bodyRaw ? extractSmsBody(bodyRaw) : null;
     const ts = parseTs(pick(raw, ["ts", "time", "date", "occurredAt", "tm"]));
 
-    // Accept plain integers ("7") and prefixed strings ("SIM7", "PORT7",
-    // "LINE 7", etc.) that some eJoinTech firmware revisions emit.
-    const portStr = asString(portRaw) ?? "";
-    const portMatch = portStr.match(/(\d+)/);
-    const port = portMatch ? Number(portMatch[1]) : NaN;
-    if (!Number.isInteger(port) || port < 1 || port > 8) {
+    const port = parsePort(portRaw);
+    if (!Number.isFinite(port)) {
       req.log.warn(
-        { rawQuery: req.query, portRaw, portStr, parsedPort: port },
+        { rawQuery: req.query, portRaw, parsedPort: port },
         "[sms-webhook] 400 invalid-port — raw params logged for diagnosis",
       );
-      res.status(400).json({ error: "Invalid or missing port", received: portStr || null });
+      res.status(400).json({ error: "Invalid or missing port", received: portRaw ?? null });
       return;
     }
     if (!from || !body) {
