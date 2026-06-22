@@ -191,7 +191,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="h-screen overflow-hidden bg-secondary/30 flex">
       {/* Desktop Sidebar */}
-      <aside className="w-72 bg-card border-r border-border flex-col shadow-sm hidden md:flex shrink-0">
+      <aside className="w-72 bg-card border-r border-border flex-col shadow-sm hidden md:flex shrink-0 group">
         <div className="p-6 border-b border-border">
           <Link
             href="/"
@@ -207,7 +207,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-0 group-hover:[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/60">
           <NavLinks refreshKey={refreshKey} />
         </nav>
         <div className="p-4 border-t border-border space-y-2">
@@ -234,7 +234,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       {/* Mobile Drawer */}
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-72 bg-card shadow-2xl flex flex-col transition-transform duration-300 md:hidden",
+          "fixed inset-y-0 left-0 z-50 w-72 bg-card shadow-2xl flex flex-col transition-transform duration-300 md:hidden group",
           drawerOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -253,7 +253,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             <X className="w-5 h-5" />
           </button>
         </div>
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-0 group-hover:[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/60">
           <NavLinks onNavigate={() => setDrawerOpen(false)} refreshKey={refreshKey} />
         </nav>
         <div className="p-4 border-t border-border space-y-2">
