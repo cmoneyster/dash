@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useRoute, useLocation } from "wouter";
 import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity, Sparkles, Package as PackageIcon, Printer as PrinterIcon, FlaskConical, TrendingDown, Layers, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -161,11 +161,18 @@ function RefreshBadgesButton({ onRefresh }: { onRefresh: () => void }) {
 }
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const mainRef = useRef<HTMLElement>(null);
 
   const handleRefresh = useCallback(() => setRefreshKey(k => k + 1), []);
+
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTop = 0;
+    }
+  }, [location]);
 
   useEffect(() => {
     if (drawerOpen) {
@@ -182,7 +189,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-secondary/30 flex">
+    <div className="h-screen overflow-hidden bg-secondary/30 flex">
       {/* Desktop Sidebar */}
       <aside className="w-72 bg-card border-r border-border flex-col shadow-sm hidden md:flex shrink-0">
         <div className="p-6 border-b border-border">
@@ -288,7 +295,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto">
+        <main ref={mainRef} className="flex-1 overflow-auto">
           <div className="p-4 md:p-8 max-w-6xl mx-auto">
             {children}
           </div>
