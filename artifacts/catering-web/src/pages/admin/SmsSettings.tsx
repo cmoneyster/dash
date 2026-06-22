@@ -4,6 +4,7 @@ import { getAdminToken } from "@/components/AdminGuard";
 import {
   Save, Check, Loader2, MessageSquare, Plus, Trash2, Send,
   AlertTriangle, Smartphone, UserCog, MessagesSquare, RefreshCw,
+  Webhook, Copy, ChevronDown, ChevronUp,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -37,6 +38,8 @@ type ServerState = {
   smsPollIntervalSecondsMin: number;
   smsPollIntervalSecondsMax: number;
   ejoinPortCount: number;
+  smsWebhookSecretConfigured: boolean;
+  smsWebhookUrl: string | null;
 };
 
 type BackfillStatus = {
@@ -50,27 +53,6 @@ type BackfillStatus = {
 // Hardware: ejointech gateway exposes 8 physical SIM ports (1..8).
 const EJOIN_VALID_PORTS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const EJOIN_PORT_COUNT = EJOIN_VALID_PORTS.length;
-
-// Per-poll response-body baseline used for the cadence-card bandwidth
-// estimate. Derived from the original ~8.6 MB/hour @ 3s observation
-// using decimal-SI units (8.6e6 bytes / 1200 polls = 7167 B/poll), so
-// at the 3s default this lands at ~8.60 MB/hour and at 30s at ~860
-// KB/hour — exactly matching the surrounding help-text copy. We use
-// SI (1000-based) units for the /hour bandwidth label because that's
-// how telecom data plans are billed; the absolute byte counts on the
-// Idle Activity page intentionally still use binary KB/MB. Kept as a
-// constant rather than reading actual measured bytes from the
-// snapshot so the estimate stays stable when the poller hasn't
-// ticked yet (e.g. fresh deploy, push mode). The Idle Activity page
-// surfaces the real measured average so an admin can compare
-// estimate vs. reality.
-const EJOIN_ESTIMATED_BYTES_PER_POLL = 7167;
-
-function formatBandwidthPerHour(bytesPerHour: number): string {
-  if (bytesPerHour < 1000) return `${Math.round(bytesPerHour)} B/hour`;
-  if (bytesPerHour < 1_000_000) return `${(bytesPerHour / 1000).toFixed(1)} KB/hour`;
-  return `${(bytesPerHour / 1_000_000).toFixed(2)} MB/hour`;
-}
 
 const FORWARD_CAP_OPTIONS: { value: string; label: string }[] = [
   { value: "1", label: "1 forward / 24h" },
@@ -182,17 +164,6 @@ export default function SmsSettings() {
   const [forwardCap, setForwardCap] = useState<string>("1");
   const [ownerReplyEnabled, setOwnerReplyEnabled] = useState(false);
   const [backfillDays, setBackfillDays] = useState<string>("90");
-  // SIM-gateway poll cadence (toggle + interval seconds). Default 3s
-  // matches the safety net set by the scheduler when nothing is
-  // persisted yet. The string-state mirrors the input so the user can
-  // type freely; we coerce + clamp on save.
-  const [pollEnabled, setPollEnabled] = useState<boolean>(true);
-  const [pollIntervalSec, setPollIntervalSec] = useState<string>("3");
-  const [savingPoll, setSavingPoll] = useState(false);
-  const [savedPoll, setSavedPoll] = useState(false);
-  const [pollError, setPollError] = useState("");
-  const [runningPollNow, setRunningPollNow] = useState(false);
-  const [pollNowFeedback, setPollNowFeedback] = useState<Feedback>(null);
   const [savingChat, setSavingChat] = useState(false);
   const [savedChat, setSavedChat] = useState(false);
   const [chatError, setChatError] = useState("");
@@ -252,6 +223,14 @@ export default function SmsSettings() {
   const [sendingOwnerTest, setSendingOwnerTest] = useState(false);
   const [chatOwnerTestFeedback, setChatOwnerTestFeedback] = useState<Feedback>(null);
   const [sendingChatOwnerTest, setSendingChatOwnerTest] = useState(false);
+  const [webhookTestFeedback, setWebhookTestFeedback] = useState<Feedback>(null);
+  const [sendingWebhookTest, setSendingWebhookTest] = useState(false);
+
+  // Copy-to-clipboard flash state for the webhook URL.
+  const [webhookUrlCopied, setWebhookUrlCopied] = useState(false);
+
+  // Setup instructions accordion.
+  const [showSetupInstructions, setShowSetupInstructions] = useState(false);
 
   // Per-button post-send cooldown so admins can't fire repeated test
   // texts at the gateway / their own phone in rapid succession. Tracked
@@ -263,17 +242,19 @@ export default function SmsSettings() {
   const TEST_COOLDOWN_MS = 10_000;
   const [ownerTestCooldownUntil, setOwnerTestCooldownUntil] = useState(0);
   const [chatOwnerTestCooldownUntil, setChatOwnerTestCooldownUntil] = useState(0);
+  const [webhookTestCooldownUntil, setWebhookTestCooldownUntil] = useState(0);
   // Drives a 1Hz re-render so the "Retry in Ns" countdown ticks down
   // visually without each cooldown owning its own setInterval.
   const [nowTs, setNowTs] = useState(() => Date.now());
   useEffect(() => {
-    const anyActive = ownerTestCooldownUntil > nowTs || chatOwnerTestCooldownUntil > nowTs;
+    const anyActive = ownerTestCooldownUntil > nowTs || chatOwnerTestCooldownUntil > nowTs || webhookTestCooldownUntil > nowTs;
     if (!anyActive) return;
     const id = setInterval(() => setNowTs(Date.now()), 1_000);
     return () => clearInterval(id);
-  }, [ownerTestCooldownUntil, chatOwnerTestCooldownUntil, nowTs]);
+  }, [ownerTestCooldownUntil, chatOwnerTestCooldownUntil, webhookTestCooldownUntil, nowTs]);
   const ownerTestCooldownLeft = Math.max(0, Math.ceil((ownerTestCooldownUntil - nowTs) / 1000));
   const chatOwnerTestCooldownLeft = Math.max(0, Math.ceil((chatOwnerTestCooldownUntil - nowTs) / 1000));
+  const webhookTestCooldownLeft = Math.max(0, Math.ceil((webhookTestCooldownUntil - nowTs) / 1000));
 
   async function loadSettings() {
     setLoading(true);
@@ -296,8 +277,6 @@ export default function SmsSettings() {
       setForwardCap(data.smsOwnerForwardCapPer24h == null ? "" : String(data.smsOwnerForwardCapPer24h));
       setOwnerReplyEnabled(!!data.smsOwnerReplyEnabled);
       setBackfillDays(String(data.smsBackfillDays ?? 90));
-      setPollEnabled(!!data.smsPollEnabled);
-      setPollIntervalSec(String(data.smsPollIntervalSeconds ?? 3));
     } catch (e: any) {
       setLoadError(e?.message || "Failed to load SMS settings");
     } finally {
@@ -644,104 +623,40 @@ export default function SmsSettings() {
     }
   }
 
-  // ── SIM gateway poll cadence (toggle + interval) ───────────────────
-  // Persists `smsPollEnabled` + `smsPollIntervalSeconds`. The scheduler
-  // re-reads these every tick so changes take effect on the very next
-  // cycle without a server restart. The "Run now" button hits a
-  // dedicated endpoint that ignores the enabled flag so an operator
-  // can force one cycle even while polling is paused.
-  async function savePollCadence() {
-    setSavingPoll(true);
-    setPollError("");
-    setSavedPoll(false);
+  // ── Webhook push mode — test inbound ──────────────────────────────────────
+  // Fires a synthetic message through ingestInbound() on the server so the
+  // admin can verify the full pipeline without needing the real gateway to
+  // fire. Uses a fake phone (+10000000001) so it lands in Unmatched Messages.
+  async function handleTestWebhookInbound() {
+    setSendingWebhookTest(true);
+    setWebhookTestFeedback(null);
     try {
-      const seconds = Number(pollIntervalSec);
-      const min = server?.smsPollIntervalSecondsMin ?? 3;
-      const max = server?.smsPollIntervalSecondsMax ?? 86_400;
-      if (!Number.isFinite(seconds) || !Number.isInteger(seconds) || seconds < min || seconds > max) {
-        throw new Error(`Interval must be an integer between ${min} and ${max} seconds.`);
-      }
-      const r = await fetch(`${BASE}/api/admin/sms-settings`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({
-          smsPollEnabled: pollEnabled,
-          smsPollIntervalSeconds: seconds,
-        }),
-      });
-      const data = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(data?.error || "Save failed");
-      const next = data as ServerState;
-      setServer(next);
-      setPollEnabled(!!next.smsPollEnabled);
-      setPollIntervalSec(String(next.smsPollIntervalSeconds));
-      setSavedPoll(true);
-      setTimeout(() => setSavedPoll(false), 2000);
-    } catch (e: any) {
-      setPollError(e?.message || "Save failed");
-    } finally {
-      setSavingPoll(false);
-    }
-  }
-
-  async function runPollNow() {
-    setRunningPollNow(true);
-    setPollNowFeedback(null);
-    try {
-      const r = await fetch(`${BASE}/api/admin/sms-settings/poller/run-now`, {
+      const r = await fetch(`${BASE}/api/admin/sms-settings/test-webhook-inbound`, {
         method: "POST",
         headers,
       });
-      const data: {
-        skipped?: boolean;
-        skipReason?: "already-running" | "ejoin-not-configured" | "no-chat-port";
-        fetchedCount?: number;
-        ingested?: number;
-        errors?: number;
-        error?: string;
-      } | null = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(data?.error || "Run failed");
-      // Translate the scheduler's structured result into something the
-      // admin can act on. Skips are not errors but the operator needs
-      // to know why nothing was pulled.
-      let message: string;
-      let kind: "success" | "error" = "success";
-      if (data?.skipped) {
-        kind = "error";
-        switch (data.skipReason) {
-          case "already-running":
-            message = "Another poll is already in progress — try again in a few seconds.";
-            break;
-          case "ejoin-not-configured":
-            message = "Skipped: the SIM gateway URL or credentials are not configured.";
-            break;
-          case "no-chat-port":
-            message = "Skipped: no customer chat port is set under Phone Pool.";
-            break;
-          default:
-            message = "Poll was skipped.";
-        }
-      } else {
-        const fetched = data?.fetchedCount ?? 0;
-        const ingested = data?.ingested ?? 0;
-        const errs = data?.errors ?? 0;
-        if (fetched === 0) {
-          message = "Poll finished — no new messages.";
-        } else {
-          message = `Pulled ${fetched} message${fetched === 1 ? "" : "s"}, saved ${ingested}.`;
-        }
-        if (errs > 0) {
-          message += ` ${errs} error${errs === 1 ? "" : "s"} during ingest.`;
-          kind = "error";
-        }
-      }
-      setPollNowFeedback({ kind, message });
-      setTimeout(() => setPollNowFeedback(null), 6000);
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Test failed");
+      setWebhookTestFeedback({
+        kind: "success",
+        message: "Test message ingested — check Admin → Messages → Unmatched to confirm.",
+      });
     } catch (e: any) {
-      setPollNowFeedback({ kind: "error", message: e?.message || "Run failed" });
+      setWebhookTestFeedback({ kind: "error", message: e?.message || "Test failed" });
     } finally {
-      setRunningPollNow(false);
+      setSendingWebhookTest(false);
+      setWebhookTestCooldownUntil(Date.now() + TEST_COOLDOWN_MS);
+      setNowTs(Date.now());
     }
+  }
+
+  function copyWebhookUrl() {
+    const url = server?.smsWebhookUrl;
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+      setWebhookUrlCopied(true);
+      setTimeout(() => setWebhookUrlCopied(false), 2000);
+    });
   }
 
   // ── Customer Chat behavior card (forwarding + backfill window) ─────────────
@@ -1335,127 +1250,170 @@ export default function SmsSettings() {
               </div>
             </section>
 
-            {/* ── Card 2a': SIM Gateway Poll Cadence ─────────────────────
-                 Controls the inbound-SMS poll loop on the SIM gateway.
-                 Defaults to 3s which generates ~8.6 MB/hour of HTTP
-                 traffic — operators on a slow link can dial it back to
-                 reduce load. Toggle pauses the loop entirely; the
-                 push-mode safety-net catch-up still runs every 10 min
-                 from the scheduler regardless. */}
+            {/* ── Card 2a': Webhook / Push Mode ───────────────────────── */}
             <section className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
-                <RefreshCw className="w-4 h-4 text-muted-foreground" />
-                <h2 className="font-display font-bold text-lg">SIM Gateway Poll Cadence</h2>
-                <StatusPill ok={pollEnabled} okLabel="Polling on" badLabel="Polling paused" />
+                <Webhook className="w-4 h-4 text-muted-foreground" />
+                <h2 className="font-display font-bold text-lg">Inbound Mode — Webhook Push</h2>
+                {server?.smsInboundMode === "push" ? (
+                  <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">Push active</span>
+                ) : (
+                  <span className="text-xs font-normal text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">Poll mode — action required</span>
+                )}
               </div>
               <p className="text-sm text-muted-foreground">
-                How often the API server asks the SIM gateway for new inbound texts. Default is every 3 seconds
-                (~8.6 MB/hour of HTTP traffic). Increase the interval to reduce load — at 30 seconds the same
-                traffic drops to ~860 KB/hour. Push-mode catch-up safety net (every 10 minutes) is unaffected.
+                Instead of polling the SIM gateway every few seconds (~8.6 MB/hour), the gateway pushes each
+                inbound text directly to this server the moment it arrives — dropping background traffic to
+                ~6 KB/hour. A lightweight safety-net poll still runs every 10 minutes to catch any missed deliveries.
               </p>
-              {/*
-                Reactive bandwidth estimate. Recomputes as the admin
-                types a new interval so the impact of the change is
-                visible BEFORE saving. The constant baseline keeps the
-                estimate stable across deploys; the Idle Activity page
-                surfaces the actual measured average for ground truth.
-              */}
-              {(() => {
-                const seconds = Number(pollIntervalSec);
-                const min = server?.smsPollIntervalSecondsMin ?? 3;
-                const max = server?.smsPollIntervalSecondsMax ?? 86_400;
-                const valid = Number.isFinite(seconds) && Number.isInteger(seconds) && seconds >= min && seconds <= max;
-                if (!valid) return null;
-                const pollsPerHour = 3600 / seconds;
-                const bytesPerHour = pollsPerHour * EJOIN_ESTIMATED_BYTES_PER_POLL;
-                // Push mode ignores the operator-tunable interval and
-                // uses a 10-minute safety-net cadence instead. Surface
-                // both numbers so the admin understands the typed-in
-                // interval doesn't actually take effect in push mode.
-                const inPush = server?.smsInboundMode === "push";
-                const pushBytesPerHour = (3600 / 600) * EJOIN_ESTIMATED_BYTES_PER_POLL;
-                return (
-                  <div className="bg-secondary/50 border border-border rounded-xl px-4 py-3 text-sm space-y-1">
-                    <div>
-                      <span className="text-muted-foreground">Estimated gateway bandwidth at this interval: </span>
-                      <span className="font-semibold tabular-nums">~{formatBandwidthPerHour(bytesPerHour)}</span>
-                    </div>
-                    {inPush && (
-                      <div className="text-amber-700 dark:text-amber-400">
-                        Push mode is active — the live cadence is the 10-minute safety-net (~{formatBandwidthPerHour(pushBytesPerHour)}),
-                        and the interval above is ignored until you switch back to poll mode.
-                      </div>
-                    )}
-                    <div className="text-muted-foreground text-xs">
-                      Estimate uses ~{(EJOIN_ESTIMATED_BYTES_PER_POLL / 1000).toFixed(1)} KB per poll.
-                      Actual usage is shown on the Idle Activity page.
-                    </div>
-                  </div>
-                );
-              })()}
-              <div className="space-y-3">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={pollEnabled}
-                    onChange={e => setPollEnabled(e.target.checked)}
-                    className="mt-1 w-4 h-4"
-                  />
-                  <span className="text-sm">
-                    <span className="font-medium block">Enable inbound poll loop</span>
-                    <span className="text-muted-foreground text-xs">
-                      Turn OFF to stop the periodic poll entirely (e.g. during maintenance). The "Run poll now"
-                      button below still works while paused.
-                    </span>
-                  </span>
+
+              {/* Webhook URL */}
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-muted-foreground">
+                  eJoinTech gateway URL
                 </label>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5" htmlFor="smsPollIntervalInput">
-                  Poll interval (seconds)
-                </label>
-                <input
-                  id="smsPollIntervalInput"
-                  type="number"
-                  min={server?.smsPollIntervalSecondsMin ?? 3}
-                  max={server?.smsPollIntervalSecondsMax ?? 600}
-                  step={1}
-                  value={pollIntervalSec}
-                  onChange={e => setPollIntervalSec(e.target.value)}
-                  className="w-full sm:w-48 px-4 py-2 border border-border rounded-xl bg-background"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Range: {server?.smsPollIntervalSecondsMin ?? 3}–{server?.smsPollIntervalSecondsMax ?? 600} seconds.
-                  Takes effect on the next poll cycle.
+                <p className="text-xs text-muted-foreground">
+                  Copy this URL and paste it into your eJoinTech gateway admin → SMS Forward → SMS to HTTP → URL field.
+                  Replace <code className="px-1 py-0.5 bg-secondary rounded text-xs">&lt;YOUR_SMS_WEBHOOK_SECRET&gt;</code> with
+                  the value you set for <code className="px-1 py-0.5 bg-secondary rounded text-xs">SMS_WEBHOOK_SECRET</code> in
+                  Replit Secrets.
                 </p>
+                {server?.smsWebhookUrl ? (
+                  <div className="flex items-stretch gap-2">
+                    <code className="flex-1 block px-3 py-2 bg-secondary border border-border rounded-xl text-xs font-mono break-all leading-relaxed">
+                      {server.smsWebhookUrl}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={copyWebhookUrl}
+                      title="Copy URL to clipboard"
+                      className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 border border-border rounded-xl text-sm hover:bg-secondary transition-colors"
+                    >
+                      {webhookUrlCopied ? (
+                        <><Check className="w-4 h-4 text-emerald-500" /><span className="text-xs text-emerald-600">Copied!</span></>
+                      ) : (
+                        <><Copy className="w-4 h-4" /><span className="text-xs">Copy</span></>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">
+                    URL unavailable — <code className="px-1 py-0.5 bg-secondary rounded">REPLIT_DOMAINS</code> env var not set.
+                  </p>
+                )}
               </div>
-              {pollError && <p className="text-destructive text-sm">{pollError}</p>}
+
+              {/* Secret status */}
+              {server?.smsWebhookSecretConfigured ? (
+                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                  <Check className="w-4 h-4 flex-shrink-0" />
+                  <span>Webhook secret configured</span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl px-3 py-2.5 text-sm text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    <strong>SMS_WEBHOOK_SECRET</strong> is not set — the webhook will reject all requests.
+                    Add it to Replit Secrets and restart the API Server.
+                  </span>
+                </div>
+              )}
+
+              {/* Test button */}
               <div className="flex items-center gap-3 flex-wrap">
                 <button
                   type="button"
-                  onClick={savePollCadence}
-                  disabled={savingPoll}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
-                >
-                  {savingPoll ? <Loader2 className="w-4 h-4 animate-spin" /> : savedPoll ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
-                  {savingPoll ? "Saving…" : savedPoll ? "Saved!" : "Save Poll Settings"}
-                </button>
-                <button
-                  type="button"
-                  onClick={runPollNow}
-                  disabled={runningPollNow}
-                  title="Force one poll cycle now (works even when polling is paused)."
+                  onClick={handleTestWebhookInbound}
+                  disabled={
+                    sendingWebhookTest ||
+                    webhookTestCooldownLeft > 0 ||
+                    server?.smsChatPort == null
+                  }
+                  title={
+                    server?.smsChatPort == null
+                      ? "Set a Dedicated Chat Port first."
+                      : webhookTestCooldownLeft > 0
+                      ? `Cooling down — try again in ${webhookTestCooldownLeft}s.`
+                      : "Inject a synthetic test message through the inbound pipeline."
+                  }
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-2 hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {runningPollNow ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                  {runningPollNow ? "Running…" : "Run poll now"}
+                  {sendingWebhookTest ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  {sendingWebhookTest
+                    ? "Testing…"
+                    : webhookTestCooldownLeft > 0
+                    ? `Retry in ${webhookTestCooldownLeft}s`
+                    : "Send test inbound"}
                 </button>
               </div>
-              {pollNowFeedback && (
-                <p className={pollNowFeedback.kind === "success" ? "text-xs text-emerald-600" : "text-xs text-destructive"}>
-                  {pollNowFeedback.message}
+              {webhookTestFeedback && (
+                <p className={webhookTestFeedback.kind === "success" ? "text-xs text-emerald-600" : "text-xs text-destructive"}>
+                  {webhookTestFeedback.message}
                 </p>
               )}
+
+              {/* Setup instructions accordion */}
+              <div className="border-t border-border pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowSetupInstructions(v => !v)}
+                  className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-colors"
+                >
+                  {showSetupInstructions ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  How to activate push mode
+                </button>
+                {showSetupInstructions && (
+                  <ol className="mt-3 space-y-2.5 text-sm text-muted-foreground list-none">
+                    <li className="flex gap-2.5">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">1</span>
+                      <span>
+                        Choose a webhook secret — any long random string.
+                        Example: run <code className="px-1 py-0.5 bg-secondary rounded text-xs">openssl rand -hex 32</code> in a terminal.
+                      </span>
+                    </li>
+                    <li className="flex gap-2.5">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">2</span>
+                      <span>
+                        In Replit Secrets (the padlock icon in the sidebar), add two entries:
+                        <br />
+                        <code className="px-1 py-0.5 bg-secondary rounded text-xs">SMS_WEBHOOK_SECRET</code> → your chosen secret string
+                        <br />
+                        <code className="px-1 py-0.5 bg-secondary rounded text-xs">EJOIN_INBOUND_MODE</code> → <code className="px-1 py-0.5 bg-secondary rounded text-xs">push</code>
+                      </span>
+                    </li>
+                    <li className="flex gap-2.5">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">3</span>
+                      <span>Restart the API Server workflow (the circular-arrow button next to it in the sidebar).</span>
+                    </li>
+                    <li className="flex gap-2.5">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">4</span>
+                      <span>
+                        Copy the webhook URL above (replace <code className="px-1 py-0.5 bg-secondary rounded text-xs">&lt;YOUR_SMS_WEBHOOK_SECRET&gt;</code> with your secret).
+                      </span>
+                    </li>
+                    <li className="flex gap-2.5">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">5</span>
+                      <span>
+                        In your eJoinTech gateway admin: <strong>SMS Forward → SMS to HTTP</strong> → enable → paste the URL → Save.
+                      </span>
+                    </li>
+                    <li className="flex gap-2.5">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">6</span>
+                      <span>
+                        Click <strong>Send test inbound</strong> above to verify the full pipeline end-to-end.
+                        A test entry will appear in <strong>Admin → Messages → Unmatched</strong>.
+                      </span>
+                    </li>
+                    <li className="flex gap-2.5">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">ℹ</span>
+                      <span className="text-xs">
+                        A lightweight safety-net poll still runs every 10 minutes in the background (~6 KB/hour)
+                        to catch any webhook delivery failures — no action needed.
+                      </span>
+                    </li>
+                  </ol>
+                )}
+              </div>
             </section>
 
             {/* ── Card 2b: Customer Chat (forwarding + backfill) ────────── */}

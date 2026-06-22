@@ -9,8 +9,8 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { isEjoinConfigured, sendSmsViaEjoin, sendSmsViaChatPort, clearEjoinPortCache, EJOIN_PORT_COUNT, getInboundMode } from "../lib/sms-ejoin";
-import { clearSmsInboxSettingsCache } from "../lib/sms-inbox";
+import { isEjoinConfigured, sendSmsViaEjoin, sendSmsViaChatPort, clearEjoinPortCache, EJOIN_PORT_COUNT, getInboundMode, getChatPort } from "../lib/sms-ejoin";
+import { clearSmsInboxSettingsCache, ingestInbound } from "../lib/sms-inbox";
 import { runSmsPollOnce, SMS_POLL_INTERVAL_RANGE } from "../lib/sms-scheduler";
 
 const router: IRouter = Router();
@@ -287,6 +287,8 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   smsPollIntervalSecondsMin: number;
   smsPollIntervalSecondsMax: number;
   ejoinPortCount: number;
+  smsWebhookSecretConfigured: boolean;
+  smsWebhookUrl: string | null;
 } {
   const dbOwner = s?.ownerNotificationPhone?.trim() || null;
   const envOwner = process.env.OWNER_PHONE?.trim() || null;
@@ -331,6 +333,18 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
     smsPollIntervalSecondsMin: SMS_POLL_INTERVAL_RANGE.min,
     smsPollIntervalSecondsMax: SMS_POLL_INTERVAL_RANGE.max,
     ejoinPortCount: EJOIN_PORT_COUNT,
+    // Webhook push mode metadata — boolean only for the secret,
+    // never expose the actual value to the browser.
+    smsWebhookSecretConfigured: !!(process.env.SMS_WEBHOOK_SECRET?.trim()),
+    smsWebhookUrl: (() => {
+      const domains = (process.env.REPLIT_DOMAINS ?? "")
+        .split(",")
+        .map(d => d.trim())
+        .filter(Boolean);
+      const domain = domains[0] ?? null;
+      if (!domain) return null;
+      return `https://${domain}/api/sms/inbound?secret=<YOUR_SMS_WEBHOOK_SECRET>&port=$port&from=$sn&body=$sm&ts=$tm`;
+    })(),
   };
 }
 
@@ -645,6 +659,42 @@ router.post("/admin/sms-settings/test-chat-owner-alert", async (req, res) => {
   } catch (err: unknown) {
     req.log.error({ err }, "Error sending test chat-owner alert");
     res.status(500).json({ error: "Failed to send test chat-owner alert" });
+  }
+});
+
+// Synthetic end-to-end pipeline test for the webhook push setup card.
+// Injects a fake inbound message through ingestInbound() so the admin
+// can verify the full pipeline (auth → parse → DB write → chat thread)
+// without waiting for the real eJoinTech gateway to fire. Uses a
+// guaranteed-fake phone number (+10000000001) so the message lands in
+// Unmatched Messages, never in a real inquiry thread.
+router.post("/admin/sms-settings/test-webhook-inbound", async (req, res) => {
+  try {
+    const cooldown = checkTestCooldown("webhook-inbound");
+    if (cooldown > 0) {
+      res.status(429).json({ error: `Cooling down — try again in ${cooldown}s.`, retryAfter: cooldown });
+      return;
+    }
+    const chatPort = await getChatPort();
+    if (chatPort == null) {
+      res.status(400).json({
+        error: "No customer chat port configured. Set one under Customer Chat Port first.",
+      });
+      return;
+    }
+    markTestSend("webhook-inbound");
+    await ingestInbound({
+      gatewayMessageId: `admin-test:${Date.now()}`,
+      fromPhone: "+10000000001",
+      body: "[Admin test] Webhook inbound check — sent from SMS Settings",
+      occurredAt: new Date(),
+      port: chatPort,
+    });
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Error running webhook inbound test");
+    const detail = err instanceof Error ? err.message : "Test failed";
+    res.status(500).json({ error: detail });
   }
 });
 
