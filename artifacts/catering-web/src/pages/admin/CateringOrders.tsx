@@ -2891,26 +2891,23 @@ export default function CateringOrders() {
   // Subscribe to the SMS event stream so list-level badges update live
   // without depending on the chat panel being open. The chat panel
   // maintains its own subscription for thread updates.
+  // No polling fallback — badges load on mount and update via SSE push.
+  // This avoids continuous DB queries that prevent the database from
+  // suspending during idle periods.
   useEffect(() => {
     const token = getAdminToken();
     if (!token) return;
     let es: EventSource | null = null;
-    let pollInt: ReturnType<typeof setInterval> | null = null;
-    function startPoll() {
-      if (!pollInt) pollInt = setInterval(loadBadges, 30_000);
-    }
     try {
       es = new EventSource(`${BASE}/api/admin/messages/stream?token=${encodeURIComponent(token)}`);
       es.addEventListener("inbound", () => loadBadges());
       es.addEventListener("messages-seen", () => loadBadges());
       es.addEventListener("unmatched-changed", () => loadBadges());
-      es.onerror = () => startPoll();
     } catch {
-      startPoll();
+      // SSE unavailable — badges remain at their last loaded value.
     }
     return () => {
       es?.close();
-      if (pollInt) clearInterval(pollInt);
     };
   }, [loadBadges]);
 

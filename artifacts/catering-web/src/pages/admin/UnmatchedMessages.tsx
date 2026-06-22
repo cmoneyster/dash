@@ -94,45 +94,25 @@ export default function UnmatchedMessages() {
   }, [load]);
 
   // Live updates via SSE — token is passed as a query param because
-  // EventSource cannot set custom headers. Falls back to polling on
-  // failure so the inbox stays fresh even if the stream drops.
+  // EventSource cannot set custom headers. No polling fallback; use the
+  // manual Refresh button if SSE is unavailable. This avoids continuous
+  // DB queries that prevent the database from suspending when idle.
   useEffect(() => {
     const token = getAdminToken();
     if (!token) return;
     let es: EventSource | null = null;
-    let pollInt: ReturnType<typeof setInterval> | null = null;
     let cancelled = false;
 
-    function startPolling() {
-      if (pollInt) return;
-      pollInt = setInterval(load, 30_000);
-    }
-    function stopPolling() {
-      if (pollInt) {
-        clearInterval(pollInt);
-        pollInt = null;
-      }
+    try {
+      es = new EventSource(`${BASE}/api/admin/messages/stream?token=${encodeURIComponent(token)}`);
+      es.addEventListener("inbound", () => { if (!cancelled) load(); });
+      es.addEventListener("unmatched-changed", () => { if (!cancelled) load(); });
+    } catch {
+      // SSE unavailable — use the Refresh button to reload manually.
     }
 
-    function connect() {
-      try {
-        es = new EventSource(`${BASE}/api/admin/messages/stream?token=${encodeURIComponent(token!)}`);
-        es.addEventListener("inbound", () => { if (!cancelled) load(); });
-        es.addEventListener("unmatched-changed", () => { if (!cancelled) load(); });
-        es.addEventListener("hello", () => stopPolling());
-        es.onerror = () => {
-          // Browser will auto-reconnect; meanwhile rely on the poll fallback.
-          startPolling();
-        };
-      } catch {
-        startPolling();
-      }
-    }
-
-    connect();
     return () => {
       cancelled = true;
-      stopPolling();
       es?.close();
     };
   }, [load]);
