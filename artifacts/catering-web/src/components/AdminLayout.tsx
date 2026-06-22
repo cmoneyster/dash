@@ -207,7 +207,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-0 group-hover:[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/60">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-0 group-hover:[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/60 dark:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/40">
           <NavLinks refreshKey={refreshKey} />
         </nav>
         <div className="p-4 border-t border-border space-y-2">
@@ -253,7 +253,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             <X className="w-5 h-5" />
           </button>
         </div>
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-0 group-hover:[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/60">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-0 group-hover:[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/60 dark:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/40">
           <NavLinks onNavigate={() => setDrawerOpen(false)} refreshKey={refreshKey} />
         </nav>
         <div className="p-4 border-t border-border space-y-2">
