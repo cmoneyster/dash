@@ -172,6 +172,16 @@ async function handleInbound(req: Request, res: Response, raw: Record<string, un
     const paramSecret = asString(pick(raw, ["secret", "token", "key"])) ?? "";
     const supplied = headerSecret || paramSecret;
     if (!supplied || !secretsMatch(supplied, secret)) {
+      req.log.warn(
+        {
+          suppliedLen: supplied.length,
+          suppliedPrefix: supplied.slice(0, 6),
+          expectedLen: secret.length,
+          expectedPrefix: secret.slice(0, 6),
+          rawQuery: req.query,
+        },
+        "[sms-webhook] 401 secret-mismatch — lengths and prefixes logged for diagnosis",
+      );
       res.status(401).json({ error: "Invalid webhook secret" });
       return;
     }
