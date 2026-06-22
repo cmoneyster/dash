@@ -175,9 +175,9 @@ async function handleInbound(req: Request, res: Response, raw: Record<string, un
       req.log.warn(
         {
           suppliedLen: supplied.length,
-          suppliedPrefix: supplied.slice(0, 6),
+          suppliedPrefix: supplied.slice(0, 3),
           expectedLen: secret.length,
-          expectedPrefix: secret.slice(0, 6),
+          expectedPrefix: secret.slice(0, 3),
           rawQuery: req.query,
         },
         "[sms-webhook] 401 secret-mismatch — lengths and prefixes logged for diagnosis",

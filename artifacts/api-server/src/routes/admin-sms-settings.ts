@@ -366,7 +366,7 @@ router.get("/admin/sms-settings", async (req, res) => {
     // Auto-generate a webhook secret on first load so the admin gets a
     // ready-to-copy URL without any manual secret management.
     if (settings && !settings.smsWebhookSecret?.trim()) {
-      const generated = randomBytes(32).toString("hex");
+      const generated = randomBytes(4).toString("hex");
       const [updated] = await db
         .update(eventSettingsTable)
         .set({ smsWebhookSecret: generated, updatedAt: new Date() })
@@ -689,7 +689,7 @@ router.post("/admin/sms-settings/test-chat-owner-alert", async (req, res) => {
 // URL after regenerating.
 router.post("/admin/sms-settings/regenerate-webhook-secret", async (req, res) => {
   try {
-    const newSecret = randomBytes(32).toString("hex");
+    const newSecret = randomBytes(4).toString("hex");
     const [updated] = await db
       .update(eventSettingsTable)
       .set({ smsWebhookSecret: newSecret, updatedAt: new Date() })
