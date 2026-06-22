@@ -15,6 +15,9 @@ import {
   Play,
   AlertTriangle,
   Image as ImageIcon,
+  Link2,
+  Copy,
+  BookOpen,
 } from "lucide-react";
 
 const BASE = "/api";
@@ -34,6 +37,7 @@ type Candidate = {
   decidedAt: string | null;
   approvedAt: string | null;
   isUnavailable: boolean;
+  source: string;
   createdAt: string;
 };
 
@@ -63,6 +67,8 @@ type StatusResponse = {
   lastPolledAt: string | null;
   pulledLast24h: number;
   pendingCount: number;
+  webhookAppSecretConfigured: boolean;
+  webhookVerifyTokenConfigured: boolean;
 };
 
 type PollerSummary = {
@@ -541,6 +547,8 @@ export default function HashtagWallModeration() {
               Save settings
             </button>
 
+            <WebhookSection status={status} />
+
             <SidebarSection title="Poller">
               {/* Cadence controls live in the same form as the wall
                   settings — they save together when the operator hits
@@ -730,7 +738,11 @@ function CandidateCard({
       </div>
       <div className="p-3 flex flex-col flex-1 gap-2">
         <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-          <span className="font-mono">#{c.hashtag}</span>
+          {c.source === "story_mention" ? (
+            <span className="px-1.5 py-0.5 rounded font-semibold bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300">Story</span>
+          ) : (
+            <span className="font-mono">#{c.hashtag}</span>
+          )}
           <span>•</span>
           <span>{c.postedAt ? formatRelative(c.postedAt) : "no date"}</span>
           {c.autoRule && <span className="text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">{c.autoRule}</span>}
@@ -798,6 +810,92 @@ function CandidateCard({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function WebhookSection({ status }: { status: StatusResponse | null }) {
+  const { toast } = useToast();
+  const webhookUrl = `${window.location.origin}/api/webhooks/instagram`;
+  const appSecretOk = status?.webhookAppSecretConfigured ?? false;
+  const verifyTokenOk = status?.webhookVerifyTokenConfigured ?? false;
+  const fullyConfigured = appSecretOk && verifyTokenOk;
+
+  function copyUrl() {
+    navigator.clipboard.writeText(webhookUrl).then(
+      () => toast({ title: "Webhook URL copied" }),
+      () => toast({ title: "Copy failed", variant: "destructive" }),
+    );
+  }
+
+  return (
+    <SidebarSection
+      title="Story mention webhook"
+      subtitle="Customers who @mention you in their Instagram Story flow here automatically"
+    >
+      <div className="space-y-3">
+        <div>
+          <p className="text-xs font-semibold mb-1 text-muted-foreground">Webhook URL (paste into Meta app)</p>
+          <div className="flex items-center gap-1">
+            <code className="flex-1 text-xs bg-secondary rounded px-2 py-1.5 break-all font-mono select-all">
+              {webhookUrl}
+            </code>
+            <button
+              type="button"
+              onClick={copyUrl}
+              className="p-1.5 rounded-lg border border-border hover:bg-secondary flex-shrink-0"
+              title="Copy URL"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold text-muted-foreground">Required env vars</p>
+          <EnvVarRow name="INSTAGRAM_APP_SECRET" ok={appSecretOk} />
+          <EnvVarRow name="INSTAGRAM_WEBHOOK_VERIFY_TOKEN" ok={verifyTokenOk} />
+        </div>
+
+        {!fullyConfigured && (
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 p-2.5 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+            <p className="font-semibold">Setup steps</p>
+            <ol className="list-decimal list-inside space-y-0.5 text-amber-900/80 dark:text-amber-300">
+              <li>In Meta app dashboard → Webhooks → Instagram → add field <strong>mentions</strong></li>
+              <li>Paste the URL above and any string as your Verify Token</li>
+              <li>Save that same string as <code className="font-mono">INSTAGRAM_WEBHOOK_VERIFY_TOKEN</code></li>
+              <li>Copy App Secret (Settings → Basic) into <code className="font-mono">INSTAGRAM_APP_SECRET</code></li>
+            </ol>
+          </div>
+        )}
+
+        {fullyConfigured && (
+          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 p-2.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+            Webhook configured — story @mentions will flow into the pending queue.
+          </div>
+        )}
+
+        <a
+          href="https://developers.facebook.com/docs/instagram-platform/webhooks"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+        >
+          <BookOpen className="w-3 h-3" /> Meta webhook docs
+        </a>
+      </div>
+    </SidebarSection>
+  );
+}
+
+function EnvVarRow({ name, ok }: { name: string; ok: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      {ok
+        ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+        : <XCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />}
+      <code className="text-xs font-mono text-muted-foreground">{name}</code>
     </div>
   );
 }

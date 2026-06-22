@@ -44,6 +44,7 @@ function serializeCandidate(c: typeof instagramHashtagCandidatesTable.$inferSele
     decidedAt: c.decidedAt ? c.decidedAt.toISOString() : null,
     approvedAt: c.approvedAt ? c.approvedAt.toISOString() : null,
     isUnavailable: c.isUnavailable,
+    source: c.source ?? "hashtag_poll",
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -255,6 +256,10 @@ router.get("/admin/instagram/status", async (req, res) => {
       instagramPollIntervalMinutes: settings?.instagramPollIntervalMinutes ?? INSTAGRAM_POLL_INTERVAL_RANGE.default,
       instagramPollIntervalMinutesMin: INSTAGRAM_POLL_INTERVAL_RANGE.min,
       instagramPollIntervalMinutesMax: INSTAGRAM_POLL_INTERVAL_RANGE.max,
+      // Webhook config status so the UI can tell the admin what to set up.
+      // We only reveal presence (boolean), never the secret values.
+      webhookAppSecretConfigured: !!(process.env.INSTAGRAM_APP_SECRET?.trim()),
+      webhookVerifyTokenConfigured: !!(process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN?.trim()),
     });
   } catch (err: any) {
     req.log.error({ err }, "instagram: status failed");

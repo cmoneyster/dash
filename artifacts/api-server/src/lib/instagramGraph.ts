@@ -159,6 +159,33 @@ export async function isPermalinkAvailable(permalink: string): Promise<boolean> 
   }
 }
 
+// Fetches a single media object where your IG Business account was @mentioned.
+// Used by the story-mention webhook handler after receiving a `mentions` event.
+// Calls GET /{ig-user-id}/mentioned_media — the account must own the token.
+// Returns null on any error (network, auth, not found) so the caller can skip gracefully.
+export async function fetchMentionedMedia(mediaId: string): Promise<InstagramMedia | null> {
+  try {
+    const { token, userId } = getCreds();
+    const url = new URL(`${GRAPH_BASE}/${encodeURIComponent(userId)}/mentioned_media`);
+    url.searchParams.set("media_id", mediaId);
+    url.searchParams.set("fields", "id,caption,media_type,media_url,permalink,thumbnail_url,timestamp");
+    url.searchParams.set("access_token", token);
+    const body = (await graphFetch(url)) as any;
+    if (!body?.id) return null;
+    return {
+      id: String(body.id),
+      caption: typeof body.caption === "string" ? body.caption : "",
+      permalink: typeof body.permalink === "string" ? body.permalink : "",
+      mediaType: typeof body.media_type === "string" ? body.media_type : "IMAGE",
+      mediaUrl: typeof body.media_url === "string" ? body.media_url : null,
+      thumbnailUrl: typeof body.thumbnail_url === "string" ? body.thumbnail_url : null,
+      timestamp: typeof body.timestamp === "string" ? body.timestamp : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Case-insensitive caption mention check used by the auto-approve rule.
 // Matches `@handle` in caption text or in any URL fragment / share text.
 // Returns false when the handle is empty (rule effectively disabled).

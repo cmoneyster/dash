@@ -33,6 +33,8 @@ export const instagramHashtagCandidatesTable = pgTable(
     autoRule: text("auto_rule"),
     isUnavailable: boolean("is_unavailable").notNull().default(false),
     lastCheckedAt: timestamp("last_checked_at"),
+    // 'hashtag_poll' (default) or 'story_mention' (arrived via Meta webhook).
+    source: text("source").notNull().default("hashtag_poll"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({

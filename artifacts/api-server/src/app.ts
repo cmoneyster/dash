@@ -36,6 +36,9 @@ app.use(cors());
 // raw-body parser for that one path BEFORE express.json so the buffer is
 // preserved; the route handler parses the JSON itself.
 app.use("/api/webhooks/square", express.raw({ type: "*/*", limit: "1mb" }));
+// Instagram webhook: Meta signs POST payloads with HMAC-SHA256 over the raw body.
+// Mount the raw parser before express.json so the Buffer is preserved.
+app.use("/api/webhooks/instagram", express.raw({ type: "*/*", limit: "1mb" }));
 // 2mb covers the menu CSV apply endpoint which echoes parsed CSVs back to
 // the server (real exports approach a few hundred KB; the multipart upload
 // cap on the same feature is 10MB). All other endpoints send much smaller
