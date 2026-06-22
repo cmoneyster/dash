@@ -141,13 +141,25 @@ async function handleInbound(req: Request, res: Response, raw: Record<string, un
     const body = asString(pick(raw, ["body", "content", "text", "message", "sm", "sms"]));
     const ts = parseTs(pick(raw, ["ts", "time", "date", "occurredAt", "tm"]));
 
-    const port = Number(portRaw);
+    // Accept plain integers ("7") and prefixed strings ("SIM7", "PORT7",
+    // "LINE 7", etc.) that some eJoinTech firmware revisions emit.
+    const portStr = asString(portRaw) ?? "";
+    const portMatch = portStr.match(/(\d+)/);
+    const port = portMatch ? Number(portMatch[1]) : NaN;
     if (!Number.isInteger(port) || port < 1 || port > 8) {
-      res.status(400).json({ error: "Invalid or missing port" });
+      req.log.warn(
+        { rawQuery: req.query, portRaw, portStr, parsedPort: port },
+        "[sms-webhook] 400 invalid-port — raw params logged for diagnosis",
+      );
+      res.status(400).json({ error: "Invalid or missing port", received: portStr || null });
       return;
     }
     if (!from || !body) {
-      res.status(400).json({ error: "Missing 'from' or 'body'" });
+      req.log.warn(
+        { rawQuery: req.query, from, bodyLen: body?.length ?? null },
+        "[sms-webhook] 400 missing-from-or-body — raw params logged for diagnosis",
+      );
+      res.status(400).json({ error: "Missing 'from' or 'body'", receivedFrom: from ?? null, receivedBody: body ? "(present)" : null });
       return;
     }
     const chatPort = await getChatPort();
