@@ -130,6 +130,14 @@ export const eventSettingsTable = pgTable("event_settings", {
   // deploy; the operator can dial it down to reduce data usage.
   smsPollEnabled: boolean("sms_poll_enabled").notNull().default(true),
   smsPollIntervalSeconds: integer("sms_poll_interval_seconds").notNull().default(3),
+  // ── Webhook push mode secret ───────────────────────────────────────────────
+  // Shared secret embedded in the eJoinTech "SMS to HTTP" URL so the
+  // server can authenticate incoming pushes. Auto-generated on first GET
+  // of /admin/sms-settings if not already set. Validated with
+  // timingSafeEqual. Falls back to SMS_WEBHOOK_SECRET env var if this
+  // column is null (backwards compat for any deployment that set the env
+  // var before this column existed).
+  smsWebhookSecret: text("sms_webhook_secret"),
   // Stamped after the first successful historical backfill so it
   // doesn't re-run on every server restart. Manual re-trigger via
   // the settings card always runs regardless.

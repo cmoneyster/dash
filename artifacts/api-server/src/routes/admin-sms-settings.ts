@@ -6,6 +6,7 @@
 // verify delivery without burning through a real low-stock crossing.
 
 import { Router, type IRouter } from "express";
+import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
 import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -261,7 +262,7 @@ function normalizeAlertThreshold(v: unknown): number | null {
 
 const DEFAULT_EVENT_NAME = "dash by Hollywood East Cafe";
 
-function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
+function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined, webhookSecret: string | null): {
   smsActivePorts: number[];
   ownerNotificationPhone: string | null;
   ownerNotificationEmail: string | null;
@@ -287,7 +288,6 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
   smsPollIntervalSecondsMin: number;
   smsPollIntervalSecondsMax: number;
   ejoinPortCount: number;
-  smsWebhookSecretConfigured: boolean;
   smsWebhookUrl: string | null;
 } {
   const dbOwner = s?.ownerNotificationPhone?.trim() || null;
@@ -333,27 +333,44 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined): {
     smsPollIntervalSecondsMin: SMS_POLL_INTERVAL_RANGE.min,
     smsPollIntervalSecondsMax: SMS_POLL_INTERVAL_RANGE.max,
     ejoinPortCount: EJOIN_PORT_COUNT,
-    // Webhook push mode metadata — boolean only for the secret,
-    // never expose the actual value to the browser.
-    smsWebhookSecretConfigured: !!(process.env.SMS_WEBHOOK_SECRET?.trim()),
+    // Webhook push mode — return the full ready-to-copy URL with the real
+    // secret embedded so the admin can paste it directly into eJoinTech.
     smsWebhookUrl: (() => {
+      if (!webhookSecret) return null;
       const domains = (process.env.REPLIT_DOMAINS ?? "")
         .split(",")
         .map(d => d.trim())
         .filter(Boolean);
       const domain = domains[0] ?? null;
       if (!domain) return null;
-      return `https://${domain}/api/sms/inbound?secret=<YOUR_SMS_WEBHOOK_SECRET>&port=$port&from=$sn&body=$sm&ts=$tm`;
+      return `https://${domain}/api/sms/inbound?secret=${encodeURIComponent(webhookSecret)}&port=$port&from=$sn&body=$sm&ts=$tm`;
     })(),
   };
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
+// Returns the effective webhook secret: DB value takes priority, env var
+// is the legacy fallback for deployments that pre-date the DB column.
+function resolveWebhookSecret(s: typeof eventSettingsTable.$inferSelect | undefined): string | null {
+  return s?.smsWebhookSecret?.trim() || process.env.SMS_WEBHOOK_SECRET?.trim() || null;
+}
+
 router.get("/admin/sms-settings", async (req, res) => {
   try {
-    const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
-    res.json(buildResponse(settings));
+    let [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    // Auto-generate a webhook secret on first load so the admin gets a
+    // ready-to-copy URL without any manual secret management.
+    if (settings && !settings.smsWebhookSecret?.trim()) {
+      const generated = randomBytes(32).toString("hex");
+      const [updated] = await db
+        .update(eventSettingsTable)
+        .set({ smsWebhookSecret: generated, updatedAt: new Date() })
+        .where(eq(eventSettingsTable.id, 1))
+        .returning();
+      settings = updated;
+    }
+    res.json(buildResponse(settings, resolveWebhookSecret(settings)));
   } catch (err: unknown) {
     req.log.error({ err }, "Error fetching SMS settings");
     res.status(500).json({ error: "Failed to fetch SMS settings" });
@@ -493,7 +510,7 @@ router.put("/admin/sms-settings", async (req, res) => {
     // effect on the very next inbound.
     clearSmsInboxSettingsCache();
 
-    res.json(buildResponse(row));
+    res.json(buildResponse(row, resolveWebhookSecret(row)));
   } catch (err: unknown) {
     if (isHttpError(err)) {
       res.status(err.status).json({ error: err.message });
@@ -659,6 +676,29 @@ router.post("/admin/sms-settings/test-chat-owner-alert", async (req, res) => {
   } catch (err: unknown) {
     req.log.error({ err }, "Error sending test chat-owner alert");
     res.status(500).json({ error: "Failed to send test chat-owner alert" });
+  }
+});
+
+// Rotates the webhook secret — generates a new random 64-char hex string,
+// saves it to the DB, and returns the updated settings response (including
+// the new ready-to-copy URL). The admin must update their eJoinTech gateway
+// URL after regenerating.
+router.post("/admin/sms-settings/regenerate-webhook-secret", async (req, res) => {
+  try {
+    const newSecret = randomBytes(32).toString("hex");
+    const [updated] = await db
+      .update(eventSettingsTable)
+      .set({ smsWebhookSecret: newSecret, updatedAt: new Date() })
+      .where(eq(eventSettingsTable.id, 1))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: "Settings not found" });
+      return;
+    }
+    res.json(buildResponse(updated, resolveWebhookSecret(updated)));
+  } catch (err: unknown) {
+    req.log.error({ err }, "Error regenerating webhook secret");
+    res.status(500).json({ error: "Failed to regenerate webhook secret" });
   }
 });
 

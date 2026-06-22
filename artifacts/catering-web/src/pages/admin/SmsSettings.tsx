@@ -38,7 +38,6 @@ type ServerState = {
   smsPollIntervalSecondsMin: number;
   smsPollIntervalSecondsMax: number;
   ejoinPortCount: number;
-  smsWebhookSecretConfigured: boolean;
   smsWebhookUrl: string | null;
 };
 
@@ -224,6 +223,8 @@ export default function SmsSettings() {
   const [chatOwnerTestFeedback, setChatOwnerTestFeedback] = useState<Feedback>(null);
   const [sendingChatOwnerTest, setSendingChatOwnerTest] = useState(false);
   const [webhookTestFeedback, setWebhookTestFeedback] = useState<Feedback>(null);
+  const [regeneratingSecret, setRegeneratingSecret] = useState(false);
+  const [regenerateSecretFeedback, setRegenerateSecretFeedback] = useState<Feedback>(null);
   const [sendingWebhookTest, setSendingWebhookTest] = useState(false);
 
   // Copy-to-clipboard flash state for the webhook URL.
@@ -657,6 +658,26 @@ export default function SmsSettings() {
       setWebhookUrlCopied(true);
       setTimeout(() => setWebhookUrlCopied(false), 2000);
     });
+  }
+
+  async function handleRegenerateSecret() {
+    if (!confirm("This will generate a new secret and invalidate the current webhook URL. You'll need to update the URL in your eJoinTech gateway settings afterwards. Continue?")) return;
+    setRegeneratingSecret(true);
+    setRegenerateSecretFeedback(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/sms-settings/regenerate-webhook-secret`, {
+        method: "POST",
+        headers,
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Failed to regenerate");
+      setServer(data as ServerState);
+      setRegenerateSecretFeedback({ kind: "success", message: "New secret generated — copy the updated URL and paste it into eJoinTech." });
+    } catch (e: any) {
+      setRegenerateSecretFeedback({ kind: "error", message: e?.message || "Regeneration failed" });
+    } finally {
+      setRegeneratingSecret(false);
+    }
   }
 
   // ── Customer Chat behavior card (forwarding + backfill window) ─────────────
@@ -1274,9 +1295,7 @@ export default function SmsSettings() {
                 </label>
                 <p className="text-xs text-muted-foreground">
                   Copy this URL and paste it into your eJoinTech gateway admin → SMS Forward → SMS to HTTP → URL field.
-                  Replace <code className="px-1 py-0.5 bg-secondary rounded text-xs">&lt;YOUR_SMS_WEBHOOK_SECRET&gt;</code> with
-                  the value you set for <code className="px-1 py-0.5 bg-secondary rounded text-xs">SMS_WEBHOOK_SECRET</code> in
-                  Replit Secrets.
+                  The secret is already embedded — no manual editing needed.
                 </p>
                 {server?.smsWebhookUrl ? (
                   <div className="flex items-stretch gap-2">
@@ -1303,20 +1322,23 @@ export default function SmsSettings() {
                 )}
               </div>
 
-              {/* Secret status */}
-              {server?.smsWebhookSecretConfigured ? (
-                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
-                  <Check className="w-4 h-4 flex-shrink-0" />
-                  <span>Webhook secret configured</span>
-                </div>
-              ) : (
-                <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl px-3 py-2.5 text-sm text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>
-                    <strong>SMS_WEBHOOK_SECRET</strong> is not set — the webhook will reject all requests.
-                    Add it to Replit Secrets and restart the API Server.
-                  </span>
-                </div>
+              {/* Regenerate secret */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleRegenerateSecret}
+                  disabled={regeneratingSecret}
+                  title="Generate a new random secret and update the URL. You'll need to paste the new URL into eJoinTech afterwards."
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground border border-border rounded-lg px-2.5 py-1.5 hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {regeneratingSecret ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  {regeneratingSecret ? "Regenerating…" : "Regenerate secret"}
+                </button>
+              </div>
+              {regenerateSecretFeedback && (
+                <p className={regenerateSecretFeedback.kind === "success" ? "text-xs text-emerald-600" : "text-xs text-destructive"}>
+                  {regenerateSecretFeedback.message}
+                </p>
               )}
 
               {/* Test button */}
@@ -1367,38 +1389,27 @@ export default function SmsSettings() {
                     <li className="flex gap-2.5">
                       <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">1</span>
                       <span>
-                        Choose a webhook secret — any long random string.
-                        Example: run <code className="px-1 py-0.5 bg-secondary rounded text-xs">openssl rand -hex 32</code> in a terminal.
-                      </span>
-                    </li>
-                    <li className="flex gap-2.5">
-                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">2</span>
-                      <span>
-                        In Replit Secrets (the padlock icon in the sidebar), add two entries:
-                        <br />
-                        <code className="px-1 py-0.5 bg-secondary rounded text-xs">SMS_WEBHOOK_SECRET</code> → your chosen secret string
+                        In Replit Secrets (the padlock icon in the sidebar), add:
                         <br />
                         <code className="px-1 py-0.5 bg-secondary rounded text-xs">EJOIN_INBOUND_MODE</code> → <code className="px-1 py-0.5 bg-secondary rounded text-xs">push</code>
                       </span>
                     </li>
                     <li className="flex gap-2.5">
-                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">3</span>
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">2</span>
                       <span>Restart the API Server workflow (the circular-arrow button next to it in the sidebar).</span>
                     </li>
                     <li className="flex gap-2.5">
-                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">4</span>
-                      <span>
-                        Copy the webhook URL above (replace <code className="px-1 py-0.5 bg-secondary rounded text-xs">&lt;YOUR_SMS_WEBHOOK_SECRET&gt;</code> with your secret).
-                      </span>
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">3</span>
+                      <span>Copy the webhook URL above — the secret is already embedded, no manual editing needed.</span>
                     </li>
                     <li className="flex gap-2.5">
-                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">5</span>
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">4</span>
                       <span>
                         In your eJoinTech gateway admin: <strong>SMS Forward → SMS to HTTP</strong> → enable → paste the URL → Save.
                       </span>
                     </li>
                     <li className="flex gap-2.5">
-                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">6</span>
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">5</span>
                       <span>
                         Click <strong>Send test inbound</strong> above to verify the full pipeline end-to-end.
                         A test entry will appear in <strong>Admin → Messages → Unmatched</strong>.
