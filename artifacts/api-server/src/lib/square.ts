@@ -589,6 +589,14 @@ export async function createAndPublishSupplementalInvoice(opts: {
 type SquareCustomersSearchResp = { customers?: Array<{ id: string; email_address?: string }> };
 type SquareCustomerResp = { customer: { id: string } };
 
+function toE164(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return undefined; // unrecognized shape — omit rather than send invalid data
+}
+
 async function ensureCustomer(cfg: SquareConfig, opts: {
   email: string;
   givenName: string;
@@ -622,7 +630,7 @@ async function ensureCustomer(cfg: SquareConfig, opts: {
       given_name: givenName,
       family_name: familyName,
       email_address: opts.email,
-      phone_number: opts.phone || undefined,
+      phone_number: toE164(opts.phone),
       company_name: opts.organization || undefined,
     },
   });
