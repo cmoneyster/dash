@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /quote/
+Disallow: /inquiry/
+Disallow: /plan/share/
+Disallow: /event/order/
+Disallow: /demo/
+Disallow: /event-taker
+Disallow: /kitchen
+Disallow: /confirmation
+
+Sitemap: https://4dbb42c8-7232-4c1b-9ec9-bd7769d819bd-00-370kak3ug5c9z.kirk.replit.dev/sitemap.xml

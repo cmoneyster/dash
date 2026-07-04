@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { usePageMeta } from "@/lib/usePageMeta";
 import { Layout } from "@/components/Layout";
 import {
   useGetPlan,
@@ -199,6 +200,10 @@ function CountStepper({
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function Plan() {
+  usePageMeta({
+    title: "Plan Your Event — dash by Hollywood East Cafe",
+    description: "Build your custom event menu, set your guest count, and request a catering quote from dash by Hollywood East Cafe — all online, no phone call required.",
+  });
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const sessionId = getSessionId();
   const queryClient = useQueryClient();
@@ -1475,7 +1480,7 @@ export default function Plan() {
                               {item.menuItem.imageUrl && (
                                 <img
                                   src={item.menuItem.imageUrl}
-                                  alt=""
+                                  alt={item.menuItem.name}
                                   onClick={() => setLightboxSrc(item.menuItem.imageUrl!)}
                                   className="w-full sm:w-24 h-24 rounded-xl object-cover shrink-0 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity"
                                 />

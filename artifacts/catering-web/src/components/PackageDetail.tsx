@@ -167,7 +167,7 @@ export function PackageDetail({ packageId, onClose }: Props) {
                             {it.menuItem.imageUrl ? (
                               <img
                                 src={it.menuItem.imageUrl}
-                                alt=""
+                                alt={it.menuItem.name}
                                 className="w-12 h-12 rounded-lg object-cover bg-background shrink-0"
                                 loading="lazy"
                               />

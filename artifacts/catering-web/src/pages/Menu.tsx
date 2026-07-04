@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { usePageMeta } from "@/lib/usePageMeta";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { MenuCard, MenuCardCompact } from "@/components/MenuCard";
@@ -24,6 +25,10 @@ import { useInstagramHandle } from "@/lib/instagram";
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function Menu() {
+  usePageMeta({
+    title: "Full Catering Menu — dash by Hollywood East Cafe",
+    description: "Browse our complete catering menu of Chinese-American dishes — appetizers, entrées, rice, noodles, and more. Filter by category or build your event plan online.",
+  });
   const initialCategory = (() => {
     if (typeof window === "undefined") return "";
     const c = new URLSearchParams(window.location.search).get("category");

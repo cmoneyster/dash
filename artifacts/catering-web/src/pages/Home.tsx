@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { usePageMeta } from "@/lib/usePageMeta";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { HashtagWall } from "@/components/HashtagWall";
@@ -35,6 +36,10 @@ const HOW_IT_WORKS_STEPS = [
 ];
 
 export default function Home() {
+  usePageMeta({
+    title: "dash Catering by Hollywood East Cafe",
+    description: "Asian-inspired catering for corporate events, weddings, and private gatherings in Olney, Maryland. Browse the full menu and build your event plan online.",
+  });
   const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
 
   useEffect(() => {

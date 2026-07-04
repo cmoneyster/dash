@@ -881,7 +881,7 @@ export default function SharedPlan() {
                               {item.menuItem.imageUrl && (
                                 <img
                                   src={item.menuItem.imageUrl}
-                                  alt=""
+                                  alt={item.menuItem.name}
                                   onClick={() => setLightboxSrc(item.menuItem.imageUrl!)}
                                   className="w-full sm:w-24 h-24 rounded-xl object-cover shrink-0 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity"
                                 />
@@ -1107,7 +1107,7 @@ export default function SharedPlan() {
                               inPlan ? "bg-primary/5 border border-primary/20" : "bg-secondary/40 hover:bg-secondary/70"
                             }`}
                           >
-                            {mi.imageUrl && <img src={mi.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />}
+                            {mi.imageUrl && <img src={mi.imageUrl} alt={mi.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />}
                             <div className="flex-1 min-w-0">
                               <p className="font-semibold text-sm truncate">{mi.name}</p>
                               <p className="text-xs text-muted-foreground">{formatCurrency(mi.price)}</p>

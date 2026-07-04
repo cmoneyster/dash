@@ -67,7 +67,7 @@ export function HashtagWall({ surface, withChrome = true }: HashtagWallProps) {
           {item.thumbnailUrl ? (
             <img
               src={item.thumbnailUrl}
-              alt=""
+              alt={item.caption ? item.caption.slice(0, 120) : "dash catering event photo"}
               loading="lazy"
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
               onError={(e) => {
@@ -215,7 +215,7 @@ function Lightbox({ item, onClose }: { item: WallItem; onClose: () => void }) {
           ) : (
             <div className="p-4">
               {item.thumbnailUrl && (
-                <img src={item.thumbnailUrl} alt="" className="w-full rounded-lg mb-4" />
+                <img src={item.thumbnailUrl} alt={item.caption ? item.caption.slice(0, 120) : "dash catering event photo"} className="w-full rounded-lg mb-4" />
               )}
               <p className="text-sm whitespace-pre-wrap break-words text-foreground/80 mb-4">
                 {item.caption || "(no caption)"}

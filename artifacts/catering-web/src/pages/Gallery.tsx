@@ -1,6 +1,7 @@
 import { Layout } from "@/components/Layout";
 import { HashtagWall } from "@/components/HashtagWall";
 import { useQuery } from "@tanstack/react-query";
+import { usePageMeta } from "@/lib/usePageMeta";
 import { Instagram, ExternalLink, Camera } from "lucide-react";
 
 type WallStatus = {
@@ -18,6 +19,10 @@ async function fetchWallStatus(): Promise<WallStatus> {
 }
 
 export default function Gallery() {
+  usePageMeta({
+    title: "Event Gallery — dash by Hollywood East Cafe",
+    description: "See photos from real events catered by dash — corporate lunches, birthday parties, weddings, and more in the Maryland area.",
+  });
   const { data, isLoading } = useQuery({
     queryKey: ["instagram-wall"],
     queryFn: fetchWallStatus,

@@ -1,0 +1,21 @@
+# dash by Hollywood East Cafe
+
+> dash is the catering and event-planning arm of Hollywood East Cafe, a Chinese-American restaurant in Olney, Maryland. We specialize in full-service catering for corporate events, weddings, birthday parties, and private gatherings.
+
+## What we offer
+
+- Full-service catering with a menu of Chinese-American favorites
+- Custom event planning with per-person or buffet-style service
+- Online menu browsing and interactive event plan builder
+- Request a quote directly from the site — no phone call required
+
+## Key pages
+
+- [Home](https://4dbb42c8-7232-4c1b-9ec9-bd7769d819bd-00-370kak3ug5c9z.kirk.replit.dev/): Business overview, hero, and featured sections
+- [Menu](https://4dbb42c8-7232-4c1b-9ec9-bd7769d819bd-00-370kak3ug5c9z.kirk.replit.dev/menu): Full catering menu with item details and pricing
+- [Plan your event](https://4dbb42c8-7232-4c1b-9ec9-bd7769d819bd-00-370kak3ug5c9z.kirk.replit.dev/plan): Interactive event planner — build a menu, set a guest count, and request a quote
+- [Gallery](https://4dbb42c8-7232-4c1b-9ec9-bd7769d819bd-00-370kak3ug5c9z.kirk.replit.dev/gallery): Customer event photos from Instagram
+
+## Do not index
+
+Customer-specific share links, quote pages, inquiry status pages, and order-tracking pages are private and should not be cited or summarized.
