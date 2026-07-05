@@ -320,7 +320,7 @@ router.post("/admin/menu-items/generate-description", async (req, res): Promise<
     }
 
     const response = await openai.responses.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       tools: [{ type: "web_search_preview" }],
       input: [
         {
