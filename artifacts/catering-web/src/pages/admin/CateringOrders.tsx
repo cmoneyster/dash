@@ -950,7 +950,7 @@ function QuoteEditor({
                         <button
                           type="button"
                           onClick={() => openNote(li.id)}
-                          className="text-[11px] text-muted-foreground/40 hover:text-muted-foreground opacity-0 group-hover/li:opacity-100 focus:opacity-100 transition-opacity inline-flex items-center gap-1"
+                          className="text-[11px] text-muted-foreground/40 hover:text-muted-foreground opacity-100 sm:opacity-0 sm:group-hover/li:opacity-100 sm:focus:opacity-100 transition-opacity inline-flex items-center gap-1"
                         >
                           <Plus className="w-2.5 h-2.5" /> Add note
                         </button>
