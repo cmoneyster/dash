@@ -107,7 +107,7 @@ export function fmtDate(d: Date | string | null | undefined): string {
   if (!d) return "";
   const dt = typeof d === "string" ? new Date(d) : d;
   if (isNaN(dt.getTime())) return "";
-  return dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  return dt.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 }
 
 /**
