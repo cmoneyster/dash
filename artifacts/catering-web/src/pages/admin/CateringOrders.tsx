@@ -542,7 +542,7 @@ function SortableLineItem({
     zIndex: isDragging ? 10 : undefined,
   };
   return (
-    <div ref={setNodeRef} style={style} className="space-y-1" data-testid={`line-item-${id}`}>
+    <div ref={setNodeRef} style={style} className="group/li space-y-1" data-testid={`line-item-${id}`}>
       {children({ listeners: listeners ?? {}, attributes, isDragging })}
     </div>
   );
@@ -577,6 +577,16 @@ function QuoteEditor({
 
   const numCls = "w-20 px-2 py-1.5 text-sm text-right border border-border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none";
   const txtCls = "w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none";
+
+  // Track which line item rows have the note input expanded. Rows with an
+  // existing note value are always shown expanded regardless of this set.
+  const [noteExpandedIds, setNoteExpandedIds] = useState<Set<string>>(() => new Set());
+  function openNote(id: string) {
+    setNoteExpandedIds(prev => { const n = new Set(prev); n.add(id); return n; });
+  }
+  function closeNote(id: string) {
+    setNoteExpandedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+  }
 
   // Map of menuItemId -> AdminMenuItem for live size/tier lookups on saved lines.
   const menuById = useMemo(() => {
@@ -913,6 +923,40 @@ function QuoteEditor({
                       ) : null}
                     </div>
                   )}
+                  {/* Per-item note — hidden by default, revealed on demand */}
+                  {(() => {
+                    const noteOpen = noteExpandedIds.has(li.id) || Boolean(li.notes);
+                    return noteOpen ? (
+                      <div className="pl-[44px] flex items-center gap-1.5">
+                        <MessageSquare className="w-3 h-3 text-muted-foreground/60 shrink-0" />
+                        <input
+                          autoFocus={noteExpandedIds.has(li.id) && !li.notes}
+                          value={li.notes ?? ""}
+                          onChange={e => updateItem(li.id, { notes: e.target.value || null })}
+                          placeholder="Special instruction or modification…"
+                          className="flex-1 min-w-0 px-2 py-0.5 text-xs border border-border rounded-md bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { updateItem(li.id, { notes: null }); closeNote(li.id); }}
+                          className="p-0.5 rounded text-muted-foreground hover:text-destructive shrink-0"
+                          title="Remove note"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="pl-[44px]">
+                        <button
+                          type="button"
+                          onClick={() => openNote(li.id)}
+                          className="text-[11px] text-muted-foreground/40 hover:text-muted-foreground opacity-0 group-hover/li:opacity-100 focus:opacity-100 transition-opacity inline-flex items-center gap-1"
+                        >
+                          <Plus className="w-2.5 h-2.5" /> Add note
+                        </button>
+                      </div>
+                    );
+                  })()}
                   </>
                   )}
                 </SortableLineItem>
