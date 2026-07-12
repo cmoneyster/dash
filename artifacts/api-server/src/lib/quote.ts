@@ -189,7 +189,7 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
   let rightY = clientTop;
   doc.font(FONT_LATIN).fontSize(9).fillColor("#666666").text("Event details", 320, rightY);
   rightY = doc.y;
-  const dateValue = inquiry.eventDate?.trim() || NOT_PROVIDED;
+  const dateValue = fmtDate(inquiry.eventDate) || NOT_PROVIDED;
   doc
     .font(FONT_LATIN)
     .fontSize(10)
