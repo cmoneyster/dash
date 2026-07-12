@@ -11,7 +11,7 @@ export function isDateOnlyString(value: unknown): value is string {
 
 export function formatLocalDate(
   dateStr: string,
-  options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" },
+  options: Intl.DateTimeFormatOptions = { weekday: "long", month: "long", day: "numeric", year: "numeric" },
 ): string {
   return parseDateLocal(dateStr).toLocaleDateString("en-US", options);
 }
