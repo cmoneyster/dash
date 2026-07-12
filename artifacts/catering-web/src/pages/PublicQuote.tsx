@@ -9,6 +9,7 @@ import {
   PAYMENT_TERMS_BULLETS,
   NOT_PROVIDED,
 } from "@/lib/quote-copy";
+import { formatLocalDate, isDateOnlyString } from "@/lib/date";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -268,7 +269,7 @@ export default function PublicQuote() {
             <div className="space-y-1 text-sm text-muted-foreground">
               <p className="flex items-center gap-1.5">
                 <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" />
-                <span>{quote.client.eventDate?.trim() || NOT_PROVIDED}</span>
+                <span>{quote.client.eventDate && isDateOnlyString(quote.client.eventDate) ? formatLocalDate(quote.client.eventDate) : (quote.client.eventDate?.trim() || NOT_PROVIDED)}</span>
               </p>
               {quote.client.eventTime && (
                 <p className="flex items-center gap-1.5">
