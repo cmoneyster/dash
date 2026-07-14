@@ -294,6 +294,73 @@ export interface ErrorResponse {
   error: string;
 }
 
+export type OfflinePaymentMethod =
+  (typeof OfflinePaymentMethod)[keyof typeof OfflinePaymentMethod];
+
+export const OfflinePaymentMethod = {
+  check: "check",
+  cash: "cash",
+  wire: "wire",
+  other: "other",
+} as const;
+
+/**
+ * A single offline payment (check, cash, wire, or other) recorded on a catering inquiry.
+ */
+export interface OfflinePayment {
+  id: string;
+  /** @minimum 0.01 */
+  amount: number;
+  method: OfflinePaymentMethod;
+  /** Date the payment was received (YYYY-MM-DD) */
+  date: string;
+  note?: string | null;
+}
+
+export type AddOfflinePaymentBodyMethod =
+  (typeof AddOfflinePaymentBodyMethod)[keyof typeof AddOfflinePaymentBodyMethod];
+
+export const AddOfflinePaymentBodyMethod = {
+  check: "check",
+  cash: "cash",
+  wire: "wire",
+  other: "other",
+} as const;
+
+export interface AddOfflinePaymentBody {
+  /** @minimum 0.01 */
+  amount: number;
+  method: AddOfflinePaymentBodyMethod;
+  date: string;
+  note?: string | null;
+}
+
+/**
+ * Authoritative balance computed server-side for the inquiry.
+If a Square invoice exists: remaining = squareBalanceDue − offlinePaid
+Otherwise: remaining = quoteTotal − offlinePaid
+
+ */
+export interface CateringComputedBalance {
+  /** squareAmountPaid + squareBalanceDue (0 when no invoice) */
+  invoiceTotal: number;
+  squarePaid: number;
+  /** Sum of all offline payment amounts */
+  offlinePaid: number;
+  /** Outstanding balance after Square paid + offline paid */
+  remaining: number;
+}
+
+/**
+ * The updated catering inquiry including offlinePayments and computedBalance.
+ */
+export type OfflinePaymentResponseInquiry = { [key: string]: unknown };
+
+export interface OfflinePaymentResponse {
+  /** The updated catering inquiry including offlinePayments and computedBalance. */
+  inquiry: OfflinePaymentResponseInquiry;
+}
+
 export interface ComboSlotOption {
   menuItemId: number;
   name: string;

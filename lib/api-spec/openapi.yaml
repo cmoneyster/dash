@@ -2011,6 +2011,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/UploadHeroImageResponse"
 
+  # Offline payments on catering inquiries
+  /admin/catering/{id}/offline-payments:
+    post:
+      operationId: adminAddCateringOfflinePayment
+      tags: [admin]
+      summary: Record an offline payment (check, cash, wire, other) against a catering inquiry
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Catering inquiry ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddOfflinePaymentBody"
+      responses:
+        "200":
+          description: Updated inquiry with computedBalance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfflinePaymentResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Inquiry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/catering/{id}/offline-payments/{paymentId}:
+    delete:
+      operationId: adminDeleteCateringOfflinePayment
+      tags: [admin]
+      summary: Remove an offline payment from a catering inquiry
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Catering inquiry ID
+        - in: path
+          name: paymentId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the offline payment to remove
+      responses:
+        "200":
+          description: Updated inquiry with computedBalance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfflinePaymentResponse"
+        "404":
+          description: Inquiry or payment not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     SquareTerminalDevice:
@@ -2507,6 +2583,80 @@ components:
           type: string
       required:
         - error
+
+    OfflinePayment:
+      type: object
+      description: A single offline payment (check, cash, wire, or other) recorded on a catering inquiry.
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: float
+          minimum: 0.01
+        method:
+          type: string
+          enum: [check, cash, wire, other]
+        date:
+          type: string
+          format: date
+          description: Date the payment was received (YYYY-MM-DD)
+        note:
+          type: string
+          nullable: true
+      required: [id, amount, method, date]
+
+    AddOfflinePaymentBody:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: float
+          minimum: 0.01
+        method:
+          type: string
+          enum: [check, cash, wire, other]
+        date:
+          type: string
+          format: date
+        note:
+          type: string
+          nullable: true
+      required: [amount, method, date]
+
+    CateringComputedBalance:
+      type: object
+      description: |
+        Authoritative balance computed server-side for the inquiry.
+        If a Square invoice exists: remaining = squareBalanceDue − offlinePaid
+        Otherwise: remaining = quoteTotal − offlinePaid
+      properties:
+        invoiceTotal:
+          type: number
+          format: float
+          description: squareAmountPaid + squareBalanceDue (0 when no invoice)
+        squarePaid:
+          type: number
+          format: float
+        offlinePaid:
+          type: number
+          format: float
+          description: Sum of all offline payment amounts
+        remaining:
+          type: number
+          format: float
+          description: Outstanding balance after Square paid + offline paid
+      required: [invoiceTotal, squarePaid, offlinePaid, remaining]
+
+    OfflinePaymentResponse:
+      type: object
+      properties:
+        inquiry:
+          type: object
+          description: The updated catering inquiry including offlinePayments and computedBalance.
+          additionalProperties: true
+      required: [inquiry]
 
     ComboSlotOption:
       type: object

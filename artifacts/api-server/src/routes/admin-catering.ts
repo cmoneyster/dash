@@ -108,6 +108,44 @@ async function loadSupplementalsByInquiryIds(
   return map;
 }
 
+// ── Server-side balance computation ──────────────────────────────────────────
+//
+// Authoritative remaining balance exposed on every inquiry GET response.
+// Callers must not recompute this client-side — consume `computedBalance`.
+//
+//   If Square invoice exists:
+//     invoiceTotal = squareAmountPaid + squareBalanceDue
+//     remaining    = invoiceTotal − squarePaid − offlinePaid
+//                  = squareBalanceDue − offlinePaid
+//
+//   If no Square invoice (quote-only):
+//     remaining    = quoteTotal − offlinePaid
+
+function computeCateringBalance(inq: typeof cateringInquiriesTable.$inferSelect): {
+  invoiceTotal: number;
+  squarePaid: number;
+  offlinePaid: number;
+  remaining: number;
+} {
+  const squarePaid = Number(inq.squareAmountPaid ?? 0);
+  const squareBalanceDue = Number(inq.squareBalanceDue ?? 0);
+  const invoiceTotal = squarePaid + squareBalanceDue;
+  const offlinePaid = ((inq.offlinePayments ?? []) as OfflinePayment[])
+    .reduce((s, p) => s + p.amount, 0);
+  const remaining = inq.squareInvoiceId
+    ? invoiceTotal - squarePaid - offlinePaid // = squareBalanceDue - offlinePaid
+    : Number(inq.total ?? 0) - offlinePaid;
+  return { invoiceTotal, squarePaid, offlinePaid, remaining };
+}
+
+// Attach supplementals + computedBalance to an inquiry row before sending.
+function serializeInquiry(
+  inq: typeof cateringInquiriesTable.$inferSelect,
+  supplementals: CateringSupplementalInvoice[],
+) {
+  return { ...inq, supplementals, computedBalance: computeCateringBalance(inq) };
+}
+
 const router: IRouter = Router();
 
 const VALID_STATUSES = ["inquiry", "quoted", "confirmed", "completed", "cancelled"];
@@ -296,7 +334,7 @@ router.get("/admin/catering", async (req, res) => {
       .from(cateringInquiriesTable)
       .orderBy(desc(cateringInquiriesTable.createdAt));
     const suppMap = await loadSupplementalsByInquiryIds(inquiries.map(i => i.id));
-    res.json(inquiries.map(i => ({ ...i, supplementals: suppMap.get(i.id) ?? [] })));
+    res.json(inquiries.map(i => serializeInquiry(i, suppMap.get(i.id) ?? [])));
   } catch (err) {
     req.log.error({ err }, "Error listing catering inquiries");
     res.status(500).json({ error: "Failed to fetch inquiries" });
@@ -312,7 +350,7 @@ router.get("/admin/catering/:id", async (req, res): Promise<void> => {
       return;
     }
     const suppMap = await loadSupplementalsByInquiryIds([id]);
-    res.json({ ...inquiry, supplementals: suppMap.get(id) ?? [] });
+    res.json(serializeInquiry(inquiry, suppMap.get(id) ?? []));
   } catch (err) {
     req.log.error({ err }, "Error fetching catering inquiry");
     res.status(500).json({ error: "Failed to fetch inquiry" });
@@ -1997,7 +2035,7 @@ router.post("/admin/catering/:id/offline-payments", async (req, res): Promise<vo
 
     const suppMap = await loadSupplementalsByInquiryIds([id]);
     req.log.info({ id, paymentId: payment.id }, "Added offline payment");
-    res.json({ inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] } });
+    res.json({ inquiry: serializeInquiry(updated, suppMap.get(id) ?? []) });
   } catch (err) {
     req.log.error({ err }, "Error adding offline payment");
     res.status(500).json({ error: "Failed to add payment" });
@@ -2036,7 +2074,7 @@ router.delete("/admin/catering/:id/offline-payments/:paymentId", async (req, res
 
     const suppMap = await loadSupplementalsByInquiryIds([id]);
     req.log.info({ id, paymentId }, "Removed offline payment");
-    res.json({ inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] } });
+    res.json({ inquiry: serializeInquiry(updated, suppMap.get(id) ?? []) });
   } catch (err) {
     req.log.error({ err }, "Error removing offline payment");
     res.status(500).json({ error: "Failed to remove payment" });

@@ -18,6 +18,7 @@ import type {
 
 import type {
   AddIngredientCostInput,
+  AddOfflinePaymentBody,
   AddRecommendationBody,
   AddToCartBody,
   AddToPlanBody,
@@ -65,6 +66,7 @@ import type {
   ListPrintJobsParams,
   ListQueuedPrintAgentJobs200Item,
   MenuItem,
+  OfflinePaymentResponse,
   OpenCashDrawer200,
   OpenaiConversation,
   OpenaiConversationWithMessages,
@@ -7639,4 +7641,190 @@ export const useUploadHeroImage = <
   TContext
 > => {
   return useMutation(getUploadHeroImageMutationOptions(options));
+};
+
+/**
+ * @summary Record an offline payment (check, cash, wire, other) against a catering inquiry
+ */
+export const getAdminAddCateringOfflinePaymentUrl = (id: number) => {
+  return `/api/admin/catering/${id}/offline-payments`;
+};
+
+export const adminAddCateringOfflinePayment = async (
+  id: number,
+  addOfflinePaymentBody: AddOfflinePaymentBody,
+  options?: RequestInit,
+): Promise<OfflinePaymentResponse> => {
+  return customFetch<OfflinePaymentResponse>(
+    getAdminAddCateringOfflinePaymentUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(addOfflinePaymentBody),
+    },
+  );
+};
+
+export const getAdminAddCateringOfflinePaymentMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminAddCateringOfflinePayment>>,
+    TError,
+    { id: number; data: BodyType<AddOfflinePaymentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminAddCateringOfflinePayment>>,
+  TError,
+  { id: number; data: BodyType<AddOfflinePaymentBody> },
+  TContext
+> => {
+  const mutationKey = ["adminAddCateringOfflinePayment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminAddCateringOfflinePayment>>,
+    { id: number; data: BodyType<AddOfflinePaymentBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return adminAddCateringOfflinePayment(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminAddCateringOfflinePaymentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminAddCateringOfflinePayment>>
+>;
+export type AdminAddCateringOfflinePaymentMutationBody =
+  BodyType<AddOfflinePaymentBody>;
+export type AdminAddCateringOfflinePaymentMutationError =
+  ErrorType<ErrorResponse>;
+
+/**
+ * @summary Record an offline payment (check, cash, wire, other) against a catering inquiry
+ */
+export const useAdminAddCateringOfflinePayment = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminAddCateringOfflinePayment>>,
+    TError,
+    { id: number; data: BodyType<AddOfflinePaymentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminAddCateringOfflinePayment>>,
+  TError,
+  { id: number; data: BodyType<AddOfflinePaymentBody> },
+  TContext
+> => {
+  return useMutation(getAdminAddCateringOfflinePaymentMutationOptions(options));
+};
+
+/**
+ * @summary Remove an offline payment from a catering inquiry
+ */
+export const getAdminDeleteCateringOfflinePaymentUrl = (
+  id: number,
+  paymentId: string,
+) => {
+  return `/api/admin/catering/${id}/offline-payments/${paymentId}`;
+};
+
+export const adminDeleteCateringOfflinePayment = async (
+  id: number,
+  paymentId: string,
+  options?: RequestInit,
+): Promise<OfflinePaymentResponse> => {
+  return customFetch<OfflinePaymentResponse>(
+    getAdminDeleteCateringOfflinePaymentUrl(id, paymentId),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getAdminDeleteCateringOfflinePaymentMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminDeleteCateringOfflinePayment>>,
+    TError,
+    { id: number; paymentId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminDeleteCateringOfflinePayment>>,
+  TError,
+  { id: number; paymentId: string },
+  TContext
+> => {
+  const mutationKey = ["adminDeleteCateringOfflinePayment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminDeleteCateringOfflinePayment>>,
+    { id: number; paymentId: string }
+  > = (props) => {
+    const { id, paymentId } = props ?? {};
+
+    return adminDeleteCateringOfflinePayment(id, paymentId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminDeleteCateringOfflinePaymentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminDeleteCateringOfflinePayment>>
+>;
+
+export type AdminDeleteCateringOfflinePaymentMutationError =
+  ErrorType<ErrorResponse>;
+
+/**
+ * @summary Remove an offline payment from a catering inquiry
+ */
+export const useAdminDeleteCateringOfflinePayment = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminDeleteCateringOfflinePayment>>,
+    TError,
+    { id: number; paymentId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminDeleteCateringOfflinePayment>>,
+  TError,
+  { id: number; paymentId: string },
+  TContext
+> => {
+  return useMutation(
+    getAdminDeleteCateringOfflinePaymentMutationOptions(options),
+  );
 };

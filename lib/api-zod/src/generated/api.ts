@@ -6699,3 +6699,46 @@ export const UploadHeroImageResponse = zod.object({
     .string()
     .describe("Serving URL of the processed 1920×1080 hero image."),
 });
+
+/**
+ * @summary Record an offline payment (check, cash, wire, other) against a catering inquiry
+ */
+export const AdminAddCateringOfflinePaymentParams = zod.object({
+  id: zod.coerce.number().describe("Catering inquiry ID"),
+});
+
+export const adminAddCateringOfflinePaymentBodyAmountMin = 0.01;
+
+export const AdminAddCateringOfflinePaymentBody = zod.object({
+  amount: zod.number().min(adminAddCateringOfflinePaymentBodyAmountMin),
+  method: zod.enum(["check", "cash", "wire", "other"]),
+  date: zod.coerce.date(),
+  note: zod.string().nullish(),
+});
+
+export const AdminAddCateringOfflinePaymentResponse = zod.object({
+  inquiry: zod
+    .record(zod.string(), zod.unknown())
+    .describe(
+      "The updated catering inquiry including offlinePayments and computedBalance.",
+    ),
+});
+
+/**
+ * @summary Remove an offline payment from a catering inquiry
+ */
+export const AdminDeleteCateringOfflinePaymentParams = zod.object({
+  id: zod.coerce.number().describe("Catering inquiry ID"),
+  paymentId: zod.coerce
+    .string()
+    .uuid()
+    .describe("UUID of the offline payment to remove"),
+});
+
+export const AdminDeleteCateringOfflinePaymentResponse = zod.object({
+  inquiry: zod
+    .record(zod.string(), zod.unknown())
+    .describe(
+      "The updated catering inquiry including offlinePayments and computedBalance.",
+    ),
+});

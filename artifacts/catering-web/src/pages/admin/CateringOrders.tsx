@@ -173,6 +173,13 @@ type Inquiry = {
   primarySnapshotDiscounts: QuoteAdjustment[] | null;
   // Manually recorded offline payments (check, cash, wire, other).
   offlinePayments: OfflinePayment[] | null;
+  // Server-computed balance — authoritative, included on every GET response.
+  computedBalance: {
+    invoiceTotal: number;
+    squarePaid: number;
+    offlinePaid: number;
+    remaining: number;
+  } | null;
   // Server-embedded child rows for the supplemental-invoice flow.
   supplementals: SupplementalInvoice[];
   createdAt: string;
@@ -1869,13 +1876,20 @@ function SquarePanel({
   );
 }
 
-// ── Offline Payments panel ───────────────────────────────────────────────────
+// ── Payments panel ───────────────────────────────────────────────────────────
 //
-// Standalone section below the Square panel. Records cash/check/wire/other
-// payments received outside Square. Shows each recorded payment with a remove
-// button, and computes remaining balance:
-//   • If Square invoice exists → squareBalanceDue − sum(offlinePayments)
-//   • Otherwise               → quote total      − sum(offlinePayments)
+// Unified payment view below the Square panel. Shows Square-collected amounts
+// (read-only) alongside manually recorded offline payments (check/cash/wire/
+// other) with remove buttons. Remaining balance comes from the server-computed
+// `computedBalance` field included on every inquiry response.
+//
+// Balance model (server-authoritative, mirrored here for display):
+//   If Square invoice exists:
+//     invoiceTotal = squareAmountPaid + squareBalanceDue
+//     remaining    = invoiceTotal − squarePaid − offlinePaid
+//                  = squareBalanceDue − offlinePaid
+//   If no Square invoice (quote-only):
+//     remaining    = quoteTotal − offlinePaid
 
 const OFFLINE_METHOD_LABELS: Record<OfflinePayment["method"], string> = {
   check: "Check",
@@ -1890,14 +1904,19 @@ function PaymentsPanel({
   inquiry: Inquiry;
   onUpdated: (i: Inquiry) => void;
 }) {
-  const payments = inquiry.offlinePayments ?? [];
-  const offlinePaid = payments.reduce((s, p) => s + p.amount, 0);
-
-  // Remaining balance computation
+  const offlinePayments = inquiry.offlinePayments ?? [];
   const hasInvoice = !!inquiry.squareInvoiceId;
-  const remainingBalance = hasInvoice
-    ? Number(inquiry.squareBalanceDue ?? 0) - offlinePaid
-    : Number(inquiry.total ?? 0) - offlinePaid;
+
+  // Server-computed balance is the authoritative source; fall back to
+  // client-side calculation for older cached data that predates the field.
+  const cb = inquiry.computedBalance;
+  const squarePaid   = cb ? cb.squarePaid   : Number(inquiry.squareAmountPaid ?? 0);
+  const offlinePaid  = cb ? cb.offlinePaid  : offlinePayments.reduce((s, p) => s + p.amount, 0);
+  const invoiceTotal = cb ? cb.invoiceTotal : squarePaid + Number(inquiry.squareBalanceDue ?? 0);
+  const remaining    = cb ? cb.remaining
+    : hasInvoice
+      ? Number(inquiry.squareBalanceDue ?? 0) - offlinePaid
+      : Number(inquiry.total ?? 0) - offlinePaid;
 
   // Add-payment form state
   const [showForm, setShowForm] = useState(false);
@@ -1945,38 +1964,41 @@ function PaymentsPanel({
     finally { setRemoving(null); }
   }
 
-  // Only render this panel when there's either a quote total or a Square invoice.
+  // Render when a quote total or Square invoice exists.
   if (!inquiry.total && !hasInvoice) return null;
+
+  const allPaid = remaining <= 0;
 
   return (
     <div className="border border-border rounded-xl overflow-hidden">
       <div className="bg-sky-50 dark:bg-sky-950/40 px-4 py-2 border-b border-border flex items-center gap-2">
-        <CreditCard className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400" />
-        <span className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">Offline Payments</span>
+        <Receipt className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400" />
+        <span className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">Payments</span>
       </div>
       <div className="p-4 space-y-3 text-sm">
         {/* Balance summary strip */}
         <div className="rounded-xl bg-secondary/40 border border-border px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-          {hasInvoice && (
+          {hasInvoice ? (
             <>
               <span>
-                <span className="text-muted-foreground">Square balance due:</span>{" "}
-                <span className="font-semibold tabular-nums">{formatCurrency(Number(inquiry.squareBalanceDue ?? 0))}</span>
+                <span className="text-muted-foreground">Invoice total:</span>{" "}
+                <span className="font-semibold tabular-nums">{formatCurrency(invoiceTotal)}</span>
               </span>
               <span className="text-muted-foreground/50">·</span>
-            </>
-          )}
-          {!hasInvoice && inquiry.total && (
-            <>
               <span>
-                <span className="text-muted-foreground">Quote total:</span>{" "}
-                <span className="font-semibold tabular-nums">{formatCurrency(Number(inquiry.total))}</span>
+                <span className="text-muted-foreground">Square paid:</span>{" "}
+                <span className="font-semibold tabular-nums">{formatCurrency(squarePaid)}</span>
               </span>
-              <span className="text-muted-foreground/50">·</span>
             </>
-          )}
+          ) : inquiry.total ? (
+            <span>
+              <span className="text-muted-foreground">Quote total:</span>{" "}
+              <span className="font-semibold tabular-nums">{formatCurrency(Number(inquiry.total))}</span>
+            </span>
+          ) : null}
+          {(hasInvoice || !!inquiry.total) && <span className="text-muted-foreground/50">·</span>}
           <span>
-            <span className="text-muted-foreground">Offline received:</span>{" "}
+            <span className="text-muted-foreground">Offline paid:</span>{" "}
             <span className="font-semibold tabular-nums">{formatCurrency(offlinePaid)}</span>
           </span>
           <span className="text-muted-foreground/50">·</span>
@@ -1984,18 +2006,33 @@ function PaymentsPanel({
             <span className="text-muted-foreground">Remaining:</span>{" "}
             <span className={cn(
               "font-semibold tabular-nums",
-              remainingBalance <= 0 && "text-emerald-700 dark:text-emerald-400",
-              remainingBalance > 0 && "text-amber-700 dark:text-amber-400",
+              allPaid && "text-emerald-700 dark:text-emerald-400",
+              !allPaid && "text-amber-700 dark:text-amber-400",
             )}>
-              {remainingBalance <= 0 ? "Paid in full" : formatCurrency(remainingBalance)}
+              {allPaid ? "Paid in full" : formatCurrency(remaining)}
             </span>
           </span>
         </div>
 
-        {/* Payment list */}
-        {payments.length > 0 && (
+        {/* Consolidated payment list: Square paid (read-only) + offline (removable) */}
+        {(hasInvoice && squarePaid > 0 || offlinePayments.length > 0) && (
           <ul className="divide-y divide-border border border-border rounded-xl overflow-hidden">
-            {payments.map(p => (
+            {/* Square paid row — read-only */}
+            {hasInvoice && squarePaid > 0 && (
+              <li className="flex items-start gap-3 px-3 py-2.5 bg-emerald-50/50 dark:bg-emerald-950/20">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold tabular-nums">{formatCurrency(squarePaid)}</span>
+                    <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                      Square
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">Collected via Square invoice</p>
+                </div>
+              </li>
+            )}
+            {/* Offline payment rows — removable */}
+            {offlinePayments.map(p => (
               <li key={p.id} className="flex items-start gap-3 px-3 py-2.5">
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
