@@ -246,7 +246,8 @@ function toNumber(v: number | string | null | undefined): number {
  *    own line-item subtotal. New rows / kind-changed rows count their
  *    full current dollar contribution as new.
  *
- * Returns deltaTotal = max(0, deltaSubtotal + deltaFeesTotal − deltaDiscountsTotal).
+ * Returns deltaTotal = max(0, deltaSubtotal + deltaFeesTotal − deltaDiscountsTotal − creditAmount)
+ * where creditAmount is the net dollar value of all quantity reductions (including full removals).
  *
  * Pure function: no DB, no Square calls, no rounding errors above 1¢.
  */
@@ -267,6 +268,13 @@ export function computeUninvoicedDelta(opts: {
 
   const deltaLineItems: Array<DeltaQuoteLineItem & { quantity: number; unitPrice: number }> = [];
   let creditAmount = 0;
+
+  // Build a lookup of current items so we can detect full removals below.
+  const curById = new Map<string, DeltaQuoteLineItem>();
+  for (const row of cur) {
+    if (row && typeof row.id === "string") curById.set(row.id, row);
+  }
+
   for (const row of cur) {
     if (!row || typeof row.id !== "string") continue;
     const curQty = toNumber(row.quantity);
@@ -286,6 +294,19 @@ export function computeUninvoicedDelta(opts: {
       // difference (increases minus reductions) rather than overbilling
       // by ignoring decrements.
       creditAmount = round2(creditAmount + Math.abs(deltaQty) * curUnit);
+    }
+  }
+
+  // Also credit items that were entirely removed from the current quote
+  // (present in snapshot, absent in current). Their effective current qty
+  // is 0, so the full snapshot qty × unit price is a reduction.
+  for (const row of snap) {
+    if (!row || typeof row.id !== "string") continue;
+    if (curById.has(row.id)) continue; // partial change already handled above
+    const snapQty = toNumber(row.quantity);
+    const snapUnit = toNumber(row.unitPrice);
+    if (snapQty > 0 && snapUnit > 0) {
+      creditAmount = round2(creditAmount + snapQty * snapUnit);
     }
   }
 
