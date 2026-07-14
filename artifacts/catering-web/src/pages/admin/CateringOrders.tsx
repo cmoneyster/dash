@@ -105,6 +105,14 @@ type QuoteReply = {
   sentTo: string;
 };
 
+type OfflinePayment = {
+  id: string;
+  amount: number;
+  method: "check" | "cash" | "wire" | "other";
+  date: string;
+  note?: string | null;
+};
+
 type Inquiry = {
   id: number;
   clientName: string;
@@ -163,6 +171,8 @@ type Inquiry = {
   primarySnapshotLineItems: QuoteLineItem[] | null;
   primarySnapshotFees: QuoteAdjustment[] | null;
   primarySnapshotDiscounts: QuoteAdjustment[] | null;
+  // Manually recorded offline payments (check, cash, wire, other).
+  offlinePayments: OfflinePayment[] | null;
   // Server-embedded child rows for the supplemental-invoice flow.
   supplementals: SupplementalInvoice[];
   createdAt: string;
@@ -1859,6 +1869,245 @@ function SquarePanel({
   );
 }
 
+// ── Offline Payments panel ───────────────────────────────────────────────────
+//
+// Standalone section below the Square panel. Records cash/check/wire/other
+// payments received outside Square. Shows each recorded payment with a remove
+// button, and computes remaining balance:
+//   • If Square invoice exists → squareBalanceDue − sum(offlinePayments)
+//   • Otherwise               → quote total      − sum(offlinePayments)
+
+const OFFLINE_METHOD_LABELS: Record<OfflinePayment["method"], string> = {
+  check: "Check",
+  cash: "Cash",
+  wire: "Wire",
+  other: "Other",
+};
+
+function PaymentsPanel({
+  inquiry, onUpdated,
+}: {
+  inquiry: Inquiry;
+  onUpdated: (i: Inquiry) => void;
+}) {
+  const payments = inquiry.offlinePayments ?? [];
+  const offlinePaid = payments.reduce((s, p) => s + p.amount, 0);
+
+  // Remaining balance computation
+  const hasInvoice = !!inquiry.squareInvoiceId;
+  const remainingBalance = hasInvoice
+    ? Number(inquiry.squareBalanceDue ?? 0) - offlinePaid
+    : Number(inquiry.total ?? 0) - offlinePaid;
+
+  // Add-payment form state
+  const [showForm, setShowForm] = useState(false);
+  const [formAmount, setFormAmount] = useState("");
+  const [formMethod, setFormMethod] = useState<OfflinePayment["method"]>("check");
+  const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
+  const [formNote, setFormNote] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function addPayment() {
+    const amount = parseFloat(formAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setMsg("Enter a valid amount greater than $0.");
+      return;
+    }
+    if (!formDate) { setMsg("Date is required."); return; }
+    setAdding(true); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/offline-payments`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ amount, method: formMethod, date: formDate, note: formNote.trim() || null }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to add payment"); return; }
+      onUpdated(data.inquiry);
+      setFormAmount(""); setFormNote(""); setShowForm(false);
+    } catch { setMsg("Failed to add payment."); }
+    finally { setAdding(false); }
+  }
+
+  async function removePayment(paymentId: string) {
+    setRemoving(paymentId); setMsg(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/catering/${inquiry.id}/offline-payments/${paymentId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      const data = await r.json();
+      if (!r.ok) { setMsg(data.error ?? "Failed to remove payment"); return; }
+      onUpdated(data.inquiry);
+    } catch { setMsg("Failed to remove payment."); }
+    finally { setRemoving(null); }
+  }
+
+  // Only render this panel when there's either a quote total or a Square invoice.
+  if (!inquiry.total && !hasInvoice) return null;
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      <div className="bg-sky-50 dark:bg-sky-950/40 px-4 py-2 border-b border-border flex items-center gap-2">
+        <CreditCard className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400" />
+        <span className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">Offline Payments</span>
+      </div>
+      <div className="p-4 space-y-3 text-sm">
+        {/* Balance summary strip */}
+        <div className="rounded-xl bg-secondary/40 border border-border px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          {hasInvoice && (
+            <>
+              <span>
+                <span className="text-muted-foreground">Square balance due:</span>{" "}
+                <span className="font-semibold tabular-nums">{formatCurrency(Number(inquiry.squareBalanceDue ?? 0))}</span>
+              </span>
+              <span className="text-muted-foreground/50">·</span>
+            </>
+          )}
+          {!hasInvoice && inquiry.total && (
+            <>
+              <span>
+                <span className="text-muted-foreground">Quote total:</span>{" "}
+                <span className="font-semibold tabular-nums">{formatCurrency(Number(inquiry.total))}</span>
+              </span>
+              <span className="text-muted-foreground/50">·</span>
+            </>
+          )}
+          <span>
+            <span className="text-muted-foreground">Offline received:</span>{" "}
+            <span className="font-semibold tabular-nums">{formatCurrency(offlinePaid)}</span>
+          </span>
+          <span className="text-muted-foreground/50">·</span>
+          <span>
+            <span className="text-muted-foreground">Remaining:</span>{" "}
+            <span className={cn(
+              "font-semibold tabular-nums",
+              remainingBalance <= 0 && "text-emerald-700 dark:text-emerald-400",
+              remainingBalance > 0 && "text-amber-700 dark:text-amber-400",
+            )}>
+              {remainingBalance <= 0 ? "Paid in full" : formatCurrency(remainingBalance)}
+            </span>
+          </span>
+        </div>
+
+        {/* Payment list */}
+        {payments.length > 0 && (
+          <ul className="divide-y divide-border border border-border rounded-xl overflow-hidden">
+            {payments.map(p => (
+              <li key={p.id} className="flex items-start gap-3 px-3 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold tabular-nums">{formatCurrency(p.amount)}</span>
+                    <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300">
+                      {OFFLINE_METHOD_LABELS[p.method]}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{p.date}</span>
+                  </div>
+                  {p.note && (
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.note}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removePayment(p.id)}
+                  disabled={removing === p.id}
+                  className="shrink-0 p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors disabled:opacity-40"
+                  title="Remove payment"
+                >
+                  {removing === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Add payment form */}
+        {showForm ? (
+          <div className="border border-border rounded-xl p-3 space-y-3 bg-background">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Amount ($)</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={formAmount}
+                  onChange={e => setFormAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="mt-1 w-full px-3 py-2 border border-border rounded-xl bg-background text-sm"
+                  autoFocus
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Method</span>
+                <select
+                  value={formMethod}
+                  onChange={e => setFormMethod(e.target.value as OfflinePayment["method"])}
+                  className="mt-1 w-full px-3 py-2 border border-border rounded-xl bg-background text-sm"
+                >
+                  <option value="check">Check</option>
+                  <option value="cash">Cash</option>
+                  <option value="wire">Wire</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date received</span>
+                <input
+                  type="date"
+                  value={formDate}
+                  onChange={e => setFormDate(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 border border-border rounded-xl bg-background text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Note (optional)</span>
+                <input
+                  type="text"
+                  value={formNote}
+                  onChange={e => setFormNote(e.target.value)}
+                  placeholder="Check #1234, reference, etc."
+                  className="mt-1 w-full px-3 py-2 border border-border rounded-xl bg-background text-sm"
+                />
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={addPayment}
+                disabled={adding}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-sky-600 text-white text-sm font-semibold rounded-xl hover:bg-sky-700 transition-colors disabled:opacity-50"
+              >
+                {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Record Payment
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowForm(false); setMsg(null); }}
+                className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => { setShowForm(true); setMsg(null); }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-secondary text-foreground text-sm font-semibold rounded-xl hover:bg-border transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add Offline Payment
+          </button>
+        )}
+
+        {msg && <p className="text-xs text-muted-foreground border-t border-border pt-2">{msg}</p>}
+      </div>
+    </div>
+  );
+}
+
 // ── Supplemental Invoices sub-panel ──────────────────────────────────────────
 //
 // Renders the "uninvoiced delta" preview + Issue button + the list of
@@ -2860,6 +3109,10 @@ function DetailPanel({
                     flushSave={flushSave}
                   />
                   <SquarePanel
+                    inquiry={form as Inquiry}
+                    onUpdated={(i) => { setForm(i); setSavedSnapshot(i); onSaved(i); }}
+                  />
+                  <PaymentsPanel
                     inquiry={form as Inquiry}
                     onUpdated={(i) => { setForm(i); setSavedSnapshot(i); onSaved(i); }}
                   />

@@ -60,6 +60,16 @@ export type QuoteReply = {
   sentTo: string;
 };
 
+export type OfflinePayment = {
+  id: string;
+  // Dollar amount (positive, max 2 decimal places)
+  amount: number;
+  method: "check" | "cash" | "wire" | "other";
+  // ISO date string YYYY-MM-DD when the payment was received
+  date: string;
+  note?: string | null;
+};
+
 export const cateringInquiriesTable = pgTable("catering_inquiries", {
   id: serial("id").primaryKey(),
   clientName: text("client_name").notNull(),
@@ -139,6 +149,12 @@ export const cateringInquiriesTable = pgTable("catering_inquiries", {
   primarySnapshotLineItems: jsonb("primary_snapshot_line_items").$type<QuoteLineItem[]>(),
   primarySnapshotFees: jsonb("primary_snapshot_fees").$type<QuoteAdjustment[]>(),
   primarySnapshotDiscounts: jsonb("primary_snapshot_discounts").$type<QuoteAdjustment[]>(),
+  // Manually recorded offline payments (check, cash, wire, other).
+  // Each entry has a UUID id so individual payments can be removed without
+  // shifting array indices. The remaining balance is computed on the fly:
+  //   If Square invoice exists: squareBalanceDue − sum(offlinePayments)
+  //   Otherwise:                quoterTotal − sum(offlinePayments)
+  offlinePayments: jsonb("offline_payments").$type<OfflinePayment[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

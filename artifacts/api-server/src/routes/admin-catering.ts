@@ -17,6 +17,7 @@ import type {
   QuoteLineItem,
   QuoteReply,
   SupplementalLinesSnapshot,
+  OfflinePayment,
 } from "@workspace/db/schema";
 import { and, eq, desc, ne, sql, inArray } from "drizzle-orm";
 import {
@@ -1935,6 +1936,110 @@ router.post("/admin/catering/from-plan/:token", async (req, res): Promise<void> 
   } catch (err) {
     req.log.error({ err }, "Error converting plan to inquiry");
     res.status(500).json({ error: "Failed to convert plan" });
+  }
+});
+
+// ── Offline Payments ──────────────────────────────────────────────────────────
+
+const OFFLINE_PAYMENT_METHODS = ["check", "cash", "wire", "other"] as const;
+
+// POST /api/admin/catering/:id/offline-payments
+// Append a new offline payment record to the inquiry.
+router.post("/admin/catering/:id/offline-payments", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    if (!Number.isFinite(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const body = req.body as Body;
+
+    const amount = Number(body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      res.status(400).json({ error: "amount must be a positive number" });
+      return;
+    }
+
+    const method = asString(body.method);
+    if (!method || !(OFFLINE_PAYMENT_METHODS as readonly string[]).includes(method)) {
+      res.status(400).json({ error: "method must be one of: check, cash, wire, other" });
+      return;
+    }
+
+    const date = asString(body.date)?.trim();
+    if (!date) {
+      res.status(400).json({ error: "date is required (YYYY-MM-DD)" });
+      return;
+    }
+
+    const note = asString(body.note)?.trim() || null;
+
+    const [inq] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
+    if (!inq) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
+
+    const existing: OfflinePayment[] = (inq.offlinePayments ?? []) as OfflinePayment[];
+    const payment: OfflinePayment = {
+      id: randomUUID(),
+      amount: Math.round(amount * 100) / 100,
+      method: method as OfflinePayment["method"],
+      date,
+      note,
+    };
+
+    const [updated] = await db
+      .update(cateringInquiriesTable)
+      .set({ offlinePayments: [...existing, payment], updatedAt: new Date() })
+      .where(eq(cateringInquiriesTable.id, id))
+      .returning();
+
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    req.log.info({ id, paymentId: payment.id }, "Added offline payment");
+    res.json({ inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] } });
+  } catch (err) {
+    req.log.error({ err }, "Error adding offline payment");
+    res.status(500).json({ error: "Failed to add payment" });
+  }
+});
+
+// DELETE /api/admin/catering/:id/offline-payments/:paymentId
+// Remove a single offline payment by its UUID.
+router.delete("/admin/catering/:id/offline-payments/:paymentId", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    if (!Number.isFinite(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const { paymentId } = req.params;
+
+    const [inq] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
+    if (!inq) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
+
+    const existing: OfflinePayment[] = (inq.offlinePayments ?? []) as OfflinePayment[];
+    const filtered = existing.filter(p => p.id !== paymentId);
+    if (filtered.length === existing.length) {
+      res.status(404).json({ error: "Payment not found" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(cateringInquiriesTable)
+      .set({ offlinePayments: filtered, updatedAt: new Date() })
+      .where(eq(cateringInquiriesTable.id, id))
+      .returning();
+
+    const suppMap = await loadSupplementalsByInquiryIds([id]);
+    req.log.info({ id, paymentId }, "Removed offline payment");
+    res.json({ inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] } });
+  } catch (err) {
+    req.log.error({ err }, "Error removing offline payment");
+    res.status(500).json({ error: "Failed to remove payment" });
   }
 });
 
