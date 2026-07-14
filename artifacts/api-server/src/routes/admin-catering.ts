@@ -1500,6 +1500,9 @@ router.post("/admin/catering/:id/square/supplement", async (req, res): Promise<v
       // Forward the catering tax rate so supplemental orders carry
       // the same tax line as the primary invoice.
       salesTaxPercent: suppSalesTaxPercent,
+      // Credit for items reduced in quantity vs the snapshot. Passed
+      // through so the Square order total reflects the net change.
+      creditAmount: reservation.delta.creditAmount,
     });
   } catch (err) {
     try {

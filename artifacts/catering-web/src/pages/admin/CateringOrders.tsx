@@ -1900,6 +1900,7 @@ function SupplementalSubPanel({
     s => (s.squareInvoiceStatus ?? "").toUpperCase() !== "PENDING",
   );
   const hasDelta = delta.deltaTotal > 0;
+  const hasReductionsOnly = !hasDelta && delta.creditAmount > 0;
 
   async function issueSupplement() {
     if (!hasDelta) return;
@@ -1977,7 +1978,7 @@ function SupplementalSubPanel({
               Issue supplemental
             </button>
           </div>
-          {hasDelta && (
+          {(hasDelta || delta.creditAmount > 0) && (
             <div className="border-t border-border pt-2 space-y-1 text-xs">
               {delta.deltaLineItems.map(li => (
                 <div key={`l-${li.id}`} className="flex justify-between gap-2">
@@ -2006,11 +2007,24 @@ function SupplementalSubPanel({
                   </span>
                 </div>
               ))}
+              {delta.creditAmount > 0 && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground truncate">Item reductions (credit)</span>
+                  <span className="font-medium tabular-nums text-amber-600 dark:text-amber-400">
+                    −{formatCurrency(delta.creditAmount)}
+                  </span>
+                </div>
+              )}
             </div>
           )}
-          {!hasDelta && supplementals.length === 0 && (
+          {!hasDelta && supplementals.length === 0 && !hasReductionsOnly && (
             <p className="text-xs text-muted-foreground border-t border-border pt-2">
               Edit the quote (e.g. bump the OTD extra-hours stepper or add a fee row), save, then issue a supplemental for any post-event extras.
+            </p>
+          )}
+          {hasReductionsOnly && (
+            <p className="text-xs text-muted-foreground border-t border-border pt-2">
+              Item quantities were reduced — the credit offsets all increases. No additional charge is needed.
             </p>
           )}
         </div>

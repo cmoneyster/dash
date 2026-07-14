@@ -209,9 +209,13 @@ export type UninvoicedDelta = {
   deltaLineItems: Array<DeltaQuoteLineItem & { quantity: number; unitPrice: number }>;
   deltaFees: OtdQuoteAdjustment[];
   deltaDiscounts: OtdQuoteAdjustment[];
-  // Total dollar value of the delta after applying discounts. Always >= 0.
-  // Use this to enable/disable the "Issue supplemental invoice" button and
-  // to refuse server-side issuance when the delta is zero.
+  // Net credit from items reduced in quantity vs the snapshot (always >= 0).
+  // Applied as a discount on the supplemental Square order so the billed
+  // amount equals the true net change rather than just the sum of increases.
+  creditAmount: number;
+  // Total dollar value of the delta after applying discounts and credits.
+  // Always >= 0. Use this to enable/disable the "Issue supplemental invoice"
+  // button and to refuse server-side issuance when the delta is zero.
   deltaTotal: number;
 };
 
@@ -262,6 +266,7 @@ export function computeUninvoicedDelta(opts: {
   }
 
   const deltaLineItems: Array<DeltaQuoteLineItem & { quantity: number; unitPrice: number }> = [];
+  let creditAmount = 0;
   for (const row of cur) {
     if (!row || typeof row.id !== "string") continue;
     const curQty = toNumber(row.quantity);
@@ -269,12 +274,19 @@ export function computeUninvoicedDelta(opts: {
     const prev = snapById.get(row.id);
     const prevQty = prev ? toNumber(prev.quantity) : 0;
     const deltaQty = round2(curQty - prevQty);
-    if (deltaQty <= 0 || curUnit <= 0) continue;
-    deltaLineItems.push({
-      ...row,
-      quantity: deltaQty,
-      unitPrice: curUnit,
-    });
+    if (deltaQty > 0 && curUnit > 0) {
+      deltaLineItems.push({
+        ...row,
+        quantity: deltaQty,
+        unitPrice: curUnit,
+      });
+    } else if (deltaQty < 0 && curUnit > 0) {
+      // Quantity was reduced: accumulate a credit for the dollar value
+      // of the reduction so the supplemental net-charges the true
+      // difference (increases minus reductions) rather than overbilling
+      // by ignoring decrements.
+      creditAmount = round2(creditAmount + Math.abs(deltaQty) * curUnit);
+    }
   }
 
   // Dollar contribution of one adjustment row against a given base.
@@ -374,12 +386,13 @@ export function computeUninvoicedDelta(opts: {
     round2(snapshotSubtotal + snapshotFeesDollars),
   );
 
-  const deltaTotal = round2(Math.max(0, deltaSubtotal + fees.total - discounts.total));
+  const deltaTotal = round2(Math.max(0, deltaSubtotal + fees.total - discounts.total - creditAmount));
 
   return {
     deltaLineItems,
     deltaFees: fees.rows,
     deltaDiscounts: discounts.rows,
+    creditAmount,
     deltaTotal,
   };
 }

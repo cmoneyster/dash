@@ -487,6 +487,11 @@ export async function createAndPublishSupplementalInvoice(opts: {
   // Catering sales tax rate — same value used by the primary invoice so
   // the tax presentation is consistent across both invoices.
   salesTaxPercent?: number | null;
+  // Net credit from items reduced in quantity vs the snapshot. When > 0,
+  // a fixed discount is added to the Square order so the billed amount
+  // equals the true net change (increases − reductions) rather than only
+  // the sum of increases. Sourced from UninvoicedDelta.creditAmount.
+  creditAmount?: number | null;
 }): Promise<CreatedInvoice> {
   const cfg = getSquareConfig();
   if (!cfg) throw new Error("Square is not configured");
@@ -497,7 +502,19 @@ export async function createAndPublishSupplementalInvoice(opts: {
     throw new Error("Supplemental invoice requires the primary invoice's Square customer id");
   }
 
-  const totals = computeQuoteTotals(lineItems, fees, discounts);
+  // Build effective discounts: merge caller-supplied discounts with any
+  // reduction credit so the Square order total reflects the net change.
+  const effectiveDiscounts: QuoteAdjustment[] = [...(discounts as QuoteAdjustment[])];
+  if (opts.creditAmount && opts.creditAmount > 0) {
+    effectiveDiscounts.push({
+      id: "item-reductions-credit",
+      label: "Item reductions",
+      kind: "fixed",
+      amount: opts.creditAmount,
+    } as QuoteAdjustment);
+  }
+
+  const totals = computeQuoteTotals(lineItems, fees, effectiveDiscounts);
   if (totals.total <= 0) {
     throw new Error("Supplemental invoice total must be greater than $0");
   }
@@ -508,12 +525,12 @@ export async function createAndPublishSupplementalInvoice(opts: {
   // primary publish, we must still bill the original customer.
   const customerId = primaryCustomerId.trim();
 
-  // 2) Order built from the delta rows
+  // 2) Order built from the delta rows (with credit discount applied)
   const orderId = await createOrderFromRows(cfg, {
     referenceId: `inquiry-${inquiry.id}-supp-${supplementSeq}`,
     lineItems,
     fees,
-    discounts,
+    discounts: effectiveDiscounts,
     fallbackName: `Supplemental #${supplementSeq} — Quote ${inquiry.quoteNumber ?? `#${inquiry.id}`}`,
     idempotencyKey: `order-inq-${inquiry.id}-supp-${supplementSeq}-${Date.now()}-${randomUUID()}`,
     salesTaxPercent: opts.salesTaxPercent,
