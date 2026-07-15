@@ -113,13 +113,17 @@ async function loadSupplementalsByInquiryIds(
 // Authoritative remaining balance exposed on every inquiry GET response.
 // Callers must not recompute this client-side — consume `computedBalance`.
 //
-//   If Square invoice exists:
-//     invoiceTotal = squareAmountPaid + squareBalanceDue
-//     remaining    = invoiceTotal − squarePaid − offlinePaid
-//                  = squareBalanceDue − offlinePaid
+//   remaining = quoteTotal − squarePaid − offlinePaid
 //
-//   If no Square invoice (quote-only):
-//     remaining    = quoteTotal − offlinePaid
+// This formula is intentionally uniform whether or not a Square invoice
+// exists. When we issue the Square invoice we now bake offline payments in as
+// named ORDER-scope discounts, so squareBalanceDue is already net of offline
+// payments. Using (squareBalanceDue − offlinePaid) would double-subtract them.
+// Using quoteTotal as the starting point is correct in all cases:
+//
+//   No invoice    : remaining = quoteTotal − offlinePaid
+//   Invoice $X    : remaining = quoteTotal − squarePaid − offlinePaid
+//                   (squareBalanceDue is kept for display as the Square-facing amount)
 
 function computeCateringBalance(inq: typeof cateringInquiriesTable.$inferSelect): {
   invoiceTotal: number;
@@ -132,9 +136,7 @@ function computeCateringBalance(inq: typeof cateringInquiriesTable.$inferSelect)
   const invoiceTotal = squarePaid + squareBalanceDue;
   const offlinePaid = ((inq.offlinePayments ?? []) as OfflinePayment[])
     .reduce((s, p) => s + p.amount, 0);
-  const remaining = inq.squareInvoiceId
-    ? invoiceTotal - squarePaid - offlinePaid // = squareBalanceDue - offlinePaid
-    : Number(inq.total ?? 0) - offlinePaid;
+  const remaining = Number(inq.total ?? 0) - squarePaid - offlinePaid;
   return { invoiceTotal, squarePaid, offlinePaid, remaining };
 }
 

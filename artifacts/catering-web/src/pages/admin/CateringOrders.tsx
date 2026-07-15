@@ -1884,12 +1884,12 @@ function SquarePanel({
 // `computedBalance` field included on every inquiry response.
 //
 // Balance model (server-authoritative, mirrored here for display):
-//   If Square invoice exists:
-//     invoiceTotal = squareAmountPaid + squareBalanceDue
-//     remaining    = invoiceTotal − squarePaid − offlinePaid
-//                  = squareBalanceDue − offlinePaid
-//   If no Square invoice (quote-only):
-//     remaining    = quoteTotal − offlinePaid
+//   remaining = quoteTotal − squarePaid − offlinePaid  (all cases)
+//
+// When a Square invoice exists it is issued net of offline payments, so
+// squareBalanceDue already excludes them. Using quoteTotal as the base
+// avoids double-subtracting. squareBalanceDue is kept for display only
+// (it shows what Square will collect, not the total owed to us).
 
 const OFFLINE_METHOD_LABELS: Record<OfflinePayment["method"], string> = {
   check: "Check",
