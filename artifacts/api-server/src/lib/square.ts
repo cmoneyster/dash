@@ -195,6 +195,11 @@ async function createOrderFromRows(
     // so the invoice shows a separate tax line and a tax-inclusive total.
     // Expressed as a percentage, e.g. 8.875 for 8.875%.
     salesTaxPercent?: number | null;
+    // Named ORDER-scope discount lines rendered as individual labeled rows on
+    // the Square invoice (e.g. offline payments already collected). These are
+    // ADDITIVE to any net quote discount and are never folded into the combined
+    // "Fees & adjustments" / "Discount" row.
+    namedDiscounts?: Array<{ name: string; amountDollars: number }>;
   },
 ): Promise<string> {
   const totals = computeQuoteTotals(opts.lineItems, opts.fees, opts.discounts);
@@ -223,6 +228,20 @@ async function createOrderFromRows(
     });
   }
 
+  // Named discounts (e.g. offline payments) render as individual labeled
+  // ORDER-scope discount lines in addition to the combined quote adjustment.
+  const namedDiscountItems = (opts.namedDiscounts ?? [])
+    .filter(d => d.amountDollars >= 0.01)
+    .map(d => ({ name: d.name, amount_money: moneyUSD(d.amountDollars), scope: "ORDER" as const }));
+
+  // All ORDER-scope discount lines: combined quote discount (if any) + named discounts.
+  const allDiscounts = [
+    ...(adjustments.length > 0 && netAdjustmentDollars < 0
+      ? adjustments.map(a => ({ ...a, scope: "ORDER" as const }))
+      : []),
+    ...namedDiscountItems,
+  ];
+
   // Sales tax: Square's Orders API does not auto-apply location taxes from the
   // dashboard — we must pass the tax explicitly. scope=ORDER applies it to all
   // line items automatically without per-item applied_taxes references.
@@ -246,9 +265,7 @@ async function createOrderFromRows(
       ...(adjustments.length > 0 && netAdjustmentDollars >= 0
         ? { service_charges: adjustments.map(a => ({ ...a, calculation_phase: "TOTAL_PHASE" })) }
         : {}),
-      ...(adjustments.length > 0 && netAdjustmentDollars < 0
-        ? { discounts: adjustments.map(a => ({ ...a, scope: "ORDER" })) }
-        : {}),
+      ...(allDiscounts.length > 0 ? { discounts: allDiscounts } : {}),
       ...(taxes.length > 0 ? { taxes } : {}),
     },
   };
@@ -261,6 +278,7 @@ async function createOrderForInquiry(
   cfg: SquareConfig,
   inquiry: CateringInquiry,
   salesTaxPercent?: number | null,
+  namedDiscounts?: Array<{ name: string; amountDollars: number }>,
 ): Promise<string> {
   return createOrderFromRows(cfg, {
     referenceId: `inquiry-${inquiry.id}`,
@@ -270,6 +288,7 @@ async function createOrderForInquiry(
     fallbackName: `Catering — Quote ${inquiry.quoteNumber ?? `#${inquiry.id}`}`,
     idempotencyKey: `order-inq-${inquiry.id}-${Date.now()}-${randomUUID()}`,
     salesTaxPercent,
+    namedDiscounts,
   });
 }
 
@@ -314,6 +333,11 @@ export async function createAndPublishInvoiceForInquiry(opts: {
   // a tax line is added to the Square order. Callers should read this from
   // event settings rather than computing it themselves.
   salesTaxPercent?: number | null;
+  // Offline payments already collected outside Square. Each entry becomes a
+  // labeled ORDER-scope discount on the Square invoice so the invoice total
+  // reflects only the remaining balance. These are NOT persisted to the
+  // inquiry's discounts column — they are applied at invoice-issue time only.
+  extraDiscounts?: Array<{ name: string; amountDollars: number }>;
 }): Promise<CreatedInvoice> {
   const cfg = getSquareConfig();
   if (!cfg) throw new Error("Square is not configured");
@@ -329,8 +353,18 @@ export async function createAndPublishInvoiceForInquiry(opts: {
     inquiry.fees as QuoteAdjustment[] | null,
     inquiry.discounts as QuoteAdjustment[] | null,
   );
-  if (totals.total <= 0) {
-    throw new Error("Quote total must be greater than $0 to invoice");
+
+  // Subtract offline payments to get the true amount Square needs to collect.
+  const namedDiscounts = (opts.extraDiscounts ?? []).filter(d => d.amountDollars >= 0.01);
+  const offlineTotal = namedDiscounts.reduce((sum, d) => sum + d.amountDollars, 0);
+  const invoiceableTotal = totals.total - offlineTotal;
+
+  if (invoiceableTotal <= 0) {
+    throw new Error(
+      offlineTotal > 0
+        ? "Offline payments already cover the full quote total — there is no remaining balance to invoice via Square"
+        : "Quote total must be greater than $0 to invoice",
+    );
   }
 
   // 1) Customer (find-or-create by email)
@@ -341,8 +375,9 @@ export async function createAndPublishInvoiceForInquiry(opts: {
     organization: inquiry.organization,
   });
 
-  // 2) Order
-  const orderId = await createOrderForInquiry(cfg, inquiry, salesTaxPercent);
+  // 2) Order — pass namedDiscounts so each offline payment appears as its own
+  // labeled discount line on the Square invoice.
+  const orderId = await createOrderForInquiry(cfg, inquiry, salesTaxPercent, namedDiscounts.length > 0 ? namedDiscounts : undefined);
 
   // 3) Build payment_requests array.
   //
@@ -380,8 +415,8 @@ export async function createAndPublishInvoiceForInquiry(opts: {
     });
   } else {
     const depositAmountDollars = deposit.kind === "percent"
-      ? Math.round(totals.total * (deposit.value / 100) * 100) / 100
-      : Math.min(deposit.value, totals.total);
+      ? Math.round(invoiceableTotal * (deposit.value / 100) * 100) / 100
+      : Math.min(deposit.value, invoiceableTotal);
 
     let depositDueIsoDate = smartDepositDue;
     let balanceDueAdjusted = smartBalanceDue;
@@ -446,7 +481,7 @@ export async function createAndPublishInvoiceForInquiry(opts: {
     orderId: published.invoice.order_id,
     status: published.invoice.status,
     hostedUrl: published.invoice.public_url ?? null,
-    balanceDueCents: published.invoice.next_payment_amount_money?.amount ?? dollarsToCents(totals.total),
+    balanceDueCents: published.invoice.next_payment_amount_money?.amount ?? dollarsToCents(invoiceableTotal),
     customerId,
     balanceDueDate: smartBalanceDue,
   };

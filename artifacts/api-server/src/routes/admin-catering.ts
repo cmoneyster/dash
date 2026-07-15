@@ -146,6 +146,24 @@ function serializeInquiry(
   return { ...inq, supplementals, computedBalance: computeCateringBalance(inq) };
 }
 
+// ── Offline payment helpers ───────────────────────────────────────────────────
+
+const OFFLINE_METHOD_LABELS: Record<OfflinePayment["method"], string> = {
+  cash: "Cash",
+  check: "Check",
+  wire: "Wire transfer",
+  other: "Payment",
+};
+
+function fmtOfflinePaymentDate(iso: string): string {
+  const parts = iso.split("-").map(Number);
+  const year = parts[0] ?? 0;
+  const month = parts[1] ?? 1;
+  const day = parts[2] ?? 1;
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${months[month - 1]} ${day}, ${year}`;
+}
+
 const router: IRouter = Router();
 
 const VALID_STATUSES = ["inquiry", "quoted", "confirmed", "completed", "cancelled"];
@@ -1180,12 +1198,25 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
       ? parseFloat(settings.cateringTaxRate)
       : null;
 
+    // Build named discount rows from any offline payments already recorded so
+    // the Square invoice total reflects only the remaining balance. These rows
+    // are NOT written back to the inquiry's discounts column — they are applied
+    // at invoice-issue time only, leaving the quote itself clean.
+    const offlinePayments = (inquiry.offlinePayments ?? []) as OfflinePayment[];
+    const extraDiscounts = offlinePayments
+      .filter(p => p.amount > 0)
+      .map(p => ({
+        name: `${OFFLINE_METHOD_LABELS[p.method]} received — ${fmtOfflinePaymentDate(p.date)}`,
+        amountDollars: p.amount,
+      }));
+
     const created = await createAndPublishInvoiceForInquiry({
       inquiry,
       deposit,
       dueDate,
       depositDueDate,
       salesTaxPercent,
+      extraDiscounts: extraDiscounts.length > 0 ? extraDiscounts : undefined,
     });
 
     // Deep-copy the live quote arrays into the primary snapshot columns so
