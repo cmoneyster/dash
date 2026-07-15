@@ -553,7 +553,17 @@ router.put("/admin/catering/:id", async (req, res): Promise<void> => {
     if (body.venueAddress !== undefined) updates.venueAddress = String(body.venueAddress ?? "").trim() || null;
     if (body.menuNotes !== undefined) updates.menuNotes = String(body.menuNotes ?? "").trim() || null;
     if (body.adminNotes !== undefined) updates.adminNotes = String(body.adminNotes ?? "").trim() || null;
-    if (body.status !== undefined && VALID_STATUSES.includes(String(body.status))) updates.status = body.status;
+    if (body.status !== undefined && VALID_STATUSES.includes(String(body.status))) {
+      updates.status = body.status;
+      // Reverting to an early status clears the client's acceptance and any
+      // pending change-request state so the quote page becomes actionable again.
+      if (body.status === "quoted" || body.status === "inquiry") {
+        updates.quoteAcceptedAt = null;
+        updates.quoteChangeRequestAt = null;
+        updates.quoteChangeRequestMessage = null;
+        updates.quoteChangeRequestRespondedAt = null;
+      }
+    }
     if (body.quoteNotes !== undefined) updates.quoteNotes = String(body.quoteNotes ?? "").trim() || null;
     if (body.quoteExpiresAt !== undefined)
       updates.quoteExpiresAt = body.quoteExpiresAt ? new Date(String(body.quoteExpiresAt)) : null;
@@ -703,7 +713,7 @@ router.put("/admin/catering/:id", async (req, res): Promise<void> => {
       return;
     }
     const suppMap = await loadSupplementalsByInquiryIds([id]);
-    res.json({ ...updated, supplementals: suppMap.get(id) ?? [] });
+    res.json(serializeInquiry(updated, suppMap.get(id) ?? []));
   } catch (err) {
     req.log.error({ err }, "Error updating catering inquiry");
     res.status(500).json({ error: "Failed to update inquiry" });
