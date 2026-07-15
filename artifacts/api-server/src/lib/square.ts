@@ -243,16 +243,34 @@ async function createOrderFromRows(
   ];
 
   // Sales tax: Square's Orders API does not auto-apply location taxes from the
-  // dashboard — we must pass the tax explicitly. scope=ORDER applies it to all
-  // line items automatically without per-item applied_taxes references.
-  const taxes: Array<Record<string, unknown>> = [];
-  if (opts.salesTaxPercent && opts.salesTaxPercent > 0) {
-    taxes.push({
-      uid: "catering-sales-tax",
+  // dashboard — we must pass the tax explicitly.
+  //
+  // We use a fixed-dollar TOTAL_PHASE service charge rather than a percentage
+  // ORDER-scope ADDITIVE tax. Square processes ORDER-scope discounts (including
+  // offline-payment deductions) *before* computing ADDITIVE percentage taxes,
+  // which would shrink the tax base and under-collect when offline payments are
+  // present. TOTAL_PHASE service charges are applied to the running total after
+  // all discounts have settled, so the tax amount is always computed against
+  // the full pre-payment quote total regardless of how much was collected
+  // offline.
+  //
+  // taxDollars is computed from totals.total (subtotal + fees − quote discounts)
+  // — i.e. the full invoice value before offline payments are subtracted.
+  const taxDollars = (opts.salesTaxPercent && opts.salesTaxPercent > 0)
+    ? Math.round(totals.total * opts.salesTaxPercent) / 100
+    : 0;
+
+  // Collect all TOTAL_PHASE service charges: net positive quote adjustment
+  // (fees − discounts) and the fixed-dollar sales tax (if any).
+  const serviceCharges: Array<{ name: string; amount_money: { amount: number; currency: string }; calculation_phase: string }> = [];
+  if (adjustments.length > 0 && netAdjustmentDollars >= 0) {
+    serviceCharges.push(...adjustments.map(a => ({ ...a, calculation_phase: "TOTAL_PHASE" })));
+  }
+  if (taxDollars > 0) {
+    serviceCharges.push({
       name: "Sales Tax",
-      percentage: String(opts.salesTaxPercent),
-      scope: "ORDER",
-      type: "ADDITIVE",
+      amount_money: moneyUSD(taxDollars),
+      calculation_phase: "TOTAL_PHASE",
     });
   }
 
@@ -262,11 +280,8 @@ async function createOrderFromRows(
       location_id: cfg.locationId,
       reference_id: opts.referenceId,
       line_items: lineItems,
-      ...(adjustments.length > 0 && netAdjustmentDollars >= 0
-        ? { service_charges: adjustments.map(a => ({ ...a, calculation_phase: "TOTAL_PHASE" })) }
-        : {}),
+      ...(serviceCharges.length > 0 ? { service_charges: serviceCharges } : {}),
       ...(allDiscounts.length > 0 ? { discounts: allDiscounts } : {}),
-      ...(taxes.length > 0 ? { taxes } : {}),
     },
   };
 
