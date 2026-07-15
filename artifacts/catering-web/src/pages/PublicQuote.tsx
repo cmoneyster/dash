@@ -80,6 +80,8 @@ type Quote = {
   serviceMode: string | null;
   otdSetupFee: number | null;
   otdFeeWaiverThreshold: number | null;
+  offlinePayments: Array<{ id: string; amount: number; method: string; date: string }>;
+  offlinePaidTotal: number;
   square: {
     status: string | null;
     hostedUrl: string | null;
@@ -373,6 +375,27 @@ export default function PublicQuote() {
               <span className="text-primary">{formatCurrency(quote.total)}</span>
             </div>
             <p className="text-xs text-muted-foreground text-right pt-1">{TAX_DISCLOSURE}</p>
+            {(quote.offlinePayments?.length ?? 0) > 0 && (() => {
+              const pmtLabel = (m: string) =>
+                m === "check" ? "Check" : m === "cash" ? "Cash" : m === "wire" ? "Wire transfer" : "Payment";
+              const remaining = Math.max(0, quote.total - (quote.offlinePaidTotal ?? 0));
+              return (
+                <>
+                  <div className="border-t border-border mt-3 pt-2 space-y-1">
+                    {quote.offlinePayments.map((p) => (
+                      <div key={p.id} className="flex justify-between py-0.5 text-emerald-700 dark:text-emerald-400 text-sm">
+                        <span>Deposit received ({pmtLabel(p.method)})</span>
+                        <span>-{formatCurrency(p.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between py-2 border-t border-border mt-2 font-bold text-base">
+                    <span>Balance due</span>
+                    <span className="text-primary">{formatCurrency(remaining)}</span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
 

@@ -281,6 +281,17 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     waivedLabelHeight = doc.heightOfString(otdWaivedDisplay.label, { width: 140 });
     waivedRowHeight = Math.max(12, waivedLabelHeight) + 10 + 4; // strike + caption + padding
   }
+  // Offline payments — collect once here so both the height reservation and the
+  // render block below stay in sync without reading from inquiry twice.
+  const offlinePmts = (inquiry.offlinePayments ?? []) as Array<{ id: string; amount: number; method: string }>;
+  const offlineTotal = Math.round(offlinePmts.reduce((s, p) => s + Number(p.amount), 0) * 100) / 100;
+  // When offline payments exist the render block adds: 4pt gap + 6pt after a
+  // separator + N×NORMAL_TOTAL_ROW payment rows + 4pt gap + 6pt after a
+  // second separator + BOLD_TOTAL_ROW "BALANCE DUE" row.
+  const offlinePaymentsHeight = offlinePmts.length > 0
+    ? (4 + 6 + offlinePmts.length * 14 + 4 + 6 + 18)
+    : 0;
+
   // Derive `totalsHeight` from the same constants the render block below uses
   // (NORMAL_ROW = 14pt advance per non-bold totalRow, TOTAL_ROW = 18pt for the
   // bold TOTAL row, fixed +12 above the totals divider, +4 +6 around the
@@ -297,6 +308,7 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     + 4 + 6 // y += 4 padding then y += 6 after the pre-TOTAL divider
     + BOLD_TOTAL_ROW
     + 12 // tax disclosure line
+    + offlinePaymentsHeight
     + 8; // doc.y = Math.max(doc.y, y + 8) padding before payment terms
   // Measure each payment-terms bullet at the real render width so a future
   // copy edit that wraps a bullet to two lines doesn't silently overflow.
@@ -489,6 +501,27 @@ export async function renderQuotePdf(inquiry: CateringInquiry): Promise<Buffer> 
     .text(TAX_DISCLOSURE, 320, y, { width: 230, align: "right" });
   y += 12;
 
+  // Offline deposits received — credit rows below the Total, then a bold
+  // BALANCE DUE row showing the remaining pre-tax amount owed.
+  if (offlinePmts.length > 0) {
+    const pmtMethodLabel = (m: string) =>
+      m === "check" ? "Check" : m === "cash" ? "Cash" : m === "wire" ? "Wire transfer" : "Payment";
+    y += 4;
+    doc.moveTo(320, y).lineTo(560, y).strokeColor("#bbbbbb").stroke();
+    y += 6;
+    for (const p of offlinePmts) {
+      totalRow(
+        `Deposit received (${pmtMethodLabel(p.method)})`,
+        `-${fmtUSD(Number(p.amount))}`,
+        { color: "#15803d" },
+      );
+    }
+    y += 4;
+    doc.moveTo(320, y).lineTo(560, y).strokeColor("#111111").stroke();
+    y += 6;
+    totalRow("BALANCE DUE", fmtUSD(Math.max(0, totals.total - offlineTotal)), { bold: true });
+  }
+
   // Move the doc cursor below both the line-items area on the left and the
   // totals block on the right so the Payment Terms / Notes blocks below can
   // never overlap either.
@@ -608,6 +641,18 @@ export function publicQuoteFromInquiry(inquiry: CateringInquiry) {
     otdFeeWaiverThreshold: inquiry.otdFeeWaiverThreshold != null
       ? Number(inquiry.otdFeeWaiverThreshold)
       : null,
+    // Offline payments (cash / check / wire) recorded by the admin.
+    // Exposed so the public quote page can display deposits already received
+    // and compute the remaining balance. Note fields are omitted (internal).
+    offlinePayments: (inquiry.offlinePayments ?? []).map((p) => ({
+      id: p.id,
+      amount: Math.round(Number(p.amount) * 100) / 100,
+      method: p.method as string,
+      date: p.date,
+    })),
+    offlinePaidTotal: Math.round(
+      (inquiry.offlinePayments ?? []).reduce((s, p) => s + Number(p.amount), 0) * 100,
+    ) / 100,
     // Square — exposed only when an invoice has been issued, so the public
     // quote page can render a "Pay deposit / Pay balance" CTA.
     square: inquiry.squareInvoiceId
