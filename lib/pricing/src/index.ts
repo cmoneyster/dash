@@ -281,19 +281,42 @@ export function computeUninvoicedDelta(opts: {
     const curUnit = toNumber(row.unitPrice);
     const prev = snapById.get(row.id);
     const prevQty = prev ? toNumber(prev.quantity) : 0;
-    const deltaQty = round2(curQty - prevQty);
-    if (deltaQty > 0 && curUnit > 0) {
-      deltaLineItems.push({
-        ...row,
-        quantity: deltaQty,
-        unitPrice: curUnit,
-      });
-    } else if (deltaQty < 0 && curUnit > 0) {
-      // Quantity was reduced: accumulate a credit for the dollar value
-      // of the reduction so the supplemental net-charges the true
-      // difference (increases minus reductions) rather than overbilling
-      // by ignoring decrements.
-      creditAmount = round2(creditAmount + Math.abs(deltaQty) * curUnit);
+    const prevUnit = prev ? toNumber(prev.unitPrice) : 0;
+    // When the unit price changed (manual override or pan-size upgrade), use
+    // the dollar delta of the full line total rather than deltaQty × curPrice.
+    // The latter misattributes the price change to only the quantity delta and
+    // can over- or under-charge on the supplemental.
+    //   e.g. qty 100→150 @ $3→$2: deltaQty×curPrice = $100 (wrong)
+    //         line total delta = $300−$300 = $0             (correct)
+    // 0.005 tolerance handles floating-point representation of prices like $1.75.
+    const priceChanged = prev != null && Math.abs(curUnit - prevUnit) >= 0.005;
+    if (priceChanged) {
+      const dollarDelta = round2(curQty * curUnit - prevQty * prevUnit);
+      if (dollarDelta > 0 && curUnit > 0) {
+        // Emit as qty=1 at the net dollar delta so the item name still
+        // appears on the Square supplemental invoice line.
+        deltaLineItems.push({ ...row, quantity: 1, unitPrice: dollarDelta });
+      } else if (dollarDelta < 0) {
+        creditAmount = round2(creditAmount + Math.abs(dollarDelta));
+      }
+      // dollarDelta === 0 → net no-op, no action needed
+    } else {
+      // Price unchanged (or new item): use quantity delta × price, which
+      // gives a clean per-unit line on the Square supplemental invoice.
+      const deltaQty = round2(curQty - prevQty);
+      if (deltaQty > 0 && curUnit > 0) {
+        deltaLineItems.push({
+          ...row,
+          quantity: deltaQty,
+          unitPrice: curUnit,
+        });
+      } else if (deltaQty < 0 && curUnit > 0) {
+        // Quantity was reduced: accumulate a credit for the dollar value
+        // of the reduction so the supplemental net-charges the true
+        // difference (increases minus reductions) rather than overbilling
+        // by ignoring decrements.
+        creditAmount = round2(creditAmount + Math.abs(deltaQty) * curUnit);
+      }
     }
   }
 
