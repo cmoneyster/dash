@@ -38,7 +38,7 @@ const HOW_IT_WORKS_STEPS = [
 export default function Home() {
   usePageMeta({
     title: "dash Catering by Hollywood East Cafe",
-    description: "Asian-inspired catering for corporate events, weddings, and private gatherings in Olney, Maryland. Browse the full menu and build your event plan online.",
+    description: "dash by Hollywood East Cafe — Asian-inspired food built on 30+ years of recipes. Fresh drop-off or on-site with the On The Dash mobile kitchen.",
   });
   const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
 
@@ -176,6 +176,24 @@ export default function Home() {
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* About */}
+      <section className="py-20 bg-secondary/20 border-t border-border">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <span className="inline-block py-1 px-3 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest mb-4">
+            About Us
+          </span>
+          <h2 className="font-display font-bold text-2xl sm:text-3xl mb-6">
+            dash by Hollywood East Cafe
+          </h2>
+          <p className="text-muted-foreground leading-relaxed mb-5 text-base">
+            dash by Hollywood East Cafe brings chef-crafted, Asian-inspired food and more — straight to your event. Built on recipes over 30 years in the making, choose between a fresh drop-off delivery or the full On The Dash mobile kitchen experience, where our team prepares everything on-site so it's hot, fresh, and ready the moment your guests are. Whether you're hosting an intimate gathering, a corporate lunch, or a large celebration, we make sure the food is the highlight.
+          </p>
+          <p className="text-muted-foreground leading-relaxed text-base">
+            Plan your event your way. Our interactive event planning tool lets you browse the full menu, build your event plan, and request a quote — all in one place. Share your event plan with a link, so collaborating with family, colleagues, or co-hosts is effortless.
+          </p>
         </div>
       </section>
 
