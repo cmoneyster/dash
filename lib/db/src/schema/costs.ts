@@ -52,6 +52,26 @@ export const recipeLinesTable = pgTable("recipe_lines", {
   recipeUnit: text("recipe_unit"),
 });
 
+export const ingredientProcessStepsTable = pgTable("ingredient_process_steps", {
+  id: serial("id").primaryKey(),
+  ingredientId: integer("ingredient_id").notNull().references(() => ingredientsTable.id, { onDelete: "cascade" }),
+  stepOrder: integer("step_order").notNull().default(0),
+  description: text("description").notNull(),
+  descriptionEs: text("description_es"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const preparationProcessStepsTable = pgTable("preparation_process_steps", {
+  id: serial("id").primaryKey(),
+  preparationId: integer("preparation_id").notNull().references(() => preparationsTable.id, { onDelete: "cascade" }),
+  stepOrder: integer("step_order").notNull().default(0),
+  description: text("description").notNull(),
+  descriptionEs: text("description_es"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const eventLaborTable = pgTable("event_labor", {
   id: serial("id").primaryKey(),
   referenceType: text("reference_type").notNull(),
@@ -71,4 +91,6 @@ export type Preparation = typeof preparationsTable.$inferSelect;
 export type PreparationLine = typeof preparationLinesTable.$inferSelect;
 export type Recipe = typeof recipesTable.$inferSelect;
 export type RecipeLine = typeof recipeLinesTable.$inferSelect;
+export type IngredientProcessStep = typeof ingredientProcessStepsTable.$inferSelect;
+export type PreparationProcessStep = typeof preparationProcessStepsTable.$inferSelect;
 export type EventLabor = typeof eventLaborTable.$inferSelect;

@@ -46,6 +46,7 @@ import Printers from "@/pages/admin/Printers";
 import CostIngredients from "@/pages/admin/CostIngredients";
 import CostPreparations from "@/pages/admin/CostPreparations";
 import CostSummary from "@/pages/admin/CostSummary";
+import TaskListPrint from "@/pages/admin/TaskListPrint";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -149,6 +150,9 @@ function Router() {
       </Route>
       <Route path="/admin/costs/summary">
         {() => <AdminGuard><CostSummary /></AdminGuard>}
+      </Route>
+      <Route path="/admin/catering/:id/task-list-print">
+        {() => <AdminGuard><TaskListPrint /></AdminGuard>}
       </Route>
 
       <Route component={NotFound} />

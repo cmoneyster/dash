@@ -5,7 +5,7 @@ import {
   Plus, Loader2, X, Save, Trash2, ChevronLeft, ChevronRight, CalendarDays, Clock,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
-  GripVertical, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck,
+  GripVertical, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck, ClipboardList,
 } from "lucide-react";
 import { LaborPanel } from "@/components/LaborPanel";
 import {
@@ -3165,6 +3165,30 @@ function DetailPanel({
       {form.id !== undefined && (
         <div className="px-6 py-4 border-t border-border">
           <LaborPanel referenceType="catering_inquiry" referenceId={form.id as number} />
+        </div>
+      )}
+
+      {form.id !== undefined && (
+        <div className="px-6 py-4 border-t border-border">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold flex items-center gap-2">
+                <ClipboardList className="w-4 h-4 text-emerald-600" />
+                Task &amp; Buy List
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Bilingual task &amp; shopping list for kitchen staff, generated from recipes
+              </p>
+            </div>
+            <a
+              href={`${BASE}/admin/catering/${form.id}/task-list-print`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors shrink-0"
+            >
+              <ExternalLink className="w-4 h-4" /> Open Task List
+            </a>
+          </div>
         </div>
       )}
 

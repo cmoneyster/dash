@@ -3,8 +3,10 @@ import { db } from "@workspace/db";
 import {
   ingredientsTable,
   ingredientCostHistoryTable,
+  ingredientProcessStepsTable,
   preparationsTable,
   preparationLinesTable,
+  preparationProcessStepsTable,
   recipesTable,
   recipeLinesTable,
   eventLaborTable,
@@ -15,6 +17,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, desc, and, lte, gte, isNotNull, isNull, inArray, sql, exists, asc } from "drizzle-orm";
 import { conversionFactor, isIncompatibleConversion, groupedUnits } from "../lib/units";
+import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router: IRouter = Router();
 
@@ -1499,6 +1502,341 @@ router.get("/admin/costs/summary", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Error computing cost summary");
     res.status(500).json({ error: "Failed to compute cost summary" });
+  }
+});
+
+// ── Ingredient Process Steps ──────────────────────────────────────────────────
+
+router.get("/admin/costs/ingredients/:id/steps", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    const steps = await db
+      .select()
+      .from(ingredientProcessStepsTable)
+      .where(eq(ingredientProcessStepsTable.ingredientId, id))
+      .orderBy(asc(ingredientProcessStepsTable.stepOrder), asc(ingredientProcessStepsTable.id));
+    res.json(steps);
+  } catch (err) {
+    req.log.error({ err }, "Error fetching ingredient steps");
+    res.status(500).json({ error: "Failed to fetch steps" });
+  }
+});
+
+router.put("/admin/costs/ingredients/:id/steps", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, id));
+    if (!ing) { res.status(404).json({ error: "Ingredient not found" }); return; }
+    const { steps } = req.body as { steps: Array<{ description: string; stepOrder?: number }> };
+    if (!Array.isArray(steps)) { res.status(400).json({ error: "steps array is required" }); return; }
+    await db.transaction(async (tx) => {
+      await tx.delete(ingredientProcessStepsTable).where(eq(ingredientProcessStepsTable.ingredientId, id));
+      if (steps.length > 0) {
+        const valid = steps.filter(s => s.description?.trim());
+        if (valid.length > 0) {
+          await tx.insert(ingredientProcessStepsTable).values(valid.map((s, i) => ({
+            ingredientId: id,
+            description: s.description.trim(),
+            stepOrder: s.stepOrder ?? i,
+          })));
+        }
+      }
+    });
+    const saved = await db
+      .select()
+      .from(ingredientProcessStepsTable)
+      .where(eq(ingredientProcessStepsTable.ingredientId, id))
+      .orderBy(asc(ingredientProcessStepsTable.stepOrder), asc(ingredientProcessStepsTable.id));
+    res.json(saved);
+  } catch (err) {
+    req.log.error({ err }, "Error saving ingredient steps");
+    res.status(500).json({ error: "Failed to save steps" });
+  }
+});
+
+// ── Preparation Process Steps ─────────────────────────────────────────────────
+
+router.get("/admin/costs/preparations/:id/steps", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    const steps = await db
+      .select()
+      .from(preparationProcessStepsTable)
+      .where(eq(preparationProcessStepsTable.preparationId, id))
+      .orderBy(asc(preparationProcessStepsTable.stepOrder), asc(preparationProcessStepsTable.id));
+    res.json(steps);
+  } catch (err) {
+    req.log.error({ err }, "Error fetching preparation steps");
+    res.status(500).json({ error: "Failed to fetch steps" });
+  }
+});
+
+router.put("/admin/costs/preparations/:id/steps", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    const [prep] = await db.select().from(preparationsTable).where(eq(preparationsTable.id, id));
+    if (!prep) { res.status(404).json({ error: "Preparation not found" }); return; }
+    const { steps } = req.body as { steps: Array<{ description: string; stepOrder?: number }> };
+    if (!Array.isArray(steps)) { res.status(400).json({ error: "steps array is required" }); return; }
+    await db.transaction(async (tx) => {
+      await tx.delete(preparationProcessStepsTable).where(eq(preparationProcessStepsTable.preparationId, id));
+      if (steps.length > 0) {
+        const valid = steps.filter(s => s.description?.trim());
+        if (valid.length > 0) {
+          await tx.insert(preparationProcessStepsTable).values(valid.map((s, i) => ({
+            preparationId: id,
+            description: s.description.trim(),
+            stepOrder: s.stepOrder ?? i,
+          })));
+        }
+      }
+    });
+    const saved = await db
+      .select()
+      .from(preparationProcessStepsTable)
+      .where(eq(preparationProcessStepsTable.preparationId, id))
+      .orderBy(asc(preparationProcessStepsTable.stepOrder), asc(preparationProcessStepsTable.id));
+    res.json(saved);
+  } catch (err) {
+    req.log.error({ err }, "Error saving preparation steps");
+    res.status(500).json({ error: "Failed to save steps" });
+  }
+});
+
+// ── Task List for Catering Inquiry ────────────────────────────────────────────
+
+type TaskStep = { id: number; stepOrder: number; description: string; descriptionEs: string | null };
+type TaskIngredient = {
+  ingredientId: number; name: string; nameEs: string | null;
+  scaledQuantity: number; unit: string; processSteps: TaskStep[];
+};
+type TaskPrep = {
+  preparationId: number; name: string; nameEs: string | null;
+  scaledQuantity: number; unit: string;
+  processSteps: TaskStep[];
+  ingredientLines: TaskIngredient[];
+};
+type TaskItem = {
+  lineItemId: string; menuItemId: number | null; name: string; nameEs: string | null;
+  quantity: number; sizeLabel: string | null; sizeServings: number | null;
+  hasRecipe: boolean;
+  recipeIngredients: TaskIngredient[];
+  recipePreparations: TaskPrep[];
+};
+
+router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => {
+  try {
+    const inqId = parseInt(req.params.id);
+    const [inq] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, inqId));
+    if (!inq) { res.status(404).json({ error: "Inquiry not found" }); return; }
+
+    const lineItems = (inq.lineItems as Array<{
+      id: string; menuItemId: number | null; name: string; quantity: number;
+      sizeLabel?: string | null; sizeServings?: number | null;
+    }>) ?? [];
+
+    const taskItems: TaskItem[] = [];
+    // buy list: key = `${ingredientId}::${unit}`
+    const buyAgg = new Map<string, { ingredientId: number; name: string; qty: number; unit: string }>();
+
+    function addToBuy(ingredientId: number, name: string, scaledQty: number, unit: string) {
+      const k = `${ingredientId}::${unit}`;
+      const ex = buyAgg.get(k);
+      if (ex) { ex.qty = round4(ex.qty + scaledQty); }
+      else { buyAgg.set(k, { ingredientId, name, qty: scaledQty, unit }); }
+    }
+
+    async function loadIngSteps(ingId: number): Promise<TaskStep[]> {
+      const rows = await db
+        .select({ id: ingredientProcessStepsTable.id, stepOrder: ingredientProcessStepsTable.stepOrder, description: ingredientProcessStepsTable.description, descriptionEs: ingredientProcessStepsTable.descriptionEs })
+        .from(ingredientProcessStepsTable)
+        .where(eq(ingredientProcessStepsTable.ingredientId, ingId))
+        .orderBy(asc(ingredientProcessStepsTable.stepOrder), asc(ingredientProcessStepsTable.id));
+      return rows;
+    }
+
+    async function loadPrepSteps(prepId: number): Promise<TaskStep[]> {
+      const rows = await db
+        .select({ id: preparationProcessStepsTable.id, stepOrder: preparationProcessStepsTable.stepOrder, description: preparationProcessStepsTable.description, descriptionEs: preparationProcessStepsTable.descriptionEs })
+        .from(preparationProcessStepsTable)
+        .where(eq(preparationProcessStepsTable.preparationId, prepId))
+        .orderBy(asc(preparationProcessStepsTable.stepOrder), asc(preparationProcessStepsTable.id));
+      return rows;
+    }
+
+    for (const li of lineItems) {
+      const menuItemId = li.menuItemId ?? null;
+      const lineQty = Number(li.quantity) || 1;
+      const sizeServings = Number(li.sizeServings) || 1;
+
+      if (!menuItemId) {
+        taskItems.push({ lineItemId: li.id, menuItemId: null, name: li.name, nameEs: null, quantity: lineQty, sizeLabel: li.sizeLabel ?? null, sizeServings: li.sizeServings ?? null, hasRecipe: false, recipeIngredients: [], recipePreparations: [] });
+        continue;
+      }
+
+      // Resolve recipe: own first, then inherited via sourceItemId
+      let recipe: typeof recipesTable.$inferSelect | null = null;
+      const [ownRecipe] = await db.select().from(recipesTable).where(eq(recipesTable.menuItemId, menuItemId));
+      if (ownRecipe) {
+        recipe = ownRecipe;
+      } else {
+        const [item] = await db.select({ sourceItemId: menuItemsTable.sourceItemId }).from(menuItemsTable).where(eq(menuItemsTable.id, menuItemId));
+        if (item?.sourceItemId) {
+          const [sourceRecipe] = await db.select().from(recipesTable).where(eq(recipesTable.menuItemId, item.sourceItemId));
+          if (sourceRecipe) recipe = sourceRecipe;
+        }
+      }
+
+      if (!recipe) {
+        taskItems.push({ lineItemId: li.id, menuItemId, name: li.name, nameEs: null, quantity: lineQty, sizeLabel: li.sizeLabel ?? null, sizeServings: li.sizeServings ?? null, hasRecipe: false, recipeIngredients: [], recipePreparations: [] });
+        continue;
+      }
+
+      // Scale factor: total servings / recipe yield
+      const totalServings = lineQty * sizeServings;
+      const scaleFactor = recipe.yieldServings > 0 ? totalServings / recipe.yieldServings : 1;
+
+      // Get recipe lines
+      const recipeLines = await db
+        .select({
+          id: recipeLinesTable.id,
+          ingredientId: recipeLinesTable.ingredientId,
+          preparationId: recipeLinesTable.preparationId,
+          quantityPerYield: recipeLinesTable.quantityPerYield,
+          recipeUnit: recipeLinesTable.recipeUnit,
+          ingredientName: ingredientsTable.name,
+          ingredientUnit: ingredientsTable.unit,
+        })
+        .from(recipeLinesTable)
+        .leftJoin(ingredientsTable, eq(recipeLinesTable.ingredientId, ingredientsTable.id))
+        .where(eq(recipeLinesTable.recipeId, recipe.id));
+
+      const recipeIngredients: TaskIngredient[] = [];
+      const recipePreparations: TaskPrep[] = [];
+
+      for (const rl of recipeLines) {
+        const scaledQty = round4(parseFloat(rl.quantityPerYield) * scaleFactor);
+
+        if (rl.ingredientId != null) {
+          const unit = rl.recipeUnit ?? rl.ingredientUnit ?? "";
+          const steps = await loadIngSteps(rl.ingredientId);
+          recipeIngredients.push({ ingredientId: rl.ingredientId, name: rl.ingredientName ?? "", nameEs: null, scaledQuantity: scaledQty, unit, processSteps: steps });
+          addToBuy(rl.ingredientId, rl.ingredientName ?? "", scaledQty, unit);
+        } else if (rl.preparationId != null) {
+          const [prepRow] = await db.select().from(preparationsTable).where(eq(preparationsTable.id, rl.preparationId));
+          if (!prepRow) continue;
+          const prepUnit = rl.recipeUnit ?? prepRow.yieldUnit;
+          const factor = conversionFactor(prepUnit, prepRow.yieldUnit) ?? 1;
+          const scaledInPrepUnits = round4(scaledQty * factor);
+          const prepScale = prepRow.yieldServings > 0 ? scaledInPrepUnits / prepRow.yieldServings : 1;
+
+          const prepSteps = await loadPrepSteps(rl.preparationId);
+
+          // Expand prep ingredient lines
+          const prepLines = await db
+            .select({
+              ingredientId: preparationLinesTable.ingredientId,
+              ingredientName: ingredientsTable.name,
+              ingredientUnit: ingredientsTable.unit,
+              quantityPerYield: preparationLinesTable.quantityPerYield,
+              recipeUnit: preparationLinesTable.recipeUnit,
+            })
+            .from(preparationLinesTable)
+            .leftJoin(ingredientsTable, eq(preparationLinesTable.ingredientId, ingredientsTable.id))
+            .where(eq(preparationLinesTable.preparationId, rl.preparationId));
+
+          const prepIngredients: TaskIngredient[] = [];
+          for (const pl of prepLines) {
+            if (!pl.ingredientId) continue;
+            const plUnit = pl.recipeUnit ?? pl.ingredientUnit ?? "";
+            const plQty = round4(parseFloat(pl.quantityPerYield) * prepScale);
+            const ingSteps = await loadIngSteps(pl.ingredientId);
+            prepIngredients.push({ ingredientId: pl.ingredientId, name: pl.ingredientName ?? "", nameEs: null, scaledQuantity: plQty, unit: plUnit, processSteps: ingSteps });
+            addToBuy(pl.ingredientId, pl.ingredientName ?? "", plQty, plUnit);
+          }
+
+          recipePreparations.push({ preparationId: rl.preparationId, name: prepRow.name, nameEs: null, scaledQuantity: scaledQty, unit: prepUnit, processSteps: prepSteps, ingredientLines: prepIngredients });
+        }
+      }
+
+      taskItems.push({ lineItemId: li.id, menuItemId, name: li.name, nameEs: null, quantity: lineQty, sizeLabel: li.sizeLabel ?? null, sizeServings: li.sizeServings ?? null, hasRecipe: true, recipeIngredients, recipePreparations });
+    }
+
+    const buyList = Array.from(buyAgg.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(b => ({ ingredientId: b.ingredientId, name: b.name, nameEs: null as string | null, totalQuantity: b.qty, unit: b.unit }));
+
+    // Collect unique strings needing translation (not already translated by DB)
+    const toTranslate = new Set<string>();
+    for (const ti of taskItems) {
+      toTranslate.add(ti.name);
+      for (const ri of ti.recipeIngredients) {
+        toTranslate.add(ri.name);
+        for (const s of ri.processSteps) { if (!s.descriptionEs) toTranslate.add(s.description); }
+      }
+      for (const rp of ti.recipePreparations) {
+        toTranslate.add(rp.name);
+        for (const s of rp.processSteps) { if (!s.descriptionEs) toTranslate.add(s.description); }
+        for (const ing of rp.ingredientLines) {
+          toTranslate.add(ing.name);
+          for (const s of ing.processSteps) { if (!s.descriptionEs) toTranslate.add(s.description); }
+        }
+      }
+    }
+    for (const b of buyList) toTranslate.add(b.name);
+
+    // Batch translate via OpenAI
+    const translations = new Map<string, string>();
+    const toTranslateArr = Array.from(toTranslate).filter(s => s.trim());
+    if (toTranslateArr.length > 0) {
+      try {
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [{
+            role: "user",
+            content: `Translate the following food/catering terms and instructions from English to Spanish. Return a valid JSON object where keys are the original English strings and values are accurate Spanish translations. Maintain culinary precision.\n\nStrings:\n${JSON.stringify(toTranslateArr)}`,
+          }],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+        });
+        const raw = response.choices[0]?.message?.content ?? "{}";
+        const parsed = JSON.parse(raw) as Record<string, string>;
+        for (const [k, v] of Object.entries(parsed)) translations.set(k, String(v));
+      } catch (err) {
+        req.log.warn({ err }, "Task list translation failed — returning untranslated");
+      }
+    }
+
+    const tr = (s: string) => translations.get(s) ?? null;
+
+    // Apply translations
+    const result = {
+      inquiryId: inqId,
+      clientName: inq.clientName,
+      eventDate: (inq as any).eventDate ?? null,
+      taskItems: taskItems.map(ti => ({
+        ...ti,
+        nameEs: tr(ti.name),
+        recipeIngredients: ti.recipeIngredients.map(ri => ({
+          ...ri, nameEs: tr(ri.name),
+          processSteps: ri.processSteps.map(s => ({ ...s, descriptionEs: s.descriptionEs ?? tr(s.description) })),
+        })),
+        recipePreparations: ti.recipePreparations.map(rp => ({
+          ...rp, nameEs: tr(rp.name),
+          processSteps: rp.processSteps.map(s => ({ ...s, descriptionEs: s.descriptionEs ?? tr(s.description) })),
+          ingredientLines: rp.ingredientLines.map(ing => ({
+            ...ing, nameEs: tr(ing.name),
+            processSteps: ing.processSteps.map(s => ({ ...s, descriptionEs: s.descriptionEs ?? tr(s.description) })),
+          })),
+        })),
+      })),
+      buyList: buyList.map(b => ({ ...b, nameEs: tr(b.name) })),
+    };
+
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Error generating task list");
+    res.status(500).json({ error: "Failed to generate task list" });
   }
 });
 
