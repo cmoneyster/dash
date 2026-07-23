@@ -52,24 +52,6 @@ function fmtDate(d: string | null): string {
   } catch { return d; }
 }
 
-function BilingualText({ en, es, big }: { en: string; es: string | null; big?: boolean }) {
-  const esStr = es && es !== en ? es : null;
-  if (big) {
-    return (
-      <span className={`font-bold text-sm text-gray-900 dark:text-gray-100 print:text-gray-900`}>
-        {en}
-        {esStr && <span className="font-normal italic text-gray-500 dark:text-gray-400 print:text-gray-500"> / {esStr}</span>}
-      </span>
-    );
-  }
-  return (
-    <span className="font-semibold text-gray-900 dark:text-gray-100 print:text-gray-900">
-      {en}
-      {esStr && <span className="font-normal italic text-gray-400 dark:text-gray-500 print:text-gray-500 ml-1"> / {esStr}</span>}
-    </span>
-  );
-}
-
 export default function TaskListPrint() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -155,7 +137,7 @@ export default function TaskListPrint() {
       {/* ── Screen controls (hidden on print) ───────────────────────────── */}
       <div className="print:hidden bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-3 sticky top-0 z-10 flex items-center gap-4">
         <div>
-          <h1 className="font-bold text-gray-900 dark:text-gray-100 text-sm">Task &amp; Buy List</h1>
+          <h1 className="font-bold text-gray-900 dark:text-gray-100 text-sm">Task List</h1>
           <p className="text-xs text-gray-600 dark:text-gray-400">{data.clientName}{data.eventDate ? ` — ${fmtDate(data.eventDate)}` : ""}</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
@@ -203,93 +185,181 @@ export default function TaskListPrint() {
         <div className="space-y-2">
           {data.taskItems.map((ti, tiIdx) => (
             <div key={ti.lineItemId} className="border border-gray-300 dark:border-gray-700 print:border-gray-300 rounded-md overflow-hidden">
+
+              {/* ── Item header bar — three columns: EN name | ES name | qty ── */}
               <div
-                className="bg-gray-100 dark:bg-gray-800 print:bg-gray-900 px-3 py-1.5 flex items-center justify-between cursor-pointer print:cursor-default gap-2"
+                className="bg-gray-900 dark:bg-gray-800 print:bg-gray-900 px-3 py-1.5 grid items-center cursor-pointer print:cursor-default gap-x-2"
+                style={{ gridTemplateColumns: "1fr 1fr auto" }}
                 onClick={() => toggleItem(ti.lineItemId)}
               >
-                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  <span className="print:hidden text-gray-400 dark:text-gray-500 shrink-0">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="print:hidden text-gray-500 shrink-0">
                     {expandedItems.has(ti.lineItemId) ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                   </span>
-                  <span className="font-black text-xs uppercase tracking-wide text-gray-900 dark:text-gray-100 print:text-white truncate">
+                  <span className="font-black text-xs uppercase tracking-wide text-white truncate">
                     {tiIdx + 1}. {ti.name}
-                    {ti.nameEs && ti.nameEs !== ti.name && (
-                      <span className="ml-1 font-normal normal-case text-gray-500 dark:text-gray-400 print:text-gray-300 italic"> / {ti.nameEs}</span>
-                    )}
                   </span>
                 </div>
-                <span className="text-xs font-bold text-gray-900 dark:text-gray-100 print:text-white shrink-0">
+                <span className="text-xs italic text-gray-400 truncate">
+                  {ti.nameEs && ti.nameEs !== ti.name ? ti.nameEs : ""}
+                </span>
+                <span className="text-xs font-bold text-white shrink-0">
                   {ti.quantity}×{ti.sizeLabel ? ` ${ti.sizeLabel}` : ""}
                   {ti.sizeServings && ti.sizeServings > 1 && !ti.sizeLabel && ` (${ti.sizeServings} serv.)`}
                 </span>
               </div>
 
+              {/* ── Body — shown/collapsed on screen, always visible on print ── */}
               <div className={expandedItems.has(ti.lineItemId) ? "block" : "hidden print:block"}>
-                {!ti.hasRecipe ? (
-                  <div className="px-3 py-2 bg-white dark:bg-gray-900 print:bg-white">
-                    {(ti.customText ?? "").trim() ? (
-                      <p className="text-xs text-gray-800 dark:text-gray-200 print:text-gray-800 whitespace-pre-wrap">
-                        {ti.customText}
-                        {ti.customTextEs && ti.customTextEs !== ti.customText && (
-                          <span className="italic text-gray-400 dark:text-gray-500 print:text-gray-500"> / {ti.customTextEs}</span>
-                        )}
-                      </p>
-                    ) : (
-                      <p className="text-gray-400 dark:text-gray-500 print:text-gray-600 italic text-xs">No recipe — Sin receta</p>
-                    )}
+
+                {/* Column labels */}
+                <div
+                  className="grid text-[10px] font-bold uppercase tracking-widest border-b border-gray-200 dark:border-gray-700 print:border-gray-200 bg-gray-50 dark:bg-gray-900 print:bg-gray-50"
+                  style={{ gridTemplateColumns: "1fr 1fr" }}
+                >
+                  <div className="px-3 py-0.5 text-gray-400 dark:text-gray-500">English</div>
+                  <div className="px-3 py-0.5 text-gray-400 dark:text-gray-500 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">Español</div>
+                </div>
+
+                {/* ── No recipe ─────────────────────────────────────────────── */}
+                {!ti.hasRecipe && (
+                  <div
+                    className="grid bg-white dark:bg-gray-900 print:bg-white"
+                    style={{ gridTemplateColumns: "1fr 1fr" }}
+                  >
+                    <div className="px-3 py-2 text-xs text-gray-800 dark:text-gray-200 print:text-gray-800 whitespace-pre-wrap">
+                      {(ti.customText ?? "").trim() || <em className="text-gray-400">No recipe</em>}
+                    </div>
+                    <div className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 print:text-gray-600 italic whitespace-pre-wrap border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                      {(ti.customTextEs ?? "").trim() || <em className="not-italic text-gray-400">Sin receta</em>}
+                    </div>
                   </div>
-                ) : (
-                  <div className="px-3 py-2 space-y-2 bg-white dark:bg-gray-900 print:bg-white">
+                )}
+
+                {/* ── Recipe ────────────────────────────────────────────────── */}
+                {ti.hasRecipe && (
+                  <div className="bg-white dark:bg-gray-900 print:bg-white">
+
+                    {/* Preparations */}
                     {ti.recipePreparations.map(rp => (
-                      <div key={rp.preparationId} className="border border-indigo-200 dark:border-indigo-800 print:border-indigo-200 rounded overflow-hidden">
-                        <div className="bg-indigo-50 dark:bg-indigo-950 print:bg-indigo-50 px-2.5 py-1 flex justify-between items-center gap-2">
-                          <BilingualText en={rp.name} es={rp.nameEs} big />
-                          <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 print:text-indigo-700 shrink-0">
-                            {fmtQty(rp.scaledQuantity)} {rp.unit}
-                          </span>
+                      <div key={rp.preparationId} className="border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0">
+
+                        {/* Prep header — full width, two-column inner */}
+                        <div
+                          className="grid items-center bg-indigo-50 dark:bg-indigo-950 print:bg-indigo-50 border-b border-indigo-100 dark:border-indigo-900 print:border-indigo-100"
+                          style={{ gridTemplateColumns: "1fr 1fr" }}
+                        >
+                          <div className="px-3 py-1 flex items-baseline gap-2">
+                            <span className="font-bold text-xs text-indigo-800 dark:text-indigo-200 print:text-indigo-800">{rp.name}</span>
+                            <span className="text-xs font-mono text-indigo-600 dark:text-indigo-300 print:text-indigo-600 shrink-0">
+                              {fmtQty(rp.scaledQuantity)} {rp.unit}
+                            </span>
+                          </div>
+                          <div className="px-3 py-1 text-xs italic text-indigo-600 dark:text-indigo-400 print:text-indigo-600 border-l border-indigo-100 dark:border-indigo-900 print:border-indigo-100">
+                            {rp.nameEs && rp.nameEs !== rp.name ? rp.nameEs : ""}
+                          </div>
                         </div>
-                        {rp.processSteps.length > 0 && (
-                          <ol className="px-2.5 py-1.5 space-y-0.5 bg-white dark:bg-gray-900 print:bg-white">
-                            {rp.processSteps.map((s, si) => (
-                              <li key={s.id} className="text-xs flex gap-1.5 text-gray-800 dark:text-gray-200 print:text-gray-800">
-                                <span className="font-mono text-gray-400 dark:text-gray-500 print:text-gray-400 shrink-0">{si + 1}.</span>
-                                <span>
-                                  {s.description}
-                                  {s.descriptionEs && <span className="italic text-gray-400 dark:text-gray-500 print:text-gray-500"> / {s.descriptionEs}</span>}
-                                </span>
-                              </li>
+
+                        {/* Prep steps */}
+                        {rp.processSteps.map((s, si) => (
+                          <div
+                            key={s.id}
+                            className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
+                            style={{ gridTemplateColumns: "1fr 1fr" }}
+                          >
+                            <div className="px-3 py-0.5 text-xs text-gray-800 dark:text-gray-200 print:text-gray-800 flex gap-1.5">
+                              <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
+                              <span>{s.description}</span>
+                            </div>
+                            <div className="px-3 py-0.5 text-xs text-gray-600 dark:text-gray-400 print:text-gray-600 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                              <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
+                              <span>{s.descriptionEs ?? ""}</span>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Prep ingredient lines */}
+                        {rp.ingredientLines.map((ing, iIdx) => (
+                          <div key={`${ing.ingredientId}-${iIdx}`}>
+                            <div
+                              className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
+                              style={{ gridTemplateColumns: "1fr 1fr" }}
+                            >
+                              <div className="px-3 py-0.5 text-xs text-gray-800 dark:text-gray-200 print:text-gray-800 flex justify-between gap-2">
+                                <span className="font-semibold">{ing.name}</span>
+                                <span className="font-mono text-gray-500 dark:text-gray-400 print:text-gray-500 shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
+                              </div>
+                              <div className="px-3 py-0.5 text-xs text-gray-600 dark:text-gray-400 print:text-gray-600 italic border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                {ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}
+                              </div>
+                            </div>
+                            {ing.processSteps.map((s, si) => (
+                              <div
+                                key={s.id}
+                                className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
+                                style={{ gridTemplateColumns: "1fr 1fr" }}
+                              >
+                                <div className="pl-6 pr-3 py-0.5 text-xs text-gray-700 dark:text-gray-300 print:text-gray-700 flex gap-1.5">
+                                  <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
+                                  <span>{s.description}</span>
+                                </div>
+                                <div className="pl-6 pr-3 py-0.5 text-xs text-gray-500 dark:text-gray-500 print:text-gray-500 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                  <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
+                                  <span>{s.descriptionEs ?? ""}</span>
+                                </div>
+                              </div>
                             ))}
-                          </ol>
-                        )}
+                          </div>
+                        ))}
                       </div>
                     ))}
 
+                    {/* Direct (top-level) ingredients */}
                     {ti.recipeIngredients.length > 0 && (
-                      <div className="space-y-1">
+                      <div>
                         {ti.recipeIngredients.map((ing, iIdx) => (
                           <div key={`${ing.ingredientId}-${iIdx}`}>
-                            <div className="flex justify-between items-baseline gap-2 text-xs">
-                              <BilingualText en={ing.name} es={ing.nameEs} />
-                              <span className="font-mono shrink-0 text-gray-700 dark:text-gray-300 print:text-gray-700">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
+                            <div
+                              className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
+                              style={{ gridTemplateColumns: "1fr 1fr" }}
+                            >
+                              <div className="px-3 py-0.5 text-xs text-gray-800 dark:text-gray-200 print:text-gray-800 flex justify-between gap-2">
+                                <span className="font-semibold">{ing.name}</span>
+                                <span className="font-mono text-gray-500 dark:text-gray-400 print:text-gray-500 shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
+                              </div>
+                              <div className="px-3 py-0.5 text-xs text-gray-600 dark:text-gray-400 print:text-gray-600 italic border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                {ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}
+                              </div>
                             </div>
-                            {ing.processSteps.length > 0 && (
-                              <ol className="ml-3 space-y-0.5">
-                                {ing.processSteps.map((s, si) => (
-                                  <li key={s.id} className="text-xs text-gray-600 dark:text-gray-400 print:text-gray-600">
-                                    <span className="font-mono text-gray-400 dark:text-gray-500 print:text-gray-400 mr-1">{si + 1}.</span>
-                                    {s.description}
-                                    {s.descriptionEs && <span className="italic text-gray-400 dark:text-gray-500 print:text-gray-500"> / {s.descriptionEs}</span>}
-                                  </li>
-                                ))}
-                              </ol>
-                            )}
+                            {ing.processSteps.map((s, si) => (
+                              <div
+                                key={s.id}
+                                className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
+                                style={{ gridTemplateColumns: "1fr 1fr" }}
+                              >
+                                <div className="pl-6 pr-3 py-0.5 text-xs text-gray-700 dark:text-gray-300 print:text-gray-700 flex gap-1.5">
+                                  <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
+                                  <span>{s.description}</span>
+                                </div>
+                                <div className="pl-6 pr-3 py-0.5 text-xs text-gray-500 dark:text-gray-500 print:text-gray-500 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                  <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
+                                  <span>{s.descriptionEs ?? ""}</span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
                     )}
 
                     {ti.recipePreparations.length === 0 && ti.recipeIngredients.length === 0 && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 print:text-gray-400 italic">Recipe has no ingredient lines.</p>
+                      <div
+                        className="grid"
+                        style={{ gridTemplateColumns: "1fr 1fr" }}
+                      >
+                        <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 print:text-gray-400 italic">Recipe has no ingredient lines.</div>
+                        <div className="border-l border-gray-200 dark:border-gray-700 print:border-gray-200" />
+                      </div>
                     )}
                   </div>
                 )}
@@ -308,9 +378,10 @@ export default function TaskListPrint() {
               <table className="w-full text-xs">
                 <thead className="bg-gray-900 dark:bg-gray-700 print:bg-gray-900 text-white">
                   <tr>
-                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide">#</th>
-                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide">Ingredient / Ingrediente</th>
-                    <th className="text-right px-3 py-1.5 font-bold uppercase tracking-wide">Qty / Cant.</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-8">#</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-1/2">Ingredient</th>
+                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-1/2">Ingrediente</th>
+                    <th className="text-right px-3 py-1.5 font-bold uppercase tracking-wide">Qty</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700 print:divide-gray-200">
@@ -320,11 +391,9 @@ export default function TaskListPrint() {
                       className={idx % 2 === 0 ? "bg-white dark:bg-gray-900 print:bg-white" : "bg-gray-50 dark:bg-gray-800 print:bg-gray-50"}
                     >
                       <td className="px-3 py-1 text-gray-400 dark:text-gray-500 print:text-gray-400 font-mono">{idx + 1}</td>
-                      <td className="px-3 py-1">
-                        <span className="font-semibold text-gray-900 dark:text-gray-100 print:text-gray-900">{b.name}</span>
-                        {b.nameEs && b.nameEs !== b.name && (
-                          <span className="ml-1 text-gray-400 dark:text-gray-500 print:text-gray-500 italic"> / {b.nameEs}</span>
-                        )}
+                      <td className="px-3 py-1 font-semibold text-gray-900 dark:text-gray-100 print:text-gray-900">{b.name}</td>
+                      <td className="px-3 py-1 text-gray-500 dark:text-gray-400 print:text-gray-500 italic">
+                        {b.nameEs && b.nameEs !== b.name ? b.nameEs : ""}
                       </td>
                       <td className="px-3 py-1 text-right font-mono font-bold text-gray-900 dark:text-gray-100 print:text-gray-900">
                         {fmtQty(b.totalQuantity)} <span className="font-normal text-gray-500 dark:text-gray-400 print:text-gray-500">{b.unit}</span>
@@ -370,11 +439,15 @@ export default function TaskListPrint() {
           .dark .dark\\:text-gray-300 { color: #374151 !important; }
           .dark .dark\\:text-gray-400 { color: #6b7280 !important; }
           .dark .dark\\:text-gray-500 { color: #6b7280 !important; }
+          .dark .dark\\:text-indigo-200 { color: #4338ca !important; }
           .dark .dark\\:text-indigo-300 { color: #4338ca !important; }
+          .dark .dark\\:text-indigo-400 { color: #6366f1 !important; }
           .dark .dark\\:border-gray-100 { border-color: #111827 !important; }
           .dark .dark\\:border-gray-700 { border-color: #d1d5db !important; }
-          .dark .dark\\:border-indigo-800 { border-color: #c7d2fe !important; }
+          .dark .dark\\:border-gray-800 { border-color: #f3f4f6 !important; }
+          .dark .dark\\:border-indigo-900 { border-color: #c7d2fe !important; }
           .dark .dark\\:divide-gray-700 > * + * { border-color: #e5e7eb !important; }
+          .dark .dark\\:divide-gray-800 > * + * { border-color: #f3f4f6 !important; }
 
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
