@@ -365,6 +365,31 @@ export default function TaskListPrint() {
           .print\\:hidden { display: none !important; }
           .print\\:block { display: block !important; }
           .hidden { display: none !important; }
+
+          /* ── Override dark-mode colors for paper output ── */
+          /* Backgrounds: white document areas */
+          .dark .dark\\:bg-gray-950 { background-color: #ffffff !important; }
+          .dark .dark\\:bg-gray-900 { background-color: #ffffff !important; }
+          .dark .dark\\:bg-gray-800 { background-color: #f9fafb !important; }
+          /* Dark header backgrounds stay dark (table header, item headers) */
+          .dark .dark\\:bg-gray-700 { background-color: #111827 !important; }
+          /* Indigo prep block */
+          .dark .dark\\:bg-indigo-950 { background-color: #eef2ff !important; }
+
+          /* Text: dark text for light paper */
+          .dark .dark\\:text-gray-100 { color: #111827 !important; }
+          .dark .dark\\:text-gray-200 { color: #1f2937 !important; }
+          .dark .dark\\:text-gray-300 { color: #374151 !important; }
+          .dark .dark\\:text-gray-400 { color: #6b7280 !important; }
+          .dark .dark\\:text-gray-500 { color: #6b7280 !important; }
+          .dark .dark\\:text-indigo-300 { color: #4338ca !important; }
+
+          /* Borders: light borders stay light, document dividers stay dark */
+          .dark .dark\\:border-gray-100 { border-color: #111827 !important; }
+          .dark .dark\\:border-gray-700 { border-color: #d1d5db !important; }
+          .dark .dark\\:border-indigo-800 { border-color: #c7d2fe !important; }
+          .dark .dark\\:divide-gray-700 > * + * { border-color: #e5e7eb !important; }
+
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
