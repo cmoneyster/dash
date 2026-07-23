@@ -172,7 +172,7 @@ export default function TaskListPrint() {
               <h1 className="text-2xl font-black tracking-tight text-gray-900 dark:text-gray-100 print:text-gray-900 uppercase">
                 Task List / Lista de Tareas
               </h1>
-              <p className="text-gray-600 dark:text-gray-400 print:text-gray-600 mt-0.5">Hollywood East Cafe Catering</p>
+              <p className="text-gray-600 dark:text-gray-400 print:text-gray-600 mt-0.5">dash by Hollywood East Cafe</p>
             </div>
             <div className="text-right text-sm">
               <p className="font-bold text-gray-900 dark:text-gray-100 print:text-gray-900">{data.clientName}</p>
@@ -345,7 +345,7 @@ export default function TaskListPrint() {
 
         {/* ── Footer ────────────────────────────────────────────────────────── */}
         <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700 print:border-gray-200 text-xs text-gray-400 dark:text-gray-500 print:text-gray-400 flex justify-between">
-          <span>Hollywood East Cafe Catering — Confidential</span>
+          <span>dash by Hollywood East Cafe — Confidential</span>
           <span>Inquiry #{data.inquiryId}</span>
         </div>
       </div>
