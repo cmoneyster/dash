@@ -35,8 +35,12 @@ function fmtQty(q: number): string {
 
 function fmtDate(d: string | null): string {
   if (!d) return "";
-  try { return new Date(d).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }); }
-  catch { return d; }
+  try {
+    const [year, month, day] = d.slice(0, 10).split("-").map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    });
+  } catch { return d; }
 }
 
 function BilingualText({ en, es, big }: { en: string; es: string | null; big?: boolean }) {
