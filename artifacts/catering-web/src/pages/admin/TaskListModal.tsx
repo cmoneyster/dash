@@ -33,15 +33,26 @@ type ItemSelState = {
   customText: string;
 };
 
+type SavedSel = {
+  include: boolean;
+  ingredientIds: number[];
+  preparationIds: number[];
+  customText: string;
+};
+
 type Props = {
   inquiryId: number;
   clientName: string;
   eventDate: string | null;
   lineItems: LineItem[];
   onClose: () => void;
+  onGenerated?: () => void;
 };
 
-export default function TaskListModal({ inquiryId, clientName, eventDate, lineItems, onClose }: Props) {
+function selectionsKey(id: number) { return `task-list-selections-${id}`; }
+export function taskListDataKey(id: number) { return `task-list-data-${id}`; }
+
+export default function TaskListModal({ inquiryId, clientName, eventDate, lineItems, onClose, onGenerated }: Props) {
   const [recipeLines, setRecipeLines] = useState<Map<number, RecipeLine[]>>(new Map());
   const [loadingRecipes, setLoadingRecipes] = useState(true);
   const [selections, setSelections] = useState<Map<string, ItemSelState>>(new Map());
@@ -59,6 +70,7 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
       for (const li of lineItems) {
         initSel.set(li.id, { include: true, ingredientIds: new Set(), preparationIds: new Set(), customText: "" });
       }
+      overlaySaved(initSel);
       setSelections(initSel);
       setLoadingRecipes(false);
       return;
@@ -90,10 +102,45 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
         );
         initSel.set(li.id, { include: true, ingredientIds, preparationIds, customText: "" });
       }
+      overlaySaved(initSel);
       setSelections(initSel);
       setLoadingRecipes(false);
     });
   }, []);
+
+  function overlaySaved(initSel: Map<string, ItemSelState>) {
+    try {
+      const raw = localStorage.getItem(selectionsKey(inquiryId));
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Record<string, SavedSel>;
+      for (const [liId, savedSel] of Object.entries(saved)) {
+        if (!initSel.has(liId)) continue;
+        const cur = initSel.get(liId)!;
+        initSel.set(liId, {
+          include: savedSel.include,
+          ingredientIds: new Set(savedSel.ingredientIds.filter(id => cur.ingredientIds.has(id))),
+          preparationIds: new Set(savedSel.preparationIds.filter(id => cur.preparationIds.has(id))),
+          customText: savedSel.customText,
+        });
+      }
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (loadingRecipes || selections.size === 0) return;
+    try {
+      const toSave: Record<string, SavedSel> = {};
+      for (const [id, sel] of selections) {
+        toSave[id] = {
+          include: sel.include,
+          ingredientIds: [...sel.ingredientIds],
+          preparationIds: [...sel.preparationIds],
+          customText: sel.customText,
+        };
+      }
+      localStorage.setItem(selectionsKey(inquiryId), JSON.stringify(toSave));
+    } catch {}
+  }, [selections, loadingRecipes]);
 
   function toggleItem(liId: string) {
     setSelections(prev => {
@@ -176,9 +223,10 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
         throw new Error((d as any).error ?? `HTTP ${r.status}`);
       }
       const data = await r.json();
-      const key = `task-list-print-${inquiryId}-${Date.now()}`;
+      const key = taskListDataKey(inquiryId);
       localStorage.setItem(key, JSON.stringify(data));
       window.open(`${BASE}/admin/catering/${inquiryId}/task-list-print?key=${encodeURIComponent(key)}`, "_blank");
+      onGenerated?.();
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate task list");

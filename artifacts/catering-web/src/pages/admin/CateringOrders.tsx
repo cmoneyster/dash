@@ -5,10 +5,10 @@ import {
   Plus, Loader2, X, Save, Trash2, ChevronLeft, ChevronRight, CalendarDays, Clock,
   User, Mail, Phone, Building2, MapPin, Users, FileText, StickyNote, Check,
   Search, ShoppingCart, Receipt, Download, Send, MessageSquare, Copy, Link as LinkIcon,
-  GripVertical, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck, ClipboardList,
+  GripVertical, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck, ClipboardList, Printer,
 } from "lucide-react";
 import { LaborPanel } from "@/components/LaborPanel";
-import TaskListModal from "./TaskListModal";
+import TaskListModal, { taskListDataKey } from "./TaskListModal";
 import {
   DndContext,
   closestCenter,
@@ -2690,6 +2690,9 @@ function DetailPanel({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [showTaskList, setShowTaskList] = useState(false);
+  const [hasTaskListData, setHasTaskListData] = useState(() =>
+    form.id != null && !!localStorage.getItem(taskListDataKey(form.id as number))
+  );
 
   useEffect(() => {
     // Legacy migration: if a cart-source inquiry has orderItems but no lineItems
@@ -3182,13 +3185,27 @@ function DetailPanel({
                 Bilingual task &amp; shopping list for kitchen staff, generated from recipes
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowTaskList(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors shrink-0"
-            >
-              <ClipboardList className="w-4 h-4" /> Open Task List
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {hasTaskListData && form.id != null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const key = taskListDataKey(form.id as number);
+                    window.open(`${BASE}/admin/catering/${form.id}/task-list-print?key=${encodeURIComponent(key)}`, "_blank");
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-xl border border-emerald-600 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+                >
+                  <Printer className="w-4 h-4" /> Reprint
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowTaskList(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors"
+              >
+                <ClipboardList className="w-4 h-4" /> {hasTaskListData ? "Regenerate" : "Open Task List"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3222,6 +3239,7 @@ function DetailPanel({
           eventDate={form.eventDate ?? null}
           lineItems={lineItems}
           onClose={() => setShowTaskList(false)}
+          onGenerated={() => setHasTaskListData(true)}
         />
       )}
     </div>
