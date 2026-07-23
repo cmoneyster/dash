@@ -3194,15 +3194,26 @@ function DetailPanel({
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {hasTaskListData && form.id != null && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.open(`${BASE}/admin/catering/${form.id}/task-list-print`, "_blank");
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-xl border border-emerald-600 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
-                >
-                  <Printer className="w-4 h-4" /> Reprint
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.open(`${BASE}/admin/catering/${form.id}/task-list-print`, "_blank");
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-xl border border-emerald-600 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+                  >
+                    <Printer className="w-4 h-4" /> Reprint
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.open(`${BASE}/admin/catering/${form.id}/buy-list-print`, "_blank");
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-xl border border-emerald-600 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+                  >
+                    <Printer className="w-4 h-4" /> Buy List
+                  </button>
+                </>
               )}
               <button
                 type="button"
