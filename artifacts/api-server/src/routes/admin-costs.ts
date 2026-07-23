@@ -13,6 +13,7 @@ import {
   menuItemsTable,
   eventOrdersTable,
   cateringInquiriesTable,
+  cateringTaskListsTable,
   eventSessionsTable,
 } from "@workspace/db/schema";
 import { eq, desc, and, lte, gte, isNotNull, isNull, inArray, sql, exists, asc } from "drizzle-orm";
@@ -1633,6 +1634,18 @@ type SelectionInput = {
   customText?: string;
 };
 
+router.get("/admin/catering/:id/task-list/saved", async (req, res): Promise<void> => {
+  try {
+    const inqId = parseInt(req.params.id);
+    const [row] = await db.select().from(cateringTaskListsTable).where(eq(cateringTaskListsTable.inquiryId, inqId));
+    if (!row) { res.status(404).json({ error: "No saved task list" }); return; }
+    res.json({ data: row.data, selections: row.selections, generatedAt: row.generatedAt });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching saved task list");
+    res.status(500).json({ error: "Failed to fetch saved task list" });
+  }
+});
+
 router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => {
   try {
     const inqId = parseInt(req.params.id);
@@ -1852,6 +1865,13 @@ router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => 
       })),
       buyList: buyList.map(b => ({ ...b, nameEs: tr(b.name) })),
     };
+
+    await db.insert(cateringTaskListsTable)
+      .values({ inquiryId: inqId, data: result as any, selections: (selectionsBody ?? null) as any, generatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: cateringTaskListsTable.inquiryId,
+        set: { data: result as any, selections: (selectionsBody ?? null) as any, generatedAt: new Date() },
+      });
 
     res.json(result);
   } catch (err) {

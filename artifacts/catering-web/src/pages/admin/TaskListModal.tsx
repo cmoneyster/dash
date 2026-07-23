@@ -33,11 +33,12 @@ type ItemSelState = {
   customText: string;
 };
 
-type SavedSel = {
-  include: boolean;
-  ingredientIds: number[];
-  preparationIds: number[];
-  customText: string;
+type SelectionInput = {
+  lineItemId: string;
+  include?: boolean;
+  ingredientIds?: number[];
+  preparationIds?: number[];
+  customText?: string;
 };
 
 type Props = {
@@ -49,8 +50,8 @@ type Props = {
   onGenerated?: () => void;
 };
 
-function selectionsKey(id: number) { return `task-list-selections-${id}`; }
 export function taskListDataKey(id: number) { return `task-list-data-${id}`; }
+function selectionsKey(id: number) { return `task-list-selections-${id}`; }
 
 export default function TaskListModal({ inquiryId, clientName, eventDate, lineItems, onClose, onGenerated }: Props) {
   const [recipeLines, setRecipeLines] = useState<Map<number, RecipeLine[]>>(new Map());
@@ -65,54 +66,73 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
       lineItems.map(li => li.menuItemId).filter((id): id is number => id != null)
     )];
 
-    if (menuItemIds.length === 0) {
-      const initSel = new Map<string, ItemSelState>();
-      for (const li of lineItems) {
-        initSel.set(li.id, { include: true, ingredientIds: new Set(), preparationIds: new Set(), customText: "" });
-      }
-      overlaySaved(initSel);
-      setSelections(initSel);
-      setLoadingRecipes(false);
-      return;
-    }
+    const recipesFetch: Promise<Map<number, RecipeLine[]>> = menuItemIds.length === 0
+      ? Promise.resolve(new Map())
+      : Promise.all(
+          menuItemIds.map(id =>
+            fetch(`${BASE}/api/admin/menu/${id}/recipe`, { headers: authHeaders() })
+              .then(r => r.ok ? r.json() : null)
+              .then((data: { lines?: RecipeLine[] } | null) => ({ menuItemId: id, lines: (data?.lines ?? []) as RecipeLine[] }))
+              .catch(() => ({ menuItemId: id, lines: [] as RecipeLine[] }))
+          )
+        ).then(results => {
+          const map = new Map<number, RecipeLine[]>();
+          for (const r of results) map.set(r.menuItemId, r.lines);
+          return map;
+        });
 
-    Promise.all(
-      menuItemIds.map(id =>
-        fetch(`${BASE}/api/admin/menu/${id}/recipe`, { headers: authHeaders() })
-          .then(r => r.ok ? r.json() : null)
-          .then((data: { lines?: RecipeLine[] } | null) => ({
-            menuItemId: id,
-            lines: (data?.lines ?? []) as RecipeLine[],
-          }))
-          .catch(() => ({ menuItemId: id, lines: [] as RecipeLine[] }))
-      )
-    ).then(results => {
-      const rlMap = new Map<number, RecipeLine[]>();
-      for (const r of results) rlMap.set(r.menuItemId, r.lines);
+    const savedFetch: Promise<{ selections: SelectionInput[] } | null> = fetch(
+      `${BASE}/api/admin/catering/${inquiryId}/task-list/saved`,
+      { headers: authHeaders() }
+    ).then(r => r.ok ? r.json() : null).catch(() => null);
+
+    Promise.all([recipesFetch, savedFetch]).then(([rlMap, savedData]) => {
       setRecipeLines(rlMap);
 
       const initSel = new Map<string, ItemSelState>();
       for (const li of lineItems) {
         const lines = li.menuItemId ? (rlMap.get(li.menuItemId) ?? []) : [];
-        const ingredientIds = new Set(
-          lines.filter(l => l.kind === "ingredient" && l.ingredientId != null).map(l => l.ingredientId!)
-        );
-        const preparationIds = new Set(
-          lines.filter(l => l.kind === "preparation" && l.preparationId != null).map(l => l.preparationId!)
-        );
-        initSel.set(li.id, { include: true, ingredientIds, preparationIds, customText: "" });
+        initSel.set(li.id, {
+          include: true,
+          ingredientIds: new Set(lines.filter(l => l.kind === "ingredient" && l.ingredientId != null).map(l => l.ingredientId!)),
+          preparationIds: new Set(lines.filter(l => l.kind === "preparation" && l.preparationId != null).map(l => l.preparationId!)),
+          customText: "",
+        });
       }
-      overlaySaved(initSel);
+
+      if (savedData?.selections && Array.isArray(savedData.selections)) {
+        applyServerSelections(initSel, savedData.selections);
+      } else {
+        applyLocalSelections(initSel);
+      }
+
       setSelections(initSel);
       setLoadingRecipes(false);
     });
   }, []);
 
-  function overlaySaved(initSel: Map<string, ItemSelState>) {
+  function applyServerSelections(initSel: Map<string, ItemSelState>, saved: SelectionInput[]) {
+    for (const s of saved) {
+      if (!initSel.has(s.lineItemId)) continue;
+      const cur = initSel.get(s.lineItemId)!;
+      initSel.set(s.lineItemId, {
+        include: s.include !== false,
+        ingredientIds: s.ingredientIds != null
+          ? new Set(s.ingredientIds.filter(id => cur.ingredientIds.has(id)))
+          : cur.ingredientIds,
+        preparationIds: s.preparationIds != null
+          ? new Set(s.preparationIds.filter(id => cur.preparationIds.has(id)))
+          : cur.preparationIds,
+        customText: s.customText ?? "",
+      });
+    }
+  }
+
+  function applyLocalSelections(initSel: Map<string, ItemSelState>) {
     try {
       const raw = localStorage.getItem(selectionsKey(inquiryId));
       if (!raw) return;
-      const saved = JSON.parse(raw) as Record<string, SavedSel>;
+      const saved = JSON.parse(raw) as Record<string, { include: boolean; ingredientIds: number[]; preparationIds: number[]; customText: string }>;
       for (const [liId, savedSel] of Object.entries(saved)) {
         if (!initSel.has(liId)) continue;
         const cur = initSel.get(liId)!;
@@ -129,14 +149,9 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
   useEffect(() => {
     if (loadingRecipes || selections.size === 0) return;
     try {
-      const toSave: Record<string, SavedSel> = {};
+      const toSave: Record<string, { include: boolean; ingredientIds: number[]; preparationIds: number[]; customText: string }> = {};
       for (const [id, sel] of selections) {
-        toSave[id] = {
-          include: sel.include,
-          ingredientIds: [...sel.ingredientIds],
-          preparationIds: [...sel.preparationIds],
-          customText: sel.customText,
-        };
+        toSave[id] = { include: sel.include, ingredientIds: [...sel.ingredientIds], preparationIds: [...sel.preparationIds], customText: sel.customText };
       }
       localStorage.setItem(selectionsKey(inquiryId), JSON.stringify(toSave));
     } catch {}
@@ -194,16 +209,12 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
     setGenerating(true);
     setError("");
     try {
-      const selectionsArr = lineItems.map(li => {
+      const selectionsArr: SelectionInput[] = lineItems.map(li => {
         const sel = selections.get(li.id);
         if (!sel) return { lineItemId: li.id, include: true };
         const lines = li.menuItemId ? (recipeLines.get(li.menuItemId) ?? []) : [];
-        const allIngredientIds = lines
-          .filter(l => l.kind === "ingredient" && l.ingredientId != null)
-          .map(l => l.ingredientId!);
-        const allPreparationIds = lines
-          .filter(l => l.kind === "preparation" && l.preparationId != null)
-          .map(l => l.preparationId!);
+        const allIngredientIds = lines.filter(l => l.kind === "ingredient" && l.ingredientId != null).map(l => l.ingredientId!);
+        const allPreparationIds = lines.filter(l => l.kind === "preparation" && l.preparationId != null).map(l => l.preparationId!);
         return {
           lineItemId: li.id,
           include: sel.include,
@@ -244,11 +255,7 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
               {clientName}{eventDate ? ` — ${eventDate}` : ""}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded-lg hover:bg-muted transition-colors ml-4 shrink-0"
-          >
+          <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-muted transition-colors ml-4 shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -277,31 +284,17 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
                 const hasContent = ingredientLines.length > 0 || preparationLines.length > 0 || noRecipe;
 
                 return (
-                  <div
-                    key={li.id}
-                    className={`border rounded-xl transition-colors ${included ? "border-border" : "border-border/40 opacity-60"}`}
-                  >
+                  <div key={li.id} className={`border rounded-xl transition-colors ${included ? "border-border" : "border-border/40 opacity-60"}`}>
                     <div className="flex items-center gap-3 px-3 py-2.5">
-                      <input
-                        type="checkbox"
-                        checked={included}
-                        onChange={() => toggleItem(li.id)}
-                        className="w-4 h-4 accent-emerald-600 shrink-0 cursor-pointer"
-                      />
+                      <input type="checkbox" checked={included} onChange={() => toggleItem(li.id)} className="w-4 h-4 accent-emerald-600 shrink-0 cursor-pointer" />
                       <span className="flex-1 text-sm font-semibold truncate">
                         {li.quantity}× {li.name}{li.sizeLabel ? ` (${li.sizeLabel})` : ""}
                       </span>
                       {noRecipe && included && (
-                        <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium shrink-0">
-                          No recipe
-                        </span>
+                        <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium shrink-0">No recipe</span>
                       )}
                       {included && hasContent && (
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(li.id)}
-                          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                        >
+                        <button type="button" onClick={() => toggleExpanded(li.id)} className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
                           {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                         </button>
                       )}
@@ -311,9 +304,7 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
                       <div className="border-t border-border/60 px-3 py-3 space-y-3">
                         {noRecipe && (
                           <div>
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                              Custom instructions / notes
-                            </label>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Custom instructions / notes</label>
                             <textarea
                               value={sel?.customText ?? ""}
                               onChange={e => setCustomText(li.id, e.target.value)}
@@ -323,24 +314,16 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
                             />
                           </div>
                         )}
-
                         {ingredientLines.length > 0 && (
                           <div>
-                            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1.5">
-                              Ingredients
-                            </p>
+                            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Ingredients</p>
                             <div className="space-y-1">
                               {ingredientLines.map(l => {
                                 const ingId = l.ingredientId!;
                                 const checked = sel?.ingredientIds.has(ingId) ?? true;
                                 return (
                                   <label key={ingId} className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => toggleIngredient(li.id, ingId)}
-                                      className="w-3.5 h-3.5 accent-emerald-600"
-                                    />
+                                    <input type="checkbox" checked={checked} onChange={() => toggleIngredient(li.id, ingId)} className="w-3.5 h-3.5 accent-emerald-600" />
                                     <span className="text-sm">{l.ingredientName ?? `Ingredient #${ingId}`}</span>
                                   </label>
                                 );
@@ -348,24 +331,16 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
                             </div>
                           </div>
                         )}
-
                         {preparationLines.length > 0 && (
                           <div>
-                            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1.5">
-                              Preparations
-                            </p>
+                            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Preparations</p>
                             <div className="space-y-1">
                               {preparationLines.map(l => {
                                 const prepId = l.preparationId!;
                                 const checked = sel?.preparationIds.has(prepId) ?? true;
                                 return (
                                   <label key={prepId} className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => togglePreparation(li.id, prepId)}
-                                      className="w-3.5 h-3.5 accent-emerald-600"
-                                    />
+                                    <input type="checkbox" checked={checked} onChange={() => togglePreparation(li.id, prepId)} className="w-3.5 h-3.5 accent-emerald-600" />
                                     <span className="text-sm">{l.preparationName ?? `Preparation #${prepId}`}</span>
                                   </label>
                                 );
@@ -380,9 +355,7 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
               })}
 
               {lineItems.length === 0 && (
-                <p className="text-sm text-muted-foreground italic text-center py-8">
-                  No line items on this inquiry.
-                </p>
+                <p className="text-sm text-muted-foreground italic text-center py-8">No line items on this inquiry.</p>
               )}
             </div>
           )}
@@ -392,16 +365,10 @@ export default function TaskListModal({ inquiryId, clientName, eventDate, lineIt
           {error ? (
             <p className="text-sm text-destructive flex-1">{error}</p>
           ) : (
-            <span className="text-xs text-muted-foreground flex-1">
-              AI translation may take a few seconds.
-            </span>
+            <span className="text-xs text-muted-foreground flex-1">AI translation may take a few seconds.</span>
           )}
           <div className="flex items-center gap-3 shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium rounded-xl border border-border hover:bg-muted transition-colors"
-            >
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-xl border border-border hover:bg-muted transition-colors">
               Cancel
             </button>
             <button

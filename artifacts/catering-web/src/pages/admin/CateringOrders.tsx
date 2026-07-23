@@ -2695,6 +2695,13 @@ function DetailPanel({
   );
 
   useEffect(() => {
+    if (!form.id) return;
+    fetch(`${BASE}/api/admin/catering/${form.id}/task-list/saved`, { headers: authHeaders() })
+      .then(r => { if (r.ok) setHasTaskListData(true); })
+      .catch(() => {});
+  }, [form.id]);
+
+  useEffect(() => {
     // Legacy migration: if a cart-source inquiry has orderItems but no lineItems
     // yet, prefill the quote editor from the cart so admins can edit/send.
     // New cart inquiries are seeded server-side (orders.ts) with full
@@ -3190,8 +3197,7 @@ function DetailPanel({
                 <button
                   type="button"
                   onClick={() => {
-                    const key = taskListDataKey(form.id as number);
-                    window.open(`${BASE}/admin/catering/${form.id}/task-list-print?key=${encodeURIComponent(key)}`, "_blank");
+                    window.open(`${BASE}/admin/catering/${form.id}/task-list-print`, "_blank");
                   }}
                   className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-xl border border-emerald-600 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
                 >

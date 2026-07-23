@@ -160,3 +160,12 @@ export const cateringInquiriesTable = pgTable("catering_inquiries", {
 });
 
 export type CateringInquiry = typeof cateringInquiriesTable.$inferSelect;
+
+export const cateringTaskListsTable = pgTable("catering_task_lists", {
+  id: serial("id").primaryKey(),
+  inquiryId: integer("inquiry_id").notNull().unique().references(() => cateringInquiriesTable.id, { onDelete: "cascade" }),
+  data: jsonb("data").notNull(),
+  selections: jsonb("selections"),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+});
+export type CateringTaskList = typeof cateringTaskListsTable.$inferSelect;
