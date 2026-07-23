@@ -60,7 +60,6 @@ export default function TaskListPrint() {
   const [error, setError] = useState("");
   const [data, setData] = useState<TaskList | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [showBuyList, setShowBuyList] = useState(true);
   const didLoad = useRef(false);
 
   useEffect(() => {
@@ -141,12 +140,6 @@ export default function TaskListPrint() {
           <p className="text-xs text-gray-600 dark:text-gray-400">{data.clientName}{data.eventDate ? ` — ${fmtDate(data.eventDate)}` : ""}</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <button
-            onClick={() => setShowBuyList(v => !v)}
-            className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showBuyList ? "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700" : "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 line-through hover:bg-gray-200 dark:hover:bg-gray-600"}`}
-          >
-            Buy List
-          </button>
           <button
             onClick={() => window.print()}
             className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-semibold rounded-lg hover:bg-gray-700 dark:hover:bg-gray-300 transition-colors text-xs"
@@ -367,44 +360,6 @@ export default function TaskListPrint() {
             </div>
           ))}
         </div>
-
-        {/* ── Buy List ─────────────────────────────────────────────── */}
-        {showBuyList && data.buyList.length > 0 && (
-          <div className="mt-6 pt-4 border-t-2 border-gray-900 dark:border-gray-100 print:border-gray-900 print:break-before-page">
-            <h2 className="text-sm font-black uppercase tracking-wide text-gray-900 dark:text-gray-100 print:text-gray-900 mb-1">
-              Buy List / Lista de Compras
-            </h2>
-            <div className="border border-gray-300 dark:border-gray-700 print:border-gray-300 rounded-md overflow-hidden">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-900 dark:bg-gray-700 print:bg-gray-900 text-white">
-                  <tr>
-                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-8">#</th>
-                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-1/2">Ingredient</th>
-                    <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wide w-1/2">Ingrediente</th>
-                    <th className="text-right px-3 py-1.5 font-bold uppercase tracking-wide">Qty</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700 print:divide-gray-200">
-                  {data.buyList.map((b, idx) => (
-                    <tr
-                      key={`${b.ingredientId}-${b.unit}`}
-                      className={idx % 2 === 0 ? "bg-white dark:bg-gray-900 print:bg-white" : "bg-gray-50 dark:bg-gray-800 print:bg-gray-50"}
-                    >
-                      <td className="px-3 py-1 text-gray-400 dark:text-gray-500 print:text-gray-400 font-mono">{idx + 1}</td>
-                      <td className="px-3 py-1 font-semibold text-gray-900 dark:text-gray-100 print:text-gray-900">{b.name}</td>
-                      <td className="px-3 py-1 text-gray-500 dark:text-gray-400 print:text-gray-500 italic">
-                        {b.nameEs && b.nameEs !== b.name ? b.nameEs : ""}
-                      </td>
-                      <td className="px-3 py-1 text-right font-mono font-bold text-gray-900 dark:text-gray-100 print:text-gray-900">
-                        {fmtQty(b.totalQuantity)} <span className="font-normal text-gray-500 dark:text-gray-400 print:text-gray-500">{b.unit}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
 
         {/* ── Footer ────────────────────────────────────────────────────────── */}
         <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 print:border-gray-200 text-xs text-gray-400 dark:text-gray-500 print:text-gray-400 flex justify-between">
