@@ -42,9 +42,9 @@ function fmtDate(d: string | null): string {
 function BilingualText({ en, es, big }: { en: string; es: string | null; big?: boolean }) {
   return (
     <div>
-      <span className={big ? "font-bold text-base" : "font-semibold"}>{en}</span>
+      <span className={big ? "font-bold text-base text-gray-900 dark:text-gray-100 print:text-gray-900" : "font-semibold text-gray-900 dark:text-gray-100 print:text-gray-900"}>{en}</span>
       {es && es !== en && (
-        <span className={big ? "block text-sm font-normal text-gray-600 italic" : "ml-2 text-xs text-gray-500 italic"}>
+        <span className={big ? "block text-sm font-normal text-gray-500 dark:text-gray-400 italic print:text-gray-600" : "ml-2 text-xs text-gray-500 dark:text-gray-400 italic print:text-gray-500"}>
           {es}
         </span>
       )}
@@ -94,12 +94,12 @@ export default function TaskListPrint() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950">
         <div className="text-center max-w-sm">
           <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-          <p className="font-bold text-gray-800 mb-1">Could not load task list</p>
-          <p className="text-gray-600 text-sm">{error || "Unknown error"}</p>
-          <p className="text-gray-400 text-xs mt-3">
+          <p className="font-bold text-gray-800 dark:text-gray-100 mb-1">Could not load task list</p>
+          <p className="text-gray-600 dark:text-gray-400 text-sm">{error || "Unknown error"}</p>
+          <p className="text-gray-400 dark:text-gray-500 text-xs mt-3">
             Open the task list again from the catering inquiry to generate a fresh copy.
           </p>
         </div>
@@ -110,15 +110,15 @@ export default function TaskListPrint() {
   return (
     <>
       {/* ── Screen controls (hidden on print) ───────────────────────────── */}
-      <div className="print:hidden bg-gray-50 border-b border-gray-200 px-6 py-4 sticky top-0 z-10 flex items-center gap-4">
+      <div className="print:hidden bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 sticky top-0 z-10 flex items-center gap-4">
         <div>
-          <h1 className="font-bold text-gray-900">Task &amp; Buy List</h1>
-          <p className="text-sm text-gray-600">{data.clientName} {data.eventDate ? `— ${fmtDate(data.eventDate)}` : ""}</p>
+          <h1 className="font-bold text-gray-900 dark:text-gray-100">Task &amp; Buy List</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{data.clientName} {data.eventDate ? `— ${fmtDate(data.eventDate)}` : ""}</p>
         </div>
         <div className="ml-auto">
           <button
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white font-semibold rounded-lg hover:bg-gray-700 transition-colors text-sm"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-semibold rounded-lg hover:bg-gray-700 dark:hover:bg-gray-300 transition-colors text-sm"
           >
             <Printer className="w-4 h-4" /> Print
           </button>
@@ -126,56 +126,58 @@ export default function TaskListPrint() {
       </div>
 
       {/* ── Printable document ───────────────────────────────────────────── */}
-      <div className="print-document bg-white p-8 print:p-0 max-w-4xl mx-auto">
+      <div className="print-document bg-white dark:bg-gray-950 print:bg-white p-8 print:p-0 max-w-4xl mx-auto">
 
         {/* Header */}
-        <div className="mb-8 pb-4 border-b-2 border-gray-900">
+        <div className="mb-8 pb-4 border-b-2 border-gray-900 dark:border-gray-100 print:border-gray-900">
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-gray-900 uppercase">
+              <h1 className="text-2xl font-black tracking-tight text-gray-900 dark:text-gray-100 print:text-gray-900 uppercase">
                 Task List / Lista de Tareas
               </h1>
-              <p className="text-gray-600 mt-0.5">Hollywood East Cafe Catering</p>
+              <p className="text-gray-600 dark:text-gray-400 print:text-gray-600 mt-0.5">Hollywood East Cafe Catering</p>
             </div>
             <div className="text-right text-sm">
-              <p className="font-bold text-gray-900">{data.clientName}</p>
-              {data.eventDate && <p className="text-gray-600">{fmtDate(data.eventDate)}</p>}
-              <p className="text-gray-400 text-xs mt-1">Printed: {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+              <p className="font-bold text-gray-900 dark:text-gray-100 print:text-gray-900">{data.clientName}</p>
+              {data.eventDate && <p className="text-gray-600 dark:text-gray-400 print:text-gray-600">{fmtDate(data.eventDate)}</p>}
+              <p className="text-gray-400 dark:text-gray-500 print:text-gray-400 text-xs mt-1">
+                Printed: {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </p>
             </div>
           </div>
         </div>
 
         {/* ── Page 1: Task List ─────────────────────────────────────────── */}
-        <h2 className="text-lg font-black uppercase tracking-wide text-gray-900 mb-4">
+        <h2 className="text-lg font-black uppercase tracking-wide text-gray-900 dark:text-gray-100 print:text-gray-900 mb-4">
           Task List / Lista de Tareas
         </h2>
 
         {data.taskItems.length === 0 && (
-          <p className="text-gray-500 italic text-sm">No items selected.</p>
+          <p className="text-gray-500 dark:text-gray-400 italic text-sm">No items selected.</p>
         )}
 
         <div className="space-y-6">
           {data.taskItems.map((ti, tiIdx) => (
-            <div key={ti.lineItemId} className="border border-gray-300 rounded-lg overflow-hidden">
+            <div key={ti.lineItemId} className="border border-gray-300 dark:border-gray-700 print:border-gray-300 rounded-lg overflow-hidden">
               {/* Item header */}
               <div
-                className="bg-gray-100 px-4 py-2.5 flex items-start justify-between cursor-pointer print:cursor-default print:bg-gray-900 print:text-white gap-2"
+                className="bg-gray-100 dark:bg-gray-800 print:bg-gray-900 px-4 py-2.5 flex items-start justify-between cursor-pointer print:cursor-default gap-2"
                 onClick={() => toggleItem(ti.lineItemId)}
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="print:hidden text-gray-400">
+                    <span className="print:hidden text-gray-400 dark:text-gray-500">
                       {expandedItems.has(ti.lineItemId) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </span>
-                    <span className="font-black text-sm uppercase tracking-wide print:text-white">
+                    <span className="font-black text-sm uppercase tracking-wide text-gray-900 dark:text-gray-100 print:text-white">
                       {tiIdx + 1}. {ti.name}
                       {ti.nameEs && ti.nameEs !== ti.name && (
-                        <span className="ml-2 font-normal normal-case text-gray-400 print:text-gray-300 italic text-xs">{ti.nameEs}</span>
+                        <span className="ml-2 font-normal normal-case text-gray-500 dark:text-gray-400 print:text-gray-300 italic text-xs">{ti.nameEs}</span>
                       )}
                     </span>
                   </div>
                 </div>
-                <div className="text-right text-sm font-bold print:text-white shrink-0">
+                <div className="text-right text-sm font-bold text-gray-900 dark:text-gray-100 print:text-white shrink-0">
                   {ti.quantity}×{ti.sizeLabel ? ` ${ti.sizeLabel}` : ""}
                   {ti.sizeServings && ti.sizeServings > 1 && !ti.sizeLabel && ` (${ti.sizeServings} serv.)`}
                 </div>
@@ -186,38 +188,46 @@ export default function TaskListPrint() {
                 {!ti.hasRecipe ? (
                   <div className="px-4 py-3">
                     {(ti.customText ?? "").trim() ? (
-                      <div className="text-sm whitespace-pre-wrap">{ti.customText}</div>
+                      <div className="text-sm whitespace-pre-wrap text-gray-800 dark:text-gray-200 print:text-gray-800">{ti.customText}</div>
                     ) : (
-                      <p className="text-gray-400 italic text-xs print:text-gray-600">No recipe — Sin receta</p>
+                      <p className="text-gray-400 dark:text-gray-500 print:text-gray-600 italic text-xs">No recipe — Sin receta</p>
                     )}
                   </div>
                 ) : (
                   <div className="px-4 py-3 space-y-4">
                     {/* Preparations */}
                     {ti.recipePreparations.map(rp => (
-                      <div key={rp.preparationId} className="border border-indigo-200 rounded-lg overflow-hidden">
-                        <div className="bg-indigo-50 px-3 py-2 flex justify-between items-center">
+                      <div key={rp.preparationId} className="border border-indigo-200 dark:border-indigo-800 print:border-indigo-200 rounded-lg overflow-hidden">
+                        <div className="bg-indigo-50 dark:bg-indigo-950 print:bg-indigo-50 px-3 py-2 flex justify-between items-center">
                           <BilingualText en={rp.name} es={rp.nameEs} big />
-                          <span className="text-sm font-bold text-indigo-700">{fmtQty(rp.scaledQuantity)} {rp.unit}</span>
+                          <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300 print:text-indigo-700">
+                            {fmtQty(rp.scaledQuantity)} {rp.unit}
+                          </span>
                         </div>
-                        <div className="px-3 py-2 space-y-3">
+                        <div className="px-3 py-2 space-y-3 bg-white dark:bg-gray-900 print:bg-white">
                           {rp.ingredientLines.length > 0 && (
                             <div>
-                              <p className="text-xs font-bold uppercase text-gray-500 mb-1.5">Ingredients / Ingredientes</p>
+                              <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400 print:text-gray-500 mb-1.5">
+                                Ingredients / Ingredientes
+                              </p>
                               <div className="space-y-1">
                                 {rp.ingredientLines.map((ing, iIdx) => (
                                   <div key={`${ing.ingredientId}-${iIdx}`} className="text-sm">
                                     <div className="flex justify-between items-baseline gap-2">
                                       <BilingualText en={ing.name} es={ing.nameEs} />
-                                      <span className="font-mono text-xs shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
+                                      <span className="font-mono text-xs shrink-0 text-gray-700 dark:text-gray-300 print:text-gray-700">
+                                        {fmtQty(ing.scaledQuantity)} {ing.unit}
+                                      </span>
                                     </div>
                                     {ing.processSteps.length > 0 && (
                                       <ol className="ml-4 mt-0.5 space-y-0.5">
                                         {ing.processSteps.map((s, si) => (
-                                          <li key={s.id} className="text-xs text-gray-600">
-                                            <span className="font-mono text-gray-400 mr-1">{si + 1}.</span>
+                                          <li key={s.id} className="text-xs text-gray-600 dark:text-gray-400 print:text-gray-600">
+                                            <span className="font-mono text-gray-400 dark:text-gray-500 print:text-gray-400 mr-1">{si + 1}.</span>
                                             {s.description}
-                                            {s.descriptionEs && <span className="ml-1 italic text-gray-400"> / {s.descriptionEs}</span>}
+                                            {s.descriptionEs && (
+                                              <span className="ml-1 italic text-gray-400 dark:text-gray-500 print:text-gray-400"> / {s.descriptionEs}</span>
+                                            )}
                                           </li>
                                         ))}
                                       </ol>
@@ -229,14 +239,18 @@ export default function TaskListPrint() {
                           )}
                           {rp.processSteps.length > 0 && (
                             <div>
-                              <p className="text-xs font-bold uppercase text-gray-500 mb-1.5">Process / Proceso</p>
+                              <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400 print:text-gray-500 mb-1.5">
+                                Process / Proceso
+                              </p>
                               <ol className="space-y-1">
                                 {rp.processSteps.map((s, si) => (
-                                  <li key={s.id} className="text-sm flex gap-2">
-                                    <span className="text-xs font-mono text-gray-400 mt-0.5 shrink-0">{si + 1}.</span>
+                                  <li key={s.id} className="text-sm flex gap-2 text-gray-800 dark:text-gray-200 print:text-gray-800">
+                                    <span className="text-xs font-mono text-gray-400 dark:text-gray-500 print:text-gray-400 mt-0.5 shrink-0">{si + 1}.</span>
                                     <div>
                                       {s.description}
-                                      {s.descriptionEs && <span className="block text-xs italic text-gray-500">{s.descriptionEs}</span>}
+                                      {s.descriptionEs && (
+                                        <span className="block text-xs italic text-gray-500 dark:text-gray-400 print:text-gray-500">{s.descriptionEs}</span>
+                                      )}
                                     </div>
                                   </li>
                                 ))}
@@ -250,21 +264,27 @@ export default function TaskListPrint() {
                     {/* Direct ingredients */}
                     {ti.recipeIngredients.length > 0 && (
                       <div>
-                        <p className="text-xs font-bold uppercase text-gray-500 mb-1.5">Ingredients / Ingredientes</p>
+                        <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400 print:text-gray-500 mb-1.5">
+                          Ingredients / Ingredientes
+                        </p>
                         <div className="space-y-2">
                           {ti.recipeIngredients.map((ing, iIdx) => (
                             <div key={`${ing.ingredientId}-${iIdx}`} className="text-sm">
                               <div className="flex justify-between items-baseline gap-2">
                                 <BilingualText en={ing.name} es={ing.nameEs} />
-                                <span className="font-mono text-xs shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
+                                <span className="font-mono text-xs shrink-0 text-gray-700 dark:text-gray-300 print:text-gray-700">
+                                  {fmtQty(ing.scaledQuantity)} {ing.unit}
+                                </span>
                               </div>
                               {ing.processSteps.length > 0 && (
                                 <ol className="ml-4 mt-0.5 space-y-0.5">
                                   {ing.processSteps.map((s, si) => (
-                                    <li key={s.id} className="text-xs text-gray-600">
-                                      <span className="font-mono text-gray-400 mr-1">{si + 1}.</span>
+                                    <li key={s.id} className="text-xs text-gray-600 dark:text-gray-400 print:text-gray-600">
+                                      <span className="font-mono text-gray-400 dark:text-gray-500 print:text-gray-400 mr-1">{si + 1}.</span>
                                       {s.description}
-                                      {s.descriptionEs && <span className="ml-1 italic text-gray-400"> / {s.descriptionEs}</span>}
+                                      {s.descriptionEs && (
+                                        <span className="ml-1 italic text-gray-400 dark:text-gray-500 print:text-gray-400"> / {s.descriptionEs}</span>
+                                      )}
                                     </li>
                                   ))}
                                 </ol>
@@ -276,7 +296,7 @@ export default function TaskListPrint() {
                     )}
 
                     {ti.recipePreparations.length === 0 && ti.recipeIngredients.length === 0 && (
-                      <p className="text-xs text-gray-400 italic">Recipe has no ingredient lines.</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 print:text-gray-400 italic">Recipe has no ingredient lines.</p>
                     )}
                   </div>
                 )}
@@ -287,32 +307,40 @@ export default function TaskListPrint() {
 
         {/* ── Page 2: Buy List ─────────────────────────────────────────────── */}
         {data.buyList.length > 0 && (
-          <div className="mt-10 pt-8 border-t-2 border-gray-900 print:break-before-page">
-            <h2 className="text-lg font-black uppercase tracking-wide text-gray-900 mb-1">
+          <div className="mt-10 pt-8 border-t-2 border-gray-900 dark:border-gray-100 print:border-gray-900 print:break-before-page">
+            <h2 className="text-lg font-black uppercase tracking-wide text-gray-900 dark:text-gray-100 print:text-gray-900 mb-1">
               Buy List / Lista de Compras
             </h2>
-            <p className="text-xs text-gray-500 mb-5">Consolidated shopping list for all selected items with recipes</p>
-            <div className="border border-gray-300 rounded-lg overflow-hidden">
+            <p className="text-xs text-gray-500 dark:text-gray-400 print:text-gray-500 mb-5">
+              Consolidated shopping list for all selected items with recipes
+            </p>
+            <div className="border border-gray-300 dark:border-gray-700 print:border-gray-300 rounded-lg overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-900 text-white">
+                <thead className="bg-gray-900 dark:bg-gray-700 print:bg-gray-900 text-white">
                   <tr>
                     <th className="text-left px-4 py-2 font-bold uppercase text-xs tracking-wide">#</th>
                     <th className="text-left px-4 py-2 font-bold uppercase text-xs tracking-wide">Ingredient / Ingrediente</th>
                     <th className="text-right px-4 py-2 font-bold uppercase text-xs tracking-wide">Quantity / Cantidad</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700 print:divide-gray-200">
                   {data.buyList.map((b, idx) => (
-                    <tr key={`${b.ingredientId}-${b.unit}`} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="px-4 py-2.5 text-gray-400 text-xs font-mono">{idx + 1}</td>
+                    <tr
+                      key={`${b.ingredientId}-${b.unit}`}
+                      className={idx % 2 === 0
+                        ? "bg-white dark:bg-gray-900 print:bg-white"
+                        : "bg-gray-50 dark:bg-gray-800 print:bg-gray-50"
+                      }
+                    >
+                      <td className="px-4 py-2.5 text-gray-400 dark:text-gray-500 print:text-gray-400 text-xs font-mono">{idx + 1}</td>
                       <td className="px-4 py-2.5">
-                        <span className="font-semibold">{b.name}</span>
+                        <span className="font-semibold text-gray-900 dark:text-gray-100 print:text-gray-900">{b.name}</span>
                         {b.nameEs && b.nameEs !== b.name && (
-                          <span className="ml-2 text-xs text-gray-400 italic">{b.nameEs}</span>
+                          <span className="ml-2 text-xs text-gray-400 dark:text-gray-500 print:text-gray-400 italic">{b.nameEs}</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono font-bold">
-                        {fmtQty(b.totalQuantity)} <span className="font-normal text-gray-500">{b.unit}</span>
+                      <td className="px-4 py-2.5 text-right font-mono font-bold text-gray-900 dark:text-gray-100 print:text-gray-900">
+                        {fmtQty(b.totalQuantity)} <span className="font-normal text-gray-500 dark:text-gray-400 print:text-gray-500">{b.unit}</span>
                       </td>
                     </tr>
                   ))}
@@ -323,7 +351,7 @@ export default function TaskListPrint() {
         )}
 
         {/* ── Footer ────────────────────────────────────────────────────────── */}
-        <div className="mt-8 pt-4 border-t border-gray-200 text-xs text-gray-400 flex justify-between">
+        <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700 print:border-gray-200 text-xs text-gray-400 dark:text-gray-500 print:text-gray-400 flex justify-between">
           <span>Hollywood East Cafe Catering — Confidential</span>
           <span>Inquiry #{data.inquiryId}</span>
         </div>
@@ -337,12 +365,6 @@ export default function TaskListPrint() {
           .print\\:hidden { display: none !important; }
           .print\\:block { display: block !important; }
           .hidden { display: none !important; }
-          .print\\:bg-gray-900 { background-color: #111827 !important; color: white !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-          .print\\:text-white { color: white !important; }
-          .print\\:text-gray-300 { color: #d1d5db !important; }
-          .print\\:cursor-default { cursor: default; }
-          .bg-indigo-50 { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-          .bg-gray-50 { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
