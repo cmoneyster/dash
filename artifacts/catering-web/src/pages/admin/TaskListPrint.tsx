@@ -73,6 +73,7 @@ export default function TaskListPrint() {
   const [error, setError] = useState("");
   const [data, setData] = useState<TaskList | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [showBuyList, setShowBuyList] = useState(true);
   const didLoad = useRef(false);
 
   useEffect(() => {
@@ -152,7 +153,13 @@ export default function TaskListPrint() {
           <h1 className="font-bold text-gray-900 dark:text-gray-100">Task &amp; Buy List</h1>
           <p className="text-sm text-gray-600 dark:text-gray-400">{data.clientName} {data.eventDate ? `— ${fmtDate(data.eventDate)}` : ""}</p>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={() => setShowBuyList(v => !v)}
+            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border transition-colors ${showBuyList ? "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700" : "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 line-through hover:bg-gray-200 dark:hover:bg-gray-600"}`}
+          >
+            Buy List
+          </button>
           <button
             onClick={() => window.print()}
             className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-semibold rounded-lg hover:bg-gray-700 dark:hover:bg-gray-300 transition-colors text-sm"
@@ -302,7 +309,7 @@ export default function TaskListPrint() {
         </div>
 
         {/* ── Page 2: Buy List ─────────────────────────────────────────────── */}
-        {data.buyList.length > 0 && (
+        {showBuyList && data.buyList.length > 0 && (
           <div className="mt-10 pt-8 border-t-2 border-gray-900 dark:border-gray-100 print:border-gray-900 print:break-before-page">
             <h2 className="text-lg font-black uppercase tracking-wide text-gray-900 dark:text-gray-100 print:text-gray-900 mb-1">
               Buy List / Lista de Compras
