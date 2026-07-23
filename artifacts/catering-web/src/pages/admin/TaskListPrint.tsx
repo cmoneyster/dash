@@ -26,6 +26,7 @@ type TaskItem = {
   quantity: number; sizeLabel: string | null; sizeServings: number | null;
   hasRecipe: boolean;
   customText: string | null;
+  customTextEs: string | null;
   recipeIngredients: TaskIngredient[];
   recipePreparations: TaskPrep[];
 };
@@ -222,7 +223,12 @@ export default function TaskListPrint() {
                 {!ti.hasRecipe ? (
                   <div className="px-4 py-3 bg-white dark:bg-gray-900 print:bg-white">
                     {(ti.customText ?? "").trim() ? (
-                      <div className="text-sm whitespace-pre-wrap text-gray-800 dark:text-gray-200 print:text-gray-800">{ti.customText}</div>
+                      <div>
+                        <div className="text-sm whitespace-pre-wrap text-gray-800 dark:text-gray-200 print:text-gray-800">{ti.customText}</div>
+                        {ti.customTextEs && ti.customTextEs !== ti.customText && (
+                          <div className="text-sm whitespace-pre-wrap text-gray-500 dark:text-gray-400 print:text-gray-500 italic mt-1">{ti.customTextEs}</div>
+                        )}
+                      </div>
                     ) : (
                       <p className="text-gray-400 dark:text-gray-500 print:text-gray-600 italic text-xs">No recipe — Sin receta</p>
                     )}
@@ -238,32 +244,6 @@ export default function TaskListPrint() {
                           </span>
                         </div>
                         <div className="px-3 py-2 space-y-3 bg-white dark:bg-gray-900 print:bg-white">
-                          {rp.ingredientLines.length > 0 && (
-                            <div>
-                              <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400 print:text-gray-500 mb-1.5">Ingredients / Ingredientes</p>
-                              <div className="space-y-1">
-                                {rp.ingredientLines.map((ing, iIdx) => (
-                                  <div key={`${ing.ingredientId}-${iIdx}`} className="text-sm">
-                                    <div className="flex justify-between items-baseline gap-2">
-                                      <BilingualText en={ing.name} es={ing.nameEs} />
-                                      <span className="font-mono text-xs shrink-0 text-gray-700 dark:text-gray-300 print:text-gray-700">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
-                                    </div>
-                                    {ing.processSteps.length > 0 && (
-                                      <ol className="ml-4 mt-0.5 space-y-0.5">
-                                        {ing.processSteps.map((s, si) => (
-                                          <li key={s.id} className="text-xs text-gray-600 dark:text-gray-400 print:text-gray-600">
-                                            <span className="font-mono text-gray-400 dark:text-gray-500 print:text-gray-400 mr-1">{si + 1}.</span>
-                                            {s.description}
-                                            {s.descriptionEs && <span className="ml-1 italic text-gray-400 dark:text-gray-500 print:text-gray-400"> / {s.descriptionEs}</span>}
-                                          </li>
-                                        ))}
-                                      </ol>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
                           {rp.processSteps.length > 0 && (
                             <div>
                               <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400 print:text-gray-500 mb-1.5">Process / Proceso</p>

@@ -1803,6 +1803,7 @@ router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => 
     const toTranslate = new Set<string>();
     for (const ti of taskItems) {
       toTranslate.add(ti.name);
+      if (ti.customText?.trim()) toTranslate.add(ti.customText.trim());
       for (const ri of ti.recipeIngredients) {
         toTranslate.add(ri.name);
         for (const s of ri.processSteps) { if (!s.descriptionEs) toTranslate.add(s.description); }
@@ -1810,10 +1811,6 @@ router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => 
       for (const rp of ti.recipePreparations) {
         toTranslate.add(rp.name);
         for (const s of rp.processSteps) { if (!s.descriptionEs) toTranslate.add(s.description); }
-        for (const ing of rp.ingredientLines) {
-          toTranslate.add(ing.name);
-          for (const s of ing.processSteps) { if (!s.descriptionEs) toTranslate.add(s.description); }
-        }
       }
     }
     for (const b of buyList) toTranslate.add(b.name);
@@ -1850,6 +1847,7 @@ router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => 
       taskItems: taskItems.map(ti => ({
         ...ti,
         nameEs: tr(ti.name),
+        customTextEs: ti.customText?.trim() ? tr(ti.customText.trim()) : null,
         recipeIngredients: ti.recipeIngredients.map(ri => ({
           ...ri, nameEs: tr(ri.name),
           processSteps: ri.processSteps.map(s => ({ ...s, descriptionEs: s.descriptionEs ?? tr(s.description) })),
@@ -1857,10 +1855,7 @@ router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => 
         recipePreparations: ti.recipePreparations.map(rp => ({
           ...rp, nameEs: tr(rp.name),
           processSteps: rp.processSteps.map(s => ({ ...s, descriptionEs: s.descriptionEs ?? tr(s.description) })),
-          ingredientLines: rp.ingredientLines.map(ing => ({
-            ...ing, nameEs: tr(ing.name),
-            processSteps: ing.processSteps.map(s => ({ ...s, descriptionEs: s.descriptionEs ?? tr(s.description) })),
-          })),
+          ingredientLines: [],
         })),
       })),
       buyList: buyList.map(b => ({ ...b, nameEs: tr(b.name) })),
