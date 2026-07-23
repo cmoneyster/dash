@@ -1620,8 +1620,17 @@ type TaskItem = {
   lineItemId: string; menuItemId: number | null; name: string; nameEs: string | null;
   quantity: number; sizeLabel: string | null; sizeServings: number | null;
   hasRecipe: boolean;
+  customText: string | null;
   recipeIngredients: TaskIngredient[];
   recipePreparations: TaskPrep[];
+};
+
+type SelectionInput = {
+  lineItemId: string;
+  include?: boolean;
+  ingredientIds?: number[];
+  preparationIds?: number[];
+  customText?: string;
 };
 
 router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => {
@@ -1629,6 +1638,12 @@ router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => 
     const inqId = parseInt(req.params.id);
     const [inq] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, inqId));
     if (!inq) { res.status(404).json({ error: "Inquiry not found" }); return; }
+
+    const { selections: selectionsBody } = req.body as { selections?: SelectionInput[] };
+    const selMap = new Map<string, SelectionInput>();
+    if (Array.isArray(selectionsBody)) {
+      for (const s of selectionsBody) selMap.set(s.lineItemId, s);
+    }
 
     const lineItems = (inq.lineItems as Array<{
       id: string; menuItemId: number | null; name: string; quantity: number;
@@ -1665,12 +1680,15 @@ router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => 
     }
 
     for (const li of lineItems) {
+      const sel = selMap.get(li.id);
+      if (sel?.include === false) continue;
+
       const menuItemId = li.menuItemId ?? null;
       const lineQty = Number(li.quantity) || 1;
       const sizeServings = Number(li.sizeServings) || 1;
 
       if (!menuItemId) {
-        taskItems.push({ lineItemId: li.id, menuItemId: null, name: li.name, nameEs: null, quantity: lineQty, sizeLabel: li.sizeLabel ?? null, sizeServings: li.sizeServings ?? null, hasRecipe: false, recipeIngredients: [], recipePreparations: [] });
+        taskItems.push({ lineItemId: li.id, menuItemId: null, name: li.name, nameEs: null, quantity: lineQty, sizeLabel: li.sizeLabel ?? null, sizeServings: li.sizeServings ?? null, hasRecipe: false, customText: sel?.customText ?? null, recipeIngredients: [], recipePreparations: [] });
         continue;
       }
 
@@ -1688,7 +1706,7 @@ router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => 
       }
 
       if (!recipe) {
-        taskItems.push({ lineItemId: li.id, menuItemId, name: li.name, nameEs: null, quantity: lineQty, sizeLabel: li.sizeLabel ?? null, sizeServings: li.sizeServings ?? null, hasRecipe: false, recipeIngredients: [], recipePreparations: [] });
+        taskItems.push({ lineItemId: li.id, menuItemId, name: li.name, nameEs: null, quantity: lineQty, sizeLabel: li.sizeLabel ?? null, sizeServings: li.sizeServings ?? null, hasRecipe: false, customText: sel?.customText ?? null, recipeIngredients: [], recipePreparations: [] });
         continue;
       }
 
@@ -1718,11 +1736,13 @@ router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => 
         const scaledQty = round4(parseFloat(rl.quantityPerYield) * scaleFactor);
 
         if (rl.ingredientId != null) {
+          if (sel?.ingredientIds && !sel.ingredientIds.includes(rl.ingredientId)) continue;
           const unit = rl.recipeUnit ?? rl.ingredientUnit ?? "";
           const steps = await loadIngSteps(rl.ingredientId);
           recipeIngredients.push({ ingredientId: rl.ingredientId, name: rl.ingredientName ?? "", nameEs: null, scaledQuantity: scaledQty, unit, processSteps: steps });
           addToBuy(rl.ingredientId, rl.ingredientName ?? "", scaledQty, unit);
         } else if (rl.preparationId != null) {
+          if (sel?.preparationIds && !sel.preparationIds.includes(rl.preparationId)) continue;
           const [prepRow] = await db.select().from(preparationsTable).where(eq(preparationsTable.id, rl.preparationId));
           if (!prepRow) continue;
           const prepUnit = rl.recipeUnit ?? prepRow.yieldUnit;
@@ -1759,7 +1779,7 @@ router.post("/admin/catering/:id/task-list", async (req, res): Promise<void> => 
         }
       }
 
-      taskItems.push({ lineItemId: li.id, menuItemId, name: li.name, nameEs: null, quantity: lineQty, sizeLabel: li.sizeLabel ?? null, sizeServings: li.sizeServings ?? null, hasRecipe: true, recipeIngredients, recipePreparations });
+      taskItems.push({ lineItemId: li.id, menuItemId, name: li.name, nameEs: null, quantity: lineQty, sizeLabel: li.sizeLabel ?? null, sizeServings: li.sizeServings ?? null, hasRecipe: true, customText: null, recipeIngredients, recipePreparations });
     }
 
     const buyList = Array.from(buyAgg.values())

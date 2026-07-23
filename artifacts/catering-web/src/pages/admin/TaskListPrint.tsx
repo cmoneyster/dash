@@ -1,14 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "wouter";
-import { getAdminToken } from "@/components/AdminGuard";
-import { Loader2, Printer, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-function authHeaders() {
-  const token = getAdminToken();
-  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-}
+import { Printer, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 
 type ProcessStep = { id: number; stepOrder: number; description: string; descriptionEs: string | null };
 type TaskIngredient = {
@@ -25,6 +17,7 @@ type TaskItem = {
   lineItemId: string; menuItemId: number | null; name: string; nameEs: string | null;
   quantity: number; sizeLabel: string | null; sizeServings: number | null;
   hasRecipe: boolean;
+  customText: string | null;
   recipeIngredients: TaskIngredient[];
   recipePreparations: TaskPrep[];
 };
@@ -63,58 +56,40 @@ export default function TaskListPrint() {
   const params = useParams<{ id: string }>();
   const id = params.id;
 
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState<TaskList | null>(null);
-  const [customNotes, setCustomNotes] = useState<Record<string, string>>({});
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const didLoad = useRef(false);
 
   useEffect(() => {
     if (didLoad.current) return;
     didLoad.current = true;
-    setLoading(true);
-    fetch(`${BASE}/api/admin/catering/${id}/task-list`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({}),
-    })
-      .then(async r => {
-        if (!r.ok) {
-          const d = await r.json().catch(() => ({}));
-          throw new Error((d as any).error ?? `HTTP ${r.status}`);
-        }
-        return r.json();
-      })
-      .then((d: TaskList) => {
-        setData(d);
-        setExpandedItems(new Set(d.taskItems.map(ti => ti.lineItemId)));
-      })
-      .catch(err => setError(err instanceof Error ? err.message : "Failed to load task list"))
-      .finally(() => setLoading(false));
+
+    const key = new URLSearchParams(window.location.search).get("key");
+    if (!key) {
+      setError("No task list key provided. Please generate the task list from the catering inquiry.");
+      return;
+    }
+    const stored = localStorage.getItem(key);
+    if (!stored) {
+      setError("Task list data not found or has expired. Please generate a new task list from the catering inquiry.");
+      return;
+    }
+    try {
+      const d = JSON.parse(stored) as TaskList;
+      setData(d);
+      setExpandedItems(new Set(d.taskItems.map(ti => ti.lineItemId)));
+    } catch {
+      setError("Failed to parse task list data. Please try again.");
+    }
   }, [id]);
 
-  function toggleItem(id: string) {
+  function toggleItem(liId: string) {
     setExpandedItems(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(liId)) next.delete(liId); else next.add(liId);
       return next;
     });
-  }
-
-  const noRecipeItems = data?.taskItems.filter(ti => !ti.hasRecipe) ?? [];
-  const recipeItems = data?.taskItems.filter(ti => ti.hasRecipe) ?? [];
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-gray-400 mx-auto mb-3" />
-          <p className="text-gray-600 font-medium">Generating task list…</p>
-          <p className="text-gray-400 text-sm mt-1">Translating with AI — this may take a few seconds</p>
-        </div>
-      </div>
-    );
   }
 
   if (error || !data) {
@@ -124,6 +99,9 @@ export default function TaskListPrint() {
           <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
           <p className="font-bold text-gray-800 mb-1">Could not load task list</p>
           <p className="text-gray-600 text-sm">{error || "Unknown error"}</p>
+          <p className="text-gray-400 text-xs mt-3">
+            Open the task list again from the catering inquiry to generate a fresh copy.
+          </p>
         </div>
       </div>
     );
@@ -137,8 +115,7 @@ export default function TaskListPrint() {
           <h1 className="font-bold text-gray-900">Task &amp; Buy List</h1>
           <p className="text-sm text-gray-600">{data.clientName} {data.eventDate ? `— ${fmtDate(data.eventDate)}` : ""}</p>
         </div>
-        <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-gray-500">Add notes for items below, then print</span>
+        <div className="ml-auto">
           <button
             onClick={() => window.print()}
             className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white font-semibold rounded-lg hover:bg-gray-700 transition-colors text-sm"
@@ -147,29 +124,6 @@ export default function TaskListPrint() {
           </button>
         </div>
       </div>
-
-      {/* ── Custom notes form (screen only) ─────────────────────────────── */}
-      {noRecipeItems.length > 0 && (
-        <div className="print:hidden bg-amber-50 border-b border-amber-200 px-6 py-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-amber-700 mb-3">Items without a recipe — add custom notes</p>
-          <div className="space-y-2">
-            {noRecipeItems.map(ti => (
-              <div key={ti.lineItemId}>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  {ti.quantity}× {ti.name}{ti.sizeLabel ? ` (${ti.sizeLabel})` : ""}
-                </label>
-                <textarea
-                  value={customNotes[ti.lineItemId] ?? ""}
-                  onChange={e => setCustomNotes(prev => ({ ...prev, [ti.lineItemId]: e.target.value }))}
-                  placeholder="Add preparation notes, instructions, or tasks for this item…"
-                  rows={2}
-                  className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white resize-none focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── Printable document ───────────────────────────────────────────── */}
       <div className="print-document bg-white p-8 print:p-0 max-w-4xl mx-auto">
@@ -197,7 +151,7 @@ export default function TaskListPrint() {
         </h2>
 
         {data.taskItems.length === 0 && (
-          <p className="text-gray-500 italic text-sm">No line items on this inquiry.</p>
+          <p className="text-gray-500 italic text-sm">No items selected.</p>
         )}
 
         <div className="space-y-6">
@@ -230,12 +184,11 @@ export default function TaskListPrint() {
               {/* Item body */}
               <div className={expandedItems.has(ti.lineItemId) ? "block" : "hidden print:block"}>
                 {!ti.hasRecipe ? (
-                  /* No-recipe item */
                   <div className="px-4 py-3">
-                    {(customNotes[ti.lineItemId] ?? "").trim() ? (
-                      <div className="text-sm whitespace-pre-wrap">{customNotes[ti.lineItemId]}</div>
+                    {(ti.customText ?? "").trim() ? (
+                      <div className="text-sm whitespace-pre-wrap">{ti.customText}</div>
                     ) : (
-                      <p className="text-gray-400 italic text-xs print:text-gray-600">No recipe — see notes above / Sin receta</p>
+                      <p className="text-gray-400 italic text-xs print:text-gray-600">No recipe — Sin receta</p>
                     )}
                   </div>
                 ) : (
@@ -248,7 +201,6 @@ export default function TaskListPrint() {
                           <span className="text-sm font-bold text-indigo-700">{fmtQty(rp.scaledQuantity)} {rp.unit}</span>
                         </div>
                         <div className="px-3 py-2 space-y-3">
-                          {/* Prep ingredients */}
                           {rp.ingredientLines.length > 0 && (
                             <div>
                               <p className="text-xs font-bold uppercase text-gray-500 mb-1.5">Ingredients / Ingredientes</p>
@@ -275,7 +227,6 @@ export default function TaskListPrint() {
                               </div>
                             </div>
                           )}
-                          {/* Prep process steps */}
                           {rp.processSteps.length > 0 && (
                             <div>
                               <p className="text-xs font-bold uppercase text-gray-500 mb-1.5">Process / Proceso</p>
@@ -340,7 +291,7 @@ export default function TaskListPrint() {
             <h2 className="text-lg font-black uppercase tracking-wide text-gray-900 mb-1">
               Buy List / Lista de Compras
             </h2>
-            <p className="text-xs text-gray-500 mb-5">Consolidated shopping list for all menu items with recipes</p>
+            <p className="text-xs text-gray-500 mb-5">Consolidated shopping list for all selected items with recipes</p>
             <div className="border border-gray-300 rounded-lg overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-900 text-white">

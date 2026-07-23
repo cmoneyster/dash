@@ -8,6 +8,7 @@ import {
   GripVertical, CreditCard, RefreshCw, ExternalLink, Ban, Lock, Flame, Truck, ClipboardList,
 } from "lucide-react";
 import { LaborPanel } from "@/components/LaborPanel";
+import TaskListModal from "./TaskListModal";
 import {
   DndContext,
   closestCenter,
@@ -2688,6 +2689,7 @@ function DetailPanel({
   const [deleting, setDeleting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [showTaskList, setShowTaskList] = useState(false);
 
   useEffect(() => {
     // Legacy migration: if a cart-source inquiry has orderItems but no lineItems
@@ -3180,14 +3182,13 @@ function DetailPanel({
                 Bilingual task &amp; shopping list for kitchen staff, generated from recipes
               </p>
             </div>
-            <a
-              href={`${BASE}/admin/catering/${form.id}/task-list-print`}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => setShowTaskList(true)}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors shrink-0"
             >
-              <ExternalLink className="w-4 h-4" /> Open Task List
-            </a>
+              <ClipboardList className="w-4 h-4" /> Open Task List
+            </button>
           </div>
         </div>
       )}
@@ -3213,6 +3214,16 @@ function DetailPanel({
           {saving ? "Saving…" : saved ? "Saved!" : "Save"}
         </button>
       </div>
+
+      {showTaskList && form.id !== undefined && (
+        <TaskListModal
+          inquiryId={form.id as number}
+          clientName={form.clientName ?? ""}
+          eventDate={form.eventDate ?? null}
+          lineItems={lineItems}
+          onClose={() => setShowTaskList(false)}
+        />
+      )}
     </div>
   );
 }
