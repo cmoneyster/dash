@@ -195,7 +195,7 @@ export default function TaskListPrint() {
 
               {/* ── Item header bar — three columns: EN name | ES name | qty ── */}
               <div
-                className="item-header bg-gray-900 dark:bg-gray-800 print:bg-gray-900 px-3 py-1.5 grid items-center cursor-pointer print:cursor-default gap-x-2"
+                className="item-header bg-gray-900 dark:bg-gray-800 print:bg-gray-100 px-3 py-1.5 grid items-center cursor-pointer print:cursor-default gap-x-2"
                 style={{ gridTemplateColumns: "1fr 1fr auto" }}
                 onClick={() => toggleItem(ti.lineItemId)}
               >
@@ -203,14 +203,14 @@ export default function TaskListPrint() {
                   <span className="print:hidden text-gray-500 shrink-0">
                     {expandedItems.has(ti.lineItemId) ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                   </span>
-                  <span className="font-black text-xs uppercase tracking-wide text-white truncate">
+                  <span className="font-black text-xs uppercase tracking-wide text-white print:text-gray-900 truncate">
                     {tiIdx + 1}. {ti.name}
                   </span>
                 </div>
-                <span className="text-xs italic text-gray-400 truncate">
+                <span className="text-xs italic text-gray-400 print:text-gray-600 truncate">
                   {ti.nameEs && ti.nameEs !== ti.name ? ti.nameEs : ""}
                 </span>
-                <span className="text-xs font-bold text-white shrink-0">
+                <span className="text-xs font-bold text-white print:text-gray-900 shrink-0">
                   {ti.quantity}×{ti.sizeLabel ? ` ${ti.sizeLabel}` : ""}
                   {ti.sizeServings && ti.sizeServings > 1 && !ti.sizeLabel && ` (${ti.sizeServings} serv.)`}
                 </span>
@@ -409,9 +409,15 @@ export default function TaskListPrint() {
             overflow: visible !important;
             border-radius: 0 !important;
           }
-          /* Keep the dark header bar always on the same page as its body */
+          /* Keep the dark header bar always on the same page as its body;
+             force a light background and dark text so nothing is invisible on paper */
           .item-header {
             break-after: avoid;
+            background-color: #f3f4f6 !important; /* gray-100 */
+            border-bottom: 1px solid #d1d5db;
+          }
+          .item-header * {
+            color: #111827 !important; /* gray-900 */
           }
 
           /* ── Override dark-mode colors for paper output ── */
