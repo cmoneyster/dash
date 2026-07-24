@@ -52,6 +52,20 @@ function fmtDate(d: string | null): string {
   } catch { return d; }
 }
 
+function Checkbox() {
+  return (
+    <span style={{
+      display: "inline-block",
+      width: "13px",
+      height: "13px",
+      minWidth: "13px",
+      border: "1.5px solid #9ca3af",
+      borderRadius: "2px",
+      flexShrink: 0,
+    }} />
+  );
+}
+
 export default function TaskListPrint() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -177,11 +191,11 @@ export default function TaskListPrint() {
 
         <div className="space-y-2">
           {data.taskItems.map((ti, tiIdx) => (
-            <div key={ti.lineItemId} className="border border-gray-300 dark:border-gray-700 print:border-gray-300 rounded-md overflow-hidden">
+            <div key={ti.lineItemId} className="item-card border border-gray-300 dark:border-gray-700 print:border-gray-300 rounded-md overflow-hidden">
 
               {/* ── Item header bar — three columns: EN name | ES name | qty ── */}
               <div
-                className="bg-gray-900 dark:bg-gray-800 print:bg-gray-900 px-3 py-1.5 grid items-center cursor-pointer print:cursor-default gap-x-2"
+                className="item-header bg-gray-900 dark:bg-gray-800 print:bg-gray-900 px-3 py-1.5 grid items-center cursor-pointer print:cursor-default gap-x-2"
                 style={{ gridTemplateColumns: "1fr 1fr auto" }}
                 onClick={() => toggleItem(ti.lineItemId)}
               >
@@ -210,8 +224,8 @@ export default function TaskListPrint() {
                   className="grid text-[10px] font-bold uppercase tracking-widest border-b border-gray-200 dark:border-gray-700 print:border-gray-200 bg-gray-50 dark:bg-gray-900 print:bg-gray-50"
                   style={{ gridTemplateColumns: "1fr 1fr" }}
                 >
-                  <div className="px-3 py-0.5 text-gray-400 dark:text-gray-500">English</div>
-                  <div className="px-3 py-0.5 text-gray-400 dark:text-gray-500 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">Español</div>
+                  <div className="px-2 py-0.5 text-gray-400 dark:text-gray-500">English</div>
+                  <div className="px-2 py-0.5 text-gray-400 dark:text-gray-500 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">Español</div>
                 </div>
 
                 {/* ── No recipe ─────────────────────────────────────────────── */}
@@ -220,10 +234,11 @@ export default function TaskListPrint() {
                     className="grid bg-white dark:bg-gray-900 print:bg-white"
                     style={{ gridTemplateColumns: "1fr 1fr" }}
                   >
-                    <div className="px-3 py-2 text-xs text-gray-800 dark:text-gray-200 print:text-gray-800 whitespace-pre-wrap">
-                      {(ti.customText ?? "").trim() || <em className="text-gray-400">No recipe</em>}
+                    <div className="px-2 py-2 text-sm text-gray-800 dark:text-gray-200 print:text-gray-800 whitespace-pre-wrap flex gap-2 items-start">
+                      <Checkbox />
+                      <span>{(ti.customText ?? "").trim() || <em className="text-gray-400 not-italic">No recipe</em>}</span>
                     </div>
-                    <div className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 print:text-gray-600 italic whitespace-pre-wrap border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                    <div className="px-2 py-2 text-sm text-gray-600 dark:text-gray-400 print:text-gray-600 italic whitespace-pre-wrap border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                       {(ti.customTextEs ?? "").trim() || <em className="not-italic text-gray-400">Sin receta</em>}
                     </div>
                   </div>
@@ -242,13 +257,13 @@ export default function TaskListPrint() {
                           className="grid items-center bg-indigo-50 dark:bg-indigo-950 print:bg-indigo-50 border-b border-indigo-100 dark:border-indigo-900 print:border-indigo-100"
                           style={{ gridTemplateColumns: "1fr 1fr" }}
                         >
-                          <div className="px-3 py-1 flex items-baseline gap-2">
+                          <div className="px-2 py-1 flex items-baseline gap-2">
                             <span className="font-bold text-xs text-indigo-800 dark:text-indigo-200 print:text-indigo-800">{rp.name}</span>
                             <span className="text-xs font-mono text-indigo-600 dark:text-indigo-300 print:text-indigo-600 shrink-0">
                               {fmtQty(rp.scaledQuantity)} {rp.unit}
                             </span>
                           </div>
-                          <div className="px-3 py-1 text-xs italic text-indigo-600 dark:text-indigo-400 print:text-indigo-600 border-l border-indigo-100 dark:border-indigo-900 print:border-indigo-100">
+                          <div className="px-2 py-1 text-xs italic text-indigo-600 dark:text-indigo-400 print:text-indigo-600 border-l border-indigo-100 dark:border-indigo-900 print:border-indigo-100">
                             {rp.nameEs && rp.nameEs !== rp.name ? rp.nameEs : ""}
                           </div>
                         </div>
@@ -260,11 +275,12 @@ export default function TaskListPrint() {
                             className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
                             style={{ gridTemplateColumns: "1fr 1fr" }}
                           >
-                            <div className="px-3 py-0.5 text-xs text-gray-800 dark:text-gray-200 print:text-gray-800 flex gap-1.5">
+                            <div className="px-2 py-1 text-sm text-gray-800 dark:text-gray-200 print:text-gray-800 flex gap-1.5 items-start">
+                              <Checkbox />
                               <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
                               <span>{s.description}</span>
                             </div>
-                            <div className="px-3 py-0.5 text-xs text-gray-600 dark:text-gray-400 print:text-gray-600 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                            <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-600 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                               <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
                               <span>{s.descriptionEs ?? ""}</span>
                             </div>
@@ -278,11 +294,12 @@ export default function TaskListPrint() {
                               className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
                               style={{ gridTemplateColumns: "1fr 1fr" }}
                             >
-                              <div className="px-3 py-0.5 text-xs text-gray-800 dark:text-gray-200 print:text-gray-800 flex justify-between gap-2">
-                                <span className="font-semibold">{ing.name}</span>
+                              <div className="px-2 py-1 text-sm text-gray-800 dark:text-gray-200 print:text-gray-800 flex items-center gap-1.5">
+                                <Checkbox />
+                                <span className="font-semibold flex-1 min-w-0">{ing.name}</span>
                                 <span className="font-mono text-gray-500 dark:text-gray-400 print:text-gray-500 shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
                               </div>
-                              <div className="px-3 py-0.5 text-xs text-gray-600 dark:text-gray-400 print:text-gray-600 italic border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                              <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-600 italic border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                                 {ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}
                               </div>
                             </div>
@@ -292,11 +309,12 @@ export default function TaskListPrint() {
                                 className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
                                 style={{ gridTemplateColumns: "1fr 1fr" }}
                               >
-                                <div className="pl-6 pr-3 py-0.5 text-xs text-gray-700 dark:text-gray-300 print:text-gray-700 flex gap-1.5">
+                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-700 dark:text-gray-300 print:text-gray-700 flex gap-1.5 items-start">
+                                  <Checkbox />
                                   <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
                                   <span>{s.description}</span>
                                 </div>
-                                <div className="pl-6 pr-3 py-0.5 text-xs text-gray-500 dark:text-gray-500 print:text-gray-500 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-500 dark:text-gray-500 print:text-gray-500 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                                   <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
                                   <span>{s.descriptionEs ?? ""}</span>
                                 </div>
@@ -316,11 +334,12 @@ export default function TaskListPrint() {
                               className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
                               style={{ gridTemplateColumns: "1fr 1fr" }}
                             >
-                              <div className="px-3 py-0.5 text-xs text-gray-800 dark:text-gray-200 print:text-gray-800 flex justify-between gap-2">
-                                <span className="font-semibold">{ing.name}</span>
+                              <div className="px-2 py-1 text-sm text-gray-800 dark:text-gray-200 print:text-gray-800 flex items-center gap-1.5">
+                                <Checkbox />
+                                <span className="font-semibold flex-1 min-w-0">{ing.name}</span>
                                 <span className="font-mono text-gray-500 dark:text-gray-400 print:text-gray-500 shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
                               </div>
-                              <div className="px-3 py-0.5 text-xs text-gray-600 dark:text-gray-400 print:text-gray-600 italic border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                              <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-600 italic border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                                 {ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}
                               </div>
                             </div>
@@ -330,11 +349,12 @@ export default function TaskListPrint() {
                                 className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
                                 style={{ gridTemplateColumns: "1fr 1fr" }}
                               >
-                                <div className="pl-6 pr-3 py-0.5 text-xs text-gray-700 dark:text-gray-300 print:text-gray-700 flex gap-1.5">
+                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-700 dark:text-gray-300 print:text-gray-700 flex gap-1.5 items-start">
+                                  <Checkbox />
                                   <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
                                   <span>{s.description}</span>
                                 </div>
-                                <div className="pl-6 pr-3 py-0.5 text-xs text-gray-500 dark:text-gray-500 print:text-gray-500 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-500 dark:text-gray-500 print:text-gray-500 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                                   <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
                                   <span>{s.descriptionEs ?? ""}</span>
                                 </div>
@@ -350,7 +370,7 @@ export default function TaskListPrint() {
                         className="grid"
                         style={{ gridTemplateColumns: "1fr 1fr" }}
                       >
-                        <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 print:text-gray-400 italic">Recipe has no ingredient lines.</div>
+                        <div className="px-2 py-2 text-sm text-gray-400 dark:text-gray-500 print:text-gray-400 italic">Recipe has no ingredient lines.</div>
                         <div className="border-l border-gray-200 dark:border-gray-700 print:border-gray-200" />
                       </div>
                     )}
@@ -377,11 +397,22 @@ export default function TaskListPrint() {
           #root, [data-reactroot] { height: auto !important; min-height: 0 !important; }
 
           .print-document { max-width: 100%; padding: 0; }
-          .print\\:break-before-page { break-before: page; }
           .print\\:hidden { display: none !important; }
           .print\\:block { display: block !important; }
           .hidden { display: none !important; }
           .truncate { overflow: visible !important; text-overflow: unset !important; white-space: normal !important; }
+
+          /* ── Dark-block fix: keep cards together; if they must break, prevent
+                background bleed by clearing overflow and radius ── */
+          .item-card {
+            break-inside: avoid;
+            overflow: visible !important;
+            border-radius: 0 !important;
+          }
+          /* Keep the dark header bar always on the same page as its body */
+          .item-header {
+            break-after: avoid;
+          }
 
           /* ── Override dark-mode colors for paper output ── */
           .dark .dark\\:bg-gray-950 { background-color: #ffffff !important; }
