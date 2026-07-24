@@ -207,7 +207,7 @@ export default function TaskListPrint() {
                     {tiIdx + 1}. {ti.name}
                   </span>
                 </div>
-                <span className="text-xs italic text-gray-400 print:text-gray-600 truncate">
+                <span className="font-black text-xs uppercase tracking-wide text-gray-400 print:text-gray-700 truncate">
                   {ti.nameEs && ti.nameEs !== ti.name ? ti.nameEs : ""}
                 </span>
                 <span className="text-xs font-bold text-white print:text-gray-900 shrink-0">
@@ -238,7 +238,7 @@ export default function TaskListPrint() {
                       <Checkbox />
                       <span>{(ti.customText ?? "").trim() || <em className="text-gray-400 not-italic">No recipe</em>}</span>
                     </div>
-                    <div className="px-2 py-2 text-sm text-gray-600 dark:text-gray-400 print:text-gray-600 italic whitespace-pre-wrap border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                    <div className="px-2 py-2 text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 whitespace-pre-wrap border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                       {(ti.customTextEs ?? "").trim() || <em className="not-italic text-gray-400">Sin receta</em>}
                     </div>
                   </div>
@@ -280,7 +280,7 @@ export default function TaskListPrint() {
                               <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
                               <span>{s.description}</span>
                             </div>
-                            <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-600 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                            <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                               <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
                               <span>{s.descriptionEs ?? ""}</span>
                             </div>
@@ -299,7 +299,7 @@ export default function TaskListPrint() {
                                 <span className="font-semibold flex-1 min-w-0">{ing.name}</span>
                                 <span className="font-mono text-gray-500 dark:text-gray-400 print:text-gray-500 shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
                               </div>
-                              <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-600 italic border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                              <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                                 {ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}
                               </div>
                             </div>
@@ -314,7 +314,7 @@ export default function TaskListPrint() {
                                   <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
                                   <span>{s.description}</span>
                                 </div>
-                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-500 dark:text-gray-500 print:text-gray-500 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-500 dark:text-gray-500 print:text-gray-700 flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                                   <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
                                   <span>{s.descriptionEs ?? ""}</span>
                                 </div>
@@ -339,7 +339,7 @@ export default function TaskListPrint() {
                                 <span className="font-semibold flex-1 min-w-0">{ing.name}</span>
                                 <span className="font-mono text-gray-500 dark:text-gray-400 print:text-gray-500 shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
                               </div>
-                              <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-600 italic border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                              <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                                 {ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}
                               </div>
                             </div>
@@ -354,7 +354,7 @@ export default function TaskListPrint() {
                                   <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
                                   <span>{s.description}</span>
                                 </div>
-                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-500 dark:text-gray-500 print:text-gray-500 italic flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-500 dark:text-gray-500 print:text-gray-700 flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                                   <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
                                   <span>{s.descriptionEs ?? ""}</span>
                                 </div>
