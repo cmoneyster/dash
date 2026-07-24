@@ -263,7 +263,7 @@ export default function TaskListPrint() {
                               {fmtQty(rp.scaledQuantity)} {rp.unit}
                             </span>
                           </div>
-                          <div className="px-2 py-1 text-xs italic text-indigo-600 dark:text-indigo-400 print:text-indigo-600 border-l border-indigo-100 dark:border-indigo-900 print:border-indigo-100">
+                          <div className="px-2 py-1 font-bold text-xs text-indigo-600 dark:text-indigo-400 print:text-indigo-700 border-l border-indigo-100 dark:border-indigo-900 print:border-indigo-100">
                             {rp.nameEs && rp.nameEs !== rp.name ? rp.nameEs : ""}
                           </div>
                         </div>
@@ -299,7 +299,7 @@ export default function TaskListPrint() {
                                 <span className="font-semibold flex-1 min-w-0">{ing.name}</span>
                                 <span className="font-mono text-gray-500 dark:text-gray-400 print:text-gray-500 shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
                               </div>
-                              <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                              <div className="px-2 py-1 text-sm font-semibold text-gray-600 dark:text-gray-400 print:text-gray-700 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                                 {ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}
                               </div>
                             </div>
@@ -339,7 +339,7 @@ export default function TaskListPrint() {
                                 <span className="font-semibold flex-1 min-w-0">{ing.name}</span>
                                 <span className="font-mono text-gray-500 dark:text-gray-400 print:text-gray-500 shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
                               </div>
-                              <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                              <div className="px-2 py-1 text-sm font-semibold text-gray-600 dark:text-gray-400 print:text-gray-700 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
                                 {ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}
                               </div>
                             </div>
