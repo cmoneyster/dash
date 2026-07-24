@@ -66,6 +66,37 @@ function Checkbox() {
   );
 }
 
+/** Render one column of a per-line custom-notes block.
+ *  Each non-blank line gets its own checkbox row.
+ *  Falls back to a single placeholder row when text is empty. */
+function CustomNoteLines({
+  text, placeholder, className,
+}: {
+  text: string | null;
+  placeholder: string;
+  className?: string;
+}) {
+  const lines = (text ?? "").split("\n").filter(l => l.trim());
+  return (
+    <div className={`px-2 py-1 flex flex-col ${className ?? ""}`}>
+      {lines.length > 0
+        ? lines.map((line, i) => (
+            <div key={i} className="flex gap-1.5 items-start py-0.5 text-sm text-gray-800 dark:text-gray-200 print:text-black">
+              <Checkbox />
+              <span>{line}</span>
+            </div>
+          ))
+        : (
+          <div className="flex gap-1.5 items-start py-1 text-sm text-gray-800 dark:text-gray-200 print:text-black">
+            <Checkbox />
+            <em className="not-italic text-gray-400">{placeholder}</em>
+          </div>
+        )
+      }
+    </div>
+  );
+}
+
 export default function TaskListPrint() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -170,15 +201,15 @@ export default function TaskListPrint() {
         <div className="mb-3 pb-2 border-b-2 border-gray-900 dark:border-gray-100 print:border-gray-900">
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-lg font-black tracking-tight text-gray-900 dark:text-gray-100 print:text-gray-900 uppercase leading-tight">
+              <h1 className="text-lg font-black tracking-tight text-gray-900 dark:text-gray-100 print:text-black uppercase leading-tight">
                 Task List / Lista de Tareas
               </h1>
-              <p className="text-gray-500 dark:text-gray-400 print:text-gray-500 text-xs mt-0.5">dash by Hollywood East Cafe</p>
+              <p className="text-gray-500 dark:text-gray-400 print:text-gray-600 text-xs mt-0.5">dash by Hollywood East Cafe</p>
             </div>
             <div className="text-right text-xs">
-              <p className="font-bold text-gray-900 dark:text-gray-100 print:text-gray-900">{data.clientName}</p>
-              {data.eventDate && <p className="text-gray-600 dark:text-gray-400 print:text-gray-600">{fmtDate(data.eventDate)}</p>}
-              <p className="text-gray-400 dark:text-gray-500 print:text-gray-400 mt-0.5">
+              <p className="font-bold text-gray-900 dark:text-gray-100 print:text-black">{data.clientName}</p>
+              {data.eventDate && <p className="text-gray-600 dark:text-gray-400 print:text-black">{fmtDate(data.eventDate)}</p>}
+              <p className="text-gray-400 dark:text-gray-500 print:text-gray-600 mt-0.5">
                 Printed {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </p>
             </div>
@@ -224,23 +255,25 @@ export default function TaskListPrint() {
                   className="grid text-[10px] font-bold uppercase tracking-widest border-b border-gray-200 dark:border-gray-700 print:border-gray-200 bg-gray-50 dark:bg-gray-900 print:bg-gray-50"
                   style={{ gridTemplateColumns: "1fr 1fr" }}
                 >
-                  <div className="px-2 py-0.5 text-gray-400 dark:text-gray-500">English</div>
-                  <div className="px-2 py-0.5 text-gray-400 dark:text-gray-500 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">Español</div>
+                  <div className="px-2 py-0.5 text-gray-400 dark:text-gray-500 print:text-gray-500">English</div>
+                  <div className="px-2 py-0.5 text-gray-400 dark:text-gray-500 print:text-gray-500 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">Español</div>
                 </div>
 
-                {/* ── No recipe ─────────────────────────────────────────────── */}
+                {/* ── No recipe — per-line checkboxes on both columns ────────── */}
                 {!ti.hasRecipe && (
                   <div
                     className="grid bg-white dark:bg-gray-900 print:bg-white"
                     style={{ gridTemplateColumns: "1fr 1fr" }}
                   >
-                    <div className="px-2 py-2 text-sm text-gray-800 dark:text-gray-200 print:text-gray-800 whitespace-pre-wrap flex gap-2 items-start">
-                      <Checkbox />
-                      <span>{(ti.customText ?? "").trim() || <em className="text-gray-400 not-italic">No recipe</em>}</span>
-                    </div>
-                    <div className="px-2 py-2 text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 whitespace-pre-wrap border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
-                      {(ti.customTextEs ?? "").trim() || <em className="not-italic text-gray-400">Sin receta</em>}
-                    </div>
+                    <CustomNoteLines
+                      text={ti.customText}
+                      placeholder="No recipe"
+                    />
+                    <CustomNoteLines
+                      text={ti.customTextEs}
+                      placeholder="Sin receta"
+                      className="border-l border-gray-200 dark:border-gray-700 print:border-gray-200"
+                    />
                   </div>
                 )}
 
@@ -254,16 +287,16 @@ export default function TaskListPrint() {
 
                         {/* Prep header — full width, two-column inner */}
                         <div
-                          className="grid items-center bg-indigo-50 dark:bg-indigo-950 print:bg-indigo-50 border-b border-indigo-100 dark:border-indigo-900 print:border-indigo-100"
+                          className="grid items-center bg-indigo-50 dark:bg-indigo-950 print:bg-gray-50 border-b border-indigo-100 dark:border-indigo-900 print:border-gray-200"
                           style={{ gridTemplateColumns: "1fr 1fr" }}
                         >
                           <div className="px-2 py-1 flex items-baseline gap-2">
-                            <span className="font-bold text-xs text-indigo-800 dark:text-indigo-200 print:text-indigo-800">{rp.name}</span>
-                            <span className="text-xs font-mono text-indigo-600 dark:text-indigo-300 print:text-indigo-600 shrink-0">
+                            <span className="font-bold text-xs text-indigo-800 dark:text-indigo-200 print:text-black">{rp.name}</span>
+                            <span className="text-xs font-mono text-indigo-600 dark:text-indigo-300 print:text-black shrink-0">
                               {fmtQty(rp.scaledQuantity)} {rp.unit}
                             </span>
                           </div>
-                          <div className="px-2 py-1 font-bold text-xs text-indigo-600 dark:text-indigo-400 print:text-indigo-700 border-l border-indigo-100 dark:border-indigo-900 print:border-indigo-100">
+                          <div className="px-2 py-1 font-bold text-xs text-indigo-800 dark:text-indigo-200 print:text-black border-l border-indigo-100 dark:border-indigo-900 print:border-gray-200">
                             {rp.nameEs && rp.nameEs !== rp.name ? rp.nameEs : ""}
                           </div>
                         </div>
@@ -275,13 +308,14 @@ export default function TaskListPrint() {
                             className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
                             style={{ gridTemplateColumns: "1fr 1fr" }}
                           >
-                            <div className="px-2 py-1 text-sm text-gray-800 dark:text-gray-200 print:text-gray-800 flex gap-1.5 items-start">
+                            <div className="px-2 py-1 text-sm text-gray-800 dark:text-gray-200 print:text-black flex gap-1.5 items-start">
                               <Checkbox />
-                              <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
+                              <span className="font-mono text-gray-400 shrink-0 print:text-black">{si + 1}.</span>
                               <span>{s.description}</span>
                             </div>
-                            <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
-                              <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
+                            <div className="px-2 py-1 text-sm text-gray-800 dark:text-gray-200 print:text-black flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                              <Checkbox />
+                              <span className="font-mono text-gray-400 shrink-0 print:text-black">{si + 1}.</span>
                               <span>{s.descriptionEs ?? ""}</span>
                             </div>
                           </div>
@@ -294,13 +328,14 @@ export default function TaskListPrint() {
                               className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
                               style={{ gridTemplateColumns: "1fr 1fr" }}
                             >
-                              <div className="px-2 py-1 text-sm text-gray-800 dark:text-gray-200 print:text-gray-800 flex items-center gap-1.5">
+                              <div className="px-2 py-1 text-sm text-gray-800 dark:text-gray-200 print:text-black flex items-center gap-1.5">
                                 <Checkbox />
                                 <span className="font-semibold flex-1 min-w-0">{ing.name}</span>
-                                <span className="font-mono text-gray-500 dark:text-gray-400 print:text-gray-500 shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
+                                <span className="font-mono text-gray-500 dark:text-gray-400 print:text-black shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
                               </div>
-                              <div className="px-2 py-1 text-sm font-semibold text-gray-600 dark:text-gray-400 print:text-gray-700 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
-                                {ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}
+                              <div className="px-2 py-1 text-sm font-semibold text-gray-800 dark:text-gray-200 print:text-black flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                <Checkbox />
+                                <span className="flex-1 min-w-0">{ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}</span>
                               </div>
                             </div>
                             {ing.processSteps.map((s, si) => (
@@ -309,13 +344,14 @@ export default function TaskListPrint() {
                                 className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
                                 style={{ gridTemplateColumns: "1fr 1fr" }}
                               >
-                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-700 dark:text-gray-300 print:text-gray-700 flex gap-1.5 items-start">
+                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-700 dark:text-gray-300 print:text-black flex gap-1.5 items-start">
                                   <Checkbox />
-                                  <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
+                                  <span className="font-mono text-gray-400 shrink-0 print:text-black">{si + 1}.</span>
                                   <span>{s.description}</span>
                                 </div>
-                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-500 dark:text-gray-500 print:text-gray-700 flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
-                                  <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
+                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-700 dark:text-gray-300 print:text-black flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                  <Checkbox />
+                                  <span className="font-mono text-gray-400 shrink-0 print:text-black">{si + 1}.</span>
                                   <span>{s.descriptionEs ?? ""}</span>
                                 </div>
                               </div>
@@ -334,13 +370,14 @@ export default function TaskListPrint() {
                               className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
                               style={{ gridTemplateColumns: "1fr 1fr" }}
                             >
-                              <div className="px-2 py-1 text-sm text-gray-800 dark:text-gray-200 print:text-gray-800 flex items-center gap-1.5">
+                              <div className="px-2 py-1 text-sm text-gray-800 dark:text-gray-200 print:text-black flex items-center gap-1.5">
                                 <Checkbox />
                                 <span className="font-semibold flex-1 min-w-0">{ing.name}</span>
-                                <span className="font-mono text-gray-500 dark:text-gray-400 print:text-gray-500 shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
+                                <span className="font-mono text-gray-500 dark:text-gray-400 print:text-black shrink-0">{fmtQty(ing.scaledQuantity)} {ing.unit}</span>
                               </div>
-                              <div className="px-2 py-1 text-sm font-semibold text-gray-600 dark:text-gray-400 print:text-gray-700 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
-                                {ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}
+                              <div className="px-2 py-1 text-sm font-semibold text-gray-800 dark:text-gray-200 print:text-black flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                <Checkbox />
+                                <span className="flex-1 min-w-0">{ing.nameEs && ing.nameEs !== ing.name ? ing.nameEs : ""}</span>
                               </div>
                             </div>
                             {ing.processSteps.map((s, si) => (
@@ -349,13 +386,14 @@ export default function TaskListPrint() {
                                 className="grid border-b border-gray-100 dark:border-gray-800 print:border-gray-100 last:border-b-0"
                                 style={{ gridTemplateColumns: "1fr 1fr" }}
                               >
-                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-700 dark:text-gray-300 print:text-gray-700 flex gap-1.5 items-start">
+                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-700 dark:text-gray-300 print:text-black flex gap-1.5 items-start">
                                   <Checkbox />
-                                  <span className="font-mono text-gray-400 shrink-0">{si + 1}.</span>
+                                  <span className="font-mono text-gray-400 shrink-0 print:text-black">{si + 1}.</span>
                                   <span>{s.description}</span>
                                 </div>
-                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-500 dark:text-gray-500 print:text-gray-700 flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
-                                  <span className="font-mono not-italic text-gray-400 shrink-0">{si + 1}.</span>
+                                <div className="pl-5 pr-2 py-0.5 text-sm text-gray-700 dark:text-gray-300 print:text-black flex gap-1.5 border-l border-gray-200 dark:border-gray-700 print:border-gray-200">
+                                  <Checkbox />
+                                  <span className="font-mono text-gray-400 shrink-0 print:text-black">{si + 1}.</span>
                                   <span>{s.descriptionEs ?? ""}</span>
                                 </div>
                               </div>
@@ -370,7 +408,7 @@ export default function TaskListPrint() {
                         className="grid"
                         style={{ gridTemplateColumns: "1fr 1fr" }}
                       >
-                        <div className="px-2 py-2 text-sm text-gray-400 dark:text-gray-500 print:text-gray-400 italic">Recipe has no ingredient lines.</div>
+                        <div className="px-2 py-2 text-sm text-gray-400 dark:text-gray-500 print:text-gray-500 italic">Recipe has no ingredient lines.</div>
                         <div className="border-l border-gray-200 dark:border-gray-700 print:border-gray-200" />
                       </div>
                     )}
@@ -382,7 +420,7 @@ export default function TaskListPrint() {
         </div>
 
         {/* ── Footer ────────────────────────────────────────────────────────── */}
-        <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 print:border-gray-200 text-xs text-gray-400 dark:text-gray-500 print:text-gray-400 flex justify-between">
+        <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 print:border-gray-200 text-xs text-gray-400 dark:text-gray-500 print:text-gray-500 flex justify-between">
           <span>dash by Hollywood East Cafe — Confidential</span>
           <span>Inquiry #{data.inquiryId}</span>
         </div>
@@ -419,6 +457,18 @@ export default function TaskListPrint() {
           .item-header * {
             color: #111827 !important; /* gray-900 */
           }
+
+          /* ── Force ALL body text to black on paper ── */
+          .print-document .space-y-2 * {
+            color: #000000 !important;
+          }
+          /* Exceptions: borders and backgrounds are controlled separately */
+          .print-document .space-y-2 .item-header * {
+            color: #111827 !important;
+          }
+
+          /* ── Prep sub-header: light gray bg instead of indigo on paper ── */
+          .print\\:bg-gray-50 { background-color: #f9fafb !important; }
 
           /* ── Override dark-mode colors for paper output ── */
           .dark .dark\\:bg-gray-950 { background-color: #ffffff !important; }
