@@ -958,7 +958,7 @@ export default function Plan() {
         {chatEventDate && (
           <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 text-sm text-blue-900 dark:text-blue-200">
             <Calendar className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
-            <span>Planning for <strong>{chatEventDate}</strong> — Dashy shared this date from your chat.</span>
+            <span>Planning for <strong>{chatEventDate}</strong> — pre-filled from your previous session.</span>
           </div>
         )}
 

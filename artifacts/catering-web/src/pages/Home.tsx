@@ -13,7 +13,7 @@ const HOW_IT_WORKS_STEPS = [
     number: "1",
     icon: UtensilsCrossed,
     title: "Browse the Menu",
-    body: "Explore our full menu of bold, eclectic dishes — and a secret items section with surprises beyond the usual. Filter by category or let Dashy, our AI assistant, help you narrow it down.",
+    body: "Explore our full menu of bold, eclectic dishes — and a secret items section with surprises beyond the usual. Filter by category to find exactly what you're looking for.",
   },
   {
     number: "2",

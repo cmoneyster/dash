@@ -128,7 +128,7 @@ export default function PlanPreview() {
             </div>
             <div>
               <p className="font-semibold text-foreground">
-                Dashy added{" "}
+                We added{" "}
                 <span className="text-primary">
                   {planItemsAdded} item{planItemsAdded !== 1 ? "s" : ""}
                 </span>{" "}
@@ -229,7 +229,7 @@ export default function PlanPreview() {
             <div>
               <p className="font-semibold text-foreground">No items yet</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Chat with Dashy to get recommendations, or browse the menu and add items to your plan.
+                Browse the menu and add items to your plan.
               </p>
             </div>
             <Link
@@ -310,19 +310,6 @@ export default function PlanPreview() {
           </div>
         )}
 
-        {/* ── Dashy prompt (when no planItemsAdded context) ── */}
-        {!isLoading && items.length > 0 && planItemsAdded === null && (
-          <p className="text-center text-xs text-muted-foreground">
-            Not sure about quantities?{" "}
-            <button
-              onClick={() => navigate("/")}
-              className="underline hover:text-foreground transition-colors"
-            >
-              Ask Dashy
-            </button>{" "}
-            for personalized recommendations.
-          </p>
-        )}
       </div>
     </Layout>
   );
