@@ -82,6 +82,10 @@ export async function sendOrderReady(opts: {
   await sendSms(phoneNumber, body);
 }
 
+// Returns true when an SMS was actually dispatched (owner phone resolved and
+// sendSms called), false when no owner phone is configured (no attempt made).
+// Callers that don't need the status can safely ignore the return value;
+// existing void-returning call sites are unaffected.
 export async function sendNewInquiryAlert(opts: {
   clientName: string;
   source: "form" | "cart" | "chat" | "plan";
@@ -91,11 +95,11 @@ export async function sendNewInquiryAlert(opts: {
   clientPhone?: string | null;
   venueAddress?: string | null;
   link?: string | null;        // deep link to admin inquiry editor
-}): Promise<void> {
+}): Promise<boolean> {
   const ownerPhone = await resolveOwnerPhone();
   if (!ownerPhone) {
     console.warn("[SMS] no owner notification phone configured — skipping inquiry alert");
-    return;
+    return false;
   }
   const sourceLabel =
     opts.source === "cart"
@@ -120,6 +124,7 @@ export async function sendNewInquiryAlert(opts: {
   if (opts.clientPhone) lines.push(`Phone: ${opts.clientPhone}`);
   if (opts.link)        lines.push(`View: ${opts.link}`);
   await sendSms(ownerPhone, lines.join("\n"));
+  return true;
 }
 
 export async function sendLowStockAlert(opts: {

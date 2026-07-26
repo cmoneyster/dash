@@ -162,12 +162,11 @@ router.post("/contact/message", async (req, res) => {
 
   let ownerAlertSent = false;
   try {
-    await sendNewInquiryAlert({
+    ownerAlertSent = await sendNewInquiryAlert({
       clientName: name,
       source: "chat",
       clientPhone: normalizedPhone,
     });
-    ownerAlertSent = true;
   } catch (err) {
     req.log.warn({ err }, "[contact] owner SMS alert failed");
   }
