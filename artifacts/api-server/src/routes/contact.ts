@@ -127,7 +127,10 @@ router.post("/contact/message", async (req, res) => {
     req.log.warn({ err }, "[contact] failed to insert contact_requests row");
   }
 
-  let smsBridgeStatus: "sent" | "blocked" | "no-chat-port" | "failed" = "no-chat-port";
+  // smsBridge is the contract-specified enum: "sent" | "no-chat-port" | "failed"
+  // ("blocked" collapses to "failed" so the response shape matches the spec)
+  let smsBridgeStatus: "sent" | "no-chat-port" | "failed" = "no-chat-port";
+  let welcomeSmsSent = false;
   try {
     const port = await getChatPort();
     if (port == null) {
@@ -144,24 +147,33 @@ router.post("/contact/message", async (req, res) => {
         inquiryId,
         source: "system",
       });
-      smsBridgeStatus = result.status === "sent" ? "sent" : "blocked";
+      if (result.status === "sent") {
+        smsBridgeStatus = "sent";
+        welcomeSmsSent = true;
+      } else {
+        smsBridgeStatus = "failed";
+        req.log.warn({ status: result.status }, "[contact] SMS welcome blocked or rejected");
+      }
     }
   } catch (err) {
     smsBridgeStatus = "failed";
     req.log.error({ err }, "[contact] failed to send SMS welcome");
   }
 
+  let ownerAlertSent = false;
   try {
     await sendNewInquiryAlert({
       clientName: name,
       source: "chat",
       clientPhone: normalizedPhone,
     });
+    ownerAlertSent = true;
   } catch (err) {
     req.log.warn({ err }, "[contact] owner SMS alert failed");
   }
 
   // Email audit trail to owner regardless of SMS status
+  let ownerEmailSent = false;
   try {
     const to = await resolveOwnerEmail();
     const safeName = escapeHtml(name);
@@ -171,7 +183,7 @@ router.post("/contact/message", async (req, res) => {
       inquiryId != null
         ? `<p>Inquiry created: <strong>#${inquiryId}</strong>. Reply to the guest by texting <code>#${inquiryId} your message</code> to the catering chat number.</p>`
         : "";
-    await sendMail({
+    const auditResult = await sendMail({
       to,
       subject: `New contact form message (SMS) — ${name}`,
       text: [
@@ -193,8 +205,25 @@ router.post("/contact/message", async (req, res) => {
         .filter(Boolean)
         .join("\n"),
     });
+    if (auditResult.ok) {
+      ownerEmailSent = true;
+    } else {
+      req.log.warn({ error: auditResult.error }, "[contact] owner email audit trail failed");
+    }
   } catch (err) {
-    req.log.warn({ err }, "[contact] owner email audit trail failed");
+    req.log.warn({ err }, "[contact] owner email audit trail threw unexpectedly");
+  }
+
+  // Return 500 only when every delivery attempt failed — the guest got no
+  // welcome text AND the owner received no alert via any channel.
+  const anyDeliverySucceeded = welcomeSmsSent || ownerAlertSent || ownerEmailSent;
+  if (!anyDeliverySucceeded) {
+    req.log.error(
+      { smsBridgeStatus, ownerAlertSent, ownerEmailSent },
+      "[contact] all SMS-path delivery attempts failed",
+    );
+    res.status(500).json({ ok: false, error: "Failed to send your message. Please try again." });
+    return;
   }
 
   res.json({ ok: true, channel: "sms", smsBridge: smsBridgeStatus });
