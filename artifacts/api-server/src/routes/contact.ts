@@ -3,9 +3,8 @@ import { z } from "zod/v4";
 import { db } from "@workspace/db";
 import { cateringInquiriesTable, contactRequestsTable, eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { sendToCustomerGuarded, normalizePhoneDigits } from "../lib/sms-inbox";
-import { getChatPort } from "../lib/sms-ejoin";
-import { sendNewInquiryAlert } from "../lib/sms";
+import { sendToCustomerGuarded, getChatOwnerPhoneDigits, normalizePhoneDigits } from "../lib/sms-inbox";
+import { getChatPort, sendSmsViaChatPort } from "../lib/sms-ejoin";
 import { sendMail, ALERT_TO } from "../lib/mail";
 
 const router = Router();
@@ -160,13 +159,31 @@ router.post("/contact/message", async (req, res) => {
     req.log.error({ err }, "[contact] failed to send SMS welcome");
   }
 
+  // Send the owner alert FROM the chat port so they can reply in-thread.
+  // Using sendSmsViaChatPort (not sendNewInquiryAlert/round-robin) means:
+  //   - the alert arrives from the same number the owner already texts customers from
+  //   - no round-robin send that could appear as a second inbound or second customer SMS
+  //   - we can include the customer's message and the #<id> reply shortcut
   let ownerAlertSent = false;
   try {
-    ownerAlertSent = await sendNewInquiryAlert({
-      clientName: name,
-      source: "chat",
-      clientPhone: normalizedPhone,
-    });
+    const chatOwnerPhone = await getChatOwnerPhoneDigits();
+    if (chatOwnerPhone == null) {
+      req.log.warn("[contact] owner SMS alert skipped — no chat owner phone configured");
+    } else {
+      const MAX_MSG = 300;
+      const msgSnippet =
+        message.length > MAX_MSG ? `${message.slice(0, MAX_MSG - 1)}…` : message;
+      const alertLines: string[] = [
+        `New message from ${name}`,
+        `Phone: ${normalizedPhone}`,
+        `Msg: ${msgSnippet}`,
+      ];
+      if (inquiryId != null) {
+        alertLines.push(`Reply: #${inquiryId} your message`);
+      }
+      await sendSmsViaChatPort(chatOwnerPhone, alertLines.join("\n"));
+      ownerAlertSent = true;
+    }
   } catch (err) {
     req.log.warn({ err }, "[contact] owner SMS alert failed");
   }

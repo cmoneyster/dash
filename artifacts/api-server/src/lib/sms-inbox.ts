@@ -193,7 +193,7 @@ async function getOwnerPhoneDigits(): Promise<string | null> {
 //   2. event_settings.ownerNotificationPhone (existing legacy default)
 //   3. OWNER_PHONE env var (legacy default)
 // Returns null if every step is empty.
-async function getChatOwnerPhoneDigits(): Promise<string | null> {
+export async function getChatOwnerPhoneDigits(): Promise<string | null> {
   try {
     const [row] = await db
       .select({
