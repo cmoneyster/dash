@@ -28,7 +28,7 @@ import {
   cateringInquiriesTable,
   eventSettingsTable,
 } from "@workspace/db/schema";
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   sendSmsToCustomer,
@@ -351,6 +351,11 @@ export type IngestResult =
   // this pass. Distinguishing the two flavors gives operators a clean
   // signal in the ingest log when the storm-prevention path engaged.
   | { status: "owner-reply-rejected"; reason: OwnerRejectReason; dedup?: true }
+  // Cross-format dedup: in push+poll dual mode the same owner message
+  // arrives under two completely different gateway IDs (webhook:... vs
+  // listdata:...). The content-based window check caught a matching
+  // owner marker already written by the other delivery path — skip.
+  | { status: "owner-cross-dedup" }
   | { status: "blocked"; reason: BlockReason }
   | { status: "opted-out" }
   | { status: "skipped-empty" };
@@ -633,6 +638,43 @@ async function ingestInboundImpl(input: {
     (chatOwnerDigits != null && fromDigits === chatOwnerDigits) ||
     (ownerDigits != null && fromDigits === ownerDigits);
   if (fromIsOwner) {
+    // ── Cross-format content-based soft dedup ──────────────────────────────
+    // In push+poll dual mode the same owner message arrives under two
+    // completely different gateway IDs (e.g. webhook:12405... from the
+    // webhook handler, then listdata:7:2405... from the safety-net
+    // poller). The gatewayMessageId unique index can't match them, so
+    // without this check the poller would re-fire owner relay/reject
+    // logic — inserting a fresh marker and potentially resending a
+    // corrective text — on every safety-net cycle.
+    //
+    // Guard by querying for any existing owner marker (relay or reject)
+    // with matching phone + body + port within a ±5-minute window
+    // around the message's occurredAt timestamp. If one exists, the
+    // webhook path already handled this message — return immediately
+    // without writing a row or sending any SMS.
+    {
+      const FIVE_MIN_MS = 5 * 60 * 1000;
+      const windowStart = new Date(input.occurredAt.getTime() - FIVE_MIN_MS);
+      const windowEnd = new Date(input.occurredAt.getTime() + FIVE_MIN_MS);
+      const [existingMarker] = await db
+        .select({ id: smsMessagesTable.id })
+        .from(smsMessagesTable)
+        .where(
+          and(
+            eq(smsMessagesTable.customerPhone, fromDigits),
+            eq(smsMessagesTable.body, body),
+            eq(smsMessagesTable.port, input.port),
+            gte(smsMessagesTable.occurredAt, windowStart),
+            lte(smsMessagesTable.occurredAt, windowEnd),
+            inArray(smsMessagesTable.source, ["owner_relay_marker", "owner_reject_marker"]),
+          ),
+        )
+        .limit(1);
+      if (existingMarker) {
+        return { status: "owner-cross-dedup" };
+      }
+    }
+
     // Helper: every reject branch below MUST claim the gateway-id
     // sentinel BEFORE sending the corrective text. If the claim fails
     // (this gid was already handled on a prior poll), suppress the
