@@ -256,6 +256,47 @@ describe("parseInboundSmsListData — newer firmware loadListData payload", () =
 // uses to decide whether to drill into the per-port detail page on the
 // next cycle (count grew → unread messages we'd otherwise lose).
 describe("parseInboundSmsListing — per-port summary alongside rows", () => {
+  it("tolerates raw modem control bytes in a JSON string field", () => {
+    // The live gateway emits these bytes in the receiver field for some
+    // rows. They are invalid when embedded literally in JSON and must not
+    // cause every otherwise-valid SIM row to disappear.
+    const html = listDataPage(
+      `{"result":0,"count":16,"data":[[7,"7A",4,"13015550123","09-09 17:08","Can I pay with cash?","\\x01\\x06\\x07"]]}`,
+    );
+    const out = parseInboundSmsListing(html, { portFilter: 7 });
+    expect(out.rows).toHaveLength(1);
+    expect(out.rows[0]).toMatchObject({
+      port: 7,
+      fromPhone: "3015550123",
+      body: "Can I pay with cash?",
+    });
+    expect(out.ports[0].count).toBe(4);
+  });
+
+  it("ignores a commented sample payload before the live gateway payload", () => {
+    const sample = JSON.stringify({
+      result: 0,
+      count: 16,
+      data: [[7, "7A", 0, "", "", "", ""]],
+    });
+    const live = JSON.stringify({
+      result: 0,
+      count: 16,
+      data: [[7, "7A", 4, "13015550123", "09-09 17:08", "Can I pay with cash?", "12405550199"]],
+    });
+    const html = `<script>
+      /* loadListData("ID_TabCmdResp", '${sample}', smsTrContruct); */
+      loadListData("ID_TabCmdResp", '${live}', smsTrContruct);
+    </script>`;
+    const out = parseInboundSmsListing(html);
+    expect(out.rows).toHaveLength(1);
+    expect(out.rows[0].fromPhone).toBe("3015550123");
+    expect(out.rows[0].body).toBe("Can I pay with cash?");
+    expect(out.ports).toEqual([
+      { port: 7, count: 4, latestId: out.rows[0].gatewayMessageId },
+    ]);
+  });
+
   it("reports count + latest id for every port row, including empty slots", () => {
     const payload = JSON.stringify({
       result: 0, count: 16,
@@ -308,6 +349,38 @@ describe("parseInboundSmsListing — per-port summary alongside rows", () => {
 // across the two fetch paths collapses to one DB row, (c) it falls
 // back to the legacy <tr> scanner when no loadListData is present.
 describe("parseInboundSmsDetail — per-port drill-in page", () => {
+  it("parses the current firmware detail row layout", () => {
+    const payload = JSON.stringify({
+      result: 0,
+      total: 2,
+      curPage: 1,
+      itemsPerPage: 100,
+      count: 2,
+      data: [
+        [1, "7A", "13015550123", "09-09 17:08", "Is there any way I could pay cash?", "12405550199", "260909140807A8"],
+        [2, "7A", "13015550123", "09-09 16:52", "Tuesday would be great", "12405550199", "260909135215A8"],
+      ],
+    });
+    const out = parseInboundSmsDetail(listDataPage(payload), 7);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({
+      port: 7,
+      fromPhone: "3015550123",
+      body: "Is there any way I could pay cash?",
+    });
+    expect(out[1].body).toBe("Tuesday would be great");
+  });
+
+  it("rejects a wrong-port detail page instead of relabeling its rows", () => {
+    const payload = JSON.stringify({
+      result: 0,
+      total: 1,
+      count: 1,
+      data: [[1, "1A", "13015550123", "09-09 17:08", "wrong SIM", "12405550199", "x"]],
+    });
+    expect(parseInboundSmsDetail(listDataPage(payload), 7)).toEqual([]);
+  });
+
   it("recovers multiple messages on the same port (the bug being fixed)", () => {
     // Three messages on port 7 from the same customer — listing would
     // only have surfaced the latest one. Detail walk recovers all three.

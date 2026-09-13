@@ -42,7 +42,7 @@ import {
   normalizePhoneDigits,
   findInquiryForPhone,
 } from "../lib/sms-inbox";
-import { fetchInbound, fetchInboundSmsForPort, fetchInboxRaw, getChatPort } from "../lib/sms-ejoin";
+import { fetchInbound, fetchInboundSmsForPort, fetchInboundSmsForPortResult, fetchInboxRaw, getChatPort } from "../lib/sms-ejoin";
 import { classifyInbound } from "../lib/sms-inbox";
 import { subscribeSmsEvents, publishSmsEvent } from "../lib/sms-events";
 
@@ -645,13 +645,30 @@ router.get("/admin/messages/inbound-diagnostics", async (req, res) => {
   try {
     const chatPort = await getChatPort();
     const raw = await fetchInboxRaw();
+    let detailRows: Awaited<ReturnType<typeof fetchInboundSmsForPort>> = [];
+    let detailParseStatus: "parsed" | "empty-inbox" | "unrecognized-page" | "fetch-error" = "empty-inbox";
+    let detailFetchError: string | null = null;
+    if (chatPort != null) {
+      try {
+        const detail = await fetchInboundSmsForPortResult(chatPort);
+        detailRows = detail.rows;
+        detailParseStatus = detail.parseStatus;
+      } catch (err) {
+        detailFetchError = err instanceof Error ? err.message : String(err);
+        detailParseStatus = "fetch-error";
+      }
+    }
+    // Prefer the dedicated port's full history for sample classification.
+    // The listing only carries one latest row per SIM and can therefore
+    // look healthy while the detail request is pointed at the wrong port.
+    const rowsForDiagnostics = detailRows.length > 0 ? detailRows : raw.parsedRows;
     // Annotate the first handful of parsed rows with what the ingest
     // pipeline would do with them — without actually ingesting. Lets
     // the operator tell "matched-to-inquiry-N", "would land in
     // Unmatched", "owner-from-phone (needs #<id>)", "STOP keyword",
     // and "admin-blocked" apart at a glance.
     const annotated = await Promise.all(
-      raw.parsedRows.slice(0, 5).map(async row => {
+      rowsForDiagnostics.slice(0, 5).map(async row => {
         let classification: unknown;
         let classifyError: string | null = null;
         try {
@@ -690,6 +707,10 @@ router.get("/admin/messages/inbound-diagnostics", async (req, res) => {
       retried: raw.retried,
       rejectedAfterRetry: raw.rejectedAfterRetry,
       fetchError: raw.fetchError,
+      parseStatus: raw.parseStatus,
+      detailParseStatus,
+      detailFetchError,
+      detailParsedRowCount: detailRows.length,
       parsedRowCount: raw.parsedRows.length,
       parsedRowsByPort,
       sampleRows: annotated,

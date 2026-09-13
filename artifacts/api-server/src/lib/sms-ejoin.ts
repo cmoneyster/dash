@@ -801,6 +801,7 @@ function perPortDetailCandidatePaths(port: number): string[] {
   const custom = process.env.EJOIN_SMS_INBOX_DETAIL_PATH?.trim().replace(/^\//, "");
   return [
     custom ? subst(custom) : null,
+    "goip_sms_inbox_details_en.html",
     `goip_sms_inbox_details_en.html?port=${port}`,
     `goip_sms_inbox_details.html?port=${port}`,
     `goip_sms_recv_details_en.html?port=${port}`,
@@ -817,6 +818,7 @@ async function attemptFetchPage(
   baseUrl: string,
   cookie: string,
   candidates: string[],
+  request?: { method: "POST"; body: string },
 ): Promise<InboxAttemptResult> {
   const tried: string[] = [];
   let lastErr: unknown = null;
@@ -831,7 +833,13 @@ async function attemptFetchPage(
     tried.push(path);
     try {
       const resp = await fetch(`${baseUrl}/${path}`, {
-        headers: { Cookie: cookie, Referer: `${baseUrl}/${path}` },
+        method: request?.method,
+        headers: {
+          Cookie: cookie,
+          Referer: `${baseUrl}/${path}`,
+          ...(request ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+        },
+        body: request?.body,
         signal: AbortSignal.timeout(15_000),
       });
       lastHttpStatus = resp.status;
@@ -891,7 +899,10 @@ async function attemptFetchPage(
 // endpoint surfaces directly. Used for both the inbox listing AND the
 // per-port detail page; the candidates list is the only thing that
 // differs between the two paths.
-async function fetchPageWithRetry(candidates: string[]): Promise<{
+async function fetchPageWithRetry(
+  candidates: string[],
+  request?: { method: "POST"; body: string },
+): Promise<{
   result: InboxAttemptResult;
   retried: boolean;
   rejectedAfterRetry: boolean;
@@ -899,13 +910,13 @@ async function fetchPageWithRetry(candidates: string[]): Promise<{
   const cfg = getCredentials();
   if (!cfg) return null;
   let cookie = await getCachedSessionCookie(cfg);
-  let result = await attemptFetchPage(cfg.baseUrl, cookie, candidates);
+  let result = await attemptFetchPage(cfg.baseUrl, cookie, candidates, request);
   let retried = false;
   let rejectedAfterRetry = false;
   if (result.rejected) {
     invalidateSessionCache();
     cookie = await getCachedSessionCookie(cfg);
-    result = await attemptFetchPage(cfg.baseUrl, cookie, candidates);
+    result = await attemptFetchPage(cfg.baseUrl, cookie, candidates, request);
     retried = true;
     if (result.rejected) rejectedAfterRetry = true;
   }
@@ -988,6 +999,21 @@ export async function fetchInbound(opts?: {
   // double-counting on hybrid pages); use the listing's row output
   // only when the legacy path was empty AND the listing isn't.
   const finalRows = rows.length > 0 ? rows : listing.rows;
+  if (
+    result.bodyBytes > 0 &&
+    listing.ports.some(p => p.count > 0) &&
+    finalRows.length === 0
+  ) {
+    logger.warn(
+      {
+        successPath: result.successPath,
+        httpStatus: result.httpStatus,
+        bodyBytes: result.bodyBytes,
+        portsWithMessages: listing.ports.filter(p => p.count > 0).map(p => p.port),
+      },
+      "[ejoin] inbox listing reported messages but parser returned zero rows",
+    );
+  }
   // One structured line per successful cycle. Captures everything an
   // operator needs to tell the difference between "fetch is fine but
   // the parser dropped every row" and "gateway returned no rows".
@@ -1033,13 +1059,37 @@ export async function fetchInboundSms(opts?: {
 // DB layer (smsMessagesTable.gatewayMessageId UNIQUE) collapses the
 // same physical message to one row regardless of which fetch path
 // surfaced it first.
-export async function fetchInboundSmsForPort(
+export type FetchInboundDetailResult = {
+  rows: InboundSms[];
+  parseStatus: "parsed" | "empty-inbox" | "unrecognized-page" | "fetch-error";
+  parsedRowsBeforeTimeFilter: number;
+};
+
+export async function fetchInboundSmsForPortResult(
   port: number,
   opts?: { sinceMs?: number },
-): Promise<InboundSms[]> {
-  if (!Number.isInteger(port) || port < 1 || port > EJOIN_PORT_COUNT) return [];
-  const wrapped = await fetchPageWithRetry(perPortDetailCandidatePaths(port));
-  if (!wrapped) return [];
+): Promise<FetchInboundDetailResult> {
+  if (!Number.isInteger(port) || port < 1 || port > EJOIN_PORT_COUNT) {
+    return { rows: [], parseStatus: "fetch-error", parsedRowsBeforeTimeFilter: 0 };
+  }
+  // Current EJOIN firmware ignores query-string port selectors and uses
+  // the same POST form its browser UI submits. A GET of the detail URL
+  // still returns HTTP 200, but it silently defaults to port 1, which
+  // made a port-7 poll look healthy while reading the wrong SIM.
+  const detailForm = new URLSearchParams({
+    selected_port: String(port),
+    selected_slot: "0",
+    selected_page: "1",
+    items_per_page: "100",
+    command: "",
+    selected_records: "",
+    goip_sms_dst: "",
+  }).toString();
+  const wrapped = await fetchPageWithRetry(
+    perPortDetailCandidatePaths(port),
+    { method: "POST", body: detailForm },
+  );
+  if (!wrapped) return { rows: [], parseStatus: "fetch-error", parsedRowsBeforeTimeFilter: 0 };
   const { result, retried, rejectedAfterRetry } = wrapped;
   if (rejectedAfterRetry) {
     console.warn(
@@ -1065,9 +1115,31 @@ export async function fetchInboundSmsForPort(
       },
       "[ejoin] per-port detail fetch: no usable HTML",
     );
-    return [];
+    return { rows: [], parseStatus: "fetch-error", parsedRowsBeforeTimeFilter: 0 };
   }
-  const parsed = parseInboundSmsDetail(result.html, port, { sinceMs: opts?.sinceMs });
+  // Parse without the caller's time window first so a valid page whose
+  // retained rows are merely old is not mistaken for a parser failure.
+  const allParsed = parseInboundSmsDetail(result.html, port);
+  const sinceMs = opts?.sinceMs ?? 0;
+  const parsed = allParsed.filter(row => row.occurredAt.getTime() >= sinceMs);
+  const detailClaimsRows = /"(?:total|count)"\s*:\s*[1-9]\d*/.test(result.html);
+  const parseStatus: FetchInboundDetailResult["parseStatus"] =
+    allParsed.length > 0
+      ? "parsed"
+      : detailClaimsRows
+        ? "unrecognized-page"
+        : "empty-inbox";
+  if (result.bodyBytes > 0 && parseStatus === "unrecognized-page") {
+    logger.warn(
+      {
+        port,
+        successPath: result.successPath,
+        httpStatus: result.httpStatus,
+        bodyBytes: result.bodyBytes,
+      },
+      "[ejoin] per-port detail page reported messages but parser returned zero rows",
+    );
+  }
   logger.info(
     {
       port,
@@ -1090,7 +1162,15 @@ export async function fetchInboundSmsForPort(
   // estimate (~7 KB/poll baseline) get a per-fetch comparison and the
   // total bytes/hour stays accurate either way.
   recordEjoinPoll(result.bodyBytes);
-  return parsed;
+  return { rows: parsed, parseStatus, parsedRowsBeforeTimeFilter: allParsed.length };
+}
+
+// Backwards-compatible row-only facade for existing backfill and test callers.
+export async function fetchInboundSmsForPort(
+  port: number,
+  opts?: { sinceMs?: number },
+): Promise<InboundSms[]> {
+  return (await fetchInboundSmsForPortResult(port, opts)).rows;
 }
 
 // Read-only diagnostics view used by the admin "inbound diagnostics"
@@ -1113,6 +1193,7 @@ export type InboxDiagnosticsResult = {
   // Lets the operator confirm at a glance which SIMs have hidden
   // older-than-latest messages a per-port detail walk would recover.
   listingPorts: ListingPortSummary[];
+  parseStatus: "parsed" | "empty-inbox" | "unrecognized-page";
   fetchError: string | null;
 };
 
@@ -1140,6 +1221,7 @@ export async function fetchInboxRaw(): Promise<InboxDiagnosticsResult> {
       rejectedAfterRetry: false,
       parsedRows: [],
       listingPorts: [],
+      parseStatus: "unrecognized-page",
       fetchError: err instanceof Error ? err.message : String(err),
     };
   }
@@ -1157,12 +1239,20 @@ export async function fetchInboxRaw(): Promise<InboxDiagnosticsResult> {
       rejectedAfterRetry: false,
       parsedRows: [],
       listingPorts: [],
+      parseStatus: "empty-inbox",
       fetchError: null,
     };
   }
   const { result, retried, rejectedAfterRetry } = wrapped;
   const parsedRows = result.html ? parseInboundSmsHtml(result.html) : [];
   const listingPorts = result.html ? parseInboundSmsListing(result.html).ports : [];
+  const portsClaimMessages = listingPorts.some(p => p.count > 0);
+  const parseStatus: InboxDiagnosticsResult["parseStatus"] =
+    parsedRows.length > 0
+      ? "parsed"
+      : result.html && listingPorts.length > 0 && !portsClaimMessages
+        ? "empty-inbox"
+        : "unrecognized-page";
   return {
     ejoinConfigured: true,
     triedPaths: result.triedPaths,
@@ -1176,6 +1266,7 @@ export async function fetchInboxRaw(): Promise<InboxDiagnosticsResult> {
     rejectedAfterRetry,
     parsedRows,
     listingPorts,
+    parseStatus,
     fetchError: result.lastErr ? String(result.lastErr) : null,
   };
 }
@@ -1266,7 +1357,10 @@ function jsUnescapeSingleQuoted(s: string): string {
 // out of reusing the same extractor for the detail page. The loosened
 // pattern accepts any tab id; if a page ever embeds multiple
 // loadListData calls, we take the first match — the firmware we've
-// observed only emits one per page.
+// observed usually emits one per page. Some current firmware includes a
+// commented-out sample call before the live call, however, so parse every
+// candidate and retain the LAST valid payload (the live call is emitted
+// after the sample).
 function extractLoadListEntries(html: string): unknown[] | null {
   // The JSON payload is wrapped in a JS single-quoted string literal,
   // so we must (a) honor JS escape sequences when finding the closing
@@ -1275,23 +1369,29 @@ function extractLoadListEntries(html: string): unknown[] | null {
   // the captured text before JSON.parse — the gateway double-escapes
   // backslashes to fit JSON inside the JS literal (e.g. JSON `\r\n`
   // appears in the page as `\\r\\n`).
-  const m = /loadListData\s*\(\s*["'][^"']+["']\s*,\s*'((?:\\[\s\S]|[^'\\])*)'/.exec(html);
-  if (!m) return null;
-  const jsonText = jsUnescapeSingleQuoted(m[1]);
-  let payload: unknown;
-  try {
-    payload = JSON.parse(jsonText);
-  } catch {
-    return null;
+  const re = /loadListData\s*\(\s*["'][^"']+["']\s*,\s*'((?:\\[\s\S]|[^'\\])*)'/g;
+  let match: RegExpExecArray | null;
+  let lastValid: unknown[] | null = null;
+  while ((match = re.exec(html)) !== null) {
+    // A current gateway build puts raw modem-control bytes (observed:
+    // U+0001/U+0006/U+0007) in otherwise valid JSON string fields.
+    // JSON.parse correctly rejects those unescaped bytes, which used to
+    // discard every SIM row. Escape only control characters JSON never
+    // permits literally; preserve normal JSON whitespace unchanged.
+    const jsonText = jsUnescapeSingleQuoted(match[1]).replace(
+      /[\x00-\x08\x0b\x0c\x0e-\x1f]/g,
+      c => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    );
+    try {
+      const payload = JSON.parse(jsonText) as { data?: unknown };
+      if (payload && typeof payload === "object" && Array.isArray(payload.data)) {
+        lastValid = payload.data;
+      }
+    } catch {
+      // Keep scanning: a stale/sample call must not hide a later live one.
+    }
   }
-  if (
-    !payload ||
-    typeof payload !== "object" ||
-    !Array.isArray((payload as { data?: unknown }).data)
-  ) {
-    return null;
-  }
-  return (payload as { data: unknown[] }).data;
+  return lastValid;
 }
 
 // Stable id formula shared by the listing parser AND the per-port
@@ -1536,13 +1636,29 @@ export function parseInboundSmsDetail(
     let sender: string;
     let timeStr: string;
     let content: string;
-    // If entry[1] looks like a portSlot label ("7A"), the firmware is
-    // re-using the listing layout; otherwise it's the slimmer
-    // [seq, sender, time, content, ...] shape.
+    // Current detail firmware emits:
+    // [seq, portSlot, sender, time, content, receiver, scts].
+    // Older variants either reused the listing shape
+    // [seq, portSlot, count, sender, time, content, ...] or omitted the
+    // port slot entirely. Detect the current detail shape by its timestamp
+    // in entry[3] before falling back to the older layouts.
     if (/^\d{1,2}[A-Za-z]?$/.test(cell1) && entry.length >= 6) {
-      sender = String(entry[3] ?? "").trim();
-      timeStr = String(entry[4] ?? "").trim();
-      content = String(entry[5] ?? "").trim();
+      const embeddedPort = Number(/^(\d{1,2})/.exec(cell1)?.[1]);
+      // Never relabel a wrong-port response as the requested chat port.
+      // Some firmware returns HTTP 200 with the default port when it
+      // ignores a selector; accepting that page would ingest unrelated
+      // SIM traffic into customer chat.
+      if (embeddedPort !== port) continue;
+      const possibleDetailTime = String(entry[3] ?? "").trim();
+      if (/^(?:\d{2}-\d{2}|\d{4}[-/]\d{2}[-/]\d{2})\s+\d{2}:\d{2}/.test(possibleDetailTime)) {
+        sender = String(entry[2] ?? "").trim();
+        timeStr = possibleDetailTime;
+        content = String(entry[4] ?? "").trim();
+      } else {
+        sender = String(entry[3] ?? "").trim();
+        timeStr = String(entry[4] ?? "").trim();
+        content = String(entry[5] ?? "").trim();
+      }
     } else if (entry.length >= 4) {
       sender = cell1;
       timeStr = String(entry[2] ?? "").trim();

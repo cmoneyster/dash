@@ -27,7 +27,7 @@ import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import {
   fetchInbound,
-  fetchInboundSmsForPort,
+  fetchInboundSmsForPortResult,
   getChatPort,
   getInboundMode,
   getSmsOutboundMode,
@@ -147,19 +147,17 @@ async function pollOnce(): Promise<SmsPollResult> {
         !firstCycle && newLatestId != null && newLatestId !== lastLatestId;
       const shouldEscalate = newCount > 0 && (firstCycle || countIncreased || latestChanged);
 
-      // Update the trackers BEFORE ingest so a thrown error mid-ingest
-      // doesn't make the next cycle escalate twice for the same change.
-      lastSeenCountByPort.set(port, newCount);
-      lastSeenLatestIdByPort.set(port, newLatestId);
-
       let toIngest = peek.rows;
+      let detailFetchUsable = !shouldEscalate;
       if (shouldEscalate) {
         // Drill into the per-port detail page to recover the
         // older-than-latest messages the listing was hiding. Same-id
         // rows from the listing dedupe naturally — the detail row wins
         // because the per-port page is the authoritative full history.
         try {
-          const detail = await fetchInboundSmsForPort(port, { sinceMs });
+          const detailResult = await fetchInboundSmsForPortResult(port, { sinceMs });
+          const detail = detailResult.rows;
+          detailFetchUsable = detailResult.parseStatus === "parsed";
           if (detail.length > 0) {
             const detailIds = new Set(detail.map(m => m.gatewayMessageId));
             toIngest = [
@@ -177,10 +175,25 @@ async function pollOnce(): Promise<SmsPollResult> {
               "[sms-scheduler] escalated to per-port detail walk",
             );
           }
+          if (!detailFetchUsable) {
+            errors++;
+            logger.warn(
+              { port, parseStatus: detailResult.parseStatus, newCount },
+              "[sms-scheduler] detail fetch unusable; retaining prior baseline so next poll retries",
+            );
+          }
         } catch (err) {
           logger.warn({ err, port }, "[sms-scheduler] per-port detail fetch failed");
           errors++;
         }
+      }
+      // Commit the listing baseline only after the detail page proved
+      // usable. If it failed or parsed an unrecognized/wrong-port page,
+      // retaining the old baseline makes the next cycle retry instead of
+      // permanently hiding messages behind the listing's latest row.
+      if (detailFetchUsable) {
+        lastSeenCountByPort.set(port, newCount);
+        lastSeenLatestIdByPort.set(port, newLatestId);
       }
 
       fetchedCount = toIngest.length;

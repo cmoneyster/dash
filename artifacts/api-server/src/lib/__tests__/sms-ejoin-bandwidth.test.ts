@@ -118,6 +118,15 @@ describe("ejoin bandwidth accounting (task #211)", () => {
 
     await fetchInboundSmsForPort(7);
 
+    const detailCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("goip_sms_inbox_details"),
+    );
+    expect(detailCall?.[1]?.method).toBe("POST");
+    const posted = new URLSearchParams(String(detailCall?.[1]?.body ?? ""));
+    expect(posted.get("selected_port")).toBe("7");
+    expect(posted.get("selected_slot")).toBe("0");
+    expect(posted.get("items_per_page")).toBe("100");
+
     // The per-port detail page body MUST have been fed into the
     // bandwidth counter; otherwise the Idle Activity dashboard
     // understates real SIM-gateway traffic during escalated polls

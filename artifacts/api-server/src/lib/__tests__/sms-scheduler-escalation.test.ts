@@ -13,7 +13,7 @@ vi.mock("../sms-ejoin", () => ({
   getChatPort: vi.fn(async () => 7),
   getInboundMode: vi.fn(async () => "poll"),
   fetchInbound: vi.fn(),
-  fetchInboundSmsForPort: vi.fn(),
+  fetchInboundSmsForPortResult: vi.fn(),
 }));
 
 vi.mock("../sms-inbox", () => ({
@@ -29,7 +29,7 @@ import * as ejoin from "../sms-ejoin";
 import * as inbox from "../sms-inbox";
 
 const fetchInboundMock = ejoin.fetchInbound as unknown as ReturnType<typeof vi.fn>;
-const fetchDetailMock = ejoin.fetchInboundSmsForPort as unknown as ReturnType<typeof vi.fn>;
+const fetchDetailMock = ejoin.fetchInboundSmsForPortResult as unknown as ReturnType<typeof vi.fn>;
 const ingestMock = inbox.ingestInbound as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
@@ -66,11 +66,11 @@ describe("sms scheduler — per-port detail escalation", () => {
       rows: [listingRow({ gid: "listdata:7:2405158960:04-28 01:50:newest", body: "newest" })],
       ports: [{ port: 7, count: 3, latestId: "listdata:7:2405158960:04-28 01:50:newest" }],
     });
-    fetchDetailMock.mockResolvedValueOnce([
+    fetchDetailMock.mockResolvedValueOnce({ parseStatus: "parsed", parsedRowsBeforeTimeFilter: 3, rows: [
       listingRow({ gid: "listdata:7:2405158960:04-28 01:50:newest", body: "newest" }),
       listingRow({ gid: "listdata:7:2405158960:04-28 01:45:middle", body: "middle" }),
       listingRow({ gid: "listdata:7:2405158960:04-28 01:40:oldest", body: "oldest" }),
-    ]);
+    ] });
 
     await _pollOnceForTests();
 
@@ -89,7 +89,7 @@ describe("sms scheduler — per-port detail escalation", () => {
     const stableSummary = { port: 7, count: 1, latestId: stableRow.gatewayMessageId };
 
     fetchInboundMock.mockResolvedValue({ rows: [stableRow], ports: [stableSummary] });
-    fetchDetailMock.mockResolvedValue([stableRow]);
+    fetchDetailMock.mockResolvedValue({ parseStatus: "parsed", parsedRowsBeforeTimeFilter: 1, rows: [stableRow] });
 
     await _pollOnceForTests(); // cycle 1: cold start escalates
     await _pollOnceForTests(); // cycle 2: nothing changed, must not escalate
@@ -106,7 +106,7 @@ describe("sms scheduler — per-port detail escalation", () => {
       rows: [initialRow],
       ports: [{ port: 7, count: 1, latestId: initialRow.gatewayMessageId }],
     });
-    fetchDetailMock.mockResolvedValueOnce([initialRow]);
+    fetchDetailMock.mockResolvedValueOnce({ parseStatus: "parsed", parsedRowsBeforeTimeFilter: 1, rows: [initialRow] });
 
     // Cycle 2: customer texts twice more, count jumps to 3 and a new
     // message becomes the latest. Both transitions should trigger an
@@ -116,11 +116,11 @@ describe("sms scheduler — per-port detail escalation", () => {
       rows: [newRow],
       ports: [{ port: 7, count: 3, latestId: newRow.gatewayMessageId }],
     });
-    fetchDetailMock.mockResolvedValueOnce([
+    fetchDetailMock.mockResolvedValueOnce({ parseStatus: "parsed", parsedRowsBeforeTimeFilter: 3, rows: [
       newRow,
       listingRow({ gid: "listdata:7:2405158960:04-28 01:52:m2", body: "m2" }),
       initialRow,
-    ]);
+    ] });
 
     await _pollOnceForTests();
     await _pollOnceForTests();
@@ -143,7 +143,7 @@ describe("sms scheduler — per-port detail escalation", () => {
       rows: [oldLatest],
       ports: [{ port: 7, count: 1, latestId: oldLatest.gatewayMessageId }],
     });
-    fetchDetailMock.mockResolvedValueOnce([oldLatest]);
+    fetchDetailMock.mockResolvedValueOnce({ parseStatus: "parsed", parsedRowsBeforeTimeFilter: 1, rows: [oldLatest] });
 
     // Cycle 2: count stayed 1 (firmware marked the old one read and
     // counted the new one) but the latest id flipped. We must
@@ -152,7 +152,7 @@ describe("sms scheduler — per-port detail escalation", () => {
       rows: [newLatest],
       ports: [{ port: 7, count: 1, latestId: newLatest.gatewayMessageId }],
     });
-    fetchDetailMock.mockResolvedValueOnce([newLatest]);
+    fetchDetailMock.mockResolvedValueOnce({ parseStatus: "parsed", parsedRowsBeforeTimeFilter: 1, rows: [newLatest] });
 
     await _pollOnceForTests();
     await _pollOnceForTests();
@@ -173,5 +173,33 @@ describe("sms scheduler — per-port detail escalation", () => {
 
     expect(fetchDetailMock).not.toHaveBeenCalled();
     expect(ingestMock).not.toHaveBeenCalled();
+  });
+
+  it("retries an unchanged listing after an unrecognized detail page", async () => {
+    const stableRow = listingRow({ gid: "listdata:7:2405158960:04-28 01:50:hello", body: "hello" });
+    fetchInboundMock.mockResolvedValue({
+      rows: [stableRow],
+      ports: [{ port: 7, count: 2, latestId: stableRow.gatewayMessageId }],
+    });
+    fetchDetailMock
+      .mockResolvedValueOnce({
+        parseStatus: "unrecognized-page",
+        parsedRowsBeforeTimeFilter: 0,
+        rows: [],
+      })
+      .mockResolvedValueOnce({
+        parseStatus: "parsed",
+        parsedRowsBeforeTimeFilter: 2,
+        rows: [
+          stableRow,
+          listingRow({ gid: "listdata:7:2405158960:04-28 01:45:hidden", body: "hidden" }),
+        ],
+      });
+
+    await _pollOnceForTests();
+    await _pollOnceForTests();
+
+    expect(fetchDetailMock).toHaveBeenCalledTimes(2);
+    expect(ingestMock.mock.calls.map(c => (c[0] as { body: string }).body)).toContain("hidden");
   });
 });
