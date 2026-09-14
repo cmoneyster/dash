@@ -39,3 +39,4 @@ OWNER_PHONE = "+12405158960"
 
 [userenv.production]
 PUBLIC_BASE_URL = "https://eatonthedash.com"
+EJOIN_INBOUND_MODE = "push"
