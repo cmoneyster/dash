@@ -35,7 +35,7 @@ export default function InquiryStatus() {
   useEffect(() => {
     if (!token) return;
     setLoading(true);
-    fetch(`/api/chat/inquiry/${encodeURIComponent(token)}`)
+    fetch(`/api/inquiry/${encodeURIComponent(token)}`)
       .then(async (res) => {
         if (res.status === 404) { setNotFound(true); return; }
         if (!res.ok) throw new Error("Failed to fetch");

@@ -212,4 +212,60 @@ router.post("/quote/:token/request-changes", async (req, res): Promise<void> => 
   }
 });
 
+// Public inquiry status endpoint — keyed by the auto-generated UUID
+// quoteToken so sequential-ID enumeration is not possible.
+// Returns curated fields only; raw contact values are masked.
+router.get("/inquiry/:token", async (req, res): Promise<void> => {
+  const token = req.params.token ?? "";
+  if (!/^[0-9a-f-]{36}$/i.test(token)) {
+    res.status(400).json({ error: "Invalid token" });
+    return;
+  }
+  try {
+    const [row] = await db
+      .select({
+        id: cateringInquiriesTable.id,
+        clientName: cateringInquiriesTable.clientName,
+        clientPhone: cateringInquiriesTable.clientPhone,
+        clientEmail: cateringInquiriesTable.clientEmail,
+        eventDate: cateringInquiriesTable.eventDate,
+        guestCount: cateringInquiriesTable.guestCount,
+        serviceMode: cateringInquiriesTable.serviceMode,
+        status: cateringInquiriesTable.status,
+        createdAt: cateringInquiriesTable.createdAt,
+      })
+      .from(cateringInquiriesTable)
+      .where(eq(cateringInquiriesTable.quoteToken, token))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "Inquiry not found" });
+      return;
+    }
+
+    // Mask contact details: show last 4 digits of phone, domain of email.
+    const maskedPhone = row.clientPhone
+      ? "••• ••• " + row.clientPhone.replace(/\D/g, "").slice(-4)
+      : null;
+    const maskedEmail = row.clientEmail
+      ? row.clientEmail.replace(/^[^@]+/, (u) => u.slice(0, 2) + "••••")
+      : null;
+
+    res.json({
+      id: row.id,
+      clientName: row.clientName,
+      maskedPhone,
+      maskedEmail,
+      eventDate: row.eventDate,
+      guestCount: row.guestCount,
+      serviceMode: row.serviceMode,
+      status: row.status,
+      createdAt: row.createdAt,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching inquiry status");
+    res.status(500).json({ error: "Failed to fetch inquiry" });
+  }
+});
+
 export default router;

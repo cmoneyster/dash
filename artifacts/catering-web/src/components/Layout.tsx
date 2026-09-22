@@ -1,6 +1,5 @@
 import { Link, useRoute } from "wouter";
 import { ShoppingBag, MapPin, Instagram } from "lucide-react";
-// import { ChatWidget } from "./ChatWidget"; // dashy — re-enable to reactivate
 import { ContactWidget } from "./ContactWidget";
 import { ThemeToggle } from "./ThemeToggle";
 import { useGetPlan, getGetPlanQueryKey } from "@workspace/api-client-react";

@@ -7,7 +7,6 @@ import { AdminGuard } from "@/components/AdminGuard";
 import Home from "@/pages/Home";
 import Menu from "@/pages/Menu";
 import Plan from "@/pages/Plan";
-import Confirmation from "@/pages/Confirmation";
 import NotFound from "@/pages/not-found";
 import EventOrder from "@/pages/EventOrder";
 import DemoOrder from "@/pages/DemoOrder";
@@ -20,12 +19,10 @@ import Gallery from "@/pages/Gallery";
 import InquiryStatus from "@/pages/InquiryStatus";
 
 import SharedPlan from "@/pages/SharedPlan";
-import PlanPreview from "@/pages/PlanPreview";
 import AdminLogin from "@/pages/admin/Login";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import MenuManager from "@/pages/admin/MenuManager";
 import CategoryManager from "@/pages/admin/CategoryManager";
-import OrderManager from "@/pages/admin/OrderManager";
 import CalendarManager from "@/pages/admin/CalendarManager";
 import ImageLibrary from "@/pages/admin/ImageLibrary";
 import EventSettings from "@/pages/admin/EventSettings";
@@ -37,9 +34,7 @@ import UpcomingCaterings from "@/pages/admin/UpcomingCaterings";
 import HashtagWallModeration from "@/pages/admin/HashtagWallModeration";
 import SmsSettings from "@/pages/admin/SmsSettings";
 import UnmatchedMessages from "@/pages/admin/UnmatchedMessages";
-import IdleActivity from "@/pages/admin/IdleActivity";
 import DemoMenu from "@/pages/admin/DemoMenu";
-import AiRecommendations from "@/pages/admin/AiRecommendations";
 import MenuPackages from "@/pages/admin/MenuPackages";
 import MenuPackageEdit from "@/pages/admin/MenuPackageEdit";
 import Printers from "@/pages/admin/Printers";
@@ -65,9 +60,7 @@ function Router() {
       <Route path="/menu" component={Menu} />
       <Route path="/cart">{() => <Redirect to="/plan" />}</Route>
       <Route path="/plan" component={Plan} />
-      <Route path="/plan/preview" component={PlanPreview} />
       <Route path="/plan/share/:token" component={SharedPlan} />
-      <Route path="/confirmation" component={Confirmation} />
       <Route path="/event" component={EventOrder} />
       <Route path="/demo" component={DemoOrder} />
       <Route path="/demo/order/:id" component={DemoOrderTracking} />
@@ -88,9 +81,6 @@ function Router() {
       </Route>
       <Route path="/admin/categories">
         {() => <AdminGuard><CategoryManager /></AdminGuard>}
-      </Route>
-      <Route path="/admin/orders">
-        {() => <AdminGuard><OrderManager /></AdminGuard>}
       </Route>
       <Route path="/admin/calendar">
         {() => <AdminGuard><CalendarManager /></AdminGuard>}
@@ -125,14 +115,8 @@ function Router() {
       <Route path="/admin/messages/unmatched">
         {() => <AdminGuard><UnmatchedMessages /></AdminGuard>}
       </Route>
-      <Route path="/admin/idle-activity">
-        {() => <AdminGuard><IdleActivity /></AdminGuard>}
-      </Route>
       <Route path="/admin/demo-menu">
         {() => <AdminGuard><DemoMenu /></AdminGuard>}
-      </Route>
-      <Route path="/admin/ai-recommendations">
-        {() => <AdminGuard><AiRecommendations /></AdminGuard>}
       </Route>
       <Route path="/admin/menu-packages">
         {() => <AdminGuard><MenuPackages /></AdminGuard>}

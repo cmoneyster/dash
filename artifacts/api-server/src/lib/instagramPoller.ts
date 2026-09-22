@@ -7,7 +7,6 @@ import {
 } from "@workspace/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { logger } from "./logger";
-import { recordInstagramPoll } from "./idle-metrics";
 import { ObjectStorageService } from "./objectStorage";
 import {
   InstagramApiError,
@@ -248,11 +247,6 @@ export async function runPollerOnce(): Promise<PollerSummary> {
     pollerRunning = false;
   }
   logger.info({ summary }, "instagram poller cycle complete");
-  // Record for the admin idle-activity dashboard. Counted regardless
-  // of whether any candidates were inserted — the operator wants to
-  // know the poller is still cycling, not just whether it found new
-  // posts.
-  recordInstagramPoll();
   return summary;
 }
 
@@ -299,12 +293,7 @@ export async function runCleanupOnce(): Promise<{ checked: number; markedUnavail
   }
 }
 
-// Mirrors what the operator-tunable settings reduced to on the most
-// recent loop iteration so the admin Idle Activity card can render
-// "currently in effect: enabled, every 30 min" without re-reading the
-// DB. Defaults match historical behavior so the UI shows something
-// sensible on the very first render before the loop has ticked.
-let lastEffectivePollEnabled = true;
+// Last interval the loop resolved, used as the retry delay if a tick throws.
 let lastEffectivePollIntervalMinutes: number = DEFAULT_POLL_INTERVAL_MINUTES;
 
 async function readPollerSettings(): Promise<{ enabled: boolean; intervalMinutes: number }> {
@@ -336,7 +325,6 @@ async function pollTick(): Promise<void> {
   let nextDelayMs: number;
   try {
     const { enabled, intervalMinutes } = await readPollerSettings();
-    lastEffectivePollEnabled = enabled;
     lastEffectivePollIntervalMinutes = intervalMinutes;
     nextDelayMs = intervalMinutes * 60_000;
     if (enabled) {
@@ -348,30 +336,6 @@ async function pollTick(): Promise<void> {
   } finally {
     setTimeout(() => { void pollTick(); }, nextDelayMs!).unref?.();
   }
-}
-
-/**
- * Operator-visible snapshot for the admin Idle Activity card. Reads
- * the persisted settings directly so the page reflects what the admin
- * just saved on the moderation sidebar, instead of waiting up to one
- * full poll interval (defaults to 30 min, can be hours) for the
- * in-memory cache to refresh on the next tick. Falls back to the
- * in-memory cache if the DB read fails so the card still renders
- * during a transient hiccup.
- */
-export async function getInstagramPollerStatus(): Promise<{
-  enabled: boolean;
-  intervalMinutes: number;
-  minMinutes: number;
-  maxMinutes: number;
-}> {
-  const { enabled, intervalMinutes } = await readPollerSettings();
-  return {
-    enabled,
-    intervalMinutes,
-    minMinutes: MIN_POLL_INTERVAL_MINUTES,
-    maxMinutes: MAX_POLL_INTERVAL_MINUTES,
-  };
 }
 
 export const INSTAGRAM_POLL_INTERVAL_RANGE = {

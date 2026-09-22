@@ -306,45 +306,6 @@ async function tick(): Promise<void> {
   }
 }
 
-/**
- * Operator-visible snapshot for the admin Idle Activity card. Reads
- * the persisted settings directly so the page reflects what the admin
- * just saved on SMS Settings, instead of waiting up to one full poll
- * interval for the in-memory cache to refresh on the next tick. Falls
- * back to the in-memory cache if the DB read fails so the card still
- * renders during a transient hiccup. `inboundMode` is exposed so the
- * UI can hint that push-mode ignores the operator interval.
- */
-export async function getSmsPollerStatus(): Promise<{
-  enabled: boolean;
-  intervalSeconds: number;
-  inboundMode: "push" | "poll";
-  minSeconds: number;
-  maxSeconds: number;
-}> {
-  const inboundMode = getInboundMode();
-  if (inboundMode === "push") {
-    // Push mode hard-overrides the operator-tunable cadence with the
-    // safety-net interval; surface that so the Idle Activity card
-    // matches what the loop is actually doing.
-    return {
-      enabled: true,
-      intervalSeconds: Math.floor(POLL_INTERVAL_MS_SAFETY_NET / 1000),
-      inboundMode,
-      minSeconds: MIN_POLL_INTERVAL_SECONDS,
-      maxSeconds: MAX_POLL_INTERVAL_SECONDS,
-    };
-  }
-  const { enabled, intervalSeconds } = await readPollerSettings();
-  return {
-    enabled,
-    intervalSeconds,
-    inboundMode,
-    minSeconds: MIN_POLL_INTERVAL_SECONDS,
-    maxSeconds: MAX_POLL_INTERVAL_SECONDS,
-  };
-}
-
 export const SMS_POLL_INTERVAL_RANGE = {
   min: MIN_POLL_INTERVAL_SECONDS,
   max: MAX_POLL_INTERVAL_SECONDS,

@@ -17,7 +17,6 @@ import { db } from "@workspace/db";
 import { eventSettingsTable, cateringInquiriesTable, phoneBlocklistTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
-import { recordEjoinPoll, recordOutboundSms } from "./idle-metrics";
 
 // Sentinel error so callers (and the guarded customer-send wrapper)
 // can distinguish "blocklisted recipient" from generic gateway errors
@@ -649,10 +648,6 @@ export async function sendSmsViaEjoin(
   const gatewayResponse = summarizeGatewayResponse(result.text, result.status);
 
   console.info(`[ejoin] SMS sent to ${phone} via port ${port}: ${gatewayResponse}`);
-  // Count for the admin idle-activity dashboard. Only fires on a real
-  // dispatch — the shadow-mode short-circuit above returns earlier so
-  // suppressed sends don't inflate the "outbound SMS" totals.
-  recordOutboundSms();
 
   // Regression sanity log: if this send went out on the round-robin
   // pool (no portOverride) but the destination phone matches a known
@@ -1031,11 +1026,6 @@ export async function fetchInbound(opts?: {
     },
     "[ejoin] inbound fetch",
   );
-  // Feed the admin idle-activity dashboard. We record on every poll
-  // attempt that produced a body (regardless of whether it parsed)
-  // so the operator sees the full background traffic, not just the
-  // happy-path subset.
-  recordEjoinPoll(result.bodyBytes);
   return { rows: finalRows, ports: listing.ports };
 }
 
@@ -1152,16 +1142,6 @@ export async function fetchInboundSmsForPortResult(
     },
     "[ejoin] per-port detail fetch",
   );
-  // Feed the admin idle-activity dashboard. The per-port detail page is
-  // a real HTTP round-trip to the gateway and is hit on every escalated
-  // poll cycle (cold start + every count/latest-id change), so omitting
-  // it would understate the operator's bandwidth measurement — exactly
-  // what the SMS-settings cadence card is supposed to be calibrated
-  // against. Counted as a separate poll because it IS a separate
-  // request; admins comparing avg bytes/poll vs the SMS-settings
-  // estimate (~7 KB/poll baseline) get a per-fetch comparison and the
-  // total bytes/hour stays accurate either way.
-  recordEjoinPoll(result.bodyBytes);
   return { rows: parsed, parseStatus, parsedRowsBeforeTimeFilter: allParsed.length };
 }
 

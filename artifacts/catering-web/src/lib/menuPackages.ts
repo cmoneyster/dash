@@ -1,9 +1,8 @@
 // Client helpers for the pre-built menu packages feature: types,
-// fetchers, and the load-into-planner / load-into-cart flows used by
+// fetchers, and the load-into-planner flow used by
 // both the customer Menu page and the admin Edit page.
 
 import { getAdminToken } from "@/components/AdminGuard";
-import { sizeLabel as sizeLabelOf, sizePrice as sizePriceOf } from "@/lib/sizeSlotHelpers";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -154,60 +153,16 @@ export async function fetchPublicPackage(id: number): Promise<PublicMenuPackage>
 
 export type LoadMode = "merge" | "replace";
 
-// ── Cart loading ─────────────────────────────────────────────────────────
-
-export async function loadPackageIntoCart(
-  pkg: PublicMenuPackage,
-  sessionId: string,
-  mode: LoadMode,
-): Promise<{ added: number }> {
-  if (mode === "replace") {
-    await fetch(`${API_BASE}/api/cart`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    });
-  }
-
-  let added = 0;
-  for (const it of pkg.items) {
-    const isPan = it.menuItem.pricingTemplate === "pan_sizes";
-    const body: Record<string, unknown> = {
-      sessionId,
-      menuItemId: it.menuItemId,
-      quantity: it.quantity,
-    };
-    if (isPan && it.sizeKey != null && it.sizeKey >= 1 && it.sizeKey <= 5) {
-      const slot = it.sizeKey as 1 | 2 | 3 | 4 | 5;
-      const lbl = sizeLabelOf(it.menuItem, slot);
-      const prc = sizePriceOf(it.menuItem, slot);
-      body.sizeSlot = slot;
-      if (lbl) body.sizeLabel = lbl;
-      if (prc != null) body.sizePrice = prc;
-    }
-    const res = await fetch(`${API_BASE}/api/cart`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) added += 1;
-  }
-  return { added };
-}
-
 // ── Planner loading ──────────────────────────────────────────────────────
 
 type PlanItemRow = { id: number; menuItemId: number };
 
-// Fetches the current plan/cart item counts. Used by load actions to
+// Fetches the current plan item count. Used by load actions to
 // decide whether to prompt merge-or-replace, since react-query data
 // may still be `undefined` on first click.
-export async function fetchCurrentItemCount(target: "cart" | "plan", sessionId: string): Promise<number> {
+export async function fetchCurrentItemCount(sessionId: string): Promise<number> {
   try {
-    const url = target === "cart"
-      ? `${API_BASE}/api/cart?sessionId=${encodeURIComponent(sessionId)}`
-      : `${API_BASE}/api/plan?sessionId=${encodeURIComponent(sessionId)}`;
-    const res = await fetch(url);
+    const res = await fetch(`${API_BASE}/api/plan?sessionId=${encodeURIComponent(sessionId)}`);
     if (!res.ok) return 0;
     const data: unknown = await res.json();
     if (data && typeof data === "object" && "items" in data) {
