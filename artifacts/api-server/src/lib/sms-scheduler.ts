@@ -1,6 +1,6 @@
-// Boot-time scheduler for the customer-chat SMS feature.
+// Boot-time jobs for the customer-chat SMS feature. Nothing here
+// repeats on a timer, so an idle server can sleep.
 //
-// Two periodic jobs:
 //   1. One-shot historical backfill on first deploy. We pull the last
 //      smsBackfillDays of inbound messages on the chat port and ingest
 //      them through the same pipeline live messages use, so the chat
@@ -9,17 +9,12 @@
 //      run is gated on event_settings.smsBackfillCompletedAt — if it
 //      already has a value we skip; the admin can manually re-trigger
 //      via POST /admin/messages/backfill at any time.
-//   2. Continuous live poller (poll mode only). Hits the gateway's
-//      inbox on a self-rescheduling loop; cadence is configured by
-//      `event_settings.sms_poll_interval_seconds` and the loop honors
-//      the `sms_poll_enabled` toggle on every tick so an admin pause
-//      takes effect within at most one current cycle. Push-mode keeps
-//      a much lazier safety-net cadence.
-//
-// In push mode we still run the periodic poller as a safety net
-// (it's cheap, and dedupe protects against double-ingest) but at a
-// much longer interval and ignoring the operator-tunable seconds
-// value (push mode is doing the real work).
+//   2. One catch-up poll shortly after every startup. Live texts arrive
+//      via the gateway's push webhook; if a push lands while the server
+//      is asleep, it wakes the server but may time out during startup.
+//      This catch-up picks that text up within seconds, while it's still
+//      inside the owner-forward recency window. Beyond that, missed texts
+//      are recovered with the admin "Run now" button.
 
 import { db } from "@workspace/db";
 import { eventSettingsTable } from "@workspace/db/schema";
@@ -36,41 +31,16 @@ import {
 import { ingestInbound } from "./sms-inbox";
 import { runSmsBackfill } from "../routes/admin-sms-messages";
 
-// In push mode the webhook does the heavy lifting; the safety-net
-// poller runs at a lazy 10-minute cadence. Operator-tunable interval
-// only applies in poll mode.
-const POLL_INTERVAL_MS_SAFETY_NET = 10 * 60_000;
-// Operator-tunable seconds clamp. The 3s lower bound mirrors the
-// gateway's practical refresh ceiling (faster polls just re-fetch the
-// same listing without picking up new rows). The upper bound is
-// intentionally generous (24h) so operators can all-but-pause polling
-// during long quiet periods (overnight, between events) without
-// flipping the enabled toggle off; in push mode the operator-tunable
-// interval is ignored anyway and the 10-minute safety-net cadence
-// still applies.
-const MIN_POLL_INTERVAL_SECONDS = 3;
-const MAX_POLL_INTERVAL_SECONDS = 86_400;
-const DEFAULT_POLL_INTERVAL_SECONDS = 3;
-
-let pollTimer: NodeJS.Timeout | null = null;
-let pollSchedulerStarted = false;
-// Tracks whether a poll cycle is currently in flight so the manual
-// "Run now" button and the scheduled tick can't double-fire on top
-// of each other (the scheduled tick already self-defers, but the
-// manual endpoint is operator-driven so it gets its own guard too).
+// Guards against the startup catch-up and the manual "Run now" button
+// firing on top of each other.
 let pollInFlight = false;
-// Snapshot of the most recent settings the loop saw so the admin
-// page can render "currently in effect: enabled, every 30s" without
-// having to re-read the DB on every UI refresh.
-let lastEffectiveEnabled = true;
-let lastEffectiveIntervalSeconds: number = DEFAULT_POLL_INTERVAL_SECONDS;
 
 // Per-port state tracked between poll cycles so we can escalate to the
 // per-port detail page only when something actually changed. The cheap
 // listing page exposes a `count` column (total messages on that SIM)
 // and a "latest message" row; either growing means the gateway received
 // new messages we haven't ingested yet. Without this state, we'd have
-// to drill into the per-port detail page on every 3s cycle, which is
+// to drill into the per-port detail page on every cycle, which is
 // wasteful and risks tripping the gateway's login rate limiter.
 const lastSeenCountByPort = new Map<number, number>();
 const lastSeenLatestIdByPort = new Map<number, string | null>();
@@ -83,7 +53,7 @@ export function _resetSmsPollerStateForTests(): void {
   lastSeenLatestIdByPort.clear();
 }
 
-// Result surfaced by both the scheduled and manual entry points so
+// Result surfaced by both the startup and manual entry points so
 // the admin "Run now" button can render a friendly summary.
 export type SmsPollResult = {
   ranAt: string;
@@ -227,90 +197,15 @@ async function pollOnce(): Promise<SmsPollResult> {
 export const _pollOnceForTests = pollOnce;
 
 /**
- * Manual one-shot trigger for the admin "Run now" button. Always
- * runs the same single-cycle path the scheduler uses, even if the
- * persisted enabled flag is OFF — that's the entire point of the
- * button. Overlap with a scheduled or another manual run is gated
- * by the in-process pollInFlight flag.
+ * Manual one-shot trigger for the admin "Run now" button. Overlap with
+ * the startup catch-up or another manual run is gated by the in-process
+ * pollInFlight flag.
  */
 export async function runSmsPollOnce(): Promise<SmsPollResult> {
   return pollOnce();
 }
 
-// Read the operator-tunable interval/enabled with safe fallbacks so
-// a transient DB hiccup never kills the loop. On a fresh deploy with
-// no settings row we default to enabled so the gateway is polled
-// out of the box. On a subsequent read failure we preserve whatever
-// the operator last explicitly set — specifically, if the admin has
-// paused polling a DB hiccup must not silently re-enable it.
-async function readPollerSettings(): Promise<{ enabled: boolean; intervalSeconds: number }> {
-  try {
-    const [row] = await db
-      .select({
-        enabled: eventSettingsTable.smsPollEnabled,
-        seconds: eventSettingsTable.smsPollIntervalSeconds,
-      })
-      .from(eventSettingsTable)
-      .where(eq(eventSettingsTable.id, 1));
-    const enabled = row?.enabled ?? true;
-    const raw = row?.seconds ?? DEFAULT_POLL_INTERVAL_SECONDS;
-    const clamped = Math.max(MIN_POLL_INTERVAL_SECONDS, Math.min(MAX_POLL_INTERVAL_SECONDS, raw));
-    return { enabled, intervalSeconds: clamped };
-  } catch (err) {
-    logger.warn({ err }, "[sms-scheduler] settings read failed; retaining last known state");
-    // Preserve the last known enabled flag so a transient DB hiccup
-    // can't silently resume polling when the operator has paused it.
-    return { enabled: lastEffectiveEnabled, intervalSeconds: DEFAULT_POLL_INTERVAL_SECONDS };
-  }
-}
-
-// Self-rescheduling tick. Reads settings every cycle so an admin
-// change to enabled/interval is honored within at most one current
-// cycle without restarting the API server.
-async function tick(): Promise<void> {
-  let nextDelayMs: number;
-  try {
-    if (getInboundMode() === "push") {
-      // Push mode: cadence is fixed (safety-net), enabled flag is
-      // ignored — push mode operators almost never want the safety
-      // net silenced.
-      lastEffectiveEnabled = true;
-      lastEffectiveIntervalSeconds = Math.floor(POLL_INTERVAL_MS_SAFETY_NET / 1000);
-      nextDelayMs = POLL_INTERVAL_MS_SAFETY_NET;
-      await pollOnce();
-    } else {
-      const { enabled, intervalSeconds } = await readPollerSettings();
-      lastEffectiveEnabled = enabled;
-      lastEffectiveIntervalSeconds = intervalSeconds;
-      if (enabled) {
-        nextDelayMs = intervalSeconds * 1000;
-        await pollOnce();
-      } else {
-        // Paused: keep the loop alive at a much longer cadence so that
-        // toggling back ON is picked up within 60 s rather than burning
-        // a tight 3 s loop doing nothing but DB reads. 60 s matches
-        // what a patient human would consider "responsive" re-enable.
-        nextDelayMs = 60_000;
-      }
-      // Disabled: keep the loop alive (so toggling back ON resumes
-      // within the next idle check) but skip the gateway fetch — that's
-      // the whole point of the operator-disable knob.
-    }
-  } catch (err) {
-    logger.warn({ err }, "[sms-scheduler] tick failed");
-    // Defensive default so a thrown error can't burn a tight loop.
-    nextDelayMs = (lastEffectiveIntervalSeconds || DEFAULT_POLL_INTERVAL_SECONDS) * 1000;
-  } finally {
-    pollTimer = setTimeout(() => { void tick(); }, nextDelayMs!);
-    pollTimer.unref?.();
-  }
-}
-
-export const SMS_POLL_INTERVAL_RANGE = {
-  min: MIN_POLL_INTERVAL_SECONDS,
-  max: MAX_POLL_INTERVAL_SECONDS,
-  default: DEFAULT_POLL_INTERVAL_SECONDS,
-};
+let schedulerStarted = false;
 
 export function startSmsScheduler(): void {
   // Stagger boot work so we don't compete with seedIfEmpty / instagram
@@ -335,14 +230,11 @@ export function startSmsScheduler(): void {
     }
   }, 5_000);
 
-  // Idempotent: a re-call wouldn't double-tick because each timer
-  // chains the next one, but starting a second chain would.
-  if (pollSchedulerStarted) return;
-  pollSchedulerStarted = true;
+  if (schedulerStarted) return;
+  schedulerStarted = true;
 
-  // Kick a poll shortly after boot so we don't wait a full interval
-  // on first request after a deploy.
-  setTimeout(() => { void tick(); }, 15_000).unref?.();
+  // Catch-up poll shortly after boot (see header note 2).
+  setTimeout(() => { void pollOnce(); }, 15_000).unref?.();
 
   // Surface BOTH modes at startup. The outbound mode is the only
   // operator-visible signal that this process has been silenced — easy

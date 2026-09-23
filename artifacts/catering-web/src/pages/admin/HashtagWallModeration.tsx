@@ -56,14 +56,6 @@ type StatusResponse = {
   instagramWallShowOnGallery: boolean;
   instagramAutoApproveMention: boolean;
   instagramAutoDenyOlderThanDays: number | null;
-  // Operator-tunable hashtag-poll cadence. Defaults are 30 minutes
-  // because Instagram's Graph API hashtag search is rate-limited per
-  // app — going faster than that risks 429s. Range/min/max are sent
-  // from the server so the input can validate before the round-trip.
-  instagramPollEnabled: boolean;
-  instagramPollIntervalMinutes: number;
-  instagramPollIntervalMinutesMin: number;
-  instagramPollIntervalMinutesMax: number;
   lastPolledAt: string | null;
   pulledLast24h: number;
   pendingCount: number;
@@ -154,10 +146,6 @@ export default function HashtagWallModeration() {
   const [showOnGallery, setShowOnGallery] = useState(false);
   const [autoApproveMention, setAutoApproveMention] = useState(false);
   const [autoDenyOlderDays, setAutoDenyOlderDays] = useState<string>("90");
-  // Hashtag-poll cadence (toggle + interval minutes). Mirrors the
-  // pattern used by the SIM-gateway poll cadence card on Sms Settings.
-  const [pollEnabledDraft, setPollEnabledDraft] = useState(true);
-  const [pollIntervalDraft, setPollIntervalDraft] = useState<string>("30");
   const [savingSettings, setSavingSettings] = useState(false);
   const visitMarked = useRef(false);
 
@@ -179,8 +167,6 @@ export default function HashtagWallModeration() {
         setShowOnGallery(s.instagramWallShowOnGallery);
         setAutoApproveMention(s.instagramAutoApproveMention);
         setAutoDenyOlderDays(s.instagramAutoDenyOlderThanDays != null ? String(s.instagramAutoDenyOlderThanDays) : "");
-        setPollEnabledDraft(!!s.instagramPollEnabled);
-        setPollIntervalDraft(String(s.instagramPollIntervalMinutes ?? 30));
       }
     } catch (err: any) {
       toast({ title: "Couldn't load Instagram queue", description: err.message, variant: "destructive" });
@@ -299,23 +285,6 @@ export default function HashtagWallModeration() {
   async function saveSettings() {
     setSavingSettings(true);
     try {
-      const intervalNum = Number(pollIntervalDraft);
-      const intMin = status?.instagramPollIntervalMinutesMin ?? 5;
-      const intMax = status?.instagramPollIntervalMinutesMax ?? 1440;
-      if (
-        !Number.isFinite(intervalNum) ||
-        !Number.isInteger(intervalNum) ||
-        intervalNum < intMin ||
-        intervalNum > intMax
-      ) {
-        toast({
-          title: "Invalid poll interval",
-          description: `Must be an integer between ${intMin} and ${intMax} minutes.`,
-          variant: "destructive",
-        });
-        setSavingSettings(false);
-        return;
-      }
       await putJson(`${BASE}/admin/instagram/settings`, {
         instagramHandle: handleDraft.trim().replace(/^@/, ""),
         instagramHashtags: hashtagsDraft,
@@ -325,8 +294,6 @@ export default function HashtagWallModeration() {
         instagramWallShowOnGallery: showOnGallery,
         instagramAutoApproveMention: autoApproveMention,
         instagramAutoDenyOlderThanDays: autoDenyOlderDays === "" ? null : Number(autoDenyOlderDays),
-        instagramPollEnabled: pollEnabledDraft,
-        instagramPollIntervalMinutes: intervalNum,
       });
       toast({ title: "Settings saved" });
       refreshAll().catch(() => {});
@@ -550,28 +517,9 @@ export default function HashtagWallModeration() {
             <WebhookSection status={status} />
 
             <SidebarSection title="Poller">
-              {/* Cadence controls live in the same form as the wall
-                  settings — they save together when the operator hits
-                  "Save settings" above. The toggle pauses the periodic
-                  loop entirely; "Run poller now" still works while
-                  paused. */}
-              <ToggleRow label="Periodic poll enabled" value={pollEnabledDraft} onChange={setPollEnabledDraft} />
-              <div>
-                <label className="block text-sm font-semibold mb-1">Poll interval (minutes)</label>
-                <input
-                  type="number"
-                  min={status?.instagramPollIntervalMinutesMin ?? 5}
-                  max={status?.instagramPollIntervalMinutesMax ?? 1440}
-                  step={1}
-                  value={pollIntervalDraft}
-                  onChange={(e) => setPollIntervalDraft(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Range: {status?.instagramPollIntervalMinutesMin ?? 5}–{status?.instagramPollIntervalMinutesMax ?? 1440} min.
-                  Default 30. Lower values risk Instagram rate limits.
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                New hashtag posts are only fetched when you click “Run poller now”.
+              </p>
               <button
                 type="button"
                 onClick={runPoller}
@@ -582,7 +530,6 @@ export default function HashtagWallModeration() {
                 Run poller now
               </button>
               <div className="text-xs text-muted-foreground space-y-1 pt-2">
-                <div>Status: <strong>{status?.instagramPollEnabled ? "polling on" : "polling paused"}</strong></div>
                 <div>Last polled: <strong>{formatRelative(status?.lastPolledAt ?? null)}</strong></div>
                 <div>Pulled in last 24h: <strong>{status?.pulledLast24h ?? 0}</strong></div>
                 <div>Pending: <strong>{status?.pendingCount ?? 0}</strong></div>

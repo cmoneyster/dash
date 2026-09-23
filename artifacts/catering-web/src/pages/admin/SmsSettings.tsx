@@ -33,10 +33,6 @@ type ServerState = {
   smsBackfillDays: number;
   smsBackfillCompletedAt: string | null;
   smsInboundMode: "push" | "poll";
-  smsPollEnabled: boolean;
-  smsPollIntervalSeconds: number;
-  smsPollIntervalSecondsMin: number;
-  smsPollIntervalSecondsMax: number;
   ejoinPortCount: number;
   smsWebhookUrl: string | null;
 };
@@ -199,6 +195,7 @@ export default function SmsSettings() {
   // Backfill action state.
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatus | null>(null);
   const [runningBackfill, setRunningBackfill] = useState(false);
+  const [checkingMissed, setCheckingMissed] = useState(false);
   const [backfillFeedback, setBackfillFeedback] = useState<Feedback>(null);
 
   // Per-section save state. Three forms share the same backend PUT but with
@@ -793,6 +790,39 @@ export default function SmsSettings() {
     }
   }
 
+  // One quick check of the last 24h on the chat port — the same catch-up
+  // the server runs once at startup. Much lighter than a full backfill.
+  async function handleCheckMissed() {
+    setCheckingMissed(true);
+    setBackfillFeedback(null);
+    try {
+      const r = await fetch(`${BASE}/api/admin/sms-settings/poller/run-now`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({}),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Failed to check for missed texts");
+      if (data?.skipped) {
+        const why = data.skipReason === "no-chat-port"
+          ? "no customer chat port is set"
+          : data.skipReason === "ejoin-not-configured"
+          ? "the SMS gateway isn't configured"
+          : "a check is already running";
+        setBackfillFeedback({ kind: "error", message: `Skipped — ${why}.` });
+      } else {
+        setBackfillFeedback({
+          kind: data?.errors ? "error" : "success",
+          message: `Checked ${data?.fetchedCount ?? 0} text${data?.fetchedCount === 1 ? "" : "s"} from the last 24 hours; anything new is now in the inbox${data?.errors ? ` (${data.errors} errors)` : ""}.`,
+        });
+      }
+    } catch (e: any) {
+      setBackfillFeedback({ kind: "error", message: e?.message || "Failed to check for missed texts" });
+    } finally {
+      setCheckingMissed(false);
+    }
+  }
+
   async function handleRunBackfill() {
     setRunningBackfill(true);
     setBackfillFeedback(null);
@@ -1285,7 +1315,7 @@ export default function SmsSettings() {
               <p className="text-sm text-muted-foreground">
                 Instead of polling the SIM gateway every few seconds (~8.6 MB/hour), the gateway pushes each
                 inbound text directly to this server the moment it arrives — dropping background traffic to
-                ~6 KB/hour. A lightweight safety-net poll still runs every 10 minutes to catch any missed deliveries.
+                ~6 KB/hour. The server also checks for missed texts once each time it starts; use "Check for missed texts" below any time.
               </p>
 
               {/* Webhook URL */}
@@ -1418,8 +1448,8 @@ export default function SmsSettings() {
                     <li className="flex gap-2.5">
                       <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">ℹ</span>
                       <span className="text-xs">
-                        A lightweight safety-net poll still runs every 10 minutes in the background (~6 KB/hour)
-                        to catch any webhook delivery failures — no action needed.
+                        The server checks for missed texts once each time it starts. If you suspect a text didn't
+                        come through, use "Check for missed texts" in the Customer Chat card.
                       </span>
                     </li>
                   </ol>
@@ -1575,6 +1605,20 @@ export default function SmsSettings() {
                 >
                   {savingChat ? <Loader2 className="w-4 h-4 animate-spin" /> : savedChat ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
                   {savingChat ? "Saving…" : savedChat ? "Saved!" : "Save Chat Settings"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCheckMissed}
+                  disabled={checkingMissed || server?.smsChatPort == null}
+                  title={
+                    server?.smsChatPort == null
+                      ? "Pick a customer chat port first."
+                      : "Check the gateway for texts from the last 24 hours that didn't reach the inbox."
+                  }
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-xl px-3 py-2 hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {checkingMissed ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  {checkingMissed ? "Checking…" : "Check for missed texts"}
                 </button>
                 <button
                   type="button"

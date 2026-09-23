@@ -5,7 +5,7 @@ import {
   instagramHashtagCandidatesTable,
   instagramHashtagIdCacheTable,
 } from "@workspace/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { logger } from "./logger";
 import { ObjectStorageService } from "./objectStorage";
 import {
@@ -18,31 +18,24 @@ import {
   type InstagramMedia,
 } from "./instagramGraph";
 
-const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
-// Hard cap of 5 watched hashtags (per task spec). Quota-aware: 5 hashtags
-// every 30 min × 48 cycles/day × 7 days = 1680 calls (well above quota), so
-// we ALSO skip lookupHashtagId when we have a cache hit, and never blow past
+// Cleanup re-checks approved posts at most this often. It only runs at
+// server startup (never on a timer) so it can't keep an idle server awake.
+const CLEANUP_MIN_AGE_MS = 24 * 60 * 60 * 1000;
+// Hard cap of 5 watched hashtags (per task spec). Quota-aware: Meta allows
+// 30 hashtag searches / IG user / rolling 7 days, so we skip
+// lookupHashtagId when we have a cache hit, and never blow past
 // MAX_API_CALLS_PER_CYCLE in a single invocation.
 const MAX_HASHTAGS = 5;
 const MAX_API_CALLS_PER_CYCLE = 5;
 const MEDIA_PER_HASHTAG = 25;
-// Operator-tunable interval clamp (minutes). Lower bound at 5 because
-// Meta's hashtag search quota is 30 calls / IG user / rolling 7 days,
-// so anything tighter would burn the quota in under a day. Upper
-// bound at a full day so an admin can effectively park the poller
-// without flipping the enable toggle off.
-const MIN_POLL_INTERVAL_MINUTES = 5;
-const MAX_POLL_INTERVAL_MINUTES = 1440;
-const DEFAULT_POLL_INTERVAL_MINUTES = 30;
 
 const objectStorage = new ObjectStorageService();
 
-// In-process state so a slow IG response can't double-fire the timer or
-// race with the admin's "Run poller now" button.
+// In-process state so repeated clicks of the admin "Run poller now"
+// button can't overlap, and startup cleanup runs at most once.
 let pollerRunning = false;
-let pollerScheduled = false;
 let cleanupRunning = false;
-let cleanupScheduled = false;
+let startupTasksStarted = false;
 
 export type PollerSummary = {
   ranAt: string;
@@ -124,7 +117,7 @@ function pickAutoStatus(
  * media, dedupes against `instagram_hashtag_candidates` by post id, downloads
  * thumbnails into object storage, applies auto-rules, inserts new rows.
  *
- * NEVER throws — everything wraps so the scheduler can keep running.
+ * NEVER throws — everything wraps so the admin endpoint always gets a summary.
  */
 export async function runPollerOnce(): Promise<PollerSummary> {
   const summary: PollerSummary = {
@@ -293,73 +286,41 @@ export async function runCleanupOnce(): Promise<{ checked: number; markedUnavail
   }
 }
 
-// Last interval the loop resolved, used as the retry delay if a tick throws.
-let lastEffectivePollIntervalMinutes: number = DEFAULT_POLL_INTERVAL_MINUTES;
-
-async function readPollerSettings(): Promise<{ enabled: boolean; intervalMinutes: number }> {
-  try {
-    const [row] = await db
-      .select({
-        enabled: eventSettingsTable.instagramPollEnabled,
-        minutes: eventSettingsTable.instagramPollIntervalMinutes,
-      })
-      .from(eventSettingsTable)
-      .where(eq(eventSettingsTable.id, 1));
-    const enabled = row?.enabled ?? true;
-    const raw = row?.minutes ?? DEFAULT_POLL_INTERVAL_MINUTES;
-    const clamped = Math.max(MIN_POLL_INTERVAL_MINUTES, Math.min(MAX_POLL_INTERVAL_MINUTES, raw));
-    return { enabled, intervalMinutes: clamped };
-  } catch (err) {
-    logger.warn({ err }, "[instagram-poller] settings read failed; using defaults");
-    return { enabled: true, intervalMinutes: DEFAULT_POLL_INTERVAL_MINUTES };
-  }
+// True when any approved, still-available post hasn't been re-checked
+// within CLEANUP_MIN_AGE_MS (or never has been).
+async function cleanupIsDue(): Promise<boolean> {
+  const cutoff = new Date(Date.now() - CLEANUP_MIN_AGE_MS);
+  const [stale] = await db
+    .select({ id: instagramHashtagCandidatesTable.id })
+    .from(instagramHashtagCandidatesTable)
+    .where(
+      and(
+        eq(instagramHashtagCandidatesTable.status, "approved"),
+        eq(instagramHashtagCandidatesTable.isUnavailable, false),
+        or(
+          isNull(instagramHashtagCandidatesTable.lastCheckedAt),
+          lt(instagramHashtagCandidatesTable.lastCheckedAt, cutoff),
+        ),
+      ),
+    )
+    .limit(1);
+  return !!stale;
 }
 
-// Self-rescheduling tick. Reads settings every cycle so an admin
-// change to enabled/interval is honored within at most one current
-// cycle without restarting the API server. When disabled, we keep
-// the loop alive (so toggling back ON resumes immediately) but skip
-// the actual poll — runPollerOnce() is still reachable from the
-// admin "Run now" endpoint.
-async function pollTick(): Promise<void> {
-  let nextDelayMs: number;
-  try {
-    const { enabled, intervalMinutes } = await readPollerSettings();
-    lastEffectivePollIntervalMinutes = intervalMinutes;
-    nextDelayMs = intervalMinutes * 60_000;
-    if (enabled) {
-      await runPollerOnce();
+/**
+ * Startup-only work. New hashtag posts are fetched solely via the admin
+ * "Run poller now" button; the deleted-post cleanup piggybacks on server
+ * startup when it's been more than a day, so neither ever wakes an idle
+ * server by itself.
+ */
+export function startInstagramStartupTasks(): void {
+  if (startupTasksStarted) return;
+  startupTasksStarted = true;
+  setTimeout(async () => {
+    try {
+      if (await cleanupIsDue()) await runCleanupOnce();
+    } catch (err) {
+      logger.error({ err }, "instagram startup cleanup failed");
     }
-  } catch (err) {
-    logger.error({ err }, "instagram poller tick failed");
-    nextDelayMs = (lastEffectivePollIntervalMinutes || DEFAULT_POLL_INTERVAL_MINUTES) * 60_000;
-  } finally {
-    setTimeout(() => { void pollTick(); }, nextDelayMs!).unref?.();
-  }
-}
-
-export const INSTAGRAM_POLL_INTERVAL_RANGE = {
-  min: MIN_POLL_INTERVAL_MINUTES,
-  max: MAX_POLL_INTERVAL_MINUTES,
-  default: DEFAULT_POLL_INTERVAL_MINUTES,
-};
-
-/** Boot-time scheduler. Idempotent — safe to call once on app start. */
-export function startInstagramScheduler(): void {
-  if (pollerScheduled) return;
-  pollerScheduled = true;
-  // Kick off a first cycle ~10s after boot (don't block startup) but only
-  // when configured — otherwise this is a no-op anyway. The tick chain
-  // self-reschedules off the operator-tunable interval so a settings
-  // change is honored within at most one current cycle.
-  setTimeout(() => { void pollTick(); }, 10_000).unref?.();
-
-  if (cleanupScheduled) return;
-  cleanupScheduled = true;
-  setTimeout(() => {
-    runCleanupOnce().catch((err) => logger.error({ err }, "instagram cleanup initial run failed"));
   }, 60_000).unref?.();
-  setInterval(() => {
-    runCleanupOnce().catch((err) => logger.error({ err }, "instagram cleanup interval failed"));
-  }, CLEANUP_INTERVAL_MS).unref?.();
 }

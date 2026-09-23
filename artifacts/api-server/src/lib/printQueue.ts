@@ -10,22 +10,6 @@ import {
 import { and, desc, eq, sql } from "drizzle-orm";
 import { logger } from "./logger";
 
-/** Mark a printer as having just polled (used for online detection). */
-export async function recordPrinterPoll(printerId: number, status: "online" | "offline" | "disabled" = "online"): Promise<void> {
-  await db
-    .update(printersTable)
-    .set({ lastPolledAt: new Date(), status, lastError: null })
-    .where(eq(printersTable.id, printerId));
-}
-
-/** Record an error for a printer (used when it reports a job failed). */
-export async function recordPrinterError(printerId: number, error: string): Promise<void> {
-  await db
-    .update(printersTable)
-    .set({ status: "error", lastError: error, lastPolledAt: new Date() })
-    .where(eq(printersTable.id, printerId));
-}
-
 /** Insert a new print job in `queued` state. */
 export async function enqueuePrintJob(args: {
   printerId: number;

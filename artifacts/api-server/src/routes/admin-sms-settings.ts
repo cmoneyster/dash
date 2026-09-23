@@ -12,7 +12,7 @@ import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { isEjoinConfigured, sendSmsViaEjoin, sendSmsViaChatPort, clearEjoinPortCache, EJOIN_PORT_COUNT, getInboundMode, getChatPort } from "../lib/sms-ejoin";
 import { clearSmsInboxSettingsCache, ingestInbound } from "../lib/sms-inbox";
-import { runSmsPollOnce, SMS_POLL_INTERVAL_RANGE } from "../lib/sms-scheduler";
+import { runSmsPollOnce } from "../lib/sms-scheduler";
 
 const router: IRouter = Router();
 
@@ -54,8 +54,6 @@ type SmsSettingsUpdate = Partial<
     | "smsOwnerForwardUnmatchedEnabled"
     | "smsOwnerReplyEnabled"
     | "smsBackfillDays"
-    | "smsPollEnabled"
-    | "smsPollIntervalSeconds"
     | "updatedAt"
   >
 >;
@@ -223,16 +221,6 @@ function normalizeForwardCap(v: unknown): number | null {
   return n;
 }
 
-function normalizePollIntervalSeconds(v: unknown): number {
-  const n = Number(v);
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n < SMS_POLL_INTERVAL_RANGE.min || n > SMS_POLL_INTERVAL_RANGE.max) {
-    throw new HttpError(
-      `smsPollIntervalSeconds must be an integer between ${SMS_POLL_INTERVAL_RANGE.min} and ${SMS_POLL_INTERVAL_RANGE.max}`,
-    );
-  }
-  return n;
-}
-
 function normalizeBackfillDays(v: unknown): number {
   const n = Number(v);
   // Hard cap at 365 — the gateway's inbox page typically doesn't go
@@ -283,10 +271,6 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined, we
   smsBackfillDays: number;
   smsBackfillCompletedAt: string | null;
   smsInboundMode: "push" | "poll";
-  smsPollEnabled: boolean;
-  smsPollIntervalSeconds: number;
-  smsPollIntervalSecondsMin: number;
-  smsPollIntervalSecondsMax: number;
   ejoinPortCount: number;
   smsWebhookUrl: string | null;
 } {
@@ -328,10 +312,6 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined, we
     smsBackfillDays: s?.smsBackfillDays ?? 90,
     smsBackfillCompletedAt: s?.smsBackfillCompletedAt ? s.smsBackfillCompletedAt.toISOString() : null,
     smsInboundMode: getInboundMode(),
-    smsPollEnabled: s?.smsPollEnabled ?? true,
-    smsPollIntervalSeconds: s?.smsPollIntervalSeconds ?? SMS_POLL_INTERVAL_RANGE.default,
-    smsPollIntervalSecondsMin: SMS_POLL_INTERVAL_RANGE.min,
-    smsPollIntervalSecondsMax: SMS_POLL_INTERVAL_RANGE.max,
     ejoinPortCount: EJOIN_PORT_COUNT,
     // Webhook push mode — return the full ready-to-copy URL with the real
     // secret embedded so the admin can paste it directly into eJoinTech.
@@ -397,8 +377,6 @@ router.put("/admin/sms-settings", async (req, res) => {
       smsOwnerForwardUnmatchedEnabled?: unknown;
       smsOwnerReplyEnabled?: unknown;
       smsBackfillDays?: unknown;
-      smsPollEnabled?: unknown;
-      smsPollIntervalSeconds?: unknown;
     };
     const updates: SmsSettingsUpdate = { updatedAt: new Date() };
     if (body.smsActivePorts !== undefined) {
@@ -442,12 +420,6 @@ router.put("/admin/sms-settings", async (req, res) => {
     }
     if (body.smsBackfillDays !== undefined) {
       updates.smsBackfillDays = normalizeBackfillDays(body.smsBackfillDays);
-    }
-    if (body.smsPollEnabled !== undefined) {
-      updates.smsPollEnabled = normalizeBool(body.smsPollEnabled, "smsPollEnabled");
-    }
-    if (body.smsPollIntervalSeconds !== undefined) {
-      updates.smsPollIntervalSeconds = normalizePollIntervalSeconds(body.smsPollIntervalSeconds);
     }
 
     const [existing] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
@@ -493,14 +465,6 @@ router.put("/admin/sms-settings", async (req, res) => {
           smsOwnerForwardUnmatchedEnabled: updates.smsOwnerForwardUnmatchedEnabled ?? false,
           smsOwnerReplyEnabled: updates.smsOwnerReplyEnabled ?? false,
           smsBackfillDays: updates.smsBackfillDays ?? 90,
-          // Persist new poll-cadence fields explicitly so the row is
-          // self-consistent even when the caller is bootstrapping the
-          // singleton without touching them. Falling through to DB
-          // defaults alone would leave the row in an undefined state if
-          // the schema migration is ever rolled back or out of sync.
-          smsPollEnabled: updates.smsPollEnabled ?? true,
-          smsPollIntervalSeconds:
-            updates.smsPollIntervalSeconds ?? SMS_POLL_INTERVAL_RANGE.default,
         })
         .returning();
       row = created;

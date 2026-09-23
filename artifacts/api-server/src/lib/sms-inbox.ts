@@ -641,11 +641,11 @@ async function ingestInboundImpl(input: {
     // ── Cross-format content-based soft dedup ──────────────────────────────
     // In push+poll dual mode the same owner message arrives under two
     // completely different gateway IDs (e.g. webhook:12405... from the
-    // webhook handler, then listdata:7:2405... from the safety-net
-    // poller). The gatewayMessageId unique index can't match them, so
-    // without this check the poller would re-fire owner relay/reject
-    // logic — inserting a fresh marker and potentially resending a
-    // corrective text — on every safety-net cycle.
+    // webhook handler, then listdata:7:2405... from the startup
+    // catch-up or manual "Run now" poll). The gatewayMessageId unique
+    // index can't match them, so without this check the poller would
+    // re-fire owner relay/reject logic — inserting a fresh marker and
+    // potentially resending a corrective text — on every poll.
     //
     // Guard by querying for any existing owner marker (relay or reject)
     // with matching phone + body + port within a ±5-minute window
