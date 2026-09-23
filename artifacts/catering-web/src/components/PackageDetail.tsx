@@ -81,7 +81,7 @@ export function PackageDetail({ packageId, onClose }: Props) {
   const handleClick = async () => {
     if (busy) return;
     setBusy(true);
-    const count = await fetchCurrentItemCount("plan", sessionId);
+    const count = await fetchCurrentItemCount(sessionId);
     setBusy(false);
     if (count > 0) {
       setPendingExisting(count);

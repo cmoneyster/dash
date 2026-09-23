@@ -258,138 +258,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/SiteConfig"
 
-  # Admin chat-bot recommended items
-  /admin/recommendations:
-    get:
-      operationId: adminListRecommendations
-      tags: [admin]
-      summary: List curated chat-bot recommendations
-      responses:
-        "200":
-          description: Recommended items in display order
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/RecommendedItem"
-    post:
-      operationId: adminAddRecommendation
-      tags: [admin]
-      summary: Add a menu item to the recommendations list
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AddRecommendationBody"
-      responses:
-        "201":
-          description: Updated recommendations list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/RecommendedItem"
-        "404":
-          description: Menu item not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Item already in the recommendations list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /admin/recommendations/{menuItemId}:
-    delete:
-      operationId: adminRemoveRecommendation
-      tags: [admin]
-      summary: Remove a menu item from the recommendations list
-      parameters:
-        - name: menuItemId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "204":
-          description: Removed
-  /admin/recommendations/reorder:
-    patch:
-      operationId: adminReorderRecommendations
-      tags: [admin]
-      summary: Reorder the recommendations list
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ReorderRecommendationsBody"
-      responses:
-        "200":
-          description: Updated recommendations list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/RecommendedItem"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /admin/recommendations/top-sellers:
-    get:
-      operationId: adminListTopSellers
-      tags: [admin]
-      summary: Compute top-selling menu items from real order data
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 50
-      responses:
-        "200":
-          description: Top sellers
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/TopSeller"
-  /admin/recommendations/sync:
-    post:
-      operationId: adminSyncRecommendations
-      tags: [admin]
-      summary: Apply top sellers to the recommendations list (replace or merge)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SyncRecommendationsBody"
-      responses:
-        "200":
-          description: Sync result
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SyncRecommendationsResponse"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /admin/blackout-dates:
     get:
       operationId: listBlackoutDates
@@ -545,84 +413,7 @@ paths:
                   type: string
                   format: date
 
-  # Cart & Orders
-  /cart:
-    get:
-      operationId: getCart
-      tags: [orders]
-      summary: Get current cart (by session)
-      parameters:
-        - name: sessionId
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Cart with items
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Cart"
-    post:
-      operationId: addToCart
-      tags: [orders]
-      summary: Add item to cart
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AddToCartBody"
-      responses:
-        "200":
-          description: Updated cart
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Cart"
-  /cart/{itemId}:
-    put:
-      operationId: updateCartItem
-      tags: [orders]
-      summary: Update cart item quantity
-      parameters:
-        - name: itemId
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateCartItemBody"
-      responses:
-        "200":
-          description: Updated cart
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Cart"
-    delete:
-      operationId: removeFromCart
-      tags: [orders]
-      summary: Remove item from cart
-      parameters:
-        - name: itemId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Updated cart
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Cart"
-
+  # Event plan
   /plan:
     get:
       operationId: getPlan
@@ -676,129 +467,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Plan"
-
-  /orders:
-    post:
-      operationId: createOrder
-      tags: [orders]
-      summary: Place an order (checkout)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateOrderBody"
-      responses:
-        "201":
-          description: Created order
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Order"
-
-  /admin/orders:
-    get:
-      operationId: adminListOrders
-      tags: [admin]
-      summary: List all orders
-      responses:
-        "200":
-          description: Orders list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Order"
-  /admin/orders/{id}:
-    put:
-      operationId: updateOrderStatus
-      tags: [admin]
-      summary: Update order status
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateOrderStatusBody"
-      responses:
-        "200":
-          description: Updated order
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Order"
-
-  # AI Chat
-  /chat/message:
-    post:
-      operationId: sendChatMessage
-      tags: [chat]
-      summary: Send a message to the catering AI agent
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ChatMessageBody"
-      responses:
-        "200":
-          description: SSE stream of AI response
-          content:
-            text/event-stream: {}
-
-  /chat/suggest-items:
-    post:
-      operationId: suggestMenuItems
-      tags: [chat]
-      summary: Get AI menu item suggestions based on event details
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SuggestItemsBody"
-      responses:
-        "200":
-          description: Suggested menu items with quantities
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuggestItemsResponse"
-
-  # Admin stats
-  /admin/stats:
-    get:
-      operationId: getAdminStats
-      tags: [admin]
-      summary: Get dashboard stats
-      responses:
-        "200":
-          description: Stats
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminStats"
-
-  # Idle activity (in-process counters; resets on server restart)
-  /admin/idle-activity:
-    get:
-      operationId: getAdminIdleActivity
-      tags: [admin]
-      summary: Background traffic counters since the server last restarted
-      responses:
-        "200":
-          description: Idle activity snapshot
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IdleActivitySnapshot"
 
   # OpenAI conversations (generic, kept for compatibility)
   /openai/conversations:
@@ -2100,37 +1768,6 @@ components:
           type: string
       required: [id, name, model]
 
-    ClientPollsByFamily:
-      type: array
-      description: |
-        Per-family HTTP request breakdown for one time window. Every known
-        route family is always present (count may be zero). Families are
-        sorted highest-count first. Endpoint keys are `:id`-normalized
-        templates with the `/api` prefix stripped.
-      items:
-        type: object
-        properties:
-          family:
-            type: string
-          count:
-            type: integer
-          endpoints:
-            type: array
-            description: |
-              Per-endpoint breakdown sorted by count descending. Hits to
-              e.g. `/orders/47` and `/orders/48` aggregate into a single
-              `/orders/:id` row. Capped per family; overflow rolls into a
-              synthetic `(other)` entry.
-            items:
-              type: object
-              properties:
-                path:
-                  type: string
-                count:
-                  type: integer
-              required: [path, count]
-        required: [family, count, endpoints]
-
     HealthStatus:
       type: object
       properties:
@@ -2584,29 +2221,6 @@ components:
       required:
         - error
 
-    OfflinePayment:
-      type: object
-      description: A single offline payment (check, cash, wire, or other) recorded on a catering inquiry.
-      properties:
-        id:
-          type: string
-          format: uuid
-        amount:
-          type: number
-          format: float
-          minimum: 0.01
-        method:
-          type: string
-          enum: [check, cash, wire, other]
-        date:
-          type: string
-          format: date
-          description: Date the payment was received (YYYY-MM-DD)
-        note:
-          type: string
-          nullable: true
-      required: [id, amount, method, date]
-
     AddOfflinePaymentBody:
       type: object
       properties:
@@ -2624,30 +2238,6 @@ components:
           type: string
           nullable: true
       required: [amount, method, date]
-
-    CateringComputedBalance:
-      type: object
-      description: |
-        Authoritative balance computed server-side for the inquiry.
-        If a Square invoice exists: remaining = squareBalanceDue − offlinePaid
-        Otherwise: remaining = quoteTotal − offlinePaid
-      properties:
-        invoiceTotal:
-          type: number
-          format: float
-          description: squareAmountPaid + squareBalanceDue (0 when no invoice)
-        squarePaid:
-          type: number
-          format: float
-        offlinePaid:
-          type: number
-          format: float
-          description: Sum of all offline payment amounts
-        remaining:
-          type: number
-          format: float
-          description: Outstanding balance after Square paid + offline paid
-      required: [invoiceTotal, squarePaid, offlinePaid, remaining]
 
     OfflinePaymentResponse:
       type: object
@@ -3005,106 +2595,6 @@ components:
           nullable: true
           description: When set, this item inherits its recipe from the referenced menu item.
 
-    RecommendedItem:
-      type: object
-      properties:
-        menuItemId:
-          type: integer
-        name:
-          type: string
-        category:
-          type: string
-        available:
-          type: boolean
-        sortOrder:
-          type: integer
-        source:
-          type: string
-          enum: [manual, sync]
-      required:
-        - menuItemId
-        - name
-        - category
-        - available
-        - sortOrder
-        - source
-
-    TopSeller:
-      type: object
-      properties:
-        menuItemId:
-          type: integer
-        name:
-          type: string
-        category:
-          type: string
-        totalQuantity:
-          type: integer
-        isCurrentlyRecommended:
-          type: boolean
-      required:
-        - menuItemId
-        - name
-        - category
-        - totalQuantity
-        - isCurrentlyRecommended
-
-    AddRecommendationBody:
-      type: object
-      properties:
-        menuItemId:
-          type: integer
-          minimum: 1
-      required:
-        - menuItemId
-
-    ReorderRecommendationsBody:
-      type: object
-      properties:
-        menuItemIds:
-          type: array
-          items:
-            type: integer
-            minimum: 1
-      required:
-        - menuItemIds
-
-    SyncRecommendationsBody:
-      type: object
-      properties:
-        mode:
-          type: string
-          enum: [replace, merge]
-        limit:
-          type: integer
-          minimum: 1
-          maximum: 50
-        menuItemIds:
-          description: Optional subset of top-seller menu item IDs to apply. When omitted, all top sellers up to `limit` are applied.
-          type: array
-          items:
-            type: integer
-            minimum: 1
-      required:
-        - mode
-
-    SyncRecommendationsResponse:
-      type: object
-      properties:
-        mode:
-          type: string
-          enum: [replace, merge]
-        applied:
-          type: integer
-        list:
-          type: array
-          items:
-            $ref: "#/components/schemas/RecommendedItem"
-      required:
-        - mode
-        - applied
-        - list
-
     BlackoutDate:
       type: object
       properties:
@@ -3182,10 +2672,6 @@ components:
         - date
         - startTime
         - endTime
-
-    ServiceStyleKey:
-      type: string
-      enum: [drop_off, on_the_dash, buffet, grazing, made_to_order, unknown]
 
     DayLoadStyleTotals:
       type: object
@@ -3290,82 +2776,6 @@ components:
         - blackoutDates
         - suggestedDates
 
-    CartItem:
-      type: object
-      properties:
-        id:
-          type: integer
-        menuItemId:
-          type: integer
-        menuItem:
-          $ref: "#/components/schemas/MenuItem"
-        quantity:
-          type: integer
-        sizeSlot:
-          type: integer
-          nullable: true
-        sizeLabel:
-          type: string
-          nullable: true
-        sizePrice:
-          type: number
-          nullable: true
-      required:
-        - id
-        - menuItemId
-        - menuItem
-        - quantity
-
-    Cart:
-      type: object
-      properties:
-        sessionId:
-          type: string
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/CartItem"
-        total:
-          type: number
-      required:
-        - sessionId
-        - items
-        - total
-
-    AddToCartBody:
-      type: object
-      properties:
-        sessionId:
-          type: string
-        menuItemId:
-          type: integer
-        quantity:
-          type: integer
-        sizeSlot:
-          type: integer
-          nullable: true
-        sizeLabel:
-          type: string
-          nullable: true
-        sizePrice:
-          type: number
-          nullable: true
-      required:
-        - sessionId
-        - menuItemId
-        - quantity
-
-    UpdateCartItemBody:
-      type: object
-      properties:
-        sessionId:
-          type: string
-        quantity:
-          type: integer
-      required:
-        - sessionId
-        - quantity
-
     PlanItem:
       type: object
       properties:
@@ -3403,324 +2813,6 @@ components:
       required:
         - sessionId
         - menuItemId
-
-    OrderItem:
-      type: object
-      properties:
-        id:
-          type: integer
-        menuItemId:
-          type: integer
-        menuItemName:
-          type: string
-        price:
-          type: number
-        quantity:
-          type: integer
-      required:
-        - id
-        - menuItemId
-        - menuItemName
-        - price
-        - quantity
-
-    Order:
-      type: object
-      properties:
-        id:
-          type: integer
-        sessionId:
-          type: string
-        customerName:
-          type: string
-        customerEmail:
-          type: string
-        customerPhone:
-          type: string
-          nullable: true
-        eventDate:
-          type: string
-          format: date
-          nullable: true
-        eventTime:
-          type: string
-          nullable: true
-          description: Delivery time in HH:MM 24-hour format (e.g. "14:00" for 2:00 PM).
-        eventType:
-          type: string
-          nullable: true
-        guestCount:
-          type: integer
-          nullable: true
-        serviceStyle:
-          type: string
-          nullable: true
-        deliveryNotes:
-          type: string
-          nullable: true
-        status:
-          type: string
-          enum: [pending, confirmed, preparing, delivered, cancelled]
-        total:
-          type: number
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/OrderItem"
-        createdAt:
-          type: string
-          format: date-time
-      required:
-        - id
-        - sessionId
-        - customerName
-        - customerEmail
-        - status
-        - total
-        - items
-        - createdAt
-
-    CreateOrderBody:
-      type: object
-      properties:
-        sessionId:
-          type: string
-        customerName:
-          type: string
-        customerEmail:
-          type: string
-        customerPhone:
-          type: string
-          nullable: true
-        eventDate:
-          type: string
-          format: date
-          nullable: true
-        eventTime:
-          type: string
-          nullable: true
-          description: Delivery time in HH:MM 24-hour format (e.g. "14:00" for 2:00 PM).
-        eventType:
-          type: string
-          nullable: true
-        guestCount:
-          type: integer
-          nullable: true
-        serviceStyle:
-          type: string
-          nullable: true
-        serviceMode:
-          type: string
-          enum: [drop_off, on_the_dash]
-          nullable: true
-          description: Whether the customer wants standard drop-off catering or the On the Dash on-site food trailer experience.
-        deliveryNotes:
-          type: string
-          nullable: true
-        venueAddress:
-          type: string
-          nullable: true
-          description: Event venue / location, typically populated by the address autocomplete in the cart checkout form.
-      required:
-        - sessionId
-        - customerName
-        - customerEmail
-
-    UpdateOrderStatusBody:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [pending, confirmed, preparing, delivered, cancelled]
-      required:
-        - status
-
-    ChatMessageBody:
-      type: object
-      properties:
-        sessionId:
-          type: string
-        message:
-          type: string
-        history:
-          type: array
-          items:
-            $ref: "#/components/schemas/ChatHistoryMessage"
-      required:
-        - sessionId
-        - message
-
-    ChatHistoryMessage:
-      type: object
-      properties:
-        role:
-          type: string
-          enum: [user, assistant]
-        content:
-          type: string
-      required:
-        - role
-        - content
-
-    SuggestItemsBody:
-      type: object
-      properties:
-        guestCount:
-          type: integer
-        serviceStyle:
-          type: string
-        preferences:
-          type: array
-          items:
-            type: string
-      required:
-        - guestCount
-        - serviceStyle
-
-    SuggestItemsResponse:
-      type: object
-      properties:
-        suggestions:
-          type: array
-          items:
-            $ref: "#/components/schemas/ItemSuggestion"
-      required:
-        - suggestions
-
-    ItemSuggestion:
-      type: object
-      properties:
-        menuItemId:
-          type: integer
-        menuItem:
-          $ref: "#/components/schemas/MenuItem"
-        recommendedQuantity:
-          type: integer
-        reason:
-          type: string
-      required:
-        - menuItemId
-        - menuItem
-        - recommendedQuantity
-        - reason
-
-    AdminStats:
-      type: object
-      properties:
-        totalOrders:
-          type: integer
-        pendingOrders:
-          type: integer
-        totalRevenue:
-          type: number
-        totalMenuItems:
-          type: integer
-      required:
-        - totalOrders
-        - pendingOrders
-        - totalRevenue
-        - totalMenuItems
-
-    IdleActivitySnapshot:
-      type: object
-      properties:
-        serverStartedAt:
-          type: string
-          format: date-time
-        asOf:
-          type: string
-          format: date-time
-        ejoinPolls:
-          type: object
-          properties:
-            lastHour:
-              type: object
-              properties:
-                count:
-                  type: integer
-                bytes:
-                  type: integer
-                avgBytesPerPoll:
-                  type: ["integer", "null"]
-                  description: >-
-                    Average response-body bytes per ejoin poll inside the
-                    window. `null` when no polls were recorded.
-              required: [count, bytes, avgBytesPerPoll]
-            last24h:
-              type: object
-              properties:
-                count:
-                  type: integer
-                bytes:
-                  type: integer
-                avgBytesPerPoll:
-                  type: ["integer", "null"]
-                  description: >-
-                    Average response-body bytes per ejoin poll inside the
-                    window. `null` when no polls were recorded.
-              required: [count, bytes, avgBytesPerPoll]
-          required: [lastHour, last24h]
-        outboundSms:
-          type: object
-          properties:
-            lastHour:
-              type: integer
-            last24h:
-              type: integer
-          required: [lastHour, last24h]
-        instagramPolls:
-          type: object
-          properties:
-            last24h:
-              type: integer
-            lastRunAt:
-              type: ["string", "null"]
-              format: date-time
-          required: [last24h, lastRunAt]
-        clientPolls:
-          type: object
-          description: |
-            Three parallel time-window breakdowns of inbound HTTP requests
-            grouped by route family. All three windows are computed in a
-            single snapshot so the UI can switch between them without an
-            extra round-trip. Each window is an array of per-family objects
-            with the same shape.
-          properties:
-            last5min:
-              $ref: '#/components/schemas/ClientPollsByFamily'
-            lastHour:
-              $ref: '#/components/schemas/ClientPollsByFamily'
-            last24h:
-              $ref: '#/components/schemas/ClientPollsByFamily'
-          required: [last5min, lastHour, last24h]
-        smsPoller:
-          type: object
-          properties:
-            enabled:
-              type: boolean
-            intervalSeconds:
-              type: integer
-            inboundMode:
-              type: string
-              enum: [push, poll]
-          required: [enabled, intervalSeconds, inboundMode]
-        instagramPoller:
-          type: object
-          properties:
-            enabled:
-              type: boolean
-            intervalMinutes:
-              type: integer
-          required: [enabled, intervalMinutes]
-      required:
-        - serverStartedAt
-        - asOf
-        - ejoinPolls
-        - outboundSms
-        - instagramPolls
-        - clientPolls
-        - smsPoller
-        - instagramPoller
 
     OpenaiConversation:
       type: object
@@ -4794,3 +3886,53 @@ components:
         servingUrl:
           type: string
           description: Serving URL of the processed 1920×1080 hero image.
+    OfflinePayment:
+      type: object
+      description: A single offline payment (check, cash, wire, or other) recorded on a catering inquiry.
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: float
+          minimum: 0.01
+        method:
+          type: string
+          enum: [check, cash, wire, other]
+        date:
+          type: string
+          format: date
+          description: Date the payment was received (YYYY-MM-DD)
+        note:
+          type: string
+          nullable: true
+      required: [id, amount, method, date]
+
+    CateringComputedBalance:
+      type: object
+      description: |
+        Authoritative balance computed server-side for the inquiry.
+        If a Square invoice exists: remaining = squareBalanceDue − offlinePaid
+        Otherwise: remaining = quoteTotal − offlinePaid
+      properties:
+        invoiceTotal:
+          type: number
+          format: float
+          description: squareAmountPaid + squareBalanceDue (0 when no invoice)
+        squarePaid:
+          type: number
+          format: float
+        offlinePaid:
+          type: number
+          format: float
+          description: Sum of all offline payment amounts
+        remaining:
+          type: number
+          format: float
+          description: Outstanding balance after Square paid + offline paid
+      required: [invoiceTotal, squarePaid, offlinePaid, remaining]
+
+    ServiceStyleKey:
+      type: string
+      enum: [drop_off, on_the_dash, buffet, grazing, made_to_order, unknown]

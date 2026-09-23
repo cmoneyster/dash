@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Activity, Sparkles, Package as PackageIcon, Printer as PrinterIcon, FlaskConical, TrendingDown, Layers, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Menu as MenuIcon, CalendarDays, ArrowLeft, LogOut, Images, Zap, History, Briefcase, ClipboardList, CalendarRange, X, AlignJustify, ShoppingCart, BarChart3, Tags, Instagram, MessageSquare, Inbox, Sparkles, Package as PackageIcon, Printer as PrinterIcon, FlaskConical, TrendingDown, Layers, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAdminToken, getAdminToken } from "@/components/AdminGuard";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -106,9 +106,6 @@ function NavLinks({ onNavigate, refreshKey }: { onNavigate?: () => void; refresh
       <AdminNavLink href="/admin/messages/unmatched" icon={Inbox} onClick={onNavigate} badge={unmatchedBadge}>
         Unmatched Inbox
       </AdminNavLink>
-      <AdminNavLink href="/admin/ai-recommendations" icon={Sparkles} onClick={onNavigate}>
-        Chat Bot
-      </AdminNavLink>
       <div className="pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Catering</p>
       </div>
@@ -127,10 +124,6 @@ function NavLinks({ onNavigate, refreshKey }: { onNavigate?: () => void; refresh
       >
         Hashtag Wall
       </AdminNavLink>
-      <div className="pt-2 pb-1">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">System</p>
-      </div>
-      <AdminNavLink href="/admin/idle-activity" icon={Activity} onClick={onNavigate}>Idle Activity</AdminNavLink>
       <div className="pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold px-4 pb-1">Costs</p>
       </div>

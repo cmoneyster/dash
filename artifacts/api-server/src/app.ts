@@ -3,7 +3,6 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { classifyPath, normalizePath, recordHttpRequest } from "./lib/idle-metrics";
 
 const app: Express = express();
 
@@ -45,21 +44,6 @@ app.use("/api/webhooks/instagram", express.raw({ type: "*/*", limit: "1mb" }));
 // payloads, so this is comfortably below DoS-territory.
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
-
-// Track inbound HTTP traffic for the admin idle-activity dashboard.
-// Mounted right before the API router so the count covers every
-// request that actually reaches a route handler. We skip the dashboard
-// endpoint itself so polling the page doesn't inflate its own number.
-app.use("/api", (req, _res, next) => {
-  const path = req.baseUrl + (req.path ?? "");
-  if (!path.startsWith("/api/admin/idle-activity")) {
-    // Normalize the URL into a route template (numeric / UUID segments
-    // collapse to ":id") so the per-endpoint breakdown groups hits by
-    // route rather than by every distinct order/inquiry ID.
-    recordHttpRequest(classifyPath(path), normalizePath(path));
-  }
-  next();
-});
 
 app.use("/api", router);
 

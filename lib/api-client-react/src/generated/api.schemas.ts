@@ -11,31 +11,6 @@ export interface SquareTerminalDevice {
   model: string;
 }
 
-export type ClientPollsByFamilyItemEndpointsItem = {
-  path: string;
-  count: number;
-};
-
-export type ClientPollsByFamilyItem = {
-  family: string;
-  count: number;
-  /** Per-endpoint breakdown sorted by count descending. Hits to
-e.g. `/orders/47` and `/orders/48` aggregate into a single
-`/orders/:id` row. Capped per family; overflow rolls into a
-synthetic `(other)` entry.
- */
-  endpoints: ClientPollsByFamilyItemEndpointsItem[];
-};
-
-/**
- * Per-family HTTP request breakdown for one time window. Every known
-route family is always present (count may be zero). Families are
-sorted highest-count first. Endpoint keys are `:id`-normalized
-templates with the `/api` prefix stripped.
-
- */
-export type ClientPollsByFamily = ClientPollsByFamilyItem[];
-
 export interface HealthStatus {
   status: string;
 }
@@ -294,29 +269,6 @@ export interface ErrorResponse {
   error: string;
 }
 
-export type OfflinePaymentMethod =
-  (typeof OfflinePaymentMethod)[keyof typeof OfflinePaymentMethod];
-
-export const OfflinePaymentMethod = {
-  check: "check",
-  cash: "cash",
-  wire: "wire",
-  other: "other",
-} as const;
-
-/**
- * A single offline payment (check, cash, wire, or other) recorded on a catering inquiry.
- */
-export interface OfflinePayment {
-  id: string;
-  /** @minimum 0.01 */
-  amount: number;
-  method: OfflinePaymentMethod;
-  /** Date the payment was received (YYYY-MM-DD) */
-  date: string;
-  note?: string | null;
-}
-
 export type AddOfflinePaymentBodyMethod =
   (typeof AddOfflinePaymentBodyMethod)[keyof typeof AddOfflinePaymentBodyMethod];
 
@@ -333,22 +285,6 @@ export interface AddOfflinePaymentBody {
   method: AddOfflinePaymentBodyMethod;
   date: string;
   note?: string | null;
-}
-
-/**
- * Authoritative balance computed server-side for the inquiry.
-If a Square invoice exists: remaining = squareBalanceDue − offlinePaid
-Otherwise: remaining = quoteTotal − offlinePaid
-
- */
-export interface CateringComputedBalance {
-  /** squareAmountPaid + squareBalanceDue (0 when no invoice) */
-  invoiceTotal: number;
-  squarePaid: number;
-  /** Sum of all offline payment amounts */
-  offlinePaid: number;
-  /** Outstanding balance after Square paid + offline paid */
-  remaining: number;
 }
 
 /**
@@ -538,73 +474,6 @@ export interface UpdateMenuItemBody {
   sourceItemId?: number | null;
 }
 
-export type RecommendedItemSource =
-  (typeof RecommendedItemSource)[keyof typeof RecommendedItemSource];
-
-export const RecommendedItemSource = {
-  manual: "manual",
-  sync: "sync",
-} as const;
-
-export interface RecommendedItem {
-  menuItemId: number;
-  name: string;
-  category: string;
-  available: boolean;
-  sortOrder: number;
-  source: RecommendedItemSource;
-}
-
-export interface TopSeller {
-  menuItemId: number;
-  name: string;
-  category: string;
-  totalQuantity: number;
-  isCurrentlyRecommended: boolean;
-}
-
-export interface AddRecommendationBody {
-  /** @minimum 1 */
-  menuItemId: number;
-}
-
-export interface ReorderRecommendationsBody {
-  menuItemIds: number[];
-}
-
-export type SyncRecommendationsBodyMode =
-  (typeof SyncRecommendationsBodyMode)[keyof typeof SyncRecommendationsBodyMode];
-
-export const SyncRecommendationsBodyMode = {
-  replace: "replace",
-  merge: "merge",
-} as const;
-
-export interface SyncRecommendationsBody {
-  mode: SyncRecommendationsBodyMode;
-  /**
-   * @minimum 1
-   * @maximum 50
-   */
-  limit?: number;
-  /** Optional subset of top-seller menu item IDs to apply. When omitted, all top sellers up to `limit` are applied. */
-  menuItemIds?: number[];
-}
-
-export type SyncRecommendationsResponseMode =
-  (typeof SyncRecommendationsResponseMode)[keyof typeof SyncRecommendationsResponseMode];
-
-export const SyncRecommendationsResponseMode = {
-  replace: "replace",
-  merge: "merge",
-} as const;
-
-export interface SyncRecommendationsResponse {
-  mode: SyncRecommendationsResponseMode;
-  applied: number;
-  list: RecommendedItem[];
-}
-
 export interface BlackoutDate {
   id: number;
   date: string;
@@ -636,18 +505,6 @@ export interface CreateBlackoutTimeWindowBody {
   endTime: string;
   reason?: string | null;
 }
-
-export type ServiceStyleKey =
-  (typeof ServiceStyleKey)[keyof typeof ServiceStyleKey];
-
-export const ServiceStyleKey = {
-  drop_off: "drop_off",
-  on_the_dash: "on_the_dash",
-  buffet: "buffet",
-  grazing: "grazing",
-  made_to_order: "made_to_order",
-  unknown: "unknown",
-} as const;
 
 export interface DayLoadStyleTotals {
   confirmed: number;
@@ -714,36 +571,6 @@ export interface AvailabilityResponse {
   suggestedDates: string[];
 }
 
-export interface CartItem {
-  id: number;
-  menuItemId: number;
-  menuItem: MenuItem;
-  quantity: number;
-  sizeSlot?: number | null;
-  sizeLabel?: string | null;
-  sizePrice?: number | null;
-}
-
-export interface Cart {
-  sessionId: string;
-  items: CartItem[];
-  total: number;
-}
-
-export interface AddToCartBody {
-  sessionId: string;
-  menuItemId: number;
-  quantity: number;
-  sizeSlot?: number | null;
-  sizeLabel?: string | null;
-  sizePrice?: number | null;
-}
-
-export interface UpdateCartItemBody {
-  sessionId: string;
-  quantity: number;
-}
-
 export interface PlanItem {
   id: number;
   menuItemId: number;
@@ -758,217 +585,6 @@ export interface Plan {
 export interface AddToPlanBody {
   sessionId: string;
   menuItemId: number;
-}
-
-export interface OrderItem {
-  id: number;
-  menuItemId: number;
-  menuItemName: string;
-  price: number;
-  quantity: number;
-}
-
-export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
-
-export const OrderStatus = {
-  pending: "pending",
-  confirmed: "confirmed",
-  preparing: "preparing",
-  delivered: "delivered",
-  cancelled: "cancelled",
-} as const;
-
-export interface Order {
-  id: number;
-  sessionId: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone?: string | null;
-  eventDate?: string | null;
-  /** Delivery time in HH:MM 24-hour format (e.g. "14:00" for 2:00 PM). */
-  eventTime?: string | null;
-  eventType?: string | null;
-  guestCount?: number | null;
-  serviceStyle?: string | null;
-  deliveryNotes?: string | null;
-  status: OrderStatus;
-  total: number;
-  items: OrderItem[];
-  createdAt: string;
-}
-
-/**
- * Whether the customer wants standard drop-off catering or the On the Dash on-site food trailer experience.
- */
-export type CreateOrderBodyServiceMode =
-  | (typeof CreateOrderBodyServiceMode)[keyof typeof CreateOrderBodyServiceMode]
-  | null;
-
-export const CreateOrderBodyServiceMode = {
-  drop_off: "drop_off",
-  on_the_dash: "on_the_dash",
-} as const;
-
-export interface CreateOrderBody {
-  sessionId: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone?: string | null;
-  eventDate?: string | null;
-  /** Delivery time in HH:MM 24-hour format (e.g. "14:00" for 2:00 PM). */
-  eventTime?: string | null;
-  eventType?: string | null;
-  guestCount?: number | null;
-  serviceStyle?: string | null;
-  /** Whether the customer wants standard drop-off catering or the On the Dash on-site food trailer experience. */
-  serviceMode?: CreateOrderBodyServiceMode;
-  deliveryNotes?: string | null;
-  /** Event venue / location, typically populated by the address autocomplete in the cart checkout form. */
-  venueAddress?: string | null;
-}
-
-export type UpdateOrderStatusBodyStatus =
-  (typeof UpdateOrderStatusBodyStatus)[keyof typeof UpdateOrderStatusBodyStatus];
-
-export const UpdateOrderStatusBodyStatus = {
-  pending: "pending",
-  confirmed: "confirmed",
-  preparing: "preparing",
-  delivered: "delivered",
-  cancelled: "cancelled",
-} as const;
-
-export interface UpdateOrderStatusBody {
-  status: UpdateOrderStatusBodyStatus;
-}
-
-export type ChatHistoryMessageRole =
-  (typeof ChatHistoryMessageRole)[keyof typeof ChatHistoryMessageRole];
-
-export const ChatHistoryMessageRole = {
-  user: "user",
-  assistant: "assistant",
-} as const;
-
-export interface ChatHistoryMessage {
-  role: ChatHistoryMessageRole;
-  content: string;
-}
-
-export interface ChatMessageBody {
-  sessionId: string;
-  message: string;
-  history?: ChatHistoryMessage[];
-}
-
-export interface SuggestItemsBody {
-  guestCount: number;
-  serviceStyle: string;
-  preferences?: string[];
-}
-
-export interface ItemSuggestion {
-  menuItemId: number;
-  menuItem: MenuItem;
-  recommendedQuantity: number;
-  reason: string;
-}
-
-export interface SuggestItemsResponse {
-  suggestions: ItemSuggestion[];
-}
-
-export interface AdminStats {
-  totalOrders: number;
-  pendingOrders: number;
-  totalRevenue: number;
-  totalMenuItems: number;
-}
-
-export type IdleActivitySnapshotEjoinPollsLastHour = {
-  count: number;
-  bytes: number;
-  /**
-   * Average response-body bytes per ejoin poll inside the window. `null` when no polls were recorded.
-   * @nullable
-   */
-  avgBytesPerPoll: number | null;
-};
-
-export type IdleActivitySnapshotEjoinPollsLast24h = {
-  count: number;
-  bytes: number;
-  /**
-   * Average response-body bytes per ejoin poll inside the window. `null` when no polls were recorded.
-   * @nullable
-   */
-  avgBytesPerPoll: number | null;
-};
-
-export type IdleActivitySnapshotEjoinPolls = {
-  lastHour: IdleActivitySnapshotEjoinPollsLastHour;
-  last24h: IdleActivitySnapshotEjoinPollsLast24h;
-};
-
-export type IdleActivitySnapshotOutboundSms = {
-  lastHour: number;
-  last24h: number;
-};
-
-export type IdleActivitySnapshotInstagramPolls = {
-  last24h: number;
-  /** @nullable */
-  lastRunAt: string | null;
-};
-
-/**
- * Three parallel time-window breakdowns of inbound HTTP requests
-grouped by route family. All three windows are computed in a
-single snapshot so the UI can switch between them without an
-extra round-trip. Each window is an array of per-family objects
-with the same shape.
-
- */
-export type IdleActivitySnapshotClientPolls = {
-  last5min: ClientPollsByFamily;
-  lastHour: ClientPollsByFamily;
-  last24h: ClientPollsByFamily;
-};
-
-export type IdleActivitySnapshotSmsPollerInboundMode =
-  (typeof IdleActivitySnapshotSmsPollerInboundMode)[keyof typeof IdleActivitySnapshotSmsPollerInboundMode];
-
-export const IdleActivitySnapshotSmsPollerInboundMode = {
-  push: "push",
-  poll: "poll",
-} as const;
-
-export type IdleActivitySnapshotSmsPoller = {
-  enabled: boolean;
-  intervalSeconds: number;
-  inboundMode: IdleActivitySnapshotSmsPollerInboundMode;
-};
-
-export type IdleActivitySnapshotInstagramPoller = {
-  enabled: boolean;
-  intervalMinutes: number;
-};
-
-export interface IdleActivitySnapshot {
-  serverStartedAt: string;
-  asOf: string;
-  ejoinPolls: IdleActivitySnapshotEjoinPolls;
-  outboundSms: IdleActivitySnapshotOutboundSms;
-  instagramPolls: IdleActivitySnapshotInstagramPolls;
-  /** Three parallel time-window breakdowns of inbound HTTP requests
-grouped by route family. All three windows are computed in a
-single snapshot so the UI can switch between them without an
-extra round-trip. Each window is an array of per-family objects
-with the same shape.
- */
-  clientPolls: IdleActivitySnapshotClientPolls;
-  smsPoller: IdleActivitySnapshotSmsPoller;
-  instagramPoller: IdleActivitySnapshotInstagramPoller;
 }
 
 export interface OpenaiConversation {
@@ -1642,6 +1258,57 @@ export interface UploadHeroImageResponse {
   servingUrl: string;
 }
 
+export type OfflinePaymentMethod =
+  (typeof OfflinePaymentMethod)[keyof typeof OfflinePaymentMethod];
+
+export const OfflinePaymentMethod = {
+  check: "check",
+  cash: "cash",
+  wire: "wire",
+  other: "other",
+} as const;
+
+/**
+ * A single offline payment (check, cash, wire, or other) recorded on a catering inquiry.
+ */
+export interface OfflinePayment {
+  id: string;
+  /** @minimum 0.01 */
+  amount: number;
+  method: OfflinePaymentMethod;
+  /** Date the payment was received (YYYY-MM-DD) */
+  date: string;
+  note?: string | null;
+}
+
+/**
+ * Authoritative balance computed server-side for the inquiry.
+If a Square invoice exists: remaining = squareBalanceDue − offlinePaid
+Otherwise: remaining = quoteTotal − offlinePaid
+
+ */
+export interface CateringComputedBalance {
+  /** squareAmountPaid + squareBalanceDue (0 when no invoice) */
+  invoiceTotal: number;
+  squarePaid: number;
+  /** Sum of all offline payment amounts */
+  offlinePaid: number;
+  /** Outstanding balance after Square paid + offline paid */
+  remaining: number;
+}
+
+export type ServiceStyleKey =
+  (typeof ServiceStyleKey)[keyof typeof ServiceStyleKey];
+
+export const ServiceStyleKey = {
+  drop_off: "drop_off",
+  on_the_dash: "on_the_dash",
+  buffet: "buffet",
+  grazing: "grazing",
+  made_to_order: "made_to_order",
+  unknown: "unknown",
+} as const;
+
 export type ListMenuItemsParams = {
   category?: string;
   available?: boolean;
@@ -1656,24 +1323,12 @@ export type CheckAvailabilityParams = {
   endDate: string;
 };
 
-export type AdminListTopSellersParams = {
-  /**
-   * @minimum 1
-   * @maximum 50
-   */
-  limit?: number;
-};
-
 export type AdminListBlackoutTimeWindowsParams = {
   date: string;
 };
 
 export type ListBlackoutTimeWindowsParams = {
   date: string;
-};
-
-export type GetCartParams = {
-  sessionId: string;
 };
 
 export type GetPlanParams = {
