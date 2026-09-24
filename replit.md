@@ -8,6 +8,7 @@ This application is a full-stack catering business website that offers online or
 - **Start frontend:** `pnpm --filter @workspace/catering-web run dev`
 - **Regenerate API client:** `pnpm --filter @workspace/api-spec run codegen`
 - **Push DB schema changes:** `pnpm --filter @workspace/db run push`
+- **Run locally (off Replit):** copy `.env.example` to `.env`, set `DATABASE_URL`, then `pnpm run dev:local`. Defaults to `SMS_OUTBOUND_MODE=shadow` and Square sandbox; uploads go to `./.local-storage` unless `S3_*` is set.
 
 **Required Environment Variables:**
 - `AI_INTEGRATIONS_OPENAI_BASE_URL` (for Replit AI)

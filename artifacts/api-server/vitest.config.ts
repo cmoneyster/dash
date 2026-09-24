@@ -10,9 +10,9 @@ export default defineConfig({
     testTimeout: 20_000,
     hookTimeout: 20_000,
     pool: "forks",
-    // Vitest 4: pool sub-options are now top-level on `test`. Run all
-    // tests in a single fork so they share one DB connection pool and
-    // never race on the seeded test menu items / event_settings row.
-    singleFork: true,
+    // Run test files one at a time so they never race on the shared
+    // event_settings row or seeded test menu items in the database.
+    // (Vitest 4 ignores the old `singleFork` option.)
+    fileParallelism: false,
   },
 });

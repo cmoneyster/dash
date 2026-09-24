@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { db } from "@workspace/db";
 import { eventSettingsTable, eventOrdersTable, cateringInquiriesTable, eventSessionsTable } from "@workspace/db/schema";
 import { eq, and, gte, lt, inArray, sql } from "drizzle-orm";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { uploadObject } from "../lib/objectStorage";
 import { isEjoinConfigured } from "../lib/sms-ejoin";
 import { getTerminalSquareConfig, listTerminalDevices, SquareApiError } from "../lib/square";
 
@@ -1012,8 +1012,6 @@ const venmoUpload = multer({
   },
 });
 
-const venmoObjectStorage = new ObjectStorageService();
-
 router.post("/admin/event-settings/venmo-qr", venmoUpload.single("image"), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: "No image file provided" });
@@ -1025,15 +1023,7 @@ router.post("/admin/event-settings/venmo-qr", venmoUpload.single("image"), async
       .jpeg({ quality: 92, progressive: true })
       .toBuffer();
 
-    const uploadUrl = await venmoObjectStorage.getObjectEntityUploadURL();
-    const uploadRes = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": "image/jpeg" },
-      body: processed,
-    });
-    if (!uploadRes.ok) throw new Error(`GCS upload failed: ${uploadRes.status}`);
-
-    const objectPath = venmoObjectStorage.normalizeObjectEntityPath(uploadUrl);
+    const objectPath = await uploadObject(processed, "image/jpeg");
     const servingUrl = `/api/storage${objectPath}`;
     res.status(201).json({ url: servingUrl });
   } catch (err) {

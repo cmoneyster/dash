@@ -36,7 +36,7 @@ import {
   PAYMENT_TERMS_TITLE,
   PAYMENT_TERMS_BULLETS,
 } from "../lib/quote-copy";
-import { objectStorageClient } from "../lib/objectStorage";
+import { readObject, saveObject } from "../lib/objectStorage";
 import {
   isSquareConfigured,
   createAndPublishInvoiceForInquiry,
@@ -270,76 +270,27 @@ function applyTotalsToUpdates(updates: Record<string, unknown>) {
 
 // ── Object-storage persistence for generated PDFs ─────────────────────────────
 //
-// PDFs are written to PRIVATE_OBJECT_DIR/quotes/quote-<id>-<token>.pdf so that
-// regenerating the quote (which rotates `quoteToken`) leaves a fresh, signed
-// download URL and effectively orphans any prior PDFs as a side effect of the
-// token rotation.
+// PDFs are cached at quotes/quote-<id>-<token>.pdf so that regenerating the
+// quote (which rotates `quoteToken`) produces a fresh copy and effectively
+// orphans any prior PDFs as a side effect of the token rotation.
 
-function quoteObjectName(privateObjectDir: string, inquiry: { id: number; quoteToken: string }) {
-  const dir = privateObjectDir.endsWith("/") ? privateObjectDir : `${privateObjectDir}/`;
-  return `${dir}quotes/quote-${inquiry.id}-${inquiry.quoteToken}.pdf`;
-}
-
-function parseGsPath(fullPath: string): { bucketName: string; objectName: string } | null {
-  if (!fullPath.startsWith("/")) return null;
-  const parts = fullPath.slice(1).split("/");
-  if (parts.length < 2) return null;
-  return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+function quotePdfKey(inquiry: { id: number; quoteToken: string }) {
+  return `quotes/quote-${inquiry.id}-${inquiry.quoteToken}.pdf`;
 }
 
 async function persistQuotePdf(
   inquiry: { id: number; quoteToken: string },
   bytes: Buffer,
-): Promise<string | null> {
-  const dir = process.env.PRIVATE_OBJECT_DIR?.trim();
-  if (!dir) return null;
-  const fullPath = quoteObjectName(dir, inquiry);
-  const parsed = parseGsPath(fullPath);
-  if (!parsed) return null;
-  const file = objectStorageClient.bucket(parsed.bucketName).file(parsed.objectName);
-  await file.save(bytes, {
-    contentType: "application/pdf",
-    resumable: false,
-    metadata: { contentType: "application/pdf" },
-  });
-  return fullPath;
+): Promise<void> {
+  await saveObject(quotePdfKey(inquiry), bytes, "application/pdf");
 }
 
 async function getPersistedQuotePdf(
   inquiry: { id: number; quoteToken: string | null },
 ): Promise<Buffer | null> {
-  const dir = process.env.PRIVATE_OBJECT_DIR?.trim();
-  if (!dir || !inquiry.quoteToken) return null;
-  const fullPath = quoteObjectName(dir, inquiry as { id: number; quoteToken: string });
-  const parsed = parseGsPath(fullPath);
-  if (!parsed) return null;
+  if (!inquiry.quoteToken) return null;
   try {
-    const file = objectStorageClient.bucket(parsed.bucketName).file(parsed.objectName);
-    const [exists] = await file.exists();
-    if (!exists) return null;
-    const [buf] = await file.download();
-    return buf;
-  } catch {
-    return null;
-  }
-}
-
-async function signQuotePdfDownloadUrl(
-  inquiry: { id: number; quoteToken: string },
-): Promise<string | null> {
-  const dir = process.env.PRIVATE_OBJECT_DIR?.trim();
-  if (!dir) return null;
-  const fullPath = quoteObjectName(dir, inquiry);
-  const parsed = parseGsPath(fullPath);
-  if (!parsed) return null;
-  try {
-    const file = objectStorageClient.bucket(parsed.bucketName).file(parsed.objectName);
-    const [url] = await file.getSignedUrl({
-      action: "read",
-      expires: Date.now() + 1000 * 60 * 60, // 1h
-      responseDisposition: `attachment; filename="quote-${inquiry.id}.pdf"`,
-    });
-    return url;
+    return await readObject(quotePdfKey(inquiry as { id: number; quoteToken: string }));
   } catch {
     return null;
   }
@@ -777,11 +728,9 @@ router.post("/admin/catering/:id/quote", async (req, res): Promise<void> => {
       .returning();
 
     // Render and persist a PDF copy keyed by the rotated token.
-    let downloadUrl: string | null = null;
     try {
       const pdf = await renderQuotePdf(updated as CateringInquiry);
       await persistQuotePdf({ id: updated.id, quoteToken: newToken }, pdf);
-      downloadUrl = await signQuotePdfDownloadUrl({ id: updated.id, quoteToken: newToken });
     } catch (storageErr) {
       req.log.warn({ err: storageErr }, "Quote PDF persistence failed; live render still available");
     }
@@ -789,7 +738,6 @@ router.post("/admin/catering/:id/quote", async (req, res): Promise<void> => {
     res.json({
       inquiry: updated,
       viewUrl: quoteViewUrl(req, newToken),
-      downloadUrl,
     });
   } catch (err) {
     req.log.error({ err }, "Error generating quote");

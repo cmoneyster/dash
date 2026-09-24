@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { db } from "@workspace/db";
 import { imagesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { uploadObject } from "../lib/objectStorage";
 import { requireAdminAuth } from "../lib/adminAuth";
 
 const router: IRouter = Router();
@@ -17,8 +17,6 @@ const upload = multer({
     else cb(new Error("Only image files are allowed"));
   },
 });
-
-const objectStorage = new ObjectStorageService();
 
 const TARGET_WIDTH = 800;
 const TARGET_HEIGHT = 600;
@@ -59,19 +57,7 @@ router.post(
         .jpeg({ quality: 90, progressive: true })
         .toBuffer();
 
-      const uploadUrl = await objectStorage.getObjectEntityUploadURL();
-
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": "image/jpeg" },
-        body: processed,
-      });
-
-      if (!uploadRes.ok) {
-        throw new Error(`GCS upload failed: ${uploadRes.status}`);
-      }
-
-      const objectPath = objectStorage.normalizeObjectEntityPath(uploadUrl);
+      const objectPath = await uploadObject(processed, "image/jpeg");
       const servingUrl = `/api/storage${objectPath}`;
 
       const originalName = req.file.originalname.replace(/\.[^/.]+$/, "") + ".jpg";
@@ -112,19 +98,7 @@ router.post(
         .jpeg({ quality: 92, progressive: true })
         .toBuffer();
 
-      const uploadUrl = await objectStorage.getObjectEntityUploadURL();
-
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": "image/jpeg" },
-        body: processed,
-      });
-
-      if (!uploadRes.ok) {
-        throw new Error(`GCS upload failed: ${uploadRes.status}`);
-      }
-
-      const objectPath = objectStorage.normalizeObjectEntityPath(uploadUrl);
+      const objectPath = await uploadObject(processed, "image/jpeg");
       const servingUrl = `/api/storage${objectPath}`;
 
       res.status(201).json({ servingUrl });

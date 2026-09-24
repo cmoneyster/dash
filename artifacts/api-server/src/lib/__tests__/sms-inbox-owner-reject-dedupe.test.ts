@@ -59,10 +59,12 @@ beforeAll(async () => {
   }
   originalSettings = snap;
   // Force the DB owner phone path so the test never depends on the
-  // OWNER_PHONE env var the developer may have set locally.
+  // OWNER_PHONE env var the developer may have set locally. The chat
+  // owner phone is cleared too: it takes precedence over both, and a DB
+  // copied from production has it set.
   await db
     .update(eventSettingsTable)
-    .set({ ownerNotificationPhone: OWNER_DIGITS, smsOwnerReplyEnabled: false })
+    .set({ ownerNotificationPhone: OWNER_DIGITS, smsChatOwnerPhone: null, smsOwnerReplyEnabled: false })
     .where(eq(eventSettingsTable.id, 1));
 });
 
@@ -74,6 +76,7 @@ afterAll(async () => {
       .update(eventSettingsTable)
       .set({
         ownerNotificationPhone: originalSettings.ownerNotificationPhone ?? null,
+        smsChatOwnerPhone: originalSettings.smsChatOwnerPhone ?? null,
         smsOwnerReplyEnabled: originalSettings.smsOwnerReplyEnabled,
       })
       .where(eq(eventSettingsTable.id, 1));

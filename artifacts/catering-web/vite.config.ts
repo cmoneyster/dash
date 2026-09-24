@@ -203,6 +203,11 @@ export default defineConfig({
       strict: true,
       deny: ["**/.*"],
     },
+    // Off Replit nothing routes /api to the API server, so the local
+    // launcher (scripts/dev-local.mjs) sets this to forward it.
+    proxy: process.env.API_PROXY_TARGET
+      ? { "/api": { target: process.env.API_PROXY_TARGET, changeOrigin: true } }
+      : undefined,
   },
   preview: {
     port,

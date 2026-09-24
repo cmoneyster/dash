@@ -29,10 +29,9 @@ import { instagramHashtagCandidatesTable, eventSettingsTable } from "@workspace/
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { fetchMentionedMedia, isInstagramConfigured } from "../lib/instagramGraph";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { uploadObject } from "../lib/objectStorage";
 
 const router = Router();
-const objectStorage = new ObjectStorageService();
 
 function getWebhookConfig(): { appSecret: string | null; verifyToken: string | null } {
   return {
@@ -132,14 +131,7 @@ async function fetchAndCacheThumbnail(
     const buffer = Buffer.from(await fetchResp.arrayBuffer());
     if (buffer.byteLength === 0) return null;
 
-    const uploadUrl = await objectStorage.getObjectEntityUploadURL();
-    const putResp = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": contentType },
-      body: buffer,
-    });
-    if (!putResp.ok) return null;
-    const objectPath = objectStorage.normalizeObjectEntityPath(uploadUrl);
+    const objectPath = await uploadObject(buffer, contentType);
     return { objectPath: `${objectPath}#${hash}`, servingUrl: `/api/storage${objectPath}` };
   } catch (err) {
     logger.warn({ err, postId }, "instagram-mention: thumbnail cache failed");

@@ -7,7 +7,7 @@ import {
 } from "@workspace/db/schema";
 import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { logger } from "./logger";
-import { ObjectStorageService } from "./objectStorage";
+import { uploadObject } from "./objectStorage";
 import {
   InstagramApiError,
   captionMentionsHandle,
@@ -28,8 +28,6 @@ const CLEANUP_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 const MAX_HASHTAGS = 5;
 const MAX_API_CALLS_PER_CYCLE = 5;
 const MEDIA_PER_HASHTAG = 25;
-
-const objectStorage = new ObjectStorageService();
 
 // In-process state so repeated clicks of the admin "Run poller now"
 // button can't overlap, and startup cleanup runs at most once.
@@ -61,14 +59,7 @@ async function fetchAndCacheThumbnail(
     const buffer = Buffer.from(await fetchResp.arrayBuffer());
     if (buffer.byteLength === 0) return null;
 
-    const uploadUrl = await objectStorage.getObjectEntityUploadURL();
-    const putResp = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": contentType },
-      body: buffer,
-    });
-    if (!putResp.ok) return null;
-    const objectPath = objectStorage.normalizeObjectEntityPath(uploadUrl);
+    const objectPath = await uploadObject(buffer, contentType);
     return { objectPath: `${objectPath}#${hash}`, servingUrl: `/api/storage${objectPath}` };
   } catch (err) {
     logger.warn({ err, postId }, "instagram: thumbnail cache failed");

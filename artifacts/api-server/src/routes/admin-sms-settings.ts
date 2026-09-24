@@ -317,17 +317,17 @@ function buildResponse(s: typeof eventSettingsTable.$inferSelect | undefined, we
     // secret embedded so the admin can paste it directly into eJoinTech.
     smsWebhookUrl: (() => {
       if (!webhookSecret) return null;
-      const domains = (process.env.REPLIT_DOMAINS ?? "")
-        .split(",")
-        .map(d => d.trim())
-        .filter(Boolean);
-      const domain = domains[0] ?? null;
-      if (!domain) return null;
+      // Prefer the canonical public URL; fall back to Replit's hostname.
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+      const origin =
+        process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, "") ||
+        (replitDomain ? `https://${replitDomain}` : null);
+      if (!origin) return null;
       // No template variables in the URL — the gateway appends its own
       // fields (sender, receiver, content, port, etc.) automatically.
       // Adding $port/$sn/$sm caused the gateway to send them as literal
       // strings rather than expanding them, breaking port detection.
-      return `https://${domain}/api/sms/inbound?secret=${encodeURIComponent(webhookSecret)}`;
+      return `${origin}/api/sms/inbound?secret=${encodeURIComponent(webhookSecret)}`;
     })(),
   };
 }
