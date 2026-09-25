@@ -64,6 +64,7 @@ let originalSettings: typeof eventSettingsTable.$inferSelect | null = null;
 let createdInquiryId: number | null = null;
 
 async function clearTestRows() {
+  await db.delete(ownerForwardsTable).where(like(ownerForwardsTable.sourceGatewayMessageId, `${GID_PREFIX}%`));
   await db.delete(smsMessagesTable).where(like(smsMessagesTable.gatewayMessageId, `${GID_PREFIX}%`));
 }
 
@@ -135,6 +136,120 @@ afterEach(() => {
 });
 
 describe("ingestInbound — owner forward recency + unmatched gates (task #200)", () => {
+  it.each(["webhook", "poll"] as const)("pairs %s-first deliveries once and replays both IDs safely", async first => {
+    const suffix = `dual-${first}`;
+    const time = new Date();
+    const webhook = {
+      gatewayMessageId: `${GID_PREFIX}${suffix}-webhook`,
+      deliverySource: "webhook" as const,
+      fromPhone: CUSTOMER_DIGITS_MATCHED,
+      body: `same customer reply ${suffix}`,
+      occurredAt: time,
+      port: 7,
+    };
+    const poll = {
+      ...webhook,
+      gatewayMessageId: `${GID_PREFIX}${suffix}-poll`,
+      deliverySource: "poll" as const,
+      occurredAt: new Date(Math.floor(time.getTime() / 60_000) * 60_000 - 60_000),
+    };
+    const [a, b] = first === "webhook" ? [webhook, poll] : [poll, webhook];
+    expect((await ingestInbound(a)).status).toBe("stored");
+    expect((await ingestInbound(b)).status).toBe("dedup");
+    expect((await ingestInbound(a)).status).toBe("dedup");
+    expect((await ingestInbound(b)).status).toBe("dedup");
+    const rows = await db.select().from(smsMessagesTable)
+      .where(like(smsMessagesTable.gatewayMessageId, `${GID_PREFIX}${suffix}%`));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.pairedGatewayMessageId).toBe(b.gatewayMessageId);
+    expect(rows[0]?.inquiryId).toBe(createdInquiryId);
+    expect(sendSmsViaChatPortMock).toHaveBeenCalledTimes(1);
+    const forwards = await db.select().from(ownerForwardsTable)
+      .where(eq(ownerForwardsTable.sourceGatewayMessageId, a.gatewayMessageId));
+    expect(forwards).toHaveLength(1);
+  });
+
+  it("pairs concurrent arrivals one-to-one without hiding two identical replies", async () => {
+    const time = new Date();
+    const common = {
+      fromPhone: CUSTOMER_DIGITS_MATCHED,
+      body: "yes, yes",
+      occurredAt: time,
+      port: 7,
+    };
+    const inputs = [
+      { ...common, gatewayMessageId: `${GID_PREFIX}repeat-web-1`, deliverySource: "webhook" as const },
+      { ...common, gatewayMessageId: `${GID_PREFIX}repeat-web-2`, deliverySource: "webhook" as const },
+      { ...common, gatewayMessageId: `${GID_PREFIX}repeat-poll-1`, deliverySource: "poll" as const },
+      { ...common, gatewayMessageId: `${GID_PREFIX}repeat-poll-2`, deliverySource: "poll" as const },
+    ];
+    const outcomes = await Promise.all(inputs.map(input => ingestInbound(input)));
+    expect(outcomes.filter(result => result.status === "stored")).toHaveLength(2);
+    const rows = await db.select().from(smsMessagesTable)
+      .where(like(smsMessagesTable.gatewayMessageId, `${GID_PREFIX}repeat-%`));
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map(row => row.pairedGatewayMessageId)).size).toBe(2);
+    expect(rows.every(row => row.pairedGatewayMessageId !== null)).toBe(true);
+    expect(sendSmsViaChatPortMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("ingests a stale poll backfill once without forwarding when its webhook counterpart arrives", async () => {
+    const common = {
+      fromPhone: CUSTOMER_DIGITS_MATCHED,
+      body: "old backfill text",
+      occurredAt: new Date(Date.now() - 60 * 60_000),
+      port: 7,
+    };
+    await ingestInbound({ ...common, gatewayMessageId: `${GID_PREFIX}backfill-poll`, deliverySource: "poll" });
+    const replay = await ingestInbound({
+      ...common,
+      gatewayMessageId: `${GID_PREFIX}backfill-web`,
+      deliverySource: "webhook",
+    });
+    expect(replay.status).toBe("dedup");
+    expect(sendSmsViaChatPortMock).not.toHaveBeenCalled();
+  });
+
+  it("never pairs same-source repeats or edits a pre-existing untagged message", async () => {
+    const common = {
+      fromPhone: CUSTOMER_DIGITS_MATCHED,
+      body: "independent yes",
+      occurredAt: new Date(),
+      port: 7,
+    };
+    await ingestInbound({ ...common, gatewayMessageId: `${GID_PREFIX}legacy` });
+    await ingestInbound({ ...common, gatewayMessageId: `${GID_PREFIX}web-a`, deliverySource: "webhook" });
+    await ingestInbound({ ...common, gatewayMessageId: `${GID_PREFIX}web-b`, deliverySource: "webhook" });
+    const legacy = await db.select().from(smsMessagesTable)
+      .where(eq(smsMessagesTable.gatewayMessageId, `${GID_PREFIX}legacy`));
+    expect(legacy[0]?.pairedGatewayMessageId).toBeNull();
+    const webRows = await db.select().from(smsMessagesTable)
+      .where(like(smsMessagesTable.gatewayMessageId, `${GID_PREFIX}web-%`));
+    expect(webRows).toHaveLength(2);
+  });
+
+  it("stores both different full texts when successive poll pages reuse a 24-character ID", async () => {
+    const prefix = "Exactly twenty four chars!";
+    const baseId = `${GID_PREFIX}same-prefix-poll`;
+    const common = {
+      gatewayMessageId: baseId,
+      deliverySource: "poll" as const,
+      fromPhone: CUSTOMER_DIGITS_MATCHED,
+      occurredAt: new Date(),
+      port: 7,
+    };
+    expect((await ingestInbound({ ...common, body: `${prefix} A` })).status).toBe("stored");
+    // A newer different body becomes first on the next detail page.
+    expect((await ingestInbound({ ...common, body: `${prefix} B` })).status).toBe("stored");
+    expect((await ingestInbound({ ...common, body: `${prefix} A` })).status).toBe("dedup");
+    expect((await ingestInbound({ ...common, body: `${prefix} B` })).status).toBe("dedup");
+    const rows = await db.select().from(smsMessagesTable)
+      .where(like(smsMessagesTable.gatewayMessageId, `${baseId}%`));
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map(row => row.body))).toEqual(new Set([`${prefix} A`, `${prefix} B`]));
+    expect(sendSmsViaChatPortMock).toHaveBeenCalledTimes(2);
+  });
+
   it("does NOT forward stale matched inbounds (recency gate)", async () => {
     // Matched sender (their phone is on a real inquiry) but the
     // message is 30 minutes old — well outside the FORWARD_RECENCY_MS

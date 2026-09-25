@@ -36,6 +36,10 @@ export const smsMessagesTable = pgTable(
     // poller runs and webhook deliveries). For outbound we synthesize
     // a UUID so the column is always populated.
     gatewayMessageId: text("gateway_message_id").notNull(),
+    // Distinct transport ID for the same physical inbound message, if observed.
+    pairedGatewayMessageId: text("paired_gateway_message_id"),
+    // Only new customer inbounds have a source. Legacy rows remain untouched.
+    deliverySource: text("delivery_source"),
     // 'admin' | 'owner_relay' | 'system' — distinguishes admin-typed
     // outbound from owner-relayed-via-tag and from system sends
     // (quote text, invoice text). Inbound rows use 'inbound'.
@@ -49,6 +53,7 @@ export const smsMessagesTable = pgTable(
     // Dedupe guard for inbound webhook+poller race. Outbound rows use a
     // synthesized UUID so they never collide.
     gatewayIdUq: uniqueIndex("sms_messages_gateway_id_uq").on(t.gatewayMessageId),
+    pairedGatewayIdUq: uniqueIndex("sms_messages_paired_gateway_id_uq").on(t.pairedGatewayMessageId),
     // Hot lookups: messages for one inquiry in chronological order.
     byInquiryIdx: index("sms_messages_by_inquiry_idx").on(t.inquiryId, t.occurredAt),
     // Plain occurredAt index used for the Unmatched inbox listing

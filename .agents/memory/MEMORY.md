@@ -1,2 +1,3 @@
 - [Square Terminal device_id prefix](square-terminal-device-id.md) — /v2/devices returns `device:SERIAL` but Terminal Checkout API wants bare `SERIAL`
 - [Star WebPRNT bold-off prints F](star-webprnt-bold-f.md) — TSP143IV firmware converts <Bold on="false"/> to ESC F (Star Line Mode), which prints literal 'F' in ESC/POS mode
+- [SMS gateway identity limits](sms-gateway-identity-limits.md) — webhook and poll lack a shared stable ID; repeated identical texts need one-to-one handling, not broad content dedup.

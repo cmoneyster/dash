@@ -420,6 +420,36 @@ describe("parseInboundSmsDetail — per-port drill-in page", () => {
     expect(fromListing[0].gatewayMessageId).toBe(fromDetail[0].gatewayMessageId);
   });
 
+  it("retains distinct identical detail rows in the same minute", () => {
+    const payload = JSON.stringify({
+      result: 0, count: 2,
+      data: [
+        [1, "12405158960", "04-28 01:50", "yes", "x"],
+        [2, "12405158960", "04-28 01:50", "yes", "x"],
+      ],
+    });
+    const first = parseInboundSmsDetail(listDataPage(payload), 7);
+    const again = parseInboundSmsDetail(listDataPage(payload), 7);
+    expect(first).toHaveLength(2);
+    expect(new Set(first.map(row => row.gatewayMessageId)).size).toBe(2);
+    expect(first.map(row => row.gatewayMessageId)).toEqual(again.map(row => row.gatewayMessageId));
+  });
+
+  it("does not change an older full body's occurrence number when a different same-prefix body arrives", () => {
+    const prefix = "Exactly twenty four chars!";
+    const makePage = (bodies: string[]) => listDataPage(JSON.stringify({
+      result: 0, count: bodies.length,
+      data: bodies.map((body, i) => [i + 1, "12405158960", "04-28 01:50", body, "x"]),
+    }));
+    const a = `${prefix} A`;
+    const b = `${prefix} B`;
+    const first = parseInboundSmsDetail(makePage([a]), 7);
+    const second = parseInboundSmsDetail(makePage([b, a]), 7);
+    expect(first[0].gatewayMessageId).toBe(second[1].gatewayMessageId);
+    expect(second[0].body).toBe(b);
+    expect(second[1].body).toBe(a);
+  });
+
   it("normalizes the listing's MM-DD HH:MM time and the detail's MM-DD HH:MM:SS to the same id", () => {
     // Listing always shows MM-DD HH:MM; some firmware on the detail
     // page adds :SS. The id formula strips the seconds so the two

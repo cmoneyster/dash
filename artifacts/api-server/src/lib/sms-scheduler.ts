@@ -145,7 +145,13 @@ async function pollOnce(): Promise<SmsPollResult> {
       const countIncreased = !firstCycle && lastCount !== undefined && newCount > lastCount;
       const latestChanged =
         !firstCycle && newLatestId != null && newLatestId !== lastLatestId;
-      const shouldEscalate = newCount > 0 && (firstCycle || countIncreased || latestChanged);
+      // Listing IDs contain only minute-level time and the first 24 body
+      // characters. Two identical texts in that minute can leave the
+      // latest ID unchanged even as a new message arrives. In push mode
+      // the safety poll is only every ten minutes, so walk the detail
+      // page each cycle rather than trusting that lossy listing ID.
+      const shouldEscalate = newCount > 0 &&
+        (getInboundMode() === "push" || firstCycle || countIncreased || latestChanged);
 
       let toIngest = peek.rows;
       let detailFetchUsable = !shouldEscalate;
@@ -205,6 +211,7 @@ async function pollOnce(): Promise<SmsPollResult> {
             body: m.body,
             occurredAt: m.occurredAt,
             port: m.port,
+            deliverySource: "poll",
           });
           ingested++;
         } catch (err) {

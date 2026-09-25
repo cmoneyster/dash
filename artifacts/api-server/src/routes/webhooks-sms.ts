@@ -236,6 +236,7 @@ async function handleInbound(req: Request, res: Response, raw: Record<string, un
       body,
       occurredAt: ts,
       port,
+      deliverySource: "webhook",
     });
     res.json({ ok: true, ...result });
   } catch (err: unknown) {
