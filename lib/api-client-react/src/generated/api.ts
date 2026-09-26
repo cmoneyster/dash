@@ -50,6 +50,14 @@ import type {
   HealthStatus,
   IngredientCostEntry,
   IngredientWithCost,
+  InquiryPlanHistory,
+  InquiryPlanLink,
+  InquiryPlanLinkInput,
+  InquiryPlanProposal,
+  InquiryPlanProposalResult,
+  InquiryPlanReviewInput,
+  InquiryPlanRevoked,
+  InquiryPlanView,
   LaborEntry,
   ListBlackoutTimeWindowsParams,
   ListLaborEntriesParams,
@@ -2013,6 +2021,520 @@ export const useRemoveFromPlan = <
   TContext
 > => {
   return useMutation(getRemoveFromPlanMutationOptions(options));
+};
+
+/**
+ * @summary Read an editable inquiry plan using its private link
+ */
+export const getGetInquiryPlanRevisionUrl = (token: string) => {
+  return `/api/plan/revise/${token}`;
+};
+
+export const getInquiryPlanRevision = async (
+  token: string,
+  options?: RequestInit,
+): Promise<InquiryPlanView> => {
+  return customFetch<InquiryPlanView>(getGetInquiryPlanRevisionUrl(token), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetInquiryPlanRevisionQueryKey = (token: string) => {
+  return [`/api/plan/revise/${token}`] as const;
+};
+
+export const getGetInquiryPlanRevisionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getInquiryPlanRevision>>,
+  TError = ErrorType<void>,
+>(
+  token: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInquiryPlanRevision>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetInquiryPlanRevisionQueryKey(token);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getInquiryPlanRevision>>
+  > = ({ signal }) =>
+    getInquiryPlanRevision(token, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!token,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getInquiryPlanRevision>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetInquiryPlanRevisionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getInquiryPlanRevision>>
+>;
+export type GetInquiryPlanRevisionQueryError = ErrorType<void>;
+
+/**
+ * @summary Read an editable inquiry plan using its private link
+ */
+
+export function useGetInquiryPlanRevision<
+  TData = Awaited<ReturnType<typeof getInquiryPlanRevision>>,
+  TError = ErrorType<void>,
+>(
+  token: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInquiryPlanRevision>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetInquiryPlanRevisionQueryOptions(token, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Propose changes without creating another inquiry
+ */
+export const getProposeInquiryPlanRevisionUrl = (token: string) => {
+  return `/api/plan/revise/${token}`;
+};
+
+export const proposeInquiryPlanRevision = async (
+  token: string,
+  inquiryPlanProposal: InquiryPlanProposal,
+  options?: RequestInit,
+): Promise<InquiryPlanProposalResult> => {
+  return customFetch<InquiryPlanProposalResult>(
+    getProposeInquiryPlanRevisionUrl(token),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(inquiryPlanProposal),
+    },
+  );
+};
+
+export const getProposeInquiryPlanRevisionMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof proposeInquiryPlanRevision>>,
+    TError,
+    { token: string; data: BodyType<InquiryPlanProposal> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof proposeInquiryPlanRevision>>,
+  TError,
+  { token: string; data: BodyType<InquiryPlanProposal> },
+  TContext
+> => {
+  const mutationKey = ["proposeInquiryPlanRevision"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof proposeInquiryPlanRevision>>,
+    { token: string; data: BodyType<InquiryPlanProposal> }
+  > = (props) => {
+    const { token, data } = props ?? {};
+
+    return proposeInquiryPlanRevision(token, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ProposeInquiryPlanRevisionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof proposeInquiryPlanRevision>>
+>;
+export type ProposeInquiryPlanRevisionMutationBody =
+  BodyType<InquiryPlanProposal>;
+export type ProposeInquiryPlanRevisionMutationError = ErrorType<void>;
+
+/**
+ * @summary Propose changes without creating another inquiry
+ */
+export const useProposeInquiryPlanRevision = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof proposeInquiryPlanRevision>>,
+    TError,
+    { token: string; data: BodyType<InquiryPlanProposal> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof proposeInquiryPlanRevision>>,
+  TError,
+  { token: string; data: BodyType<InquiryPlanProposal> },
+  TContext
+> => {
+  return useMutation(getProposeInquiryPlanRevisionMutationOptions(options));
+};
+
+export const getAdminGetInquiryPlanRevisionsUrl = (id: number) => {
+  return `/api/admin/catering/${id}/plan-revisions`;
+};
+
+export const adminGetInquiryPlanRevisions = async (
+  id: number,
+  options?: RequestInit,
+): Promise<InquiryPlanHistory> => {
+  return customFetch<InquiryPlanHistory>(
+    getAdminGetInquiryPlanRevisionsUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getAdminGetInquiryPlanRevisionsQueryKey = (id: number) => {
+  return [`/api/admin/catering/${id}/plan-revisions`] as const;
+};
+
+export const getAdminGetInquiryPlanRevisionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof adminGetInquiryPlanRevisions>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof adminGetInquiryPlanRevisions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getAdminGetInquiryPlanRevisionsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof adminGetInquiryPlanRevisions>>
+  > = ({ signal }) =>
+    adminGetInquiryPlanRevisions(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof adminGetInquiryPlanRevisions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type AdminGetInquiryPlanRevisionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof adminGetInquiryPlanRevisions>>
+>;
+export type AdminGetInquiryPlanRevisionsQueryError = ErrorType<unknown>;
+
+export function useAdminGetInquiryPlanRevisions<
+  TData = Awaited<ReturnType<typeof adminGetInquiryPlanRevisions>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof adminGetInquiryPlanRevisions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getAdminGetInquiryPlanRevisionsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getAdminSendInquiryPlanLinkUrl = (id: number) => {
+  return `/api/admin/catering/${id}/plan-link`;
+};
+
+export const adminSendInquiryPlanLink = async (
+  id: number,
+  inquiryPlanLinkInput: InquiryPlanLinkInput,
+  options?: RequestInit,
+): Promise<InquiryPlanLink> => {
+  return customFetch<InquiryPlanLink>(getAdminSendInquiryPlanLinkUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(inquiryPlanLinkInput),
+  });
+};
+
+export const getAdminSendInquiryPlanLinkMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminSendInquiryPlanLink>>,
+    TError,
+    { id: number; data: BodyType<InquiryPlanLinkInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminSendInquiryPlanLink>>,
+  TError,
+  { id: number; data: BodyType<InquiryPlanLinkInput> },
+  TContext
+> => {
+  const mutationKey = ["adminSendInquiryPlanLink"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminSendInquiryPlanLink>>,
+    { id: number; data: BodyType<InquiryPlanLinkInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return adminSendInquiryPlanLink(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminSendInquiryPlanLinkMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminSendInquiryPlanLink>>
+>;
+export type AdminSendInquiryPlanLinkMutationBody =
+  BodyType<InquiryPlanLinkInput>;
+export type AdminSendInquiryPlanLinkMutationError = ErrorType<unknown>;
+
+export const useAdminSendInquiryPlanLink = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminSendInquiryPlanLink>>,
+    TError,
+    { id: number; data: BodyType<InquiryPlanLinkInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminSendInquiryPlanLink>>,
+  TError,
+  { id: number; data: BodyType<InquiryPlanLinkInput> },
+  TContext
+> => {
+  return useMutation(getAdminSendInquiryPlanLinkMutationOptions(options));
+};
+
+export const getAdminRevokeInquiryPlanLinkUrl = (id: number) => {
+  return `/api/admin/catering/${id}/plan-link`;
+};
+
+export const adminRevokeInquiryPlanLink = async (
+  id: number,
+  options?: RequestInit,
+): Promise<InquiryPlanRevoked> => {
+  return customFetch<InquiryPlanRevoked>(getAdminRevokeInquiryPlanLinkUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getAdminRevokeInquiryPlanLinkMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminRevokeInquiryPlanLink>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminRevokeInquiryPlanLink>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["adminRevokeInquiryPlanLink"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminRevokeInquiryPlanLink>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return adminRevokeInquiryPlanLink(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminRevokeInquiryPlanLinkMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminRevokeInquiryPlanLink>>
+>;
+
+export type AdminRevokeInquiryPlanLinkMutationError = ErrorType<unknown>;
+
+export const useAdminRevokeInquiryPlanLink = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminRevokeInquiryPlanLink>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminRevokeInquiryPlanLink>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getAdminRevokeInquiryPlanLinkMutationOptions(options));
+};
+
+export const getAdminReviewInquiryPlanRevisionUrl = (
+  id: number,
+  revisionId: number,
+) => {
+  return `/api/admin/catering/${id}/plan-revisions/${revisionId}/review`;
+};
+
+export const adminReviewInquiryPlanRevision = async (
+  id: number,
+  revisionId: number,
+  inquiryPlanReviewInput: InquiryPlanReviewInput,
+  options?: RequestInit,
+): Promise<InquiryPlanRevoked> => {
+  return customFetch<InquiryPlanRevoked>(
+    getAdminReviewInquiryPlanRevisionUrl(id, revisionId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(inquiryPlanReviewInput),
+    },
+  );
+};
+
+export const getAdminReviewInquiryPlanRevisionMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminReviewInquiryPlanRevision>>,
+    TError,
+    { id: number; revisionId: number; data: BodyType<InquiryPlanReviewInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminReviewInquiryPlanRevision>>,
+  TError,
+  { id: number; revisionId: number; data: BodyType<InquiryPlanReviewInput> },
+  TContext
+> => {
+  const mutationKey = ["adminReviewInquiryPlanRevision"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminReviewInquiryPlanRevision>>,
+    { id: number; revisionId: number; data: BodyType<InquiryPlanReviewInput> }
+  > = (props) => {
+    const { id, revisionId, data } = props ?? {};
+
+    return adminReviewInquiryPlanRevision(id, revisionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminReviewInquiryPlanRevisionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminReviewInquiryPlanRevision>>
+>;
+export type AdminReviewInquiryPlanRevisionMutationBody =
+  BodyType<InquiryPlanReviewInput>;
+export type AdminReviewInquiryPlanRevisionMutationError = ErrorType<void>;
+
+export const useAdminReviewInquiryPlanRevision = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminReviewInquiryPlanRevision>>,
+    TError,
+    { id: number; revisionId: number; data: BodyType<InquiryPlanReviewInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminReviewInquiryPlanRevision>>,
+  TError,
+  { id: number; revisionId: number; data: BodyType<InquiryPlanReviewInput> },
+  TContext
+> => {
+  return useMutation(getAdminReviewInquiryPlanRevisionMutationOptions(options));
 };
 
 /**

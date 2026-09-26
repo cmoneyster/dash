@@ -1245,6 +1245,201 @@ export const RemoveFromPlanResponse = zod.object({
 });
 
 /**
+ * @summary Read an editable inquiry plan using its private link
+ */
+export const GetInquiryPlanRevisionParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+export const GetInquiryPlanRevisionResponse = zod.object({
+  version: zod.string(),
+  inquiry: zod.object({
+    clientName: zod.string().optional(),
+    eventDate: zod.string().nullish(),
+    eventTime: zod.string().nullish(),
+    guestCount: zod.number().nullish(),
+    venueAddress: zod.string().nullish(),
+    menuNotes: zod.string().nullish(),
+    serviceMode: zod.string().optional(),
+    items: zod
+      .array(
+        zod.object({
+          menuItemId: zod.number(),
+          name: zod.string(),
+          quantity: zod.number(),
+          sizeSlot: zod.number().nullish(),
+          sizeLabel: zod.string().nullish(),
+          unitPrice: zod.number().optional(),
+          pricingTemplate: zod.string().nullish(),
+        }),
+      )
+      .optional(),
+  }),
+  items: zod.array(
+    zod.object({
+      menuItemId: zod.number(),
+      name: zod.string(),
+      quantity: zod.number(),
+      sizeSlot: zod.number().nullish(),
+      sizeLabel: zod.string().nullish(),
+      unitPrice: zod.number().optional(),
+      pricingTemplate: zod.string().nullish(),
+    }),
+  ),
+  availableMenu: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+      category: zod.string(),
+      price: zod.number(),
+      pricingTemplate: zod.string(),
+      minimumOrderQty: zod.number(),
+      sizes: zod.array(
+        zod.object({
+          slot: zod.number(),
+          label: zod.string(),
+          price: zod.number(),
+        }),
+      ),
+    }),
+  ),
+  pending: zod.boolean(),
+});
+
+/**
+ * @summary Propose changes without creating another inquiry
+ */
+export const ProposeInquiryPlanRevisionParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+export const ProposeInquiryPlanRevisionBody = zod.object({
+  version: zod.string(),
+  submissionId: zod.string(),
+  items: zod.array(
+    zod.object({
+      menuItemId: zod.number(),
+      quantity: zod.number(),
+      sizeSlot: zod.number().nullish(),
+    }),
+  ),
+  eventDate: zod.string().nullish(),
+  eventTime: zod.string().nullish(),
+  guestCount: zod.number().nullish(),
+  venueAddress: zod.string().nullish(),
+  menuNotes: zod.string().nullish(),
+  note: zod.string().optional(),
+});
+
+export const ProposeInquiryPlanRevisionResponse = zod.object({
+  revisionId: zod.number(),
+  status: zod.string(),
+});
+
+export const AdminGetInquiryPlanRevisionsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AdminGetInquiryPlanRevisionsResponse = zod.object({
+  link: zod
+    .union([
+      zod.object({
+        url: zod.string(),
+        expiresAt: zod.string(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  revisions: zod.array(
+    zod.object({
+      id: zod.number(),
+      createdAt: zod.string(),
+      reviewedAt: zod.string().nullish(),
+      status: zod.string(),
+      note: zod.string().nullish(),
+      base: zod.object({
+        clientName: zod.string().optional(),
+        eventDate: zod.string().nullish(),
+        eventTime: zod.string().nullish(),
+        guestCount: zod.number().nullish(),
+        venueAddress: zod.string().nullish(),
+        menuNotes: zod.string().nullish(),
+        serviceMode: zod.string().optional(),
+        items: zod
+          .array(
+            zod.object({
+              menuItemId: zod.number(),
+              name: zod.string(),
+              quantity: zod.number(),
+              sizeSlot: zod.number().nullish(),
+              sizeLabel: zod.string().nullish(),
+              unitPrice: zod.number().optional(),
+              pricingTemplate: zod.string().nullish(),
+            }),
+          )
+          .optional(),
+      }),
+      proposed: zod.object({
+        clientName: zod.string().optional(),
+        eventDate: zod.string().nullish(),
+        eventTime: zod.string().nullish(),
+        guestCount: zod.number().nullish(),
+        venueAddress: zod.string().nullish(),
+        menuNotes: zod.string().nullish(),
+        serviceMode: zod.string().optional(),
+        items: zod
+          .array(
+            zod.object({
+              menuItemId: zod.number(),
+              name: zod.string(),
+              quantity: zod.number(),
+              sizeSlot: zod.number().nullish(),
+              sizeLabel: zod.string().nullish(),
+              unitPrice: zod.number().optional(),
+              pricingTemplate: zod.string().nullish(),
+            }),
+          )
+          .optional(),
+      }),
+    }),
+  ),
+});
+
+export const AdminSendInquiryPlanLinkParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AdminSendInquiryPlanLinkBody = zod.object({
+  channel: zod.enum(["copy", "email", "sms"]),
+});
+
+export const AdminSendInquiryPlanLinkResponse = zod.object({
+  url: zod.string(),
+  expiresAt: zod.string(),
+});
+
+export const AdminRevokeInquiryPlanLinkParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AdminRevokeInquiryPlanLinkResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+export const AdminReviewInquiryPlanRevisionParams = zod.object({
+  id: zod.coerce.number(),
+  revisionId: zod.coerce.number(),
+});
+
+export const AdminReviewInquiryPlanRevisionBody = zod.object({
+  action: zod.enum(["apply", "decline"]),
+});
+
+export const AdminReviewInquiryPlanRevisionResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
  * @summary List all conversations
  */
 export const ListOpenaiConversationsResponseItem = zod.object({

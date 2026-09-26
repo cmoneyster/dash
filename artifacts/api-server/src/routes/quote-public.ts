@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { db } from "@workspace/db";
 import { cateringInquiriesTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { renderQuotePdf, publicQuoteFromInquiry } from "../lib/quote";
 import { sendQuoteResponseAlert } from "../lib/mail";
 import { sendQuoteResponseSms } from "../lib/sms";
@@ -137,8 +137,17 @@ router.post("/quote/:token/accept", async (req, res): Promise<void> => {
         status: inquiry.status === "inquiry" || inquiry.status === "quoted" ? "confirmed" : inquiry.status,
         updatedAt: now,
       })
-      .where(eq(cateringInquiriesTable.id, inquiry.id))
+      .where(and(
+        eq(cateringInquiriesTable.id, inquiry.id),
+        eq(cateringInquiriesTable.quoteToken, req.params.token),
+        isNull(cateringInquiriesTable.quoteAcceptedAt),
+        sql`${cateringInquiriesTable.status} IN ('inquiry', 'quoted')`,
+      ))
       .returning();
+    if (!updated) {
+      res.status(409).json({ error: "This quote has changed or is no longer available to accept." });
+      return;
+    }
 
     const adminLink = `${publicBaseUrl(req)}/admin/catering?inquiry=${updated.id}`;
     // Fire-and-forget notifications — don't fail the client request if alerts fail.
@@ -186,8 +195,17 @@ router.post("/quote/:token/request-changes", async (req, res): Promise<void> => 
         quoteChangeRequestMessage: message,
         updatedAt: now,
       })
-      .where(eq(cateringInquiriesTable.id, inquiry.id))
+      .where(and(
+        eq(cateringInquiriesTable.id, inquiry.id),
+        eq(cateringInquiriesTable.quoteToken, req.params.token),
+        isNull(cateringInquiriesTable.quoteAcceptedAt),
+        sql`${cateringInquiriesTable.status} IN ('inquiry', 'quoted')`,
+      ))
       .returning();
+    if (!updated) {
+      res.status(409).json({ error: "This quote has changed or is no longer available." });
+      return;
+    }
 
     const adminLink = `${publicBaseUrl(req)}/admin/catering?inquiry=${updated.id}`;
     sendQuoteResponseAlert({

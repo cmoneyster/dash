@@ -468,6 +468,131 @@ paths:
               schema:
                 $ref: "#/components/schemas/Plan"
 
+  # Inquiry-linked editable plans (separate from session-based shared plans)
+  /plan/revise/{token}:
+    get:
+      operationId: getInquiryPlanRevision
+      tags: [orders]
+      summary: Read an editable inquiry plan using its private link
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Current approved plan and public menu options
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InquiryPlanView" }
+        "410":
+          description: Link expired or inquiry closed
+    post:
+      operationId: proposeInquiryPlanRevision
+      tags: [orders]
+      summary: Propose changes without creating another inquiry
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InquiryPlanProposal" }
+      responses:
+        "200":
+          description: Proposal saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InquiryPlanProposalResult" }
+        "409":
+          description: Plan changed or a proposal is pending; refresh before editing
+  /admin/catering/{id}/plan-revisions:
+    get:
+      operationId: adminGetInquiryPlanRevisions
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Link and proposal history for this inquiry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InquiryPlanHistory" }
+  /admin/catering/{id}/plan-link:
+    post:
+      operationId: adminSendInquiryPlanLink
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InquiryPlanLinkInput" }
+      responses:
+        "200":
+          description: Private customer link
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InquiryPlanLink" }
+    delete:
+      operationId: adminRevokeInquiryPlanLink
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Link revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InquiryPlanRevoked" }
+  /admin/catering/{id}/plan-revisions/{revisionId}/review:
+    post:
+      operationId: adminReviewInquiryPlanRevision
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: revisionId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InquiryPlanReviewInput" }
+      responses:
+        "200":
+          description: Proposal reviewed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InquiryPlanRevoked" }
+        "409":
+          description: Staff quote changed; review the conflict before applying
+
   # OpenAI conversations (generic, kept for compatibility)
   /openai/conversations:
     get:
@@ -2775,6 +2900,139 @@ components:
         - available
         - blackoutDates
         - suggestedDates
+
+    InquiryPlanSelection:
+      type: object
+      required: [menuItemId, name, quantity]
+      properties:
+        menuItemId: { type: integer }
+        name: { type: string }
+        quantity: { type: integer }
+        sizeSlot: { type: ["integer", "null"] }
+        sizeLabel: { type: ["string", "null"] }
+        unitPrice: { type: number }
+        pricingTemplate: { type: ["string", "null"] }
+    InquiryPlanDetails:
+      type: object
+      properties:
+        clientName: { type: string }
+        eventDate: { type: ["string", "null"] }
+        eventTime: { type: ["string", "null"] }
+        guestCount: { type: ["integer", "null"] }
+        venueAddress: { type: ["string", "null"] }
+        menuNotes: { type: ["string", "null"] }
+        serviceMode: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/InquiryPlanSelection" }
+    InquiryPlanMenuSize:
+      type: object
+      required: [slot, label, price]
+      properties:
+        slot: { type: integer }
+        label: { type: string }
+        price: { type: number }
+    InquiryPlanMenuOption:
+      type: object
+      required: [id, name, category, price, pricingTemplate, sizes, minimumOrderQty]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        category: { type: string }
+        price: { type: number }
+        pricingTemplate: { type: string }
+        minimumOrderQty: { type: integer }
+        sizes:
+          type: array
+          items: { $ref: "#/components/schemas/InquiryPlanMenuSize" }
+    InquiryPlanView:
+      type: object
+      required: [version, inquiry, items, availableMenu, pending]
+      properties:
+        version: { type: string }
+        inquiry: { $ref: "#/components/schemas/InquiryPlanDetails" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/InquiryPlanSelection" }
+        availableMenu:
+          type: array
+          items: { $ref: "#/components/schemas/InquiryPlanMenuOption" }
+        pending: { type: boolean }
+    InquiryPlanProposalItem:
+      type: object
+      required: [menuItemId, quantity]
+      properties:
+        menuItemId: { type: integer }
+        quantity: { type: integer }
+        sizeSlot: { type: ["integer", "null"] }
+    InquiryPlanProposal:
+      type: object
+      required: [version, submissionId, items]
+      properties:
+        version: { type: string }
+        submissionId: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/InquiryPlanProposalItem" }
+        eventDate: { type: ["string", "null"] }
+        eventTime: { type: ["string", "null"] }
+        guestCount: { type: ["integer", "null"] }
+        venueAddress: { type: ["string", "null"] }
+        menuNotes: { type: ["string", "null"] }
+        note: { type: string }
+    InquiryPlanProposalResult:
+      type: object
+      required: [revisionId, status]
+      properties:
+        revisionId: { type: integer }
+        status: { type: string }
+    InquiryPlanLinkInput:
+      type: object
+      required: [channel]
+      properties:
+        channel:
+          type: string
+          enum: [copy, email, sms]
+    InquiryPlanLink:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url: { type: string }
+        expiresAt: { type: string }
+    InquiryPlanReviewInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [apply, decline]
+    InquiryPlanRevoked:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+    InquiryPlanRevision:
+      type: object
+      required: [id, createdAt, status, base, proposed]
+      properties:
+        id: { type: integer }
+        createdAt: { type: string }
+        reviewedAt: { type: ["string", "null"] }
+        status: { type: string }
+        note: { type: ["string", "null"] }
+        base: { $ref: "#/components/schemas/InquiryPlanDetails" }
+        proposed: { $ref: "#/components/schemas/InquiryPlanDetails" }
+    InquiryPlanHistory:
+      type: object
+      required: [revisions]
+      properties:
+        link:
+          anyOf:
+            - { $ref: "#/components/schemas/InquiryPlanLink" }
+            - { type: "null" }
+        revisions:
+          type: array
+          items: { $ref: "#/components/schemas/InquiryPlanRevision" }
 
     PlanItem:
       type: object
