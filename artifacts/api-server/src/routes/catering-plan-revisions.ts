@@ -221,22 +221,25 @@ function menuPrice(
   return { ...effective, label: null, servings: item.servingSize };
 }
 
-function formatMenuItem(item: typeof menuItemsTable.$inferSelect) {
+type PublicPlannerGroup = "savory" | "sweet" | "entree" | "other";
+function formatMenuItem(item: typeof menuItemsTable.$inferSelect, plannerGroup: PublicPlannerGroup) {
   const sizes = item.pricingTemplate === "pan_sizes"
     ? [
-      { slot: 1, label: item.size1Label, price: item.size1Price },
-      { slot: 2, label: item.size2Label, price: item.size2Price },
-      { slot: 3, label: item.size3Label, price: item.size3Price },
-      { slot: 4, label: item.size4Label, price: item.size4Price },
-      { slot: 5, label: item.size5Label, price: item.size5Price },
+      { slot: 1, label: item.size1Label, price: item.size1Price, servings: item.size1Servings },
+      { slot: 2, label: item.size2Label, price: item.size2Price, servings: item.size2Servings },
+      { slot: 3, label: item.size3Label, price: item.size3Price, servings: item.size3Servings },
+      { slot: 4, label: item.size4Label, price: item.size4Price, servings: item.size4Servings },
+      { slot: 5, label: item.size5Label, price: item.size5Price, servings: item.size5Servings },
     ].flatMap((size) => size.label && size.price != null
-      ? [{ slot: size.slot, label: size.label, price: Number(size.price) }]
+      ? [{ slot: size.slot, label: size.label, price: Number(size.price), servings: size.servings }]
       : [])
     : [];
   return {
     id: item.id,
     name: item.name,
     category: item.category,
+    plannerGroup,
+    servingSize: item.servingSize,
     price: Number(item.price),
     pricingTemplate: item.pricingTemplate,
     sizes,
@@ -261,6 +264,11 @@ router.get("/plan/revise/:token", async (req, res): Promise<void> => {
       return;
     }
     const categories = await db.select().from(menuCategoriesTable);
+    const groupByCategory = new Map(categories.map(c => [c.name, c.plannerGroup]));
+    const plannerGroupOf = (category: string | undefined): PublicPlannerGroup => {
+      const group = groupByCategory.get(category ?? "");
+      return group === "savory" || group === "sweet" || group === "entree" ? group : "other";
+    };
     const allAvailableMenu = await db.select().from(menuItemsTable)
       .where(eq(menuItemsTable.available, true))
       .orderBy(menuItemsTable.category, menuItemsTable.name);
@@ -288,14 +296,23 @@ router.get("/plan/revise/:token", async (req, res): Promise<void> => {
         menuNotes: inquiry.menuNotes,
         serviceMode: inquiry.serviceMode,
       },
-      items: currentPlanItems.map(({ menuItemId, name, quantity, sizeSlot, sizeLabel, pricingTemplate }) => {
+      items: currentPlanItems.map(({ menuItemId, name, quantity, sizeSlot, sizeLabel, pricingTemplate, servingSize, sizeServings }) => {
         const catalogItem = currentMenuById.get(menuItemId);
         const indicativePrice = catalogItem?.available
           ? menuPrice(catalogItem, sizeSlot, quantity)?.price ?? 0
           : 0;
-        return { menuItemId, name, quantity, sizeSlot, sizeLabel, unitPrice: indicativePrice, pricingTemplate };
+        return {
+          menuItemId, name, quantity, sizeSlot, sizeLabel, unitPrice: indicativePrice, pricingTemplate,
+          available: catalogItem?.available === true,
+          category: catalogItem?.category ?? null,
+          plannerGroup: plannerGroupOf(catalogItem?.category),
+          servingSize: catalogItem?.servingSize ?? servingSize,
+          sizeServings: catalogItem && sizeSlot != null
+            ? [catalogItem.size1Servings, catalogItem.size2Servings, catalogItem.size3Servings, catalogItem.size4Servings, catalogItem.size5Servings][sizeSlot - 1] ?? sizeServings
+            : sizeServings,
+        };
       }),
-      availableMenu: availableMenu.map(formatMenuItem),
+      availableMenu: availableMenu.map(item => formatMenuItem(item, plannerGroupOf(item.category))),
       pending: Boolean(pending),
     });
   } catch (err) {

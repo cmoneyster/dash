@@ -1,9 +1,10 @@
 import { getAdminToken } from "@/components/AdminGuard";
+import type { PlannerGroup } from "@/lib/plannerMath";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-export type RevisionItem = { menuItemId: number; name?: string; quantity: number; sizeSlot?: number | null; sizeLabel?: string | null; unitPrice?: number | string; pricingTemplate?: string };
+export type RevisionItem = { menuItemId: number; name?: string; quantity: number; sizeSlot?: number | null; sizeLabel?: string | null; unitPrice?: number | string; pricingTemplate?: string; available?: boolean; category?: string | null; plannerGroup?: PlannerGroup; servingSize?: number | null; sizeServings?: number | null };
 export type RevisionFields = { items: RevisionItem[]; eventDate: string | null; eventTime: string | null; guestCount: number | null; venueAddress: string | null; menuNotes: string | null };
-export type AvailableMenuItem = { id: number; name: string; category: string; price: number | string; pricingTemplate: string; sizes: { slot: number; label: string; price: number | string }[]; minimumOrderQty: number | null };
+export type AvailableMenuItem = { id: number; name: string; category: string; plannerGroup: PlannerGroup; servingSize: number | null; price: number | string; pricingTemplate: string; sizes: { slot: number; label: string; price: number | string; servings: number | null }[]; minimumOrderQty: number | null };
 export type RevisionPlan = { version: string; inquiry: Omit<RevisionFields, "items"> & { clientName: string; serviceMode: string | null }; items: RevisionItem[]; availableMenu: AvailableMenuItem[]; pending: boolean };
 export type PlanRevision = { id: number | string; createdAt: string; status: string; note: string | null; base: RevisionFields; proposed: RevisionFields; reviewedAt?: string | null };
 export type RevisionHistory = { link: { url: string; expiresAt: string } | null; revisions: PlanRevision[] };

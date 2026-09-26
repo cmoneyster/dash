@@ -3,6 +3,8 @@ import { useParams } from "wouter";
 import { ArrowLeft, Check, ChevronRight, Plus, RefreshCw, Send, Trash2 } from "lucide-react";
 import { usePageMeta } from "@/lib/usePageMeta";
 import { getRevisionPlan, PlanApiError, readablePlanError, submitRevision, type RevisionFields, type RevisionItem, type RevisionPlan } from "@/lib/planRevisions";
+import { calculateRevisionPlanner, type RevisionPlannerTargets } from "@/lib/revisionPlanner";
+import { RevisionServingPlanner } from "@/components/RevisionServingPlanner";
 
 const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
 const dateInput = (value: string | null) => value?.slice(0, 10) ?? "";
@@ -24,6 +26,7 @@ export default function RevisePlan() {
   const [submissionId, setSubmissionId] = useState(() => crypto.randomUUID());
   const [unsentDraft, setUnsentDraft] = useState<{ form: RevisionFields; note: string } | null>(null);
   const [refreshedMessage, setRefreshedMessage] = useState("");
+  const [plannerTargets, setPlannerTargets] = useState<RevisionPlannerTargets>({ savoryPPG: 3, sweetPPG: 2, servingsPPG: 4 });
 
   async function load(draft?: { form: RevisionFields; note: string }) {
     setLoading(true); setError("");
@@ -69,6 +72,10 @@ export default function RevisePlan() {
     const size = m?.sizes?.find(s => s.slot === item.sizeSlot);
     return total + Math.max(0, Number(item.quantity) || 0) * Number(size?.price ?? m?.price ?? item.unitPrice ?? 0);
   }, 0), [form?.items, menu]);
+  const servingPlanner = useMemo(
+    () => form && plan ? calculateRevisionPlanner(form, plan, plannerTargets) : null,
+    [form, plan, plannerTargets],
+  );
   const editable = !!form && !!plan && !plan.pending && !submitted;
 
   function addItem(id: number, slot: number | null = null) {
@@ -149,17 +156,26 @@ export default function RevisePlan() {
                   <div className="space-y-3">{form.items.map((item, index) => {
                     const m = menu.find(x => x.id === item.menuItemId);
                     const sizes = m?.sizes ?? [];
+                     const servingLine = servingPlanner?.lines[index];
                     return <div key={`${item.menuItemId}-${index}`} className="rounded-2xl border border-border bg-card p-4 sm:p-5" data-testid={`row-revision-item-${index}`}>
                       <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{m?.name ?? item.name ?? `Menu item ${item.menuItemId}`}</h3><p className="mt-1 text-xs text-muted-foreground">{m?.category || item.sizeLabel || "Your selection"}</p></div><button type="button" onClick={() => removeItem(index)} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-destructive" aria-label={`Remove ${m?.name ?? item.name}`} data-testid={`button-remove-item-${index}`}><Trash2 size={17} /></button></div>
                       <div className="mt-4 flex flex-wrap items-end gap-3">{sizes.length > 0 && <label className="min-w-36 flex-1 text-xs font-semibold text-muted-foreground">Size<select value={item.sizeSlot ?? sizes[0].slot} onChange={e => changeItem(index, { sizeSlot: Number(e.target.value) })} className={`${inputClass} mt-1`} data-testid={`select-size-${index}`}>{sizes.map(s => <option key={s.slot} value={s.slot}>{s.label} · {money(Number(s.price))}</option>)}</select></label>}<label className="w-28 text-xs font-semibold text-muted-foreground">Quantity<input type="number" min="1" step="1" required value={item.quantity} onChange={e => changeItem(index, { quantity: e.target.value === "" ? 0 : Number(e.target.value) })} className={`${inputClass} mt-1`} data-testid={`input-quantity-${index}`} /></label><span className="mb-3 ml-auto text-sm font-semibold">{money(Number(sizes.find(s => s.slot === item.sizeSlot)?.price ?? m?.price ?? item.unitPrice ?? 0) * (Number(item.quantity) || 0))}</span></div>
+                      {servingLine?.contribution != null && <p className="mt-2 text-xs text-muted-foreground" data-testid={`text-item-servings-${index}`}>About {servingLine.contribution} {servingLine.unit} toward your planner</p>}
+                      {servingLine?.explanation && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300" data-testid={`text-item-servings-${index}`}>{servingLine.explanation}</p>}
                     </div>;
                   })}</div>
                   <div className="rounded-2xl border border-border bg-secondary/30 p-4 sm:p-5"><label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Add from the menu<input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search dishes or categories" className={`${inputClass} mt-2`} data-testid="input-search-menu" /></label><div className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">{filteredMenu.length ? filteredMenu.map(m => <div key={m.id} className="py-3"><p className="text-sm font-semibold">{m.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{m.category}</p><div className="mt-2 flex flex-wrap gap-2">{m.pricingTemplate === "pan_sizes" && m.sizes?.length ? m.sizes.map(size => <button key={size.slot} type="button" onClick={() => addItem(m.id, size.slot)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:border-primary hover:text-primary" data-testid={`button-add-menu-${m.id}-size-${size.slot}`}><Plus size={14} /> {size.label} · {money(Number(size.price))}</button>) : <button type="button" onClick={() => addItem(m.id)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:border-primary hover:text-primary" data-testid={`button-add-menu-${m.id}`}><Plus size={14} /> Add · {money(Number(m.price))}</button>}</div></div>) : <p className="py-4 text-sm text-muted-foreground">No matching items.</p>}</div></div>
                 </section>
+                 {servingPlanner && <RevisionServingPlanner
+                   guests={form.guestCount}
+                   targets={plannerTargets}
+                   onTargetsChange={setPlannerTargets}
+                   {...servingPlanner}
+                 />}
                 <section aria-labelledby="details-heading"><p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">02 / The details</p><h2 id="details-heading" className="mt-1 text-2xl font-semibold">Your event</h2><div className="mt-5 grid gap-5 sm:grid-cols-2">
                   <label className="text-sm font-medium">Date<input type="date" value={dateInput(form.eventDate)} onChange={e => setForm({ ...form, eventDate: e.target.value || null })} className={`${inputClass} mt-2`} data-testid="input-event-date" /></label>
                   <label className="text-sm font-medium">Time<input type="time" value={form.eventTime?.slice(0, 5) ?? ""} onChange={e => setForm({ ...form, eventTime: e.target.value || null })} className={`${inputClass} mt-2`} data-testid="input-event-time" /></label>
-                  <label className="text-sm font-medium">Guests<input type="number" min="1" step="1" value={form.guestCount ?? ""} onChange={e => setForm({ ...form, guestCount: e.target.value === "" ? null : Number(e.target.value) })} className={`${inputClass} mt-2`} data-testid="input-guest-count" /></label>
+                   <label className="text-sm font-medium">Guests<input id="revision-guests" type="number" min="1" step="1" value={form.guestCount ?? ""} onChange={e => setForm({ ...form, guestCount: e.target.value === "" ? null : Number(e.target.value) })} className={`${inputClass} mt-2`} data-testid="input-guest-count" /></label>
                   <label className="text-sm font-medium">Venue / address<input value={form.venueAddress ?? ""} onChange={e => setForm({ ...form, venueAddress: e.target.value })} className={`${inputClass} mt-2`} placeholder="Where should we find you?" data-testid="input-venue" /></label>
                   <label className="text-sm font-medium sm:col-span-2">Menu notes<textarea value={form.menuNotes ?? ""} onChange={e => setForm({ ...form, menuNotes: e.target.value })} rows={3} className={`${inputClass} mt-2 resize-y`} placeholder="Dietary needs, favorites, or anything we should know" data-testid="input-menu-notes" /></label>
                 </div></section>

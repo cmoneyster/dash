@@ -3,7 +3,7 @@ import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { cateringInquiriesTable, menuItemsTable } from "@workspace/db/schema";
+import { cateringInquiriesTable, menuCategoriesTable, menuItemsTable } from "@workspace/db/schema";
 import { requireAdminAuth } from "../../lib/adminAuth";
 import { sendMail, sendQuoteResponseAlert } from "../../lib/mail";
 import { sendNewInquiryAlert } from "../../lib/sms";
@@ -134,6 +134,32 @@ describe("inquiry-linked plan revision lifecycle", () => {
     const opened = await request(testApp).get(`/api/plan/revise/${token}`).expect(200);
     expect(opened.body.items[0].unitPrice).not.toBe(1); // staff's manual price stays private
     expect(opened.body.pending).toBe(false);
+    const selected = opened.body.items[0];
+    const [category] = await db.select().from(menuCategoriesTable).where(eq(menuCategoriesTable.name, menu.category));
+    expect(selected.category).toBe(menu.category);
+    expect(selected.plannerGroup).toBe(category?.plannerGroup ?? "other");
+    expect(selected.available).toBe(true);
+    expect(selected.servingSize).toBe(menu.servingSize);
+    if (selectedSize != null) {
+      expect(selected.sizeServings).toBe([
+        menu.size1Servings, menu.size2Servings, menu.size3Servings, menu.size4Servings, menu.size5Servings,
+      ][selectedSize - 1] ?? null);
+    }
+    expect(selected).not.toHaveProperty("priceMode");
+    expect(selected).not.toHaveProperty("notes");
+    expect(opened.body).not.toHaveProperty("quoteLineItems");
+    const publicChoice = opened.body.availableMenu[0];
+    expect(publicChoice).toBeDefined();
+    const [catalogRow] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, publicChoice.id));
+    const [publicCategory] = await db.select().from(menuCategoriesTable).where(eq(menuCategoriesTable.name, catalogRow.category));
+    expect(publicChoice.plannerGroup).toBe(publicCategory?.plannerGroup ?? "other");
+    expect(publicChoice.servingSize).toBe(catalogRow.servingSize);
+    if (publicChoice.sizes.length) {
+      const size = publicChoice.sizes[0];
+      expect(size.servings).toBe([
+        catalogRow.size1Servings, catalogRow.size2Servings, catalogRow.size3Servings, catalogRow.size4Servings, catalogRow.size5Servings,
+      ][size.slot - 1]);
+    }
 
     const submission = {
       version: opened.body.version,
