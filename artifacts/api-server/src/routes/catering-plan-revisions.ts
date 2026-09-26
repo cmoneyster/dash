@@ -588,6 +588,7 @@ router.post("/admin/catering/:id/plan-link", async (req, res): Promise<void> => 
         return { kind: "error" as const, error: "No client phone on file", status: 400 as const };
       }
       if (smsUnavailable) {
+        req.log?.warn({ inquiryId: id, nodeEnv: process.env.NODE_ENV, outboundMode: getSmsOutboundMode() }, "Plan link SMS blocked by outbound mode");
         return { kind: "error" as const, error: "SMS delivery is disabled in this environment", status: 503 as const };
       }
       const [existingLink] = await tx.select().from(cateringPlanLinksTable)
@@ -634,8 +635,11 @@ router.post("/admin/catering/:id/plan-link", async (req, res): Promise<void> => 
           source: "system",
         });
       } catch (err) {
+        req.log?.error({ err, inquiryId: id }, "Plan link SMS gateway failed");
         await revokeNewLink(id, token, created);
-        throw err;
+        issuedLink = null;
+        res.status(502).json({ error: "SMS gateway could not send the plan link. Check SMS settings and try again." });
+        return;
       }
       if (sent.status === "blocked") {
         await revokeNewLink(id, token, created);
@@ -644,6 +648,7 @@ router.post("/admin/catering/:id/plan-link", async (req, res): Promise<void> => 
       }
       if (sent.gatewayResponse === "suppressed:shadow-mode") {
         await revokeNewLink(id, token, created);
+        req.log?.warn({ inquiryId: id }, "Plan link SMS suppressed after preflight");
         res.status(503).json({ error: "SMS delivery is disabled in this environment" });
         return;
       }

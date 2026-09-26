@@ -6,6 +6,9 @@ import { db } from "@workspace/db";
 import { cateringInquiriesTable, menuItemsTable } from "@workspace/db/schema";
 import { requireAdminAuth } from "../../lib/adminAuth";
 import { sendMail, sendQuoteResponseAlert } from "../../lib/mail";
+import { sendNewInquiryAlert } from "../../lib/sms";
+import { getSmsOutboundMode } from "../../lib/sms-ejoin";
+import { sendToCustomerGuarded } from "../../lib/sms-inbox";
 import { createAndPublishInvoiceForInquiry } from "../../lib/square";
 
 vi.mock("../../lib/mail", () => ({
@@ -14,6 +17,7 @@ vi.mock("../../lib/mail", () => ({
 }));
 vi.mock("../../lib/sms", () => ({
   sendQuoteResponseSms: vi.fn().mockResolvedValue(undefined),
+  sendNewInquiryAlert: vi.fn().mockResolvedValue(true),
 }));
 vi.mock("../../lib/sms-inbox", () => ({
   sendToCustomerGuarded: vi.fn().mockResolvedValue({ status: "sent" }),
@@ -52,6 +56,47 @@ afterEach(async () => {
 });
 
 describe("inquiry-linked plan revision lifecycle", () => {
+  it("reports an owner alert failure without losing an admin-created inquiry", async () => {
+    vi.mocked(sendNewInquiryAlert).mockResolvedValueOnce(false);
+    const response = await request(testApp).post("/api/admin/catering")
+      .send({ clientName: "Test Alert Failure" }).expect(201);
+    createdId = response.body.id;
+    expect(response.body.ownerAlertStatus).toBe("not_sent");
+    const [saved] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, createdId!));
+    expect(saved.clientName).toBe("Test Alert Failure");
+  });
+
+  it("allows an SMS link in production live mode but refuses shadow mode without rotating a working link", async () => {
+    const [inquiry] = await db.insert(cateringInquiriesTable).values({
+      clientName: "SMS Link Test",
+      clientPhone: "5550100000",
+      status: "inquiry",
+    }).returning();
+    createdId = inquiry.id;
+    const link = await request(testApp).post(`/api/admin/catering/${inquiry.id}/plan-link`)
+      .send({ channel: "copy" }).expect(200);
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      await request(testApp).post(`/api/admin/catering/${inquiry.id}/plan-link`)
+        .send({ channel: "sms" }).expect(503);
+      vi.mocked(getSmsOutboundMode).mockReturnValueOnce("live");
+      const sent = await request(testApp).post(`/api/admin/catering/${inquiry.id}/plan-link`)
+        .send({ channel: "sms" }).expect(200);
+      expect(new URL(sent.body.url as string).pathname).toBe(new URL(link.body.url as string).pathname);
+      expect(sendToCustomerGuarded).toHaveBeenCalledTimes(1);
+      vi.mocked(getSmsOutboundMode).mockReturnValueOnce("live");
+      vi.mocked(sendToCustomerGuarded).mockRejectedValueOnce(new Error("gateway unavailable"));
+      await request(testApp).post(`/api/admin/catering/${inquiry.id}/plan-link`)
+        .send({ channel: "sms" }).expect(502);
+      const token = new URL(link.body.url as string).pathname.split("/").pop();
+      await request(testApp).get(`/api/plan/revise/${token}`).expect(200);
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+
   it("links an existing inquiry, keeps submissions idempotent, merges staff lines, and invalidates an issued quote", async () => {
     const [menu] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.available, true)).limit(1);
     expect(menu).toBeDefined();

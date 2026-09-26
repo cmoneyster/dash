@@ -41,3 +41,4 @@ SMS_OUTBOUND_MODE = "shadow"
 [userenv.production]
 PUBLIC_BASE_URL = "https://eatonthedash.com"
 EJOIN_INBOUND_MODE = "push"
+SMS_OUTBOUND_MODE = "live"

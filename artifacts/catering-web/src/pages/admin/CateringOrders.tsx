@@ -117,6 +117,7 @@ type OfflinePayment = {
 
 type Inquiry = {
   id: number;
+  ownerAlertStatus?: "sent" | "not_sent";
   clientName: string;
   clientEmail: string | null;
   clientPhone: string | null;
@@ -3208,6 +3209,7 @@ function DetailPanel({
             </>
           )}
 
+          {form.ownerAlertStatus === "not_sent" && <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200" role="alert">Inquiry saved, but the owner notification text was not sent. Check Communications → SMS before relying on alerts.</p>}
           {error && <div className="space-y-2"><p className="text-destructive text-sm">{error}</p>{staleSave && <button type="button" onClick={reloadLatest} className="text-xs font-semibold text-primary underline">Reload latest inquiry</button>}</div>}
         </div>
       </form>

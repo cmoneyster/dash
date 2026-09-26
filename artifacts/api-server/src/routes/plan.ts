@@ -520,7 +520,7 @@ router.post("/plan/submit-inquiry", async (req, res): Promise<void> => {
       otdMaxAdditionalHours:  isOtd ? otdConfig.maxAdditionalHours                    : null,
     }).returning();
 
-    sendNewInquiryAlert({
+    void sendNewInquiryAlert({
       clientName: customerName.trim(),
       source: "plan",
       eventDate: eventDate?.trim() || null,
@@ -529,7 +529,9 @@ router.post("/plan/submit-inquiry", async (req, res): Promise<void> => {
       clientPhone: customerPhone?.trim() || null,
       venueAddress: venueAddress?.trim() || null,
       link: `${publicBaseUrl(req)}/admin/catering?inquiry=${inquiryRow.id}`,
-    }).catch(() => {});
+    }).then(sent => {
+      if (!sent) req.log?.warn({ inquiryId: inquiryRow.id }, "Plan inquiry saved without owner SMS alert");
+    }).catch(err => req.log?.error({ err, inquiryId: inquiryRow.id }, "Plan inquiry owner SMS failed"));
 
     res.status(201).json({
       inquiryId: inquiryRow.id,

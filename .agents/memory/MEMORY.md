@@ -2,3 +2,4 @@
 - [Star WebPRNT bold-off prints F](star-webprnt-bold-f.md) — TSP143IV firmware converts <Bold on="false"/> to ESC F (Star Line Mode), which prints literal 'F' in ESC/POS mode
 - [SMS gateway identity limits](sms-gateway-identity-limits.md) — webhook and poll lack a shared stable ID; repeated identical texts need one-to-one handling, not broad content dedup.
 - [Square invoice and plan review](square-invoice-revision-serialization.md) — invoice publication must serialize with revision review across the external call, or billed and approved plans can diverge.
+- [Isolated route tests lack request logging](isolated-route-test-logging.md) — test Express apps omit production logger middleware, so newly logged route paths can fail only in tests.

@@ -514,20 +514,25 @@ router.post("/admin/catering", async (req, res): Promise<void> => {
 
     const [inquiry] = await db.insert(cateringInquiriesTable).values(insertVals as typeof cateringInquiriesTable.$inferInsert).returning();
 
-    sendNewInquiryAlert({
-      clientName,
-      source: "form",
-      eventDate: asString(body.eventDate)?.trim() || null,
-      guestCount: typeof body.guestCount === "number" ? body.guestCount : null,
-      total: inquiry.total ? `$${Number(inquiry.total).toFixed(2)}` : null,
-      clientPhone: asString(body.clientPhone)?.trim() || null,
-      // Use the persisted (normalized) value so the alert mirrors what the
-      // admin will see on the inquiry record itself.
-      venueAddress: inquiry.venueAddress,
-      link: `${publicBaseUrl(req)}/admin/catering?inquiry=${inquiry.id}`,
-    }).catch(() => {});
-
-    res.status(201).json(inquiry);
+    let ownerAlertSent = false;
+    try {
+      ownerAlertSent = await sendNewInquiryAlert({
+        clientName,
+        source: "form",
+        eventDate: asString(body.eventDate)?.trim() || null,
+        guestCount: typeof body.guestCount === "number" ? body.guestCount : null,
+        total: inquiry.total ? `$${Number(inquiry.total).toFixed(2)}` : null,
+        clientPhone: asString(body.clientPhone)?.trim() || null,
+        // Use the persisted (normalized) value so the alert mirrors what the
+        // admin will see on the inquiry record itself.
+        venueAddress: inquiry.venueAddress,
+        link: `${publicBaseUrl(req)}/admin/catering?inquiry=${inquiry.id}`,
+      });
+    } catch (err) {
+      req.log?.error({ err, inquiryId: inquiry.id }, "New inquiry owner SMS failed");
+    }
+    if (!ownerAlertSent) req.log?.warn({ inquiryId: inquiry.id }, "New inquiry saved without owner SMS alert");
+    res.status(201).json({ ...inquiry, ownerAlertStatus: ownerAlertSent ? "sent" : "not_sent" });
   } catch (err) {
     req.log.error({ err }, "Error creating catering inquiry");
     res.status(500).json({ error: "Failed to create inquiry" });
