@@ -1,3 +1,4 @@
+import "./lib/utc";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedIfEmpty } from "./lib/seed";

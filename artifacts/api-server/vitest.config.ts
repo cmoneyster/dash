@@ -7,6 +7,8 @@ export default defineConfig({
   test: {
     include: ["src/**/__tests__/**/*.test.ts"],
     environment: "node",
+    // Match the server, which pins its clock to UTC (see src/lib/utc.ts).
+    env: { TZ: "UTC" },
     testTimeout: 20_000,
     hookTimeout: 20_000,
     pool: "forks",
