@@ -1617,6 +1617,10 @@ export function parseInboundSmsDetail(
     return parseInboundSmsHtml(html, { sinceMs: since, portFilter: port });
   }
   const rows: InboundSms[] = [];
+  // The gateway omits a per-message ID on this page. Preserve the
+  // multiplicity of truly identical rows, while distinct full bodies that
+  // share the first 24 characters retain their own first occurrence.
+  const repetitions = new Map<string, number>();
   const now = new Date();
   for (const entry of data) {
     if (!Array.isArray(entry) || entry.length < 3) continue;
@@ -1674,7 +1678,14 @@ export function parseInboundSmsDetail(
     if (when && when.getTime() < since) continue;
     const ts = when ?? now;
     const fromDigits = normalizePhone(sender);
-    const id = makeListDataStableId(port, fromDigits, timeStr, content);
+    const baseId = makeListDataStableId(port, fromDigits, timeStr, content);
+    const fullBodyKey = `${baseId}\0${content}`;
+    const repeat = (repetitions.get(fullBodyKey) ?? 0) + 1;
+    repetitions.set(fullBodyKey, repeat);
+    // First occurrence keeps the listing ID; the detail page is ordered
+    // newest first. Ordinals for subsequent copies are stable across
+    // repeat fetches while the page retains the same set of messages.
+    const id = repeat === 1 ? baseId : `${baseId}:repeat:${repeat}`;
     rows.push({
       gatewayMessageId: id,
       port,

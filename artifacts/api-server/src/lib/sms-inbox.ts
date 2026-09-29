@@ -29,7 +29,7 @@ import {
   eventSettingsTable,
 } from "@workspace/db/schema";
 import { and, desc, eq, gt, gte, inArray, isNull, lte, sql } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import {
   sendSmsToCustomer,
   sendSmsViaEjoin,
@@ -564,6 +564,7 @@ export async function ingestInbound(input: {
   body: string;
   occurredAt: Date;
   port: number;
+  deliverySource?: "webhook" | "poll";
 }): Promise<IngestResult> {
   const result = await ingestInboundImpl(input);
   const inquiryIdLogged =
@@ -617,6 +618,7 @@ async function ingestInboundImpl(input: {
   body: string;
   occurredAt: Date;
   port: number;
+  deliverySource?: "webhook" | "poll";
 }): Promise<IngestResult> {
   const fromDigits = normalizePhoneDigits(input.fromPhone);
   const body = (input.body ?? "").trim();
@@ -853,7 +855,7 @@ async function ingestInboundImpl(input: {
         await db.insert(ownerForwardsTable).values({
           inquiryId: stored.inquiryId,
           ownerPhone: chatOwnerDigits,
-          sourceGatewayMessageId: input.gatewayMessageId,
+          sourceGatewayMessageId: stored.gatewayMessageId,
         });
       } catch (err) {
         console.warn("[sms-inbox] owner forward failed", err);
@@ -872,40 +874,100 @@ async function insertInboundRow(input: {
   body: string;
   occurredAt: Date;
   port: number;
+  deliverySource?: "webhook" | "poll";
 }): Promise<
-  | { status: "stored"; messageId: number; inquiryId: number | null }
+  | { status: "stored"; messageId: number; inquiryId: number | null; gatewayMessageId: string }
   | { status: "dedup"; messageId: number }
 > {
   const inquiryId = await findInquiryForPhone(input.fromPhone);
-  // Insert with ON CONFLICT DO NOTHING so concurrent webhook+poller
-  // deliveries don't both succeed. Drizzle's returning() returns []
-  // when nothing was inserted, which we treat as the dedupe case.
-  const [inserted] = await db
-    .insert(smsMessagesTable)
-    .values({
-      direction: "inbound",
-      customerPhone: input.fromPhone,
-      body: input.body,
-      occurredAt: input.occurredAt,
-      port: input.port,
-      inquiryId,
-      seenByAdmin: false,
-      gatewayMessageId: input.gatewayMessageId,
-      source: "inbound",
-    })
-    .onConflictDoNothing({ target: smsMessagesTable.gatewayMessageId })
-    .returning();
-  if (!inserted) {
-    // Look up the existing row id so callers get a stable handle.
-    const [existing] = await db
-      .select({ id: smsMessagesTable.id })
-      .from(smsMessagesTable)
-      .where(eq(smsMessagesTable.gatewayMessageId, input.gatewayMessageId));
-    return { status: "dedup", messageId: existing?.id ?? -1 };
-  }
+  // Serialize opposite-source claims across API processes. One counterpart
+  // can be claimed once; same-source replays never consume another message.
+  const result = await db.transaction(async tx => {
+    if (input.deliverySource) {
+      const key = `${input.port}:${input.fromPhone}:${input.body}`;
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
+    }
+    let gatewayMessageId = input.gatewayMessageId;
+    const lookup = async (id: string) => {
+      const [found] = await tx.select({
+        id: smsMessagesTable.id,
+        body: smsMessagesTable.body,
+        customerPhone: smsMessagesTable.customerPhone,
+        port: smsMessagesTable.port,
+      })
+        .from(smsMessagesTable)
+        .where(sql`${smsMessagesTable.gatewayMessageId} = ${id}
+          or ${smsMessagesTable.pairedGatewayMessageId} = ${id}`)
+        .limit(1);
+      return found;
+    };
+    let already = await lookup(gatewayMessageId);
+    if (already && input.deliverySource === "poll" &&
+        (already.body !== input.body || already.customerPhone !== input.fromPhone || already.port !== input.port)) {
+      // The poll ID contains only the first 24 body characters. Retain
+      // the old ID for its original message, and disambiguate this
+      // different full text deterministically across page reordering.
+      const digest = createHash("sha256").update(input.body).digest("hex").slice(0, 24);
+      gatewayMessageId = `${input.gatewayMessageId}:body:${digest}`;
+      already = await lookup(gatewayMessageId);
+    }
+    if (already) return { status: "dedup" as const, messageId: already.id };
+
+    if (input.deliverySource) {
+      // Poll timestamps are minute-rounded and may drift from push time.
+      const windowMs = 3 * 60 * 1000;
+      const start = new Date(input.occurredAt.getTime() - windowMs);
+      const end = new Date(input.occurredAt.getTime() + windowMs);
+      const opposite = input.deliverySource === "poll" ? "webhook" : "poll";
+      const [candidate] = await tx.select({ id: smsMessagesTable.id })
+        .from(smsMessagesTable)
+        .where(and(
+          eq(smsMessagesTable.direction, "inbound"),
+          eq(smsMessagesTable.source, "inbound"),
+          eq(smsMessagesTable.deliverySource, opposite),
+          eq(smsMessagesTable.customerPhone, input.fromPhone),
+          eq(smsMessagesTable.body, input.body),
+          eq(smsMessagesTable.port, input.port),
+          isNull(smsMessagesTable.pairedGatewayMessageId),
+          gte(smsMessagesTable.occurredAt, start),
+          lte(smsMessagesTable.occurredAt, end),
+        ))
+        .orderBy(sql`abs(extract(epoch from (${smsMessagesTable.occurredAt} - ${input.occurredAt})))`, smsMessagesTable.id)
+        .limit(1);
+      if (candidate) {
+        await tx.update(smsMessagesTable)
+          .set({ pairedGatewayMessageId: gatewayMessageId })
+          .where(eq(smsMessagesTable.id, candidate.id));
+        return { status: "dedup" as const, messageId: candidate.id };
+      }
+    }
+    const [inserted] = await tx.insert(smsMessagesTable)
+      .values({
+        direction: "inbound",
+        customerPhone: input.fromPhone,
+        body: input.body,
+        occurredAt: input.occurredAt,
+        port: input.port,
+        inquiryId,
+        seenByAdmin: false,
+        gatewayMessageId,
+        deliverySource: input.deliverySource ?? null,
+        source: "inbound",
+      })
+      .onConflictDoNothing({ target: smsMessagesTable.gatewayMessageId })
+      .returning();
+    if (!inserted) {
+      const [existing] = await tx.select({ id: smsMessagesTable.id })
+        .from(smsMessagesTable)
+        .where(eq(smsMessagesTable.gatewayMessageId, gatewayMessageId));
+      return { status: "dedup" as const, messageId: existing?.id ?? -1 };
+    }
+    return { status: "stored" as const, messageId: inserted.id, inquiryId, gatewayMessageId };
+  });
+  if (result.status === "dedup") return result;
   publishSmsEvent({
     type: "inbound",
-    messageId: inserted.id,
+    messageId: result.messageId,
     inquiryId,
     customerPhone: input.fromPhone,
     body: input.body,
@@ -914,7 +976,7 @@ async function insertInboundRow(input: {
   if (inquiryId == null) {
     publishSmsEvent({ type: "unmatched-changed" });
   }
-  return { status: "stored", messageId: inserted.id, inquiryId };
+  return result;
 }
 
 // ── Outbound guarded send ─────────────────────────────────────────────────────

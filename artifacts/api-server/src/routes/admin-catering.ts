@@ -465,20 +465,25 @@ router.post("/admin/catering", async (req, res): Promise<void> => {
 
     const [inquiry] = await db.insert(cateringInquiriesTable).values(insertVals as typeof cateringInquiriesTable.$inferInsert).returning();
 
-    sendNewInquiryAlert({
-      clientName,
-      source: "form",
-      eventDate: asString(body.eventDate)?.trim() || null,
-      guestCount: typeof body.guestCount === "number" ? body.guestCount : null,
-      total: inquiry.total ? `$${Number(inquiry.total).toFixed(2)}` : null,
-      clientPhone: asString(body.clientPhone)?.trim() || null,
-      // Use the persisted (normalized) value so the alert mirrors what the
-      // admin will see on the inquiry record itself.
-      venueAddress: inquiry.venueAddress,
-      link: `${publicBaseUrl(req)}/admin/catering?inquiry=${inquiry.id}`,
-    }).catch(() => {});
-
-    res.status(201).json(inquiry);
+    let ownerAlertSent = false;
+    try {
+      ownerAlertSent = await sendNewInquiryAlert({
+        clientName,
+        source: "form",
+        eventDate: asString(body.eventDate)?.trim() || null,
+        guestCount: typeof body.guestCount === "number" ? body.guestCount : null,
+        total: inquiry.total ? `$${Number(inquiry.total).toFixed(2)}` : null,
+        clientPhone: asString(body.clientPhone)?.trim() || null,
+        // Use the persisted (normalized) value so the alert mirrors what the
+        // admin will see on the inquiry record itself.
+        venueAddress: inquiry.venueAddress,
+        link: `${publicBaseUrl(req)}/admin/catering?inquiry=${inquiry.id}`,
+      });
+    } catch (err) {
+      req.log?.error({ err, inquiryId: inquiry.id }, "New inquiry owner SMS failed");
+    }
+    if (!ownerAlertSent) req.log?.warn({ inquiryId: inquiry.id }, "New inquiry saved without owner SMS alert");
+    res.status(201).json({ ...inquiry, ownerAlertStatus: ownerAlertSent ? "sent" : "not_sent" });
   } catch (err) {
     req.log.error({ err }, "Error creating catering inquiry");
     res.status(500).json({ error: "Failed to create inquiry" });
@@ -493,6 +498,16 @@ router.put("/admin/catering/:id", async (req, res): Promise<void> => {
     const body = req.body as Body;
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
+    // The Quote Builder sends the timestamp it last loaded. A stale tab must
+    // not overwrite a customer revision that another staff member just applied.
+    const expectedUpdatedAt = body.updatedAt === undefined ? null : new Date(String(body.updatedAt));
+    if (expectedUpdatedAt && !Number.isFinite(expectedUpdatedAt.getTime())) {
+      res.status(400).json({ error: "Invalid inquiry version" });
+      return;
+    }
+    if (expectedUpdatedAt) {
+      updates.updatedAt = new Date(Math.max(Date.now(), expectedUpdatedAt.getTime() + 1));
+    }
     if (body.clientName !== undefined) updates.clientName = String(body.clientName).trim();
     if (body.clientEmail !== undefined) updates.clientEmail = String(body.clientEmail ?? "").trim() || null;
     if (body.clientPhone !== undefined) updates.clientPhone = String(body.clientPhone ?? "").trim() || null;
@@ -656,11 +671,22 @@ router.put("/admin/catering/:id", async (req, res): Promise<void> => {
     const [updated] = await db
       .update(cateringInquiriesTable)
       .set(updates)
-      .where(eq(cateringInquiriesTable.id, id))
+      .where(expectedUpdatedAt
+        ? and(
+          eq(cateringInquiriesTable.id, id),
+          // PostgreSQL stores microseconds while JS Date/JSON carries only
+          // milliseconds; compare at the precision sent to the browser.
+          sql`date_trunc('milliseconds', ${cateringInquiriesTable.updatedAt}) = ${expectedUpdatedAt}`,
+        )
+        : eq(cateringInquiriesTable.id, id))
       .returning();
 
     if (!updated) {
-      res.status(404).json({ error: "Inquiry not found" });
+      res.status(expectedUpdatedAt ? 409 : 404).json({
+        error: expectedUpdatedAt
+          ? "This inquiry changed since you opened it. Reload it before saving."
+          : "Inquiry not found",
+      });
       return;
     }
     const suppMap = await loadSupplementalsByInquiryIds([id]);
@@ -850,29 +876,43 @@ router.post("/admin/catering/:id/quote/email", async (req, res): Promise<void> =
       <p>— dash by Hollywood East Cafe</p>
     `;
 
-    const result = await sendMail({
-      to,
-      subject,
-      text,
-      html,
-      attachments: [{
-        filename: `${inquiry.quoteNumber ?? `quote-${id}`}.pdf`,
-        content: pdf,
-        contentType: "application/pdf",
-      }],
+    // Hold the inquiry row lock across the final freshness check and send.
+    // Revision application clears quoteToken under the same lock, so an
+    // invalidated quote cannot be dispatched after that change commits.
+    const dispatch = await db.transaction(async (tx) => {
+      const [locked] = await tx.select().from(cateringInquiriesTable)
+        .where(eq(cateringInquiriesTable.id, id)).for("update");
+      if (!locked || locked.quoteToken !== inquiry.quoteToken || !locked.quoteIssuedAt) {
+        return { stale: true as const };
+      }
+      const result = await sendMail({
+        to,
+        subject,
+        text,
+        html,
+        attachments: [{
+          filename: `${inquiry.quoteNumber ?? `quote-${id}`}.pdf`,
+          content: pdf,
+          contentType: "application/pdf",
+        }],
+      });
+      if (!result.ok) return { result };
+      const [updated] = await tx.update(cateringInquiriesTable)
+        .set({ quoteLastEmailedAt: new Date(), updatedAt: new Date() })
+        .where(eq(cateringInquiriesTable.id, id))
+        .returning();
+      return { result, updated };
     });
-    if (!result.ok) {
-      res.status(502).json({ error: result.error ?? "Failed to send email" });
+    if ("stale" in dispatch) {
+      res.status(409).json({ error: "Quote was changed; generate it again before sending" });
       return;
     }
-
-    const [updated] = await db
-      .update(cateringInquiriesTable)
-      .set({ quoteLastEmailedAt: new Date(), updatedAt: new Date() })
-      .where(eq(cateringInquiriesTable.id, id))
-      .returning();
+    if (!dispatch.result.ok) {
+      res.status(502).json({ error: dispatch.result.error ?? "Failed to send email" });
+      return;
+    }
     const suppMap = await loadSupplementalsByInquiryIds([id]);
-    res.json({ ok: true, inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] }, sentTo: to });
+    res.json({ ok: true, inquiry: { ...dispatch.updated, supplementals: suppMap.get(id) ?? [] }, sentTo: to });
   } catch (err) {
     req.log.error({ err }, "Error emailing quote");
     res.status(500).json({ error: "Failed to email quote" });
@@ -913,38 +953,42 @@ router.post("/admin/catering/:id/quote/sms", async (req, res): Promise<void> => 
       res.status(502).json({ error: "SMS gateway not configured" });
       return;
     }
-    try {
+    const dispatch = await db.transaction(async (tx) => {
+      const [locked] = await tx.select().from(cateringInquiriesTable)
+        .where(eq(cateringInquiriesTable.id, id)).for("update");
+      if (!locked || locked.quoteToken !== inquiry.quoteToken || !locked.quoteIssuedAt) {
+        return { stale: true as const };
+      }
       // Customer-bound — must go through the dedicated chat port so the
-      // reply lands in this inquiry's chat thread. The guarded sender
-      // also enforces the blocklist and persists to sms_messages.
+      // reply lands in this inquiry's chat thread. The guarded sender also
+      // enforces blocklists and persists to sms_messages.
       const sendResult = await sendToCustomerGuarded({
         to,
         body: smsBody,
         inquiryId: id,
         source: "system",
       });
-      if (sendResult.status === "blocked") {
-        res.status(403).json({
-          error: sendResult.reason === "customer-opt-out"
-            ? "Customer has opted out of SMS (texted STOP)."
-            : "This number is on the blocklist.",
-        });
-        return;
-      }
-    } catch (sendErr) {
-      req.log.error({ err: sendErr }, "Quote SMS gateway send failed");
-      const detail = sendErr instanceof Error ? sendErr.message : "Failed to send SMS via gateway";
-      res.status(502).json({ error: detail });
+      if (sendResult.status === "blocked") return { blocked: sendResult.reason };
+      const [updated] = await tx.update(cateringInquiriesTable)
+        .set({ quoteLastTextedAt: new Date(), updatedAt: new Date() })
+        .where(eq(cateringInquiriesTable.id, id))
+        .returning();
+      return { updated };
+    });
+    if ("stale" in dispatch) {
+      res.status(409).json({ error: "Quote was changed; generate it again before sending" });
       return;
     }
-
-    const [updated] = await db
-      .update(cateringInquiriesTable)
-      .set({ quoteLastTextedAt: new Date(), updatedAt: new Date() })
-      .where(eq(cateringInquiriesTable.id, id))
-      .returning();
+    if ("blocked" in dispatch) {
+      res.status(403).json({
+        error: dispatch.blocked === "customer-opt-out"
+          ? "Customer has opted out of SMS (texted STOP)."
+          : "This number is on the blocklist.",
+      });
+      return;
+    }
     const suppMap = await loadSupplementalsByInquiryIds([id]);
-    res.json({ ok: true, inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] }, sentTo: to });
+    res.json({ ok: true, inquiry: { ...dispatch.updated, supplementals: suppMap.get(id) ?? [] }, sentTo: to });
   } catch (err) {
     req.log.error({ err }, "Error texting quote");
     res.status(500).json({ error: "Failed to text quote" });
@@ -1133,18 +1177,17 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
       });
       return;
     }
-    const [inquiry] = await db.select().from(cateringInquiriesTable).where(eq(cateringInquiriesTable.id, id));
-    if (!inquiry) {
-      res.status(404).json({ error: "Inquiry not found" });
-      return;
-    }
-
-    if (inquiry.squareInvoiceId) {
-      res.status(409).json({
-        error: "An invoice already exists. Cancel it first to issue a new one.",
-      });
-      return;
-    }
+    // Hold the same inquiry row lock used by plan-review application until
+    // Square has published and the invoice mirror is committed. Without it,
+    // a revision can be applied after we read the quote but before Square
+    // publishes, leaving Square billing a different plan.
+    const outcome = await db.transaction(async (tx) => {
+      const [inquiry] = await tx.select().from(cateringInquiriesTable)
+        .where(eq(cateringInquiriesTable.id, id)).for("update");
+      if (!inquiry) return { error: "Inquiry not found", status: 404 as const };
+      if (inquiry.squareInvoiceId) {
+        return { error: "An invoice already exists. Cancel it first to issue a new one.", status: 409 as const };
+      }
 
     const body = (req.body ?? {}) as Body;
     const deposit = parseDepositSpec(body.deposit);
@@ -1153,7 +1196,7 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
 
     // Read catering tax config from event settings so the Square order
     // includes the correct tax rate without the caller having to supply it.
-    const [settings] = await db.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
+    const [settings] = await tx.select().from(eventSettingsTable).where(eq(eventSettingsTable.id, 1));
     const salesTaxPercent = settings?.cateringTaxEnabled && settings?.cateringTaxRate
       ? parseFloat(settings.cateringTaxRate)
       : null;
@@ -1208,11 +1251,18 @@ router.post("/admin/catering/:id/square/invoice", async (req, res): Promise<void
       updatedAt: new Date(),
     };
 
-    const [updated] = await db
+    const [updated] = await tx
       .update(cateringInquiriesTable)
       .set(updates)
       .where(eq(cateringInquiriesTable.id, id))
       .returning();
+    return { updated };
+    });
+    if ("error" in outcome) {
+      res.status(outcome.status ?? 500).json({ error: outcome.error });
+      return;
+    }
+    const updated = outcome.updated;
     const suppMap = await loadSupplementalsByInquiryIds([id]);
     res.json({ ok: true, inquiry: { ...updated, supplementals: suppMap.get(id) ?? [] } });
   } catch (err) {

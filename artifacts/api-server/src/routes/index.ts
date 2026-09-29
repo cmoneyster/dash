@@ -36,6 +36,7 @@ import printAgentInstallRouter from "./print-agent-install";
 import printAgentHeartbeatPublicRouter from "./print-agent-heartbeat-public";
 import adminCostsRouter from "./admin-costs";
 import contactRouter from "./contact";
+import cateringPlanRevisionsRouter from "./catering-plan-revisions";
 
 const router: IRouter = Router();
 
@@ -93,6 +94,7 @@ router.use(adminImagesRouter);
 router.use(adminEventRouter);
 router.use(adminEventSessionsRouter);
 router.use(adminCateringRouter);
+router.use(cateringPlanRevisionsRouter);
 router.use(adminPlansRouter);
 router.use(adminInstagramRouter);
 router.use(adminSmsSettingsRouter);

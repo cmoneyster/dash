@@ -19,6 +19,7 @@ import Gallery from "@/pages/Gallery";
 import InquiryStatus from "@/pages/InquiryStatus";
 
 import SharedPlan from "@/pages/SharedPlan";
+import RevisePlan from "@/pages/RevisePlan";
 import AdminLogin from "@/pages/admin/Login";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import MenuManager from "@/pages/admin/MenuManager";
@@ -61,6 +62,7 @@ function Router() {
       <Route path="/cart">{() => <Redirect to="/plan" />}</Route>
       <Route path="/plan" component={Plan} />
       <Route path="/plan/share/:token" component={SharedPlan} />
+      <Route path="/plan/revise/:token" component={RevisePlan} />
       <Route path="/event" component={EventOrder} />
       <Route path="/demo" component={DemoOrder} />
       <Route path="/demo/order/:id" component={DemoOrderTracking} />

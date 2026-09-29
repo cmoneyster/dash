@@ -40,18 +40,22 @@ const NO_REPLY_NOTE = "Auto msg. Replies not read.";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export async function sendSms(to: string, body: string): Promise<void> {
+// True means the gateway accepted the send, not that the handset received it.
+// False means it was not sent (including development shadow mode).
+export async function sendSms(to: string, body: string): Promise<boolean> {
   if (!isEjoinConfigured()) {
     console.error("[SMS] ejointech gateway not configured — SMS not sent to", to);
-    return;
+    return false;
   }
 
   try {
-    await sendSmsViaEjoin(to, body);
+    const result = await sendSmsViaEjoin(to, body);
+    return result.gatewayResponse !== "suppressed:shadow-mode";
   } catch (err) {
     console.error("[SMS] ejointech failed:", err);
     // Fire-and-forget alert email — don't let it block the request
     sendSmsAlert({ to, error: err, message: body }).catch(() => {});
+    return false;
   }
 }
 
@@ -82,8 +86,8 @@ export async function sendOrderReady(opts: {
   await sendSms(phoneNumber, body);
 }
 
-// Returns true when an SMS was actually dispatched (owner phone resolved and
-// sendSms called), false when no owner phone is configured (no attempt made).
+// Returns true only when the gateway accepted the owner alert, false when
+// there is no recipient or outbound delivery was suppressed/failed.
 // Callers that don't need the status can safely ignore the return value;
 // existing void-returning call sites are unaffected.
 export async function sendNewInquiryAlert(opts: {
@@ -123,8 +127,9 @@ export async function sendNewInquiryAlert(opts: {
   if (opts.venueAddress?.trim()) lines.push(`Venue: ${opts.venueAddress.trim()}`);
   if (opts.clientPhone) lines.push(`Phone: ${opts.clientPhone}`);
   if (opts.link)        lines.push(`View: ${opts.link}`);
-  await sendSms(ownerPhone, lines.join("\n"));
-  return true;
+  const sent = await sendSms(ownerPhone, lines.join("\n"));
+  if (!sent) console.error("[SMS] new inquiry owner alert was not sent", { source: opts.source });
+  return sent;
 }
 
 export async function sendLowStockAlert(opts: {

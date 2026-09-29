@@ -557,6 +557,7 @@ export async function runBackfill(daysOverride?: number): Promise<typeof lastBac
       try {
         const r = await ingestInbound({
           gatewayMessageId: m.gatewayMessageId,
+          deliverySource: "poll",
           fromPhone: m.fromPhone,
           body: m.body,
           occurredAt: m.occurredAt,

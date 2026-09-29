@@ -34,6 +34,7 @@ const ingestMock = inbox.ingestInbound as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   _resetSmsPollerStateForTests();
+  vi.mocked(ejoin.getInboundMode).mockReturnValue("poll");
   fetchInboundMock.mockReset();
   fetchDetailMock.mockReset();
   ingestMock.mockReset();
@@ -55,6 +56,27 @@ function listingRow(opts: { gid: string; body: string }) {
 }
 
 describe("sms scheduler — per-port detail escalation", () => {
+  it("walks detail on every push-mode safety cycle even if the lossy listing ID is unchanged", async () => {
+    vi.mocked(ejoin.getInboundMode).mockReturnValue("push");
+    const latest = listingRow({ gid: "listdata:7:2405158960:04-28 01:50:yes", body: "yes" });
+    fetchInboundMock.mockResolvedValue({
+      rows: [latest],
+      ports: [{ port: 7, count: 1, latestId: latest.gatewayMessageId }],
+    });
+    fetchDetailMock
+      .mockResolvedValueOnce({ parseStatus: "parsed", parsedRowsBeforeTimeFilter: 1, rows: [latest] })
+      .mockResolvedValueOnce({ parseStatus: "parsed", parsedRowsBeforeTimeFilter: 2, rows: [
+        latest,
+        listingRow({ gid: `${latest.gatewayMessageId}:repeat:2`, body: "yes" }),
+      ] });
+
+    await _pollOnceForTests();
+    await _pollOnceForTests();
+
+    expect(fetchDetailMock).toHaveBeenCalledTimes(2);
+    expect(ingestMock.mock.calls.map(c => c[0].gatewayMessageId)).toContain(`${latest.gatewayMessageId}:repeat:2`);
+  });
+
   it("first cycle after restart escalates when chat SIM has messages", async () => {
     // Cold-start scenario: the in-memory baseline is empty (we just
     // started up), the gateway already has 3 messages on the chat SIM,

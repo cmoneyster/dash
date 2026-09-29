@@ -39,6 +39,7 @@ import {
 import { TAX_DISCLOSURE } from "@/lib/tax";
 import { formatLocalDate, isDateOnlyString } from "@/lib/date";
 import { VenueAutocomplete } from "@/components/VenueAutocomplete";
+import { PlanRevisionPanel } from "@/components/PlanRevisionPanel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -116,6 +117,7 @@ type OfflinePayment = {
 
 type Inquiry = {
   id: number;
+  ownerAlertStatus?: "sent" | "not_sent";
   clientName: string;
   clientEmail: string | null;
   clientPhone: string | null;
@@ -2689,6 +2691,7 @@ function DetailPanel({
   const [deleting, setDeleting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [staleSave, setStaleSave] = useState(false);
   const [showTaskList, setShowTaskList] = useState(false);
   const [hasTaskListData, setHasTaskListData] = useState(() =>
     form.id != null && !!localStorage.getItem(taskListDataKey(form.id as number))
@@ -2740,6 +2743,7 @@ function DetailPanel({
     setSavedSnapshot(inquiry);
     setSaved(false);
     setError("");
+    setStaleSave(false);
   }, [inquiry]);
 
   const isDirty = useMemo(() => !deepEqual(form, savedSnapshot), [form, savedSnapshot]);
@@ -2768,10 +2772,15 @@ function DetailPanel({
       const url = isNew ? `${BASE}/api/admin/catering` : `${BASE}/api/admin/catering/${(inquiry as Inquiry).id}`;
       const method = isNew ? "POST" : "PUT";
       const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(form) });
+      if (res.status === 409) {
+        setStaleSave(true);
+        throw new Error("This inquiry changed in another tab or after a customer revision. Reload the latest version before saving; your unsaved edits will be discarded.");
+      }
       if (!res.ok) throw new Error("Failed to save. Please try again.");
       const savedData: Inquiry = await res.json();
       setForm(savedData);
       setSavedSnapshot(savedData);
+      setStaleSave(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       onSaved(savedData);
@@ -2788,6 +2797,22 @@ function DetailPanel({
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     try { await flushSave(); } catch { /* error already surfaced via setError */ }
+  }
+
+  async function reloadLatest() {
+    if (!form.id || !confirm("Discard your unsaved edits and load the latest inquiry?")) return;
+    try {
+      const response = await fetch(`${BASE}/api/admin/catering/${form.id}`, { headers: authHeaders() });
+      if (!response.ok) throw new Error("Unable to reload this inquiry.");
+      const fresh = await response.json() as Inquiry;
+      setForm(fresh);
+      setSavedSnapshot(fresh);
+      setStaleSave(false);
+      setError("");
+      onSaved(fresh);
+    } catch {
+      setError("Unable to reload this inquiry. Close and reopen it to try again.");
+    }
   }
 
   async function handleDelete() {
@@ -3151,6 +3176,20 @@ function DetailPanel({
 
               {form.id !== undefined && (
                 <>
+                  <PlanRevisionPanel
+                    inquiryId={form.id as number}
+                    locked={!!form.quoteAcceptedAt || !!form.squareInvoiceId || ["completed", "cancelled"].includes(form.status ?? "")}
+                    isDirty={isDirty}
+                    quoteIssued={!!form.quoteIssuedAt && !!form.quoteToken}
+                    onApplied={async () => {
+                      const response = await fetch(`${BASE}/api/admin/catering/${form.id}`, { headers: authHeaders() });
+                      if (!response.ok) throw new Error("Changes were applied, but the inquiry could not be refreshed. Reopen this inquiry to see the latest version.");
+                      const fresh = await response.json() as Inquiry;
+                      setForm(fresh);
+                      setSavedSnapshot(fresh);
+                      onSaved(fresh);
+                    }}
+                  />
                   <QuoteActions
                     inquiry={form as Inquiry}
                     onUpdated={(i) => { setForm(i); setSavedSnapshot(i); onSaved(i); }}
@@ -3170,7 +3209,8 @@ function DetailPanel({
             </>
           )}
 
-          {error && <p className="text-destructive text-sm">{error}</p>}
+          {form.ownerAlertStatus === "not_sent" && <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200" role="alert">Inquiry saved, but the owner notification text was not sent. Check Communications → SMS before relying on alerts.</p>}
+          {error && <div className="space-y-2"><p className="text-destructive text-sm">{error}</p>{staleSave && <button type="button" onClick={reloadLatest} className="text-xs font-semibold text-primary underline">Reload latest inquiry</button>}</div>}
         </div>
       </form>
 

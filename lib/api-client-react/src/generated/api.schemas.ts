@@ -571,6 +571,139 @@ export interface AvailabilityResponse {
   suggestedDates: string[];
 }
 
+export interface InquiryPlanSelection {
+  menuItemId: number;
+  name: string;
+  quantity: number;
+  /** @nullable */
+  sizeSlot?: number | null;
+  /** @nullable */
+  sizeLabel?: string | null;
+  unitPrice?: number;
+  /** @nullable */
+  pricingTemplate?: string | null;
+}
+
+export interface InquiryPlanDetails {
+  clientName?: string;
+  /** @nullable */
+  eventDate?: string | null;
+  /** @nullable */
+  eventTime?: string | null;
+  /** @nullable */
+  guestCount?: number | null;
+  /** @nullable */
+  venueAddress?: string | null;
+  /** @nullable */
+  menuNotes?: string | null;
+  serviceMode?: string;
+  items?: InquiryPlanSelection[];
+}
+
+export interface InquiryPlanMenuSize {
+  slot: number;
+  label: string;
+  price: number;
+}
+
+export interface InquiryPlanMenuOption {
+  id: number;
+  name: string;
+  category: string;
+  price: number;
+  pricingTemplate: string;
+  minimumOrderQty: number;
+  sizes: InquiryPlanMenuSize[];
+}
+
+export interface InquiryPlanView {
+  version: string;
+  inquiry: InquiryPlanDetails;
+  items: InquiryPlanSelection[];
+  availableMenu: InquiryPlanMenuOption[];
+  pending: boolean;
+}
+
+export interface InquiryPlanProposalItem {
+  menuItemId: number;
+  quantity: number;
+  /** @nullable */
+  sizeSlot?: number | null;
+}
+
+export interface InquiryPlanProposal {
+  version: string;
+  submissionId: string;
+  items: InquiryPlanProposalItem[];
+  /** @nullable */
+  eventDate?: string | null;
+  /** @nullable */
+  eventTime?: string | null;
+  /** @nullable */
+  guestCount?: number | null;
+  /** @nullable */
+  venueAddress?: string | null;
+  /** @nullable */
+  menuNotes?: string | null;
+  note?: string;
+}
+
+export interface InquiryPlanProposalResult {
+  revisionId: number;
+  status: string;
+}
+
+export type InquiryPlanLinkInputChannel =
+  (typeof InquiryPlanLinkInputChannel)[keyof typeof InquiryPlanLinkInputChannel];
+
+export const InquiryPlanLinkInputChannel = {
+  copy: "copy",
+  email: "email",
+  sms: "sms",
+} as const;
+
+export interface InquiryPlanLinkInput {
+  channel: InquiryPlanLinkInputChannel;
+}
+
+export interface InquiryPlanLink {
+  url: string;
+  expiresAt: string;
+}
+
+export type InquiryPlanReviewInputAction =
+  (typeof InquiryPlanReviewInputAction)[keyof typeof InquiryPlanReviewInputAction];
+
+export const InquiryPlanReviewInputAction = {
+  apply: "apply",
+  decline: "decline",
+} as const;
+
+export interface InquiryPlanReviewInput {
+  action: InquiryPlanReviewInputAction;
+}
+
+export interface InquiryPlanRevoked {
+  ok: boolean;
+}
+
+export interface InquiryPlanRevision {
+  id: number;
+  createdAt: string;
+  /** @nullable */
+  reviewedAt?: string | null;
+  status: string;
+  /** @nullable */
+  note?: string | null;
+  base: InquiryPlanDetails;
+  proposed: InquiryPlanDetails;
+}
+
+export interface InquiryPlanHistory {
+  link?: InquiryPlanLink | null;
+  revisions: InquiryPlanRevision[];
+}
+
 export interface PlanItem {
   id: number;
   menuItemId: number;

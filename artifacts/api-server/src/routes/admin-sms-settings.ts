@@ -10,7 +10,7 @@ import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
 import { eventSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { isEjoinConfigured, sendSmsViaEjoin, sendSmsViaChatPort, clearEjoinPortCache, EJOIN_PORT_COUNT, getInboundMode, getChatPort } from "../lib/sms-ejoin";
+import { isEjoinConfigured, sendSmsViaEjoin, sendSmsViaChatPort, clearEjoinPortCache, EJOIN_PORT_COUNT, getInboundMode, getChatPort, getSmsOutboundMode } from "../lib/sms-ejoin";
 import { clearSmsInboxSettingsCache, ingestInbound } from "../lib/sms-inbox";
 import { runSmsPollOnce } from "../lib/sms-scheduler";
 
@@ -544,6 +544,10 @@ router.post("/admin/sms-settings/test-low-stock-alert", async (req, res) => {
 // triggering a real catering inquiry.
 router.post("/admin/sms-settings/test-owner-alert", async (req, res) => {
   try {
+    if (getSmsOutboundMode() !== "live") {
+      res.status(503).json({ error: "SMS delivery is disabled in this environment. No test text was sent." });
+      return;
+    }
     const cooldown = checkTestCooldown("owner");
     if (cooldown > 0) {
       res.status(429).json({ error: `Cooling down — try again in ${cooldown}s.`, retryAfter: cooldown });
