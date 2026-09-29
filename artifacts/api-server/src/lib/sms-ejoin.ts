@@ -17,6 +17,7 @@ import { db } from "@workspace/db";
 import { eventSettingsTable, cateringInquiriesTable, phoneBlocklistTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+import { isAllowedBySmsTestNumbers } from "./sms-test-numbers";
 
 // Sentinel error so callers (and the guarded customer-send wrapper)
 // can distinguish "blocklisted recipient" from generic gateway errors
@@ -541,6 +542,13 @@ export async function sendSmsViaEjoin(
       "[sms-outbound] suppressed (SMS_OUTBOUND_MODE=shadow)",
     );
     return { port: portForLog ?? 0, gatewayResponse: "suppressed:shadow-mode" };
+  }
+  if (!isAllowedBySmsTestNumbers(to)) {
+    logger.info(
+      { to: normalizePhone(to), bodyLen: message.length, fn: "sendSmsViaEjoin" },
+      "[sms-outbound] suppressed (not in SMS_TEST_NUMBERS)",
+    );
+    return { port: 0, gatewayResponse: "suppressed:not-in-test-numbers" };
   }
   const cfg = getCredentials();
   if (!cfg) throw new Error("ejointech gateway not configured");

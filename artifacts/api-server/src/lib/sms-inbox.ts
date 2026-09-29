@@ -39,6 +39,7 @@ import {
 } from "./sms-ejoin";
 import { publishSmsEvent } from "./sms-events";
 import { logger } from "./logger";
+import { isAllowedBySmsTestNumbers } from "./sms-test-numbers";
 
 // ── Phone helpers ─────────────────────────────────────────────────────────────
 
@@ -358,7 +359,9 @@ export type IngestResult =
   | { status: "owner-cross-dedup" }
   | { status: "blocked"; reason: BlockReason }
   | { status: "opted-out" }
-  | { status: "skipped-empty" };
+  | { status: "skipped-empty" }
+  // Sender isn't in SMS_TEST_NUMBERS (development allowlist).
+  | { status: "skipped-not-test-number" };
 
 // Corrective SMS bodies sent back to the owner phone when an inbound
 // FROM the owner can't be relayed. Kept short so they fit a single
@@ -618,6 +621,10 @@ async function ingestInboundImpl(input: {
   const fromDigits = normalizePhoneDigits(input.fromPhone);
   const body = (input.body ?? "").trim();
   if (!fromDigits || !body) return { status: "skipped-empty" };
+  // The admin "test inbound" button uses a fixed fake sender; let it through.
+  if (!input.gatewayMessageId.startsWith("admin-test:") && !isAllowedBySmsTestNumbers(fromDigits)) {
+    return { status: "skipped-not-test-number" };
+  }
 
   // ── Owner-from-phone strict-tag relay ─────────────────────────────────────
   // Detect BEFORE writing the inbound row so anything originating from
